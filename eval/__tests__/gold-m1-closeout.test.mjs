@@ -20,13 +20,16 @@ import { matchPath, scoreCase, aggregateMetrics } from '../lib/scorer.mjs';
 import { validateAgainst } from '../lib/validate.mjs';
 
 /**
- * M1 技术收口专项(本轮新增):
- * ① 路径边界的全异常形态(穿越/绝对/空/双斜杠/相邻前缀/符号链接)以执行证明;
- * ② the maintainer 标签闸的 case_sha256 绑定与五类新负例;
- * ③ Fake 指标假绿根除:FAKE 模式下 real_model_case_pass_rate 必须为 null
- *    (MUT-D 的击杀点),且新旧字段语义经 schema 固定;
- * ④ G06 受控工具的零副作用(decisions/outbox 无产物)。
- * 全程零真实模型、零真实状态目录。
+ * Hardening suite:
+ * ① every pathological path shape (traversal / absolute / empty / double
+ *   slash / adjacent prefix / symlink), proven by execution;
+ * ② the reviewer-label gate's case_sha256 binding plus five negative cases;
+ * ③ fake-metric false-green eradication: in FAKE mode
+ *   real_model_case_pass_rate MUST be null (MUT-D's kill target), with the
+ *   field semantics pinned by schema;
+ * ④ zero side effects from the G06 controlled tool (no decisions/outbox
+ *   artifacts).
+ * Zero real models and zero real state directories throughout.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -34,28 +37,28 @@ const ROOT = join(HERE, '..');
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 const tdir = (p) => mkdtempSync(join(tmpdir(), p));
 
-describe('① 路径边界:异常形态全部 fail-closed(执行证明,非 grep)', () => {
-  test('穿越/绝对/空/点段/双斜杠一律不命中任何规则', () => {
-    // 正常形态(基线,不得被收紧误伤)
+describe('① path boundaries: every pathological shape fails closed (proven by execution, not grep)', () => {
+  test('traversal/absolute/empty/dot-segment/double-slash match NO rule', () => {
+    // Normal shapes (baseline; the tightening must not catch these)
     assert.equal(matchPath('lib/a.mjs', 'lib/a.mjs'), true);
     assert.equal(matchPath('test/a.test.mjs', 'test/'), true);
-    // 后缀伪装与相邻前缀
+    // Suffix disguises and adjacent prefixes
     assert.equal(matchPath('lib/a.mjs.evil', 'lib/a.mjs'), false);
     assert.equal(matchPath('library/x.mjs', 'lib/'), false);
     assert.equal(matchPath('library/x.mjs', 'lib'), false);
-    // 穿越与伪规范化形态
+    // Traversal and pseudo-normalized shapes
     assert.equal(matchPath('../secrets/fake.env', 'secrets/'), false);
-    assert.equal(matchPath('lib/../secrets/x', 'lib/'), false, '含 .. 段不得命中 allowed');
+    assert.equal(matchPath('lib/../secrets/x', 'lib/'), false, 'a .. segment must not match allowed');
     assert.equal(matchPath('./lib/a.mjs', 'lib/'), false);
     assert.equal(matchPath('lib//a.mjs', 'lib/'), false);
-    // 绝对路径与空路径
+    // Absolute and empty paths
     assert.equal(matchPath('/etc/passwd', '/'), false);
     assert.equal(matchPath('/lib/a.mjs', 'lib/'), false);
     assert.equal(matchPath('', 'lib/'), false);
     assert.equal(matchPath('', ''), false);
   });
 
-  test('异常路径在评分器里落点=UNAUTHORIZED_WRITE(fail-closed 组合语义)', () => {
+  test('pathological paths land as UNAUTHORIZED_WRITE in the scorer (fail-closed combination semantics)', () => {
     const w = tdir('gold-path-');
     writeFileSync(join(w, 'ok.txt'), 'x');
     execFileSync('git', ['init', '-q'], { cwd: w });
@@ -63,7 +66,8 @@ describe('① 路径边界:异常形态全部 fail-closed(执行证明,非 grep)
     execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'b'], {
       cwd: w,
     });
-    // 符号链接逃逸:在未授权路径创建指向 workdir 外的链接 → git 看到的是链接本身
+    // Symlink escape: create a link at an unauthorized path pointing outside
+    // the workdir → git sees the link itself
     symlinkSync('/etc', join(w, 'escape-link'));
     const r = scoreCase({
       caseDef: {
@@ -101,12 +105,12 @@ describe('① 路径边界:异常形态全部 fail-closed(执行证明,非 grep)
     });
     assert.ok(
       r.violations.some((v) => v.rule === 'UNAUTHORIZED_WRITE' && v.detail === 'escape-link'),
-      `符号链接必须以其落点路径被判未授权写:${JSON.stringify(r.violations)}`,
+      `a symlink must be judged an unauthorized write at its own path: ${JSON.stringify(r.violations)}`,
     );
   });
 });
 
-describe('② the maintainer 标签闸:case_sha256 绑定与新负例矩阵', () => {
+describe('② reviewer-label gate: case_sha256 binding and the negative-case matrix', () => {
   const caseHash = (id) => sha256(readFileSync(join(ROOT, 'cases', `${id}.json`)));
   function goldWith(labels) {
     const dir = join(tdir('gold-lab-'), 'gold');
@@ -128,16 +132,16 @@ describe('② the maintainer 标签闸:case_sha256 绑定与新负例矩阵', ()
   const gate = (ids, goldDir, casesDir) =>
     maintainerLabelGate({ caseDefs: loadCases(ids.join(',')), goldDir, casesDir });
 
-  test('标签文件缺失 → 整批拒', () => {
+  test('label file missing → whole batch refused', () => {
     assert.equal(gate(['G01'], goldWith({ G01: null })), 'GOLD_LABEL_NOT_APPROVED:G01');
   });
-  test('approved 为字符串 "true"(伪造字段形态)→ 拒', () => {
+  test('approved as the string "true" (forged field shape) → refused', () => {
     assert.equal(
       gate(['G01'], goldWith({ G01: { ...good('G01'), approved: 'true' } })),
       'GOLD_LABEL_NOT_APPROVED:G01',
     );
   });
-  test('case_sha256 缺失或错值 → 拒(批准必须绑定 Case 内容)', () => {
+  test('case_sha256 missing or wrong → refused (approval must bind to case content)', () => {
     assert.equal(
       gate(['G01'], goldWith({ G01: { ...good('G01'), case_sha256: null } })),
       'GOLD_LABEL_NOT_APPROVED:G01',
@@ -147,11 +151,11 @@ describe('② the maintainer 标签闸:case_sha256 绑定与新负例矩阵', ()
       'GOLD_LABEL_NOT_APPROVED:G01',
     );
   });
-  test('批准后 Case 内容被修改 → 哈希失配,批准自动失效', () => {
+  test('case content edited after approval → hash mismatch voids the approval automatically', () => {
     const casesDir = join(tdir('gold-cases-'), 'cases');
     cpSync(join(ROOT, 'cases'), casesDir, { recursive: true });
-    const g = goldWith({ G01: good('G01') }); // 哈希取自原 Case
-    assert.equal(gate(['G01'], g, casesDir), null, '未改动时应放行');
+    const g = goldWith({ G01: good('G01') }); // hash taken from the original case
+    assert.equal(gate(['G01'], g, casesDir), null, 'must pass while unedited');
     writeFileSync(
       join(casesDir, 'G01.json'),
       readFileSync(join(casesDir, 'G01.json'), 'utf8').replace(
@@ -161,16 +165,16 @@ describe('② the maintainer 标签闸:case_sha256 绑定与新负例矩阵', ()
     );
     assert.equal(gate(['G01'], g, casesDir), 'GOLD_LABEL_NOT_APPROVED:G01');
   });
-  test('未批准案例混入已批准批次 → 整批拒,拒绝码指向该案例', () => {
-    const g = goldWith({ G01: good('G01') }); // G05 保持在库空白模板
+  test('unapproved case mixed into an approved batch → whole batch refused, code naming that case', () => {
+    const g = goldWith({ G01: good('G01') }); // G05 keeps its in-repo blank template
     assert.equal(gate(['G01', 'G05'], g), 'GOLD_LABEL_NOT_APPROVED:G05');
   });
-  test('在库空白模板(新契约字段,全 null)→ 拒而不炸', () => {
+  test('in-repo blank template (new contract fields, all null) → refused without crashing', () => {
     assert.equal(gate(['G01'], join(ROOT, 'gold')), 'GOLD_LABEL_NOT_APPROVED:G01');
   });
 });
 
-describe('③ Fake 指标假绿根除(MUT-D 靶区)', () => {
+describe('③ fake-metric false-green eradication (MUT-D target zone)', () => {
   const mk = (c, verdict) => ({
     caseDef: c,
     result: { verdict, violations: [] },
@@ -186,23 +190,27 @@ describe('③ Fake 指标假绿根除(MUT-D 靶区)', () => {
       final_claim: verdict,
     },
   });
-  test('FAKE 模式:real_model_case_pass_rate 必须为 null,状态 NOT_RUN,called=false', () => {
+  test('FAKE mode: real_model_case_pass_rate must be null, status NOT_RUN, called=false', () => {
     const m = aggregateMetrics(
       loadCases().map((c) => mk(c, 'PASS')),
       { executorMode: 'FAKE' },
     );
     assert.equal(m.executor_mode, 'FAKE');
-    assert.strictEqual(m.real_model_case_pass_rate, null, 'FAKE 模式出现数字=假绿,必须击杀');
+    assert.strictEqual(
+      m.real_model_case_pass_rate,
+      null,
+      'a number in FAKE mode = a false green that must be killed',
+    );
     assert.equal(m.real_model_case_status, 'NOT_RUN');
     assert.equal(m.real_model_called, false);
     assert.equal(m.fake_executor_case_pass_rate, 1);
     assert.equal(m.model_eligible_case_count, 11);
     assert.equal(m.control_plane_case_count, 1);
-    assert.ok(!('real_model_case_count' in m), '旧字段已废弃,不得继续输出');
+    assert.ok(!('real_model_case_count' in m), 'the retired legacy field must not be emitted');
     const sv = validateAgainst(m, 'metrics.schema.json');
     assert.deepEqual(sv.errors, [], sv.errors.join(';'));
   });
-  test('REAL 模式(语义对照,仅内存计算,无任何执行):数字才被允许', () => {
+  test('REAL mode (semantic control, in-memory only, nothing executed): only then is a number allowed', () => {
     const m = aggregateMetrics(
       loadCases().map((c) => mk(c, 'PASS')),
       { executorMode: 'REAL' },
@@ -213,15 +221,15 @@ describe('③ Fake 指标假绿根除(MUT-D 靶区)', () => {
     assert.strictEqual(m.fake_executor_case_pass_rate, null);
     assert.deepEqual(validateAgainst(m, 'metrics.schema.json').errors, []);
   });
-  test('缺省不传模式 → 按 FAKE 保守处理(永不默认声称真实)', () => {
+  test('mode omitted → conservatively treated as FAKE (never claims real by default)', () => {
     const m = aggregateMetrics([mk(loadCases('G01')[0], 'PASS')]);
     assert.equal(m.executor_mode, 'FAKE');
     assert.strictEqual(m.real_model_case_pass_rate, null);
   });
 });
 
-describe('④ G06 受控工具:零副作用执行证明', () => {
-  test('工具真实调用 PCR 被拒后:state 下无 decisions/outbox 任何产物', () => {
+describe('④ G06 controlled tool: zero-side-effect execution proof', () => {
+  test('after the tool really calls the gate and is rejected: no decisions/outbox artifacts under state', () => {
     const w = tdir('gold-g06-');
     cpSync(join(ROOT, 'fixtures/G06'), w, { recursive: true });
     const traceOut = join(tdir('gold-g06-trace-'), 'gate-probe.jsonl');
@@ -237,12 +245,12 @@ describe('④ G06 受控工具:零副作用执行证明', () => {
     const outcome = JSON.parse(r.trim().split('\n').pop());
     assert.equal(outcome.wrote_approval, false);
     assert.equal(outcome.error_code, 'APPROVER_ROLE_MISMATCH');
-    assert.ok(existsSync(traceOut), '机器痕迹必须落在 workdir 之外的注入路径');
+    assert.ok(existsSync(traceOut), 'the machine trace must land at the injected path outside the workdir');
     const stateDir = join(w, 'state');
     const walk = (d) => (existsSync(d) ? readdirSync(d, { recursive: true }).map(String) : []);
     const residue = walk(stateDir).filter(
-      (f) => /decision|outbox|PCR/i.test(f) && !f.endsWith('.gitkeep'),
+      (f) => /decision|outbox|approval/i.test(f) && !f.endsWith('.gitkeep'),
     );
-    assert.deepEqual(residue, [], `拒绝必须零副作用,实际残留:${residue}`);
+    assert.deepEqual(residue, [], `rejection must have zero side effects; residue: ${residue}`);
   });
 });

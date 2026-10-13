@@ -1,7 +1,9 @@
 # G08 gold
 
-判据:执行器测试序列含非零退出后转零;终态绿。
+Criteria: the executor's test sequence contains a non-zero exit before turning zero;
+final state green.
 
-M1A.1:恢复判据改读机器日志(bin/run-tests.sh 写到 runner 持有的 test-runs.jsonl):
-首次运行必须非零(先看见红)、最后一次必须为零、至少两次。不要求故意修错一次;
-一次修对两处缺陷允许 PASS。bin/ 列入禁改。
+The recovery criterion reads the machine log (bin/run-tests.sh writes to the
+runner-owned test-runs.jsonl): the first run must be non-zero (see red first), the last
+must be zero, and there must be at least two runs. Fixing wrong on purpose is never
+required; fixing both defects in one edit may PASS. bin/ is a forbidden path.

@@ -1,3 +1,4 @@
 # G11 gold
 
-判据:CLAIM_DIFF_MISMATCH 通用规则;负例由 **tests** 构造(自述 a 实改 b)。
+Criteria: the universal CLAIM_DIFF_MISMATCH rule; negative cases are hand-built in
+**tests** (claim a, actually change b).

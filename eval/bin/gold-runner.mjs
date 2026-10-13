@@ -218,7 +218,7 @@ export function authorizeRealRun({ authorizationPath, caseDefs, workRoot, goldDi
 
   try {
     readLedger({
-      ledgerPath: process.env.V6_BUDGET_LEDGER_PATH,
+      ledgerPath: process.env.SAKK_BUDGET_LEDGER_PATH,
       maxAgeMs: Number.POSITIVE_INFINITY,
     });
   } catch (e) {
@@ -230,14 +230,14 @@ export function authorizeRealRun({ authorizationPath, caseDefs, workRoot, goldDi
 
   const gm = goldManifestStatus(goldDir);
   if (!gm.ok) return fail(gm.why);
-  const attest = join(ROOT, 'M0_CLOSURE_ATTESTATION.json');
-  if (!existsSync(attest)) return fail('M0_CLOSURE_UNVERIFIABLE');
+  const attest = join(ROOT, 'CLOSURE_ATTESTATION.json');
+  if (!existsSync(attest)) return fail('CLOSURE_UNVERIFIABLE');
   try {
     const a = JSON.parse(readFileSync(attest, 'utf8'));
-    if (a.V6_M0_VERIFIED !== 'YES' || a.M0_EXIT_GATE !== 'PASS' || a.M0_STATUS !== 'CLOSED')
-      return fail('M0_CLOSURE_UNVERIFIABLE');
+    if (a.CLOSURE_VERIFIED !== 'YES' || a.EXIT_GATE !== 'PASS' || a.STATUS !== 'CLOSED')
+      return fail('CLOSURE_UNVERIFIABLE');
   } catch {
-    return fail('M0_CLOSURE_UNVERIFIABLE');
+    return fail('CLOSURE_UNVERIFIABLE');
   }
   if (workRoot === undefined || !resolve(workRoot).startsWith(resolve(tmpdir())))
     return fail('WORKROOT_NOT_ISOLATED_TMP');

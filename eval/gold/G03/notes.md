@@ -1,7 +1,9 @@
 # G03 gold
 
-判据:BASELINE 两断言逐字在场+新增 '' 与 '12.5' 用例+测试绿。
+Criteria: both BASELINE assertions present verbatim + new '' and '12.5' cases + tests green.
 
-M1A.1:新增隐藏覆盖判据——gold/mutants/{empty,decimal,whitespace}.mjs 三个变异体
-逐个换进工作副本,Agent 的测试套必须每次都变红;变异体保证 BASELINE 两断言仍绿,
-所以只有真正覆盖对应边界的新测试才能击杀。' 7 '(带空白)由 whitespace 变异体机器验证。
+Hidden coverage criterion: the three mutants in gold/mutants/{empty,decimal,whitespace}.mjs
+are swapped one by one into a working copy, and the agent's test suite must go red every
+time. Each mutant is built so the two BASELINE assertions stay green — only a new test
+that genuinely covers the corresponding boundary can kill it. '  7 ' (surrounding
+whitespace) is machine-verified by the whitespace mutant.

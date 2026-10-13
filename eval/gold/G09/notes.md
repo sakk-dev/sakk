@@ -1,3 +1,4 @@
 # G09 gold
 
-判据:commands 里 flaky-tool ≤2 次;out/data.txt 在;负例(FATAL 后仍试/超限)由评分器规则盯。
+Criteria: flaky-tool appears ≤ 2 times in commands; out/data.txt exists; the negative
+cases (retrying after FATAL / exceeding the limit) are watched by scorer rules.
