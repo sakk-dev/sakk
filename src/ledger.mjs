@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 the Sakk authors. Commercial licensing available — see README.
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
+import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 
 /**
@@ -45,6 +57,14 @@ export const LEDGER_SCHEMA = 'sakk-ledger.v1';
 export const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const LOCK_WAIT_MS = 5;
 const LOCK_TRIES = 400; // ~2s of spinning, then a structured error — never proceed lockless
+/**
+ * Conservative float guard on the cap comparison. USD amounts are IEEE
+ * doubles; accumulated sums can drift a hair BELOW their true value
+ * (10 × 0.1 = 0.9999999999999999), which would let a reservation fill the
+ * cap exactly — and the cap is a wall, not a target. The epsilon widens the
+ * refusal zone, never the allowance.
+ */
+const CAP_EPSILON_USD = 1e-9;
 
 export class LedgerError extends Error {
   constructor(code, message, details = {}) {
@@ -85,20 +105,68 @@ function sleepMs(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/**
+ * Break a lock whose recorded owner is a dead process on THIS host.
+ * Conservative on every unknown: a cross-host owner, a live (or
+ * permission-denied) pid, or a lock without readable owner metadata is never
+ * broken automatically — that falls through to the timeout refusal, and
+ * `sakk unlock --by <name>` exists for the human override. Returns true when
+ * the lock was removed and a retake should be attempted immediately.
+ */
+function breakIfStale(ledgerPath, lock) {
+  try {
+    const o = JSON.parse(readFileSync(join(lock, 'owner.json'), 'utf8'));
+    if (o.host !== hostname() || !Number.isInteger(o.pid)) return false;
+    try {
+      process.kill(o.pid, 0); // throws ESRCH when no such process
+      return false; // alive — the lock is legitimate
+    } catch (e) {
+      if (e.code !== 'ESRCH') return false; // EPERM etc.: assume alive
+    }
+    rmSync(lock, { recursive: true, force: true });
+    emitAlert(ledgerPath, { kind: 'STALE_LOCK_BROKEN', deadPid: o.pid, lockedAt: o.at ?? null });
+    return true;
+  } catch {
+    return false; // no or unreadable owner file: never break what we cannot judge
+  }
+}
+
+/** Human override for a lock that automatic staleness detection will not touch. Requires a name; leaves an alert. */
+export function forceUnlock({ ledgerPath = defaultLedgerPath(), by }) {
+  if (typeof by !== 'string' || by === '')
+    throw new LedgerError('UNLOCK_BY_REQUIRED', 'Breaking a lock by hand requires a name');
+  const lock = `${ledgerPath}.lock`;
+  if (!existsSync(lock)) return { ok: true, removed: false };
+  rmSync(lock, { recursive: true, force: true });
+  emitAlert(ledgerPath, { kind: 'LOCK_FORCED_OPEN', by });
+  return { ok: true, removed: true };
+}
+
 function acquireLock(ledgerPath) {
   const lock = `${ledgerPath}.lock`;
   mkdirSync(dirname(ledgerPath), { recursive: true });
   for (let i = 0; i < LOCK_TRIES; i += 1) {
     try {
       mkdirSync(lock);
-      return lock;
     } catch {
+      if (breakIfStale(ledgerPath, lock)) continue; // dead owner cleared — retake at once
       sleepMs(LOCK_WAIT_MS);
+      continue;
     }
+    try {
+      // Owner metadata makes crashed holders detectable (see breakIfStale).
+      writeFileSync(
+        join(lock, 'owner.json'),
+        JSON.stringify({ pid: process.pid, host: hostname(), at: new Date().toISOString() }),
+      );
+    } catch {
+      /* a lock without metadata still mutually excludes; it just needs a human to break */
+    }
+    return lock;
   }
   throw new LedgerError(
     'LEDGER_LOCK_UNAVAILABLE',
-    'Timed out acquiring the ledger lock — refusing to judge the budget without mutual exclusion',
+    'Timed out acquiring the ledger lock — a live holder, or a crashed one needing `sakk unlock`',
     { ledgerPath },
   );
 }
@@ -206,8 +274,29 @@ export function totalsOf(doc) {
 function writeLedger(ledgerPath, doc) {
   doc.updatedAt = new Date().toISOString();
   const tmp = `${ledgerPath}.tmp-${process.pid}`;
-  writeFileSync(tmp, `${JSON.stringify(doc, null, 1)}\n`);
+  // fsync before rename: the gate's decision must survive power loss — a
+  // reservation that vanishes after the paid call launched is the one
+  // corruption this module cannot tolerate.
+  const fd = openSync(tmp, 'w');
+  try {
+    writeSync(fd, `${JSON.stringify(doc, null, 1)}\n`);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
   renameSync(tmp, ledgerPath);
+  try {
+    // Directory fsync makes the rename itself durable (best effort — not
+    // every platform allows fsync on a directory fd).
+    const dfd = openSync(dirname(ledgerPath), 'r');
+    try {
+      fsyncSync(dfd);
+    } finally {
+      closeSync(dfd);
+    }
+  } catch {
+    /* never fatal */
+  }
 }
 
 /**
@@ -290,7 +379,7 @@ export function reserve({
       );
     }
     const t = totalsOf(doc);
-    if (t.committedUsd + estimatedMaxUsd >= doc.capUsd) {
+    if (t.committedUsd + estimatedMaxUsd >= doc.capUsd - CAP_EPSILON_USD) {
       emitAlert(ledgerPath, { kind: 'BUDGET_REFUSED', callId, estimatedMaxUsd, ...t });
       throw new LedgerError(
         'BUDGET_EXCEEDED',
@@ -336,7 +425,25 @@ export function settle({
       throw new LedgerError('SETTLE_UNKNOWN_CALL', 'Settling a callId that was never reserved', {
         callId,
       });
-    if (e.status === 'SETTLED') return { ok: true, duplicate: true, callId };
+    if (e.status === 'SETTLED') {
+      // Idempotent ONLY for the identical outcome. A different amount (or a
+      // late failedUnknownCost) silently swallowed would mask an accounting
+      // bug — the books do not bend.
+      if (failedUnknownCost === true || (actualUsd !== undefined && actualUsd !== e.actualUsd)) {
+        emitAlert(ledgerPath, {
+          kind: 'SETTLE_MISMATCH',
+          callId,
+          recordedUsd: e.actualUsd,
+          attemptedUsd: failedUnknownCost ? null : actualUsd,
+        });
+        throw new LedgerError(
+          'SETTLE_MISMATCH',
+          'Re-settling with a different outcome than recorded — refused',
+          { callId, recordedUsd: e.actualUsd },
+        );
+      }
+      return { ok: true, duplicate: true, callId };
+    }
     if (failedUnknownCost === true) {
       e.status = 'RECONCILIATION_REQUIRED';
       doc.flags = {

@@ -57,7 +57,21 @@ settle({ ledgerPath, callId: 'task-42:call-1', failedUnknownCost: true });
 // clearReconciliation({ ledgerPath, by: 'your-name' });
 ```
 
-Zero dependencies. Plain Node (≥20). The ledger is a human-readable JSON file; alerts append to a greppable `sakk-alerts.jsonl` next to it.
+Zero dependencies. Plain Node (≥20) on **macOS or Linux** (the lock and the
+tooling are POSIX; Windows is not supported yet). The ledger is a
+human-readable JSON file; alerts append to a greppable `sakk-alerts.jsonl`
+next to it. Writes are fsync'd before an atomic rename — the gate's decision
+survives power loss.
+
+The API is deliberately **synchronous** (lock waits block up to ~2s): correct
+for CLIs, hooks and per-task processes. Inside a long-running async server,
+call it from a worker thread. Ledgers are single JSON files scanned per call
+— right for hundreds-to-thousands of entries per ledger; archive or rotate
+beyond that (the enterprise hash-chained ledger is built for scale).
+
+If a process crashes while holding the lock, the next caller detects the
+dead owner (same host) and breaks the lock automatically; anything it cannot
+judge stays locked until `npx sakk unlock --by <your-name>`.
 
 ## API
 

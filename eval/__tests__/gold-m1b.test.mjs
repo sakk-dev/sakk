@@ -527,3 +527,32 @@ describe('⑧⑨⑪-⑯ real adapter (recorder, zero models)', () => {
     // the total paid spawns, all from the fake binary.
   });
 });
+
+describe('⑰ review fix F8: no env fallback in the authorization gate', () => {
+  test('SAKK_LEDGER_PATH alone never satisfies the gate — the explicit env must be set', () => {
+    const dir = tdir('gold-f8-');
+    const ledger = join(dir, 'ledger.json');
+    execFileSync(process.execPath, [
+      '-e',
+      `import('${join(ROOT, '..', 'src', 'ledger.mjs').replace(/'/g, "\\'")}').then(m=>m.initLedger({ledgerPath:'${ledger}',capUsd:24}))`,
+    ]);
+    const savedBudget = process.env.SAKK_BUDGET_LEDGER_PATH;
+    const savedLedger = process.env.SAKK_LEDGER_PATH;
+    delete process.env.SAKK_BUDGET_LEDGER_PATH;
+    process.env.SAKK_LEDGER_PATH = ledger; // the WRONG variable — must not be honored
+    try {
+      const gate = authorizeRealRun({
+        authorizationPath: makeAuth(dir),
+        caseDefs: loadCases(PILOT.join(',')),
+        workRoot: tdir('wr-'),
+      });
+      assert.equal(gate.ok, false);
+      assert.equal(gate.code, 'AUTHORITATIVE_LEDGER_UNREADABLE:SAKK_BUDGET_LEDGER_PATH_UNSET');
+    } finally {
+      if (savedBudget === undefined) delete process.env.SAKK_BUDGET_LEDGER_PATH;
+      else process.env.SAKK_BUDGET_LEDGER_PATH = savedBudget;
+      if (savedLedger === undefined) delete process.env.SAKK_LEDGER_PATH;
+      else process.env.SAKK_LEDGER_PATH = savedLedger;
+    }
+  });
+});

@@ -9,6 +9,7 @@
 - [ ] `npm run format:check` passes
 - [ ] `CHANGELOG.md` updated under `[Unreleased]` (user-facing changes)
 - [ ] No new runtime dependencies
+- [ ] Case/fixture/scoring changes reviewed as executable code
 - [ ] CLA signed (bot will prompt on first PR)
 
 ## Money semantics
