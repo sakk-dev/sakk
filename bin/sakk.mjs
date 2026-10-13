@@ -8,6 +8,7 @@ import {
   readLedger,
   totalsOf,
   clearReconciliation,
+  forceUnlock,
   LedgerError,
 } from '../src/ledger.mjs';
 
@@ -47,6 +48,7 @@ Usage:
   sakk init --cap <usd> [--ledger <path>] [--by <name>]   create a ledger (refuses to overwrite)
   sakk status [--ledger <path>] [--json]                  totals, entries, reconciliation state
   sakk reconcile --by <name> [--ledger <path>]            clear the reconciliation flag (signed)
+  sakk unlock --by <name> [--ledger <path>]               break a stuck lock by hand (signed)
 
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status)
@@ -129,6 +131,20 @@ if (cmd === 'init') {
     fail(e);
   }
   console.log(`reconciliation cleared by ${by}: ${p}`);
+} else if (cmd === 'unlock') {
+  const by = val('by');
+  if (typeof by !== 'string' || by === '') {
+    console.error('unlock requires --by <name> — breaking a lock takes a signature');
+    process.exit(2);
+  }
+  const p = ledgerPath();
+  let r;
+  try {
+    r = forceUnlock({ ledgerPath: p, by });
+  } catch (e) {
+    fail(e);
+  }
+  console.log(r.removed ? `lock removed by ${by}: ${p}.lock` : `no lock present: ${p}.lock`);
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);
 } else {

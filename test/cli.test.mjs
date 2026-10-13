@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -94,5 +94,20 @@ describe('usage surface', () => {
     assert.equal(run(['--help']).status, 0);
     assert.equal(run(['frobnicate']).status, 2);
     assert.match(run(['--version']).stdout.trim(), /^\d+\.\d+\.\d+$/);
+  });
+});
+
+describe('sakk unlock', () => {
+  test('requires --by; removes a stuck lock and reports a missing one', () => {
+    const p = join(tdir(), 'l.json');
+    run(['init', '--cap', '10', '--ledger', p]);
+    assert.equal(run(['unlock', '--ledger', p]).status, 2);
+    const r0 = run(['unlock', '--by', 'maintainer', '--ledger', p]);
+    assert.equal(r0.status, 0, r0.stderr);
+    assert.match(r0.stdout, /no lock present/);
+    mkdirSync(`${p}.lock`);
+    const r1 = run(['unlock', '--by', 'maintainer', '--ledger', p]);
+    assert.equal(r1.status, 0, r1.stderr);
+    assert.match(r1.stdout, /lock removed by maintainer/);
   });
 });
