@@ -38,6 +38,13 @@ user-facing changes get a line in `CHANGELOG.md` under `[Unreleased]`.
   codes) get extra scrutiny and may require a design discussion first — open
   an issue before writing code.
 
+## Eval cases are executable code
+
+`eval/cases/*.json` and `eval/gold/*/scoring.json` contain shell commands the
+harness executes (`verification_commands`, `coverage_mutants.cmd`). Review
+changes to them with the same severity as source code — a case file edit IS
+arbitrary code execution in CI and on reviewers' machines.
+
 ## Reporting security issues
 
 Never open a public issue for a vulnerability — see [SECURITY.md](SECURITY.md).

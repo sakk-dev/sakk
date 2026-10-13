@@ -12,12 +12,16 @@
     "test:eval": "node eval/bin/gold-runner.mjs --validate && node --test eval/__tests__/*.test.mjs",
     "test:all": "npm test && npm run test:eval",
     "drill": "sh scripts/mutation-drill.sh",
-    "format": "npx -y prettier@3 --write .",
-    "format:check": "npx -y prettier@3 --check ."
+    "format": "npx -y prettier@3.9.10 --write .",
+    "format:check": "npx -y prettier@3.9.10 --check ."
   },
   "engines": {
     "node": ">=20"
   },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "keywords": [
     "ai-agents",
     "budget",

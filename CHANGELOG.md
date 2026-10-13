@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Community files: contributing guide, security policy, code of conduct,
   issue/PR templates, architecture notes.
 
+### Fixed
+
+- Durability: ledger writes fsync before the atomic rename (and best-effort
+  directory fsync) — the gate's decision survives power loss.
+- Cap comparison carries a conservative epsilon so float drift can never
+  fill the cap exactly.
+- Stale locks from crashed holders on the same host are detected via owner
+  metadata and broken automatically; `forceUnlock`/`sakk unlock --by <name>`
+  cover what automation refuses to judge.
+- Re-settling a callId with a different amount (or a late unknown-cost flag)
+  is refused with `SETTLE_MISMATCH` instead of being silently ignored.
+- The real-run authorization gate requires `SAKK_BUDGET_LEDGER_PATH`
+  explicitly and never falls back to `SAKK_LEDGER_PATH`.
+- CI toolchain pinned (prettier exact version, actions by commit SHA);
+  platform support declared (macOS/Linux).
+
 ## [0.1.0] - 2026-10-13
 
 ### Added
