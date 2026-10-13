@@ -1,0 +1,13 @@
+SPDX-License-Identifier: AGPL-3.0-only
+Copyright (c) 2026 the Sakk authors
+
+This project is licensed under the GNU Affero General Public License v3.0
+(AGPL-3.0-only). The canonical full license text:
+https://www.gnu.org/licenses/agpl-3.0.txt
+
+[NOTE — pre-publication placeholder: the full verbatim AGPL-3.0 text will be
+vendored into this file at GitHub repository creation (D13 checklist item).
+Until then this file records the chosen license and copyright holder.]
+
+Commercial licensing (closed-source embedding, enterprise features) is
+available separately from the copyright holder.
