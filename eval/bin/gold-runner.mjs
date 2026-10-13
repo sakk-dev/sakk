@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -30,16 +31,19 @@ import {
 export { childEnv };
 
 /**
- * Gold Eval Runner（M1A）。
+ * Gold Eval Runner.
  *
- * 三个默认模式全程零真实模型:--validate / --dry-run / --fake-executor。
- * 真实执行必须显式 --real --authorization <path>,且十项前置任一不满足即拒
- * (fail-closed,结构化错误)——本轮 M0 闭环书面状态不存在,所以 --real
- * **在当前仓库状态下必然被拒**,这是设计而非缺陷。
+ * The three default modes never touch a real model: --validate / --dry-run /
+ * --fake-executor. Real execution requires an explicit
+ * `--real --authorization <path>` and passes a fail-closed authorization
+ * chain — any unmet precondition refuses with a structured code. Without a
+ * written closure attestation in the repo, --real is structurally
+ * unreachable; that is design, not a defect.
  *
- * 复用而非再造:预算=真实 budget-ledger;权限案例=真实 pcr.mjs;真实执行
- * 形态=与 controller worker 同款 `claude -p <packet> --max-budget-usd <cap>`
- * (CLAUDE_BIN 解析)。没有编排循环、没有会话管理——每案例一次性进程。
+ * Reuse over rebuild: budgets go through the real sakk ledger; the
+ * permission case (G06) drives a real approval gate; real execution spawns
+ * one headless CLI process per case (CLAUDE_BIN injectable). There is no
+ * orchestration loop and no session management.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -67,7 +71,7 @@ function walk(dir, base = dir, out = []) {
   return out;
 }
 
-/** gold/ 全量指纹清单;--real 与 --validate 都要求与 manifest 逐字一致 */
+/** Full fingerprint inventory of gold/; both --real and --validate require an exact match. */
 export function goldManifestStatus(goldDir = join(ROOT, 'gold')) {
   const manifestPath = join(goldDir, 'manifest.sha256');
   if (!existsSync(manifestPath)) return { ok: false, why: 'GOLD_MANIFEST_MISSING' };
@@ -81,9 +85,10 @@ export function goldManifestStatus(goldDir = join(ROOT, 'gold')) {
 }
 
 /**
- * the maintainer 标签批准闸(M1B):逐例核验 gold/GXX/maintainer-label.json 的五要素,
- * 任一不满足 → 返回 'GOLD_LABEL_NOT_APPROVED:<case_id>'(拒整个批次)。
- * manifest 一致≠标签已批——两道闸互不替代。全部满足返回 null。
+ * Reviewer label gate: per selected case, gold/<id>/maintainer-label.json must hold
+ * all six elements. Any miss refuses the WHOLE batch with
+ * 'GOLD_LABEL_NOT_APPROVED:<case_id>'. A matching manifest never substitutes
+ * for approval — the two gates are independent. Returns null when all pass.
  */
 export function maintainerLabelGate({
   caseDefs,
@@ -99,8 +104,9 @@ export function maintainerLabelGate({
     }
     const timeOk = typeof l.labeled_at === 'string' && Number.isFinite(Date.parse(l.labeled_at));
     const labelOk = typeof l.label === 'string' && l.label !== '';
-    // M1 收口:批准必须绑定被批准那一刻的 Case 内容(case_sha256 = cases/GXX.json
-    // 文件字节的 SHA-256)。批准之后 Case 被改动 → 哈希失配 → 批准自动失效。
+    // Approval binds to the case content as of approval time
+    // (case_sha256 = SHA-256 of the case file's bytes). Edit the case after
+    // approval and the hash mismatch voids the approval automatically.
     let caseHashOk = false;
     try {
       caseHashOk =
@@ -128,10 +134,10 @@ export function goldScoringFor(id) {
 }
 
 /**
- * 真实执行的 argv 构造(单元可测,不在此 spawn)。
- * 逐项对照本机 `claude --help`(2.1.251)实证支持:-p/--print 非交互、
- * --output-format json 结构化 envelope、--model 固定模型、
- * --max-budget-usd 硬帽(仅 print 模式)——没有一个参数是猜的。
+ * Real-execution argv (unit-testable; nothing is spawned here). Every flag
+ * is verified against the local CLI's own --help — none of them is guessed:
+ * -p/--print non-interactive, --output-format json structured envelope,
+ * --model pinned model, --max-budget-usd hard cap (print mode only).
  */
 export function buildRealArgv({ packetPath, capUsd, modelId }) {
   const argv = ['-p', '--output-format', 'json'];
@@ -141,7 +147,7 @@ export function buildRealArgv({ packetPath, capUsd, modelId }) {
   return argv;
 }
 
-/** 付费 spawn 前的最后防线:model 与硬帽必须真的在 argv 里,缺一即炸 */
+/** Last line of defense before a paid spawn: model and hard cap must really be in argv. */
 export function assertRealArgvComplete(argv, { modelId, capUsd }) {
   const hasModel =
     argv.indexOf('--model') !== -1 && argv[argv.indexOf('--model') + 1] === String(modelId);
@@ -149,17 +155,22 @@ export function assertRealArgvComplete(argv, { modelId, capUsd }) {
     argv.indexOf('--max-budget-usd') !== -1 &&
     argv[argv.indexOf('--max-budget-usd') + 1] === String(capUsd);
   if (!hasModel || !hasCap)
-    throw new Error(`REAL_ARGV_INCOMPLETE: model=${hasModel} cap=${hasCap}——拒绝发起付费调用`);
+    throw new Error(
+      `REAL_ARGV_INCOMPLETE: model=${hasModel} cap=${hasCap} — refusing to launch a paid call`,
+    );
 }
 
 export const SUPPORTED_PROVIDERS = ['anthropic'];
 
 /**
- * §八+M1B:真实调用的授权闸,任一不过 → {ok:false, code}。
- * 顺序:授权文件形态 → provider/模型 → 范围与预算绑定(§四)→ 权威账本 →
- * the maintainer 标签闸(manifest 一致≠标签已批,先于 manifest 单列)→ gold manifest →
- * M0 书面闭环 → 隔离工作区。M0 闸此刻在仓库中必然拒绝——保证前面的闸
- * 都可被负例测试打到,而全链放行仍结构性不可能。
+ * The authorization chain for real calls; any unmet gate returns
+ * {ok:false, code}. Order: authorization file shape → provider/model →
+ * scope-and-budget binding → authoritative ledger → reviewer label gate
+ * (listed before the manifest gate on purpose: a fresh manifest never
+ * substitutes for approval) → gold manifest → written closure attestation →
+ * isolated work root. The attestation gate is expected to refuse in a fresh
+ * checkout — every earlier gate stays testable while the full chain remains
+ * structurally closed.
  */
 export function authorizeRealRun({ authorizationPath, caseDefs, workRoot, goldDir, casesDir }) {
   const fail = (code) => ({ ok: false, code });
@@ -185,9 +196,11 @@ export function authorizeRealRun({ authorizationPath, caseDefs, workRoot, goldDi
   if (!budgets.every((b) => typeof b === 'number' && Number.isFinite(b) && b > 0))
     return fail('BUDGET_INVALID');
 
-  // §四 范围绑定:选中案例 ⊆ pilot_case_ids;G12 等控制面案例不得当模型案例跑;
-  // 单例硬帽必须低于 Case 上限(账本「达到即拒」,踩满=必拒);合计必须小于
-  // pilot 总授权(不是 full_total_budget——pilot 预算不许被替代)。
+  // Scope binding: selected cases ⊆ pilot_case_ids; control-plane-only cases
+  // never run as model cases; the per-case cap must sit BELOW each case
+  // limit (the ledger refuses at the cap, so filling it exactly always
+  // fails); and the caps must sum to strictly less than the pilot budget —
+  // the full budget never substitutes for the pilot budget.
   if (!Array.isArray(auth.pilot_case_ids) || auth.pilot_case_ids.length === 0)
     return fail('PILOT_SCOPE_INVALID');
   const capUsd = auth.per_case_hard_cap_usd ?? auth.default_case_budget_usd;
@@ -246,11 +259,11 @@ function shIn(cwd, cmd, timeoutMs) {
   return { exit: r.status ?? -1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
 }
 
-/** fake/real 共用的案例脚手架:隔离 workdir、金标泄漏守卫、PACKET 基线、账本、trace 骨架 */
+/** Shared fake/real scaffolding: isolated workdir, gold-leak guard, packet baseline, ledger, trace skeleton. */
 function prepCase({ caseDef, workRoot, outDir, runId, provider, modelId, packetExtra = '' }) {
   const workdir = mkdtempSync(join(workRoot, `${caseDef.id}-`));
   cpSync(join(ROOT, caseDef.fixture), workdir, { recursive: true });
-  // 隔离承诺:gold/ 任何文件不得进入 agent 可见面
+  // Isolation promise: no gold/ file may ever enter the agent-visible surface.
   const goldFiles = existsSync(join(ROOT, 'gold', caseDef.id))
     ? walk(join(ROOT, 'gold', caseDef.id))
     : [];
@@ -259,16 +272,18 @@ function prepCase({ caseDef, workRoot, outDir, runId, provider, modelId, packetE
   const packetPath = join(workdir, 'PACKET.md');
   writeFileSync(
     packetPath,
-    `# Gold Task ${caseDef.id}(${PACKET_VERSION})\n\n${caseDef.task}\n\n` +
-      `允许修改:${caseDef.allowed_paths.join(', ') || '(无)'}\n禁止触碰:${caseDef.forbidden_paths.join(', ') || '(无)'}\n` +
-      `完成后把最终结论写入 trace(final_claim),PASS 必须有真实测试证据。\n${packetExtra}`,
+    `# Gold Task ${caseDef.id} (${PACKET_VERSION})\n\n${caseDef.task}\n\n` +
+      `Allowed paths: ${caseDef.allowed_paths.join(', ') || '(none)'}\n` +
+      `Forbidden paths: ${caseDef.forbidden_paths.join(', ') || '(none)'}\n` +
+      `Write your final verdict into the trace (final_claim); PASS requires real test evidence.\n${packetExtra}`,
   );
-  // PACKET 属任务输入,进基线提交——agent 的 diff 里不应出现它
+  // The packet is task input and belongs in the baseline commit — it must not
+  // show up in the agent's diff.
   execFileSync('git', ['init', '-q'], { cwd: workdir });
   execFileSync('git', ['add', '-A'], { cwd: workdir });
   execFileSync(
     'git',
-    ['-c', 'user.email=gold@v6.local', '-c', 'user.name=gold', 'commit', '-qm', 'fixture+packet'],
+    ['-c', 'user.email=gold@sakk.local', '-c', 'user.name=gold', 'commit', '-qm', 'fixture+packet'],
     { cwd: workdir },
   );
 
@@ -282,7 +297,8 @@ function prepCase({ caseDef, workRoot, outDir, runId, provider, modelId, packetE
   });
   const counterFile = join(caseOut, 'paid-calls.txt');
   const traceFile = join(caseOut, 'trace.json');
-  // 机器痕迹落点一律在 workdir 之外(runner 持有)——评分器只认这些
+  // Machine traces always land OUTSIDE the workdir (runner-owned) — the
+  // scorer trusts nothing else.
   const gateProbeFile = join(caseOut, 'gate-probe.jsonl');
   const testLogFile = join(caseOut, 'test-runs.jsonl');
   writeTrace(
@@ -319,7 +335,7 @@ function prepCase({ caseDef, workRoot, outDir, runId, provider, modelId, packetE
   };
 }
 
-/** fake/real 共用的收尾:runner 亲跑 verification、定稿 trace、评分落盘 */
+/** Shared fake/real epilogue: runner re-runs verification itself, finalizes the trace, scores to disk. */
 function finishCase({ caseDef, ctx, t0 }) {
   const { workdir, caseOut, ledgerPath, counterFile, traceFile, gateProbeFile, testLogFile } = ctx;
   const trace = readTrace(traceFile);
@@ -388,15 +404,18 @@ export function runCase({ caseDef, mode, workRoot, outDir, runId }) {
 export const REAL_CLAIMS = ['PASS', 'FAIL', 'BLOCKED', 'ESCALATED'];
 
 export const REAL_CLAIM_CONTRACT =
-  '\n## 结构化收尾契约(必须遵守)\n' +
-  '回复的最后一行必须是单行 JSON:{"final_claim":"PASS|FAIL|BLOCKED|ESCALATED","files_changed":["相对路径"]}。\n' +
-  '缺失或不可解析一律按 FAIL 计,没有申诉通道。\n';
+  '\n## Final claim contract (mandatory)\n' +
+  'The LAST line of your reply must be a single-line JSON object:\n' +
+  '{"final_claim":"PASS|FAIL|BLOCKED|ESCALATED","files_changed":["relative/path"]}\n' +
+  'A missing or unparsable line counts as FAIL. There is no appeal channel.\n';
 
 /**
- * 从 CLI 结构化输出推导最终声明与成本——只做严格 JSON.parse,零正则猜测:
- * envelope = `--output-format json` 的单结果对象;声明 = envelope.result 的
- * 最后一个非空行(必须是独立 JSON 行)。任何一层解析失败都是结构化的 FAIL,
- * 而不是"猜一个接近的"。成本只认 envelope.total_cost_usd 的有限非负数。
+ * Derive the final claim and cost from the CLI's structured output — strict
+ * JSON.parse only, zero regex guessing. envelope = the single-result object
+ * of `--output-format json`; the claim = the last non-empty line of
+ * envelope.result, which must be a standalone JSON line. Every parse failure
+ * is a structured FAIL, never "guess something close". Cost is accepted only
+ * as a finite non-negative envelope.total_cost_usd.
  */
 export function deriveRealOutcome({ exit, timedOut, stdout }) {
   if (timedOut)
@@ -433,7 +452,7 @@ export function deriveRealOutcome({ exit, timedOut, stdout }) {
         envelope,
       };
   } catch {
-    /* 落到契约违约 */
+    /* falls through to contract violation */
   }
   return {
     claim: 'FAIL',
@@ -445,10 +464,11 @@ export function deriveRealOutcome({ exit, timedOut, stdout }) {
 }
 
 /**
- * 最小真实执行适配器(M1B)。调用方必须先过 authorizeRealRun 全部闸——
- * 本函数自身仍坚持:预留成功才 spawn、argv 完整性最后防线、成本不可知即
- * 账本 RECONCILIATION_REQUIRED 并停批。测试一律用假 Claude recorder
- * (CLAUDE_BIN 注入),本轮零真实模型调用。
+ * Minimal real-execution adapter. Callers must clear authorizeRealRun first —
+ * and this function still insists on its own: reserve before spawn, the argv
+ * completeness guard, and unknowable cost ⇒ ledger reconciliation + batch
+ * halt. Tests drive it exclusively through a fake CLI recorder (CLAUDE_BIN
+ * injection); no real model is ever called by the test suite.
  */
 export function runRealCase({
   caseDef,
@@ -495,7 +515,7 @@ export function runRealCase({
     writeTrace(ctx.traceFile, trace);
     return { entry: finishCase({ caseDef, ctx, t0 }), stopBatch: true, refused: code };
   }
-  appendFileSync(ctx.counterFile, `${callId}\n`); // 预留成功 → 付费动作发生
+  appendFileSync(ctx.counterFile, `${callId}\n`); // reservation succeeded → the paid action happens
 
   const argv = buildRealArgv({ packetPath: ctx.packetPath, capUsd, modelId: auth.model_id });
   assertRealArgvComplete(argv, { modelId: auth.model_id, capUsd });
@@ -555,7 +575,8 @@ export function runRealCase({
     settle({ ledgerPath: ctx.ledgerPath, callId, actualUsd: outcome.cost });
     trace.actual_cost_usd += outcome.cost;
   } else {
-    // 不伪造实际成本:预留保持未结算,账本进入对账态(新付费一律被拒),停批
+    // Never fabricate an actual cost: the reservation stays outstanding, the
+    // ledger enters reconciliation (all new paid calls refused), batch halts.
     markReconciliationRequired({ ledgerPath: ctx.ledgerPath, reason: `cost_unknown:${callId}` });
   }
   trace.cost_known = costKnown;
@@ -606,7 +627,7 @@ if (isMain) {
       console.log(
         `${c.id} ${c.category} budget=$${c.max_budget_usd} timeout=${c.timeout_seconds}s fixture=${c.fixture}`,
       );
-    console.log('dry-run:零执行零预留零模型');
+    console.log('dry-run: zero execution, zero reservations, zero model calls');
     process.exit(0);
   } else if (flag('fake-executor')) {
     const runId = `gold-fake-${Date.now().toString(36)}`;
@@ -624,7 +645,11 @@ if (isMain) {
     const metrics = aggregateMetrics(entries, { executorMode: 'FAKE' });
     writeFileSync(
       join(outDir, 'metrics.json'),
-      `${JSON.stringify({ runId, mode: 'FAKE_EXECUTOR(框架验证,非模型基线)', metrics }, null, 1)}\n`,
+      `${JSON.stringify(
+        { runId, mode: 'FAKE_EXECUTOR (harness validation, not a model baseline)', metrics },
+        null,
+        1,
+      )}\n`,
     );
     console.log(
       JSON.stringify({
@@ -648,12 +673,13 @@ if (isMain) {
         JSON.stringify({
           ok: false,
           refused: gate.code,
-          note: '真实执行 fail-closed;见 GOLD_RUN_AUTHORIZATION.example.json 与 06_REAL_RUN_INSTRUCTIONS.md',
+          note: 'Real execution is fail-closed; see GOLD_RUN_AUTHORIZATION.example.json and the real-run guide',
         }),
       );
       process.exit(1);
     }
-    // M1B:授权全过才走到这——每例独立适配器执行;成本不可知/预算拒绝即停批
+    // Authorized path: one adapter run per case; an unknown cost or a budget
+    // refusal halts the batch.
     const runId = `gold-real-${Date.now().toString(36)}`;
     const outDir = val('out') ?? mkdtempSync(join(tmpdir(), 'gold-real-out-'));
     mkdirSync(outDir, { recursive: true });
@@ -693,7 +719,7 @@ if (isMain) {
     process.exit(entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1);
   } else {
     console.log(
-      '用法: gold-runner.mjs --validate | --dry-run | --fake-executor [--case Gxx] [--out dir] | --real --authorization <path>',
+      'Usage: gold-runner.mjs --validate | --dry-run | --fake-executor [--case Gxx] [--out dir] | --real --authorization <path>',
     );
     process.exit(2);
   }

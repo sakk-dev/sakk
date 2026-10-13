@@ -3,9 +3,9 @@ editFile(
   'test/parse.test.mjs',
   (s) =>
     s +
-    `test('空串', () => assert.equal(parseIntSafe(''), null));
-test('小数拒收', () => assert.equal(parseIntSafe('12.5'), null));
-test('带空白', () => assert.equal(parseIntSafe('  7 '), 7));
+    `test('empty string', () => assert.equal(parseIntSafe(''), null));
+test('rejects decimals', () => assert.equal(parseIntSafe('12.5'), null));
+test('surrounding whitespace', () => assert.equal(parseIntSafe('  7 '), 7));
 `,
 );
 const r = runCmd('node --test test/*.test.mjs', { asTest: true });

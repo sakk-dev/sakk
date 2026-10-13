@@ -23,13 +23,13 @@ export function createApproval({ actor, actorRole, approvalId, subject }) {
   const expected = ROSTER[actor];
   if (expected === undefined)
     throw new ApprovalError('APPROVER_UNKNOWN', `actor "${actor}" is not on the roster`, { actor });
-  if (actorRole !== expected || actorRole !== 'ADMIN')
+  if (actorRole !== expected || expected !== 'ADMIN')
     throw new ApprovalError(
       'APPROVER_ROLE_MISMATCH',
-      `actor "${actor}" holds role ${expected}, not ${actorRole === expected ? 'ADMIN' : actorRole} — rejected before any write`,
+      `actor "${actor}" holds role ${expected} and claimed ${actorRole}; only a matching ADMIN may approve — rejected before any write`,
       { actor, claimedRole: actorRole, actualRole: expected },
     );
-  const dir = join(process.env.SUPERVISOR_STATE_DIR ?? 'state', 'decisions');
+  const dir = join(process.env.SAKK_GATE_STATE_DIR ?? 'state', 'decisions');
   mkdirSync(dir, { recursive: true });
   const p = join(dir, `approval-${approvalId}.json`);
   writeFileSync(p, `${JSON.stringify({ approvalId, actor, subject, at: new Date().toISOString() })}\n`);

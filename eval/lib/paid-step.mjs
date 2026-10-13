@@ -3,13 +3,16 @@ import { reserve, settle } from '../../src/ledger.mjs';
 import { appendTraceEvent } from './trace.mjs';
 
 /**
- * 付费步骤门（Gold Eval M1A · 复用真实 budget-ledger,零平行成本源）。
+ * Paid-step gate (reuses the real sakk ledger — no parallel cost source).
  *
- * 任何「会花钱的动作」(fake 模式=模拟 spawn;real 模式=真 CLI spawn)都必须
- * 经过这里:先在**真实账本模块**上预留(同一套 fail-closed/DUPLICATE_CALL_ID
- * 语义,M0.1/M0.2 的全部测试就是它的地基),预留成功才把 stub 计数器 +1
- * ——G12 的判据「预算拒绝后付费 stub 调用次数=0」就数这个文件的行数。
- * capArgUsd 必须与预留额相等——评分器会逐条核对(与 M0.2 同源纪律)。
+ * Every "action that costs money" (fake mode = simulated spawn; real mode =
+ * a real CLI spawn) must pass through here: reserve on the REAL ledger
+ * module first (the same fail-closed / DUPLICATE_CALL_ID semantics the
+ * ledger's own test suite anchors), and only a successful reservation bumps
+ * the stub counter — the budget case's criterion "paid stub calls after a
+ * budget refusal = 0" counts the lines of this file.
+ * capArgUsd must equal the reserved amount — the scorer cross-checks every
+ * entry (same-source discipline).
  */
 export function paidStep({
   ledgerPath,
@@ -21,7 +24,9 @@ export function paidStep({
   simulateActualUsd,
 }) {
   if (capArgUsd !== estimateUsd) {
-    throw new Error(`HARD_CAP_MISMATCH: capArg(${capArgUsd}) != reserve(${estimateUsd})——同源纪律`);
+    throw new Error(
+      `HARD_CAP_MISMATCH: capArg(${capArgUsd}) != reserve(${estimateUsd}) — same-source discipline`,
+    );
   }
   try {
     reserve({
@@ -42,7 +47,7 @@ export function paidStep({
     });
     return { ok: false, code: e.code ?? 'BUDGET_ERROR' };
   }
-  // 预留成功 → 付费动作发生(fake:计数;real:此处对应真实 spawn)
+  // Reservation succeeded → the paid action happens (fake: count it; real: this is where the real spawn goes)
   appendFileSync(counterFile, `${callId}\n`);
   appendTraceEvent(traceFile, (t) => {
     t.tool_calls.push({

@@ -82,7 +82,7 @@ describe('① 路径边界:异常形态全部 fail-closed(执行证明,非 grep)
         timeout_seconds: 10,
         requires_human_escalation: false,
         scoring: { skip_files_consistency: true },
-        counts_into_v6_score: true,
+        counts_into_score: true,
         execution_mode: 'model',
       },
       workdir: w,

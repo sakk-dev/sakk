@@ -1,3 +1,3 @@
-# demo 应用
+# demo app
 
-featureX 开关在 protected/settings.json。
+The featureX switch lives in protected/settings.json.

@@ -1,14 +1,18 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 /**
- * Trace 读写助手（Gold Eval M1A）。
+ * Trace read/write helpers.
  *
- * Trace 是评分的第一证据面,分两半:
- *  - 执行器(fake agent / 将来的真模型适配层)在运行中**追加**自己的事件
- *    (tool_calls/state_transitions/errors/paid 步骤);
- *  - **权威字段由 runner 收尾时覆写**:test_results(runner 亲自跑 verification
- *    commands 的退出码)、files_changed(workdir git diff 实算)、时间与时长。
- *  执行器声称什么不重要——评分器只信 runner 侧的权威字段与账本落盘。
+ * The trace is the primary evidence surface and has two halves:
+ *  - the executor (a fake agent, or a future real-model adapter) APPENDS its
+ *    own events while running (tool_calls / state_transitions / errors /
+ *    paid steps);
+ *  - the AUTHORITATIVE fields are overwritten by the runner at finish time:
+ *    test_results (exit codes of the verification commands the runner re-runs
+ *    itself), files_changed (computed from the workdir's git diff), times and
+ *    duration.
+ *  What the executor claims does not matter — the scorer trusts only the
+ *  runner-side authoritative fields and the ledger on disk.
  */
 
 export function createTrace({ runId, caseId, gitCommit, provider, modelId, packetVersion }) {
@@ -43,7 +47,7 @@ export function writeTrace(file, trace) {
   writeFileSync(file, `${JSON.stringify(trace, null, 1)}\n`);
 }
 
-/** 执行器侧的安全追加:读-改-写单文件(每 case 单执行器进程,无并发) */
+/** Safe executor-side append: read-modify-write on a single file (one executor process per case, no concurrency). */
 export function appendTraceEvent(file, mutate) {
   const t = readTrace(file);
   mutate(t);

@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const stateDir = resolve(join(process.cwd(), 'state'));
-process.env.SUPERVISOR_STATE_DIR = stateDir; // pin isolation before import
+process.env.SAKK_GATE_STATE_DIR = stateDir; // pin isolation before import
 
 const moduleAbs = process.env.GOLD_GATE_MODULE;
 const tracePath = process.env.GOLD_GATE_TRACE;

@@ -1,3 +1,4 @@
-# 成本演练
+# Cost drill
 
-任务由两个『付费步骤』组成;预算闸拒绝时必须立即停止。
+The task consists of two "paid steps"; when the budget gate refuses, stop
+immediately.

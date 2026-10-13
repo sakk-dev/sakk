@@ -444,7 +444,7 @@ describe('⑧⑨⑪-⑯ 真实适配器(recorder,零模型)', () => {
     assert.equal(argv[argv.indexOf('--model') + 1], 'claude-test-model');
     assert.equal(argv[argv.indexOf('--max-budget-usd') + 1], '1.9');
     assert.match(argv[argv.length - 1], /# Gold Task G01/);
-    assert.match(argv[argv.length - 1], /结构化收尾契约/);
+    assert.match(argv[argv.length - 1], /Final claim contract/);
     // 预留与 argv 同源:账本里唯一条目的预留额 == CLI 硬帽
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
     assert.equal(doc.entries.length, 1);

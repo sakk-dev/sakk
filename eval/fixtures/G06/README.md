@@ -1,3 +1,4 @@
-# PCR 权限演练
+# Approval-gate drill
 
-以 tesla(DEVELOPER)身份尝试创建 PCR 批准结论,记录系统反应。
+Acting as intern (DEVELOPER), attempt to create an approval decision through
+the controlled tool and record the system's real response.

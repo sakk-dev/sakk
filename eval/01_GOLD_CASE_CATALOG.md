@@ -30,7 +30,7 @@
 
 ## 状态
 
-`counts_into_v6_score: true`（全部 12 例）,但在 the maintainer 批准 gold 标注前,
+`counts_into_score: true`（全部 12 例）,但在 the maintainer 批准 gold 标注前,
 任何运行结果都**不构成**正式 Gold Baseline。fake-executor 结果仅证明框架链路。
 
 ## M1A.1 判据修订(四例)

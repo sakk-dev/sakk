@@ -4,7 +4,7 @@ export function sumTo(n) {
   return s;
 }
 export function product(list) {
-  let p = 0; // BUG-2: 应为 1
+  let p = 0; // BUG-2: should be 1
   for (const x of list) p *= x;
   return p;
 }

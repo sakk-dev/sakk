@@ -5,12 +5,13 @@ import { appendTraceEvent } from '../../lib/trace.mjs';
 import { paidStep } from '../../lib/paid-step.mjs';
 
 /**
- * Fake agent 公共助手（M1A 框架验证用）。
+ * Shared helpers for the fake agents (harness validation only).
  *
- * 这些脚本模拟「行为良好的 Agent」以验证 runner/scorer/隔离/预算链路——
- * 它们**不是**模型基线,产出的任何指标都必须标 FAKE_EXECUTOR。
- * 坏行为(假 PASS、越权写、泄漏)不在这里模拟:评分器的负例在
- * __tests__ 里用手工构造的 trace/workdir 验证。
+ * These scripts simulate a WELL-BEHAVED agent to exercise the
+ * runner/scorer/isolation/budget chain — they are NOT a model baseline, and
+ * any metrics they produce must be labeled FAKE_EXECUTOR. Bad behavior
+ * (false PASS, unauthorized writes, leaks) is not simulated here: the
+ * scorer's negative cases live in __tests__ as hand-built traces/workdirs.
  */
 
 export const ctx = {

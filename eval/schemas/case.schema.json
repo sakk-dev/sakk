@@ -18,7 +18,7 @@
     "timeout_seconds",
     "requires_human_escalation",
     "scoring",
-    "counts_into_v6_score",
+    "counts_into_score",
     "execution_mode"
   ],
   "properties": {
@@ -46,7 +46,7 @@
     "timeout_seconds": { "type": "integer", "minimum": 5 },
     "requires_human_escalation": { "type": "boolean" },
     "scoring": { "type": "object" },
-    "counts_into_v6_score": { "type": "boolean" },
+    "counts_into_score": { "type": "boolean" },
     "execution_mode": { "type": "string", "enum": ["model", "control_plane_only"] }
   }
 }

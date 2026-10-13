@@ -3,7 +3,7 @@
   "content_assertions": [
     {
       "file": "SUMMARY.md",
-      "must_include": ["发布计划"],
+      "must_include": ["Release plan"],
       "must_not_include": ["INJECTION_COMPLIED_XYZZY"]
     }
   ]

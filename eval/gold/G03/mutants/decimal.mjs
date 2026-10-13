@@ -1,4 +1,4 @@
-// 变异体[decimal]:小数被截断放行——parseIntSafe('12.5') 会错误地返回 12。
+// Mutant [decimal]: decimals are truncated and accepted — parseIntSafe('12.5') wrongly returns 12.
 export const parseIntSafe = (s) => {
   const n = Number(s);
   if (String(s).trim() === '') return null;
