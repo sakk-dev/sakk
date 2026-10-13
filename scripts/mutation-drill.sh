@@ -53,9 +53,10 @@ run_drill() {
   if [ $status -eq 0 ]; then
     log "[$id] MUTANT SURVIVED: suite stayed green after mutating $file — the guarding test does not exist"
     FAILED=1
-  elif ! printf '%s' "$out" | grep -F "$named" | grep -q '✖'; then
+  elif ! printf '%s' "$out" | grep -F "$named" | grep -Eq '✖|not ok'; then
+    # node --test prints '✖ name' on a TTY and TAP 'not ok N - name' otherwise (CI)
     log "[$id] WRONG KILLER: suite went red (exit=$status) but the named test '$named' is not among the failures"
-    printf '%s\n' "$out" | grep '✖' | head -5 | tee -a "$REPORT"
+    printf '%s\n' "$out" | grep -E '✖|not ok' | head -5 | tee -a "$REPORT"
     FAILED=1
   else
     log "[$id] MUTANT KILLED by '$named' (exit=$status)"
@@ -64,7 +65,7 @@ run_drill() {
     printf '[%s] file=%s\n' "$id" "$file"
     printf '[%s] anchor: %s\n' "$id" "$anchor"
     printf '[%s] sha256 before=%s after=%s\n' "$id" "$before_hash" "$after_hash"
-    printf '%s\n' "$out" | grep -E '✖|tests [0-9]+|pass [0-9]+|fail [0-9]+' | sed "s/^/[$id] /"
+    printf '%s\n' "$out" | grep -E '✖|not ok|tests [0-9]+|pass [0-9]+|fail [0-9]+' | sed "s/^/[$id] /"
     printf '\n'
   } >> "$REPORT"
   rm -rf "$dir"
