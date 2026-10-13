@@ -12,6 +12,7 @@ import {
   writeFileSync,
   writeSync,
 } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -273,18 +274,28 @@ export function totalsOf(doc) {
 
 function writeLedger(ledgerPath, doc) {
   doc.updatedAt = new Date().toISOString();
-  const tmp = `${ledgerPath}.tmp-${process.pid}`;
+  // Unpredictable name + O_EXCL ('wx'): a pre-planted symlink at a guessable
+  // tmp path would otherwise let openSync('w') write THROUGH it onto any
+  // file the caller can touch (audit finding F15, PoC-confirmed). 'wx'
+  // refuses to open an existing path — symlinks included — and the random
+  // suffix makes planting one impossible in the first place.
+  const tmp = `${ledgerPath}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
   // fsync before rename: the gate's decision must survive power loss — a
   // reservation that vanishes after the paid call launched is the one
   // corruption this module cannot tolerate.
-  const fd = openSync(tmp, 'w');
+  const fd = openSync(tmp, 'wx');
   try {
     writeSync(fd, `${JSON.stringify(doc, null, 1)}\n`);
     fsyncSync(fd);
   } finally {
     closeSync(fd);
   }
-  renameSync(tmp, ledgerPath);
+  try {
+    renameSync(tmp, ledgerPath);
+  } catch (e) {
+    rmSync(tmp, { force: true }); // never leave a half-written tmp behind
+    throw e;
+  }
   try {
     // Directory fsync makes the rename itself durable (best effort — not
     // every platform allows fsync on a directory fd).

@@ -2,6 +2,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import * as fsExtra from 'node:fs';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -369,5 +370,19 @@ describe('review fixes: epsilon wall, settle mismatch, stale locks', () => {
     assert.equal(reserve({ ledgerPath, callId: 'z', estimatedMaxUsd: 1 }).ok, true);
     const alerts = readFileSync(join(ledgerPath, '..', 'sakk-alerts.jsonl'), 'utf8');
     assert.match(alerts, /LOCK_FORCED_OPEN/);
+  });
+});
+
+describe('audit fix F15: tmp-file symlink attack', () => {
+  test('a pre-planted symlink at a guessable tmp path can never clobber another file', () => {
+    const { ledgerPath, dir } = freshLedger(5);
+    const victim = join(dir, 'victim.txt');
+    writeFileSync(victim, 'PRECIOUS');
+    // the old predictable name — must never be followed or even used again
+    const { symlinkSync } = fsExtra;
+    symlinkSync(victim, `${ledgerPath}.tmp-${process.pid}`);
+    reserve({ ledgerPath, callId: 'atk', estimatedMaxUsd: 1 });
+    assert.equal(readFileSync(victim, 'utf8'), 'PRECIOUS');
+    assert.equal(readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY }).entries.length, 1);
   });
 });

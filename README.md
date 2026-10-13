@@ -75,7 +75,7 @@ judge stays locked until `npx sakk unlock --by <your-name>`.
 
 ## API
 
-`initLedger · reserve · settle · markReconciliationRequired · clearReconciliation · readLedger · totalsOf · LedgerError (every refusal carries .code and .details)`
+`initLedger · reserve · settle · markReconciliationRequired · clearReconciliation · forceUnlock · readLedger · totalsOf · LedgerError (every refusal carries .code and .details)`
 
 Accounting rule: `settled actuals + outstanding reservations (at estimated max) + this estimate >= cap ⇒ refuse`.
 
