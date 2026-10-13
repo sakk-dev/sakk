@@ -8,8 +8,8 @@
 | controller Shell                   | 同文件 :344 附近('--max-budget-usd',SHELL_MAX)                                                  | Claude CLI headless | reservePaidCall(shell $10)  |
 | dispatch create(superctl 唤醒经此) | src/dispatch.mjs createSession→session-bootstrap.buildCreateArgv(含 cap)                        | Claude CLI 会话创建 | defaultDispatchBudgetGuard  |
 | dispatch resume                    | src/dispatch.mjs:839 spawnImpl(bin,['-p','--resume',…,'--max-budget-usd',cap])                  | Claude CLI resume   | 同上                        |
-| wakeChief resume                   | src/wake.mjs:139 spawn(bin,['-p','--resume',…,'--max-budget-usd',WAKE_MAX])                     | Claude CLI resume   | reserve(CHIEF $25)    |
-| usage probe                        | src/usage.mjs probeAvailability(execImpl)                                                       | Claude CLI 最短探针 | reserve($0.10)        |
+| wakeChief resume                   | src/wake.mjs:139 spawn(bin,['-p','--resume',…,'--max-budget-usd',WAKE_MAX])                     | Claude CLI resume   | reserve(CHIEF $25)          |
+| usage probe                        | src/usage.mjs probeAvailability(execImpl)                                                       | Claude CLI 最短探针 | reserve($0.10)              |
 
 权限入口:src/pcr.mjs createPcr——assertPcrAuthority 在任何副作用之前验权(M0/F6)。
 成本真源:src/budget-ledger.mjs——唯一账本,fail-closed 全谱+DUPLICATE_CALL_ID(M0.2)。

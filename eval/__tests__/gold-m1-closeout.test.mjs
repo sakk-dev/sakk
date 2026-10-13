@@ -48,7 +48,11 @@ describe('① path boundaries: every pathological shape fails closed (proven by 
     assert.equal(matchPath('library/x.mjs', 'lib'), false);
     // Traversal and pseudo-normalized shapes
     assert.equal(matchPath('../secrets/fake.env', 'secrets/'), false);
-    assert.equal(matchPath('lib/../secrets/x', 'lib/'), false, 'a .. segment must not match allowed');
+    assert.equal(
+      matchPath('lib/../secrets/x', 'lib/'),
+      false,
+      'a .. segment must not match allowed',
+    );
     assert.equal(matchPath('./lib/a.mjs', 'lib/'), false);
     assert.equal(matchPath('lib//a.mjs', 'lib/'), false);
     // Absolute and empty paths
@@ -245,7 +249,10 @@ describe('④ G06 controlled tool: zero-side-effect execution proof', () => {
     const outcome = JSON.parse(r.trim().split('\n').pop());
     assert.equal(outcome.wrote_approval, false);
     assert.equal(outcome.error_code, 'APPROVER_ROLE_MISMATCH');
-    assert.ok(existsSync(traceOut), 'the machine trace must land at the injected path outside the workdir');
+    assert.ok(
+      existsSync(traceOut),
+      'the machine trace must land at the injected path outside the workdir',
+    );
     const stateDir = join(w, 'state');
     const walk = (d) => (existsSync(d) ? readdirSync(d, { recursive: true }).map(String) : []);
     const residue = walk(stateDir).filter(

@@ -46,12 +46,18 @@ describe('allow/refuse boundary', () => {
   });
   test('exactly at the cap: refused (the cap is a wall, not a target)', () => {
     const { ledgerPath } = freshLedger(100);
-    assert.throws(() => reserve({ ledgerPath, callId: 'c2', estimatedMaxUsd: 100 }), /BUDGET_EXCEEDED/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'c2', estimatedMaxUsd: 100 }),
+      /BUDGET_EXCEEDED/,
+    );
   });
   test('over the cap: refused', () => {
     const { ledgerPath } = freshLedger(100);
     reserve({ ledgerPath, callId: 'c3a', estimatedMaxUsd: 80 });
-    assert.throws(() => reserve({ ledgerPath, callId: 'c3b', estimatedMaxUsd: 25 }), /BUDGET_EXCEEDED/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'c3b', estimatedMaxUsd: 25 }),
+      /BUDGET_EXCEEDED/,
+    );
   });
 });
 
@@ -60,7 +66,11 @@ describe('pathological ledgers are all fail-closed', () => {
     const dir = tmp();
     const ledgerPath = L(dir);
     assert.throws(() => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }), /LEDGER_MISSING/);
-    assert.equal(existsSync(ledgerPath), false, 'an ordinary read failure must never create an empty ledger');
+    assert.equal(
+      existsSync(ledgerPath),
+      false,
+      'an ordinary read failure must never create an empty ledger',
+    );
   });
   test('unreadable ledger (a directory squats the path): refused', () => {
     const dir = tmp();
@@ -74,20 +84,33 @@ describe('pathological ledgers are all fail-closed', () => {
   test('corrupted JSON: refused', () => {
     const { ledgerPath } = freshLedger();
     writeFileSync(ledgerPath, `{"schema":"${LEDGER_SCHEMA}",`);
-    assert.throws(() => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }), /LEDGER_MALFORMED/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }),
+      /LEDGER_MALFORMED/,
+    );
   });
   test('wrong schema tag / missing cap: refused', () => {
     const { ledgerPath } = freshLedger();
     writeFileSync(
       ledgerPath,
-      JSON.stringify({ schema: 'someone-else.v9', entries: [], updatedAt: new Date().toISOString() }),
+      JSON.stringify({
+        schema: 'someone-else.v9',
+        entries: [],
+        updatedAt: new Date().toISOString(),
+      }),
     );
-    assert.throws(() => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }), /LEDGER_SCHEMA_INVALID/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }),
+      /LEDGER_SCHEMA_INVALID/,
+    );
     writeFileSync(
       ledgerPath,
       JSON.stringify({ schema: LEDGER_SCHEMA, entries: [], updatedAt: new Date().toISOString() }),
     );
-    assert.throws(() => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }), /LEDGER_SCHEMA_INVALID/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }),
+      /LEDGER_SCHEMA_INVALID/,
+    );
   });
   test('stale ledger: refused (old books are not fresh books)', () => {
     const { ledgerPath } = freshLedger();
@@ -99,9 +122,17 @@ describe('pathological ledgers are all fail-closed', () => {
   test('uncomputable cost (SETTLED entry without actualUsd): refused', () => {
     const { ledgerPath } = freshLedger();
     const doc = JSON.parse(readFileSync(ledgerPath, 'utf8'));
-    doc.entries.push({ callId: 'bad', status: 'SETTLED', estimatedMaxUsd: 5, createdAt: doc.updatedAt });
+    doc.entries.push({
+      callId: 'bad',
+      status: 'SETTLED',
+      estimatedMaxUsd: 5,
+      createdAt: doc.updatedAt,
+    });
     writeFileSync(ledgerPath, JSON.stringify(doc));
-    assert.throws(() => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }), /LEDGER_COST_UNCOMPUTABLE/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }),
+      /LEDGER_COST_UNCOMPUTABLE/,
+    );
   });
   test('no silent default path: without SAKK_LEDGER_PATH, defaultLedgerPath throws', () => {
     const saved = process.env.SAKK_LEDGER_PATH;
@@ -147,7 +178,9 @@ describe('concurrency and idempotency', () => {
     const a = run('conc-a');
     const b = run('conc-b');
     const oks = [a.stdout, b.stdout].filter((s) => s.includes('OK')).length;
-    const refused = [a.stdout, b.stdout].filter((s) => s.includes('REFUSED:BUDGET_EXCEEDED')).length;
+    const refused = [a.stdout, b.stdout].filter((s) =>
+      s.includes('REFUSED:BUDGET_EXCEEDED'),
+    ).length;
     assert.equal(oks, 1, `exactly one must win; stdout: ${a.stdout}|${b.stdout}`);
     assert.equal(refused, 1);
     const t = totalsOf(readLedger({ ledgerPath }));
@@ -157,7 +190,10 @@ describe('concurrency and idempotency', () => {
     const { ledgerPath } = freshLedger(100);
     mkdirSync(`${ledgerPath}.lock`, { recursive: true });
     try {
-      assert.throws(() => reserve({ ledgerPath, callId: 'locked', estimatedMaxUsd: 1 }), /LEDGER_LOCK_UNAVAILABLE/);
+      assert.throws(
+        () => reserve({ ledgerPath, callId: 'locked', estimatedMaxUsd: 1 }),
+        /LEDGER_LOCK_UNAVAILABLE/,
+      );
     } finally {
       rmSync(`${ledgerPath}.lock`, { recursive: true, force: true });
     }
@@ -165,14 +201,20 @@ describe('concurrency and idempotency', () => {
   test('duplicate callId: refused, totals unchanged', () => {
     const { ledgerPath } = freshLedger(100);
     reserve({ ledgerPath, callId: 'dup', estimatedMaxUsd: 40 });
-    assert.throws(() => reserve({ ledgerPath, callId: 'dup', estimatedMaxUsd: 40 }), /DUPLICATE_CALL_ID/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'dup', estimatedMaxUsd: 40 }),
+      /DUPLICATE_CALL_ID/,
+    );
     assert.equal(totalsOf(readLedger({ ledgerPath })).outstandingUsd, 40);
   });
   test('reserving a SETTLED callId again: equally refused', () => {
     const { ledgerPath } = freshLedger(100);
     reserve({ ledgerPath, callId: 'done1', estimatedMaxUsd: 20 });
     settle({ ledgerPath, callId: 'done1', actualUsd: 5 });
-    assert.throws(() => reserve({ ledgerPath, callId: 'done1', estimatedMaxUsd: 20 }), /DUPLICATE_CALL_ID/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'done1', estimatedMaxUsd: 20 }),
+      /DUPLICATE_CALL_ID/,
+    );
     assert.equal(totalsOf(readLedger({ ledgerPath })).settledUsd, 5);
   });
   test('caller shape: after a duplicate reserve, the model stub is never touched a second time', () => {
@@ -195,14 +237,20 @@ describe('settlement and reconciliation', () => {
     reserve({ ledgerPath, callId: 'f1', estimatedMaxUsd: 25 });
     const s = settle({ ledgerPath, callId: 'f1', failedUnknownCost: true });
     assert.equal(s.reconciliationRequired, true);
-    assert.throws(() => reserve({ ledgerPath, callId: 'f2', estimatedMaxUsd: 1 }), /RECONCILIATION_REQUIRED/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'f2', estimatedMaxUsd: 1 }),
+      /RECONCILIATION_REQUIRED/,
+    );
     clearReconciliation({ ledgerPath, by: 'test-reconciler' });
     assert.equal(reserve({ ledgerPath, callId: 'f3', estimatedMaxUsd: 1 }).ok, true);
   });
   test('out-of-band accounting failure: flag + structured alert, next paid call blocked', () => {
     const { ledgerPath, dir } = freshLedger(100);
     markReconciliationRequired({ ledgerPath, reason: 'metrics write failed (simulated)' });
-    assert.throws(() => reserve({ ledgerPath, callId: 'm1', estimatedMaxUsd: 1 }), /RECONCILIATION_REQUIRED/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'm1', estimatedMaxUsd: 1 }),
+      /RECONCILIATION_REQUIRED/,
+    );
     const alerts = readFileSync(join(dir, 'sakk-alerts.jsonl'), 'utf8');
     assert.match(alerts, /RECONCILIATION_REQUIRED/);
   });
@@ -210,7 +258,10 @@ describe('settlement and reconciliation', () => {
     const { ledgerPath } = freshLedger(100);
     reserve({ ledgerPath, callId: 'r1', estimatedMaxUsd: 40 });
     reserve({ ledgerPath, callId: 'r2', estimatedMaxUsd: 40 });
-    assert.throws(() => reserve({ ledgerPath, callId: 'r3', estimatedMaxUsd: 30 }), /BUDGET_EXCEEDED/);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'r3', estimatedMaxUsd: 30 }),
+      /BUDGET_EXCEEDED/,
+    );
   });
   test('settlement releases the reserved difference; double settle is idempotent', () => {
     const { ledgerPath } = freshLedger(100);
@@ -223,7 +274,10 @@ describe('settlement and reconciliation', () => {
   });
   test('settling an unknown callId: refused; invalid actualUsd: refused', () => {
     const { ledgerPath } = freshLedger(100);
-    assert.throws(() => settle({ ledgerPath, callId: 'ghost', actualUsd: 1 }), /SETTLE_UNKNOWN_CALL/);
+    assert.throws(
+      () => settle({ ledgerPath, callId: 'ghost', actualUsd: 1 }),
+      /SETTLE_UNKNOWN_CALL/,
+    );
     reserve({ ledgerPath, callId: 'v1', estimatedMaxUsd: 10 });
     assert.throws(() => settle({ ledgerPath, callId: 'v1', actualUsd: -1 }), /SETTLE_INVALID/);
   });

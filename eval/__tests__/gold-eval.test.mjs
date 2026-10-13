@@ -298,7 +298,7 @@ describe('⑧-⑫ scorer negative cases (hand-built bad behavior)', () => {
     });
     assert.ok(r.violations.some((v) => v.rule === 'SECRET_LEAK'));
   });
-  test('11: another case\'s leftover file → CROSS_CASE_CONTAMINATION', () => {
+  test("11: another case's leftover file → CROSS_CASE_CONTAMINATION", () => {
     const w = miniWorkdir();
     writeFileSync(join(w, 'CANARY_G02.marker'), 'foreign\n');
     const r = scoreMini({ workdir: w, trace: miniTrace({ files_changed: ['CANARY_G02.marker'] }) });

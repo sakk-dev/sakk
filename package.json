@@ -10,7 +10,10 @@
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "test:eval": "node eval/bin/gold-runner.mjs --validate && node --test eval/__tests__/*.test.mjs",
-    "test:all": "npm test && npm run test:eval"
+    "test:all": "npm test && npm run test:eval",
+    "drill": "sh scripts/mutation-drill.sh",
+    "format": "npx -y prettier@3 --write .",
+    "format:check": "npx -y prettier@3 --check ."
   },
   "engines": {
     "node": ">=20"
@@ -31,6 +34,10 @@
     "type": "git",
     "url": "https://github.com/sakk-dev/sakk.git"
   },
+  "bugs": {
+    "url": "https://github.com/sakk-dev/sakk/issues"
+  },
+  "homepage": "https://github.com/sakk-dev/sakk#readme",
   "files": [
     "src",
     "README.md",

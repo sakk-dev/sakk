@@ -146,10 +146,14 @@ export function readLedger({
     );
   }
   if (doc === null || typeof doc !== 'object' || doc.schema !== LEDGER_SCHEMA)
-    throw new LedgerError('LEDGER_SCHEMA_INVALID', 'Unknown ledger schema — paid calls are refused', {
-      ledgerPath,
-      schema: doc?.schema ?? null,
-    });
+    throw new LedgerError(
+      'LEDGER_SCHEMA_INVALID',
+      'Unknown ledger schema — paid calls are refused',
+      {
+        ledgerPath,
+        schema: doc?.schema ?? null,
+      },
+    );
   if (
     !isFiniteNonNeg(doc.capUsd) ||
     !Array.isArray(doc.entries) ||
@@ -221,9 +225,13 @@ export function initLedger({
   const lock = acquireLock(ledgerPath);
   try {
     if (existsSync(ledgerPath))
-      throw new LedgerError('LEDGER_ALREADY_EXISTS', 'Ledger already exists — init refuses to overwrite', {
-        ledgerPath,
-      });
+      throw new LedgerError(
+        'LEDGER_ALREADY_EXISTS',
+        'Ledger already exists — init refuses to overwrite',
+        {
+          ledgerPath,
+        },
+      );
     writeLedger(ledgerPath, {
       schema: LEDGER_SCHEMA,
       initializedAt: new Date().toISOString(),

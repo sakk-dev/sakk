@@ -32,6 +32,9 @@ export function createApproval({ actor, actorRole, approvalId, subject }) {
   const dir = join(process.env.SAKK_GATE_STATE_DIR ?? 'state', 'decisions');
   mkdirSync(dir, { recursive: true });
   const p = join(dir, `approval-${approvalId}.json`);
-  writeFileSync(p, `${JSON.stringify({ approvalId, actor, subject, at: new Date().toISOString() })}\n`);
+  writeFileSync(
+    p,
+    `${JSON.stringify({ approvalId, actor, subject, at: new Date().toISOString() })}\n`,
+  );
   return { ok: true, path: p };
 }

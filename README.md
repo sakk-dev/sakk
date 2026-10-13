@@ -2,7 +2,7 @@
 
 > **The original check, rebuilt for AI agents.**
 
-In medieval Arab commerce, a **ṣakk** (صك) was a written order of payment — a merchant's promise backed by real funds, honored across the trade routes. The word traveled through Persian and Latin into English as *cheque / check*. Its plural, *sukuk*, still names the Gulf's financial instruments today.
+In medieval Arab commerce, a **ṣakk** (صك) was a written order of payment — a merchant's promise backed by real funds, honored across the trade routes. The word traveled through Persian and Latin into English as _cheque / check_. Its plural, _sukuk_, still names the Gulf's financial instruments today.
 
 English kept both meanings: a **check** you write (money) and a **check** you run (verification). AI agents need exactly those two things, welded together. That is Sakk:
 
@@ -15,16 +15,16 @@ Agents spend real money and report their own success. Both are problems:
 - A retry loop at 3 a.m. is indistinguishable from a working agent — until the invoice.
 - "All tests pass" from an agent that never ran the tests looks identical to the real thing.
 
-Sakk closes the first gap (the second is coming — see Roadmap). Every potentially paid action must **reserve** against a capped ledger *before* it runs, and **settle** with the real cost after. Everything pathological refuses:
+Sakk closes the first gap (the second is coming — see Roadmap). Every potentially paid action must **reserve** against a capped ledger _before_ it runs, and **settle** with the real cost after. Everything pathological refuses:
 
-| Situation | Sakk's answer |
-| --- | --- |
-| Budget would reach the cap | **Refused.** The cap is a wall, not a target — reaching it counts as crossing it. |
-| Same `callId` reserved twice | **Refused.** Deduplicated billing with re-executed side effects is how money leaks. |
-| Ledger missing / corrupted / stale / wrong schema | **Refused.** A broken ledger is never "zero spend so far". |
-| Actual cost unknowable after a failure | **No fake numbers.** The entry enters reconciliation, a global flag halts all further paid calls until a named human clears it. |
-| Lock held by another process | **Refused after timeout.** The budget is never judged without mutual exclusion. |
-| Ordinary read failure | **Never auto-creates an empty ledger.** "Lost ledger equals free money" is the exact back door this tool exists to close. |
+| Situation                                         | Sakk's answer                                                                                                                   |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Budget would reach the cap                        | **Refused.** The cap is a wall, not a target — reaching it counts as crossing it.                                               |
+| Same `callId` reserved twice                      | **Refused.** Deduplicated billing with re-executed side effects is how money leaks.                                             |
+| Ledger missing / corrupted / stale / wrong schema | **Refused.** A broken ledger is never "zero spend so far".                                                                      |
+| Actual cost unknowable after a failure            | **No fake numbers.** The entry enters reconciliation, a global flag halts all further paid calls until a named human clears it. |
+| Lock held by another process                      | **Refused after timeout.** The budget is never judged without mutual exclusion.                                                 |
+| Ordinary read failure                             | **Never auto-creates an empty ledger.** "Lost ledger equals free money" is the exact back door this tool exists to close.       |
 
 Two concurrent agents cannot jointly overspend: read-modify-write runs under an atomic lock, writes are temp+rename, and there is a real two-process race in the test suite to prove it.
 
@@ -71,4 +71,4 @@ AGPL-3.0-only. Commercial licenses (closed-source embedding, enterprise features
 
 ---
 
-*Sakk (صك): a written promise that the money is really there. Now your agents make the same promise.*
+_Sakk (صك): a written promise that the money is really there. Now your agents make the same promise._

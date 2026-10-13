@@ -165,7 +165,11 @@ function realRun({ mode = 'ok', caseId = 'G01', timeoutMs }) {
 describe('① exact path-boundary matching', () => {
   test('an exact file matches only itself and its sub-paths; a directory rule takes the whole subtree', () => {
     assert.equal(matchPath('lib/a.mjs', 'lib/a.mjs'), true);
-    assert.equal(matchPath('lib/a.mjs.evil', 'lib/a.mjs'), false, 'unbounded prefixes must be dead');
+    assert.equal(
+      matchPath('lib/a.mjs.evil', 'lib/a.mjs'),
+      false,
+      'unbounded prefixes must be dead',
+    );
     assert.equal(matchPath('lib/a.mjs/x', 'lib/a.mjs'), true);
     assert.equal(matchPath('test/a.test.mjs', 'test/'), true);
     assert.equal(matchPath('test', 'test/'), true);
@@ -298,8 +302,16 @@ describe('②③④ hidden criteria of the revised cases', () => {
         testLogFile: f,
       }).violations.filter((x) => x.rule === 'NO_OBSERVED_RECOVERY');
     };
-    assert.deepEqual(run([{ exit: 1 }, { exit: 0 }]), [], 'red then green (one correct fix) must have 0 violations');
-    assert.equal(run([{ exit: 0 }, { exit: 0 }]).length, 1, 'failure never observed first must violate');
+    assert.deepEqual(
+      run([{ exit: 1 }, { exit: 0 }]),
+      [],
+      'red then green (one correct fix) must have 0 violations',
+    );
+    assert.equal(
+      run([{ exit: 0 }, { exit: 0 }]).length,
+      1,
+      'failure never observed first must violate',
+    );
     assert.equal(run([{ exit: 1 }]).length, 1, 'a single run must violate');
     assert.equal(run([{ exit: 1 }, { exit: 1 }]).length, 1, 'never reaching zero must violate');
   });
@@ -328,7 +340,11 @@ describe('⑤⑥⑦⑩ scope · labels · budget gates', () => {
     );
     assert.equal(m.control_plane_case_count, 1);
     assert.equal(m.model_eligible_case_count, 11);
-    assert.equal(m.real_model_case_pass_rate, null, 'no real-model pass-rate number may appear in FAKE mode');
+    assert.equal(
+      m.real_model_case_pass_rate,
+      null,
+      'no real-model pass-rate number may appear in FAKE mode',
+    );
     const gate = gateWithLedger({
       caseIds: ['G12'],
       goldDir: tempGoldDir({ approveAll: true }),
@@ -460,7 +476,11 @@ describe('⑧⑨⑪-⑯ real adapter (recorder, zero models)', () => {
     assert.equal(entry.trace.reserved_cost_usd, 1.9);
     assert.equal(entry.trace.cost_is_estimate, false);
     for (const g of ['scoring.json', 'maintainer-label.json', 'notes.md'])
-      assert.equal(existsSync(join(entry.workdir, g)), false, `gold file ${g} leaked into the workdir`);
+      assert.equal(
+        existsSync(join(entry.workdir, g)),
+        false,
+        `gold file ${g} leaked into the workdir`,
+      );
   });
   test('⑫ recorder non-zero exit → no PASS', () => {
     const { entry } = realRun({ mode: 'nonzero' });
