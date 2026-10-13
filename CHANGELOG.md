@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authorization chain, recorder-tested real adapter.
 - Mutation drill (`npm run drill`): four named mutants, each killed by its
   named guardian test, with a pristine control run.
+- CLI: `sakk init / status / reconcile` (`npx sakk …`), JSON output, exit 3
+  while reconciliation is required — CI-gateable.
 - Community files: contributing guide, security policy, code of conduct,
   issue/PR templates, architecture notes.
 

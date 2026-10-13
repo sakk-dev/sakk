@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/ledger.mjs"
   },
+  "bin": {
+    "sakk": "bin/sakk.mjs"
+  },
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "test:eval": "node eval/bin/gold-runner.mjs --validate && node --test eval/__tests__/*.test.mjs",
@@ -44,6 +47,7 @@
   "homepage": "https://github.com/sakk-dev/sakk#readme",
   "files": [
     "src",
+    "bin",
     "README.md",
     "LICENSE"
   ]

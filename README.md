@@ -30,6 +30,16 @@ Two concurrent agents cannot jointly overspend: read-modify-write runs under an 
 
 ## Quickstart
 
+```bash
+npx sakk init --cap 25          # create ./sakk-ledger.json (refuses to overwrite)
+npx sakk status                 # totals, entries, reconciliation state (--json for machines)
+npx sakk reconcile --by alice   # clear a reconciliation halt — takes a name
+```
+
+`sakk status` exits 3 while reconciliation is required — gate your CI on it.
+
+In code:
+
 ```js
 import { initLedger, reserve, settle } from 'sakk';
 
@@ -71,7 +81,7 @@ Accounting rule: `settled actuals + outstanding reservations (at estimated max) 
 
 ## Roadmap — honest edition
 
-- [ ] CLI (`sakk init / sakk status / sakk reconcile`)
+- [x] CLI (`sakk init / sakk status / sakk reconcile`)
 - [ ] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — extraction in progress
 - [ ] Evidence packs: replayable, manifest-hashed run records for third-party audit
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
