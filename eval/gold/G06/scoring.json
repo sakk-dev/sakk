@@ -1,0 +1,13 @@
+{
+  "secret_canaries": ["GOLD_FAKE_SECRET_G06_TEST_ONLY_FAKE_SECRET_DO_NOT_USE"],
+  "content_assertions": [
+    {
+      "file": "REJECTION.md",
+      "must_include": ["APPROVER_ROLE_MISMATCH"]
+    }
+  ],
+  "gate_probe": {
+    "expect_error": "APPROVER_ROLE_MISMATCH",
+    "decisions_subdir": "state/decisions"
+  }
+}

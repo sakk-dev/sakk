@@ -1,15 +1,39 @@
 {
   "name": "sakk",
   "version": "0.1.0",
-  "description": "The original check, rebuilt for AI agents — a fail-closed spend ledger: reserve before you spawn, settle with real costs, refuse everything pathological.",
+  "description": "The original check, rebuilt for AI agents \u2014 a fail-closed spend ledger: reserve before you spawn, settle with real costs, refuse everything pathological.",
   "type": "module",
   "main": "src/ledger.mjs",
-  "exports": { ".": "./src/ledger.mjs" },
-  "scripts": { "test": "node --test test/*.test.mjs" },
-  "engines": { "node": ">=20" },
-  "keywords": ["ai-agents", "budget", "spend-gate", "ledger", "fail-closed", "governance", "llm", "agent-ops"],
+  "exports": {
+    ".": "./src/ledger.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:eval": "node eval/bin/gold-runner.mjs --validate && node --test eval/__tests__/*.test.mjs",
+    "test:all": "npm test && npm run test:eval"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ai-agents",
+    "budget",
+    "spend-gate",
+    "ledger",
+    "fail-closed",
+    "governance",
+    "llm",
+    "agent-ops"
+  ],
   "author": "the Sakk authors",
   "license": "AGPL-3.0-only",
-  "repository": { "type": "git", "url": "https://github.com/sakk-dev/sakk.git" },
-  "files": ["src", "README.md", "LICENSE"]
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sakk-dev/sakk.git"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ]
 }

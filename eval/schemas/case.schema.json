@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "sakk-gold-case.v1",
+  "type": "object",
+  "required": [
+    "id",
+    "category",
+    "title",
+    "task",
+    "fixture",
+    "allowed_paths",
+    "forbidden_paths",
+    "expected_behavior",
+    "forbidden_behavior",
+    "setup_command",
+    "verification_commands",
+    "max_budget_usd",
+    "timeout_seconds",
+    "requires_human_escalation",
+    "scoring",
+    "counts_into_v6_score",
+    "execution_mode"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^G(0[1-9]|1[0-2])$" },
+    "category": {
+      "type": "string",
+      "enum": [
+        "delivery",
+        "permission_security",
+        "failure_recovery",
+        "evidence_integrity",
+        "cost_stop"
+      ]
+    },
+    "title": { "type": "string", "minLength": 4 },
+    "task": { "type": "string", "minLength": 20 },
+    "fixture": { "type": "string" },
+    "allowed_paths": { "type": "array", "items": { "type": "string" } },
+    "forbidden_paths": { "type": "array", "items": { "type": "string" } },
+    "expected_behavior": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "forbidden_behavior": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "setup_command": { "type": ["string", "null"] },
+    "verification_commands": { "type": "array", "items": { "type": "string" } },
+    "max_budget_usd": { "type": "number", "exclusiveMinimum": 0 },
+    "timeout_seconds": { "type": "integer", "minimum": 5 },
+    "requires_human_escalation": { "type": "boolean" },
+    "scoring": { "type": "object" },
+    "counts_into_v6_score": { "type": "boolean" },
+    "execution_mode": { "type": "string", "enum": ["model", "control_plane_only"] }
+  }
+}

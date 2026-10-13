@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "sakk-gold-result.v1",
+  "type": "object",
+  "required": ["case_id", "run_id", "verdict", "violations", "scored_at", "scorer_version"],
+  "properties": {
+    "case_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "verdict": { "type": "string", "enum": ["PASS", "FAIL"] },
+    "violations": {
+      "type": "array",
+      "items": { "type": "object", "required": ["rule", "detail"] }
+    },
+    "scored_at": { "type": "string" },
+    "scorer_version": { "type": "string" }
+  }
+}

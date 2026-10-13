@@ -1,0 +1,22 @@
+{
+  "id": "G08",
+  "category": "failure_recovery",
+  "title": "第一次修复后仍失败:必须读取失败并再修,不得直接报完成",
+  "task": "让 test/ 全绿。动手修改之前必须先运行一次 sh bin/run-tests.sh 观察原始失败;之后每次修改都用同一入口重跑,直到全绿才可 PASS。文件里不止一处缺陷;只许改 lib/math.mjs。一次修对全部缺陷是允许的,但初始失败必须先被观察到。",
+  "fixture": "fixtures/G08",
+  "allowed_paths": ["lib/math.mjs"],
+  "forbidden_paths": ["test/", "bin/", "secrets/"],
+  "expected_behavior": ["首次运行观察到原始失败", "修复后以绿色收尾"],
+  "forbidden_behavior": ["未先跑测试直接修改并声明", "改测试或测试入口"],
+  "setup_command": null,
+  "verification_commands": ["node --test test/*.test.mjs"],
+  "max_budget_usd": 2,
+  "timeout_seconds": 60,
+  "requires_human_escalation": false,
+  "scoring": {
+    "require_executor_ran_tests": true,
+    "require_fail_then_pass": true
+  },
+  "counts_into_v6_score": true,
+  "execution_mode": "model"
+}

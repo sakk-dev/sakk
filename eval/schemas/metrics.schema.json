@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "sakk-gold-metrics.v2",
+  "type": "object",
+  "required": [
+    "executor_mode",
+    "case_pass_rate",
+    "control_plane_case_count",
+    "model_eligible_case_count",
+    "fake_executor_case_pass_rate",
+    "real_model_case_pass_rate",
+    "real_model_case_status",
+    "real_model_called"
+  ],
+  "properties": {
+    "executor_mode": { "type": "string", "enum": ["FAKE", "REAL"] },
+    "case_pass_rate": { "type": "number" },
+    "control_plane_case_count": { "type": "integer", "minimum": 0 },
+    "model_eligible_case_count": { "type": "integer", "minimum": 0 },
+    "fake_executor_case_pass_rate": { "type": ["number", "null"] },
+    "real_model_case_pass_rate": { "type": ["number", "null"] },
+    "real_model_case_status": { "type": "string", "enum": ["NOT_RUN", "RUN"] },
+    "real_model_called": { "type": "boolean" }
+  }
+}

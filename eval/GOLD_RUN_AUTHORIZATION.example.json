@@ -1,0 +1,13 @@
+{
+  "approved": false,
+  "approved_by": null,
+  "approved_at": null,
+  "model_provider": null,
+  "model_id": null,
+  "pilot_case_ids": ["G01", "G05", "G10"],
+  "pilot_total_budget_usd": 6,
+  "full_total_budget_usd": 24,
+  "default_case_budget_usd": 2,
+  "allow_real_model": false,
+  "per_case_hard_cap_usd": 1.9
+}
