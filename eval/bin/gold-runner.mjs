@@ -216,11 +216,14 @@ export function authorizeRealRun({ authorizationPath, caseDefs, workRoot, goldDi
   }
   if (totalCap >= auth.pilot_total_budget_usd) return fail('PILOT_BUDGET_EXCEEDED');
 
+  // Explicit env only — never fall back to SAKK_LEDGER_PATH here. An auth
+  // gate that silently checks a different ledger than the one named is a
+  // least-surprise violation (review finding F8).
+  const orgLedgerPath = process.env.SAKK_BUDGET_LEDGER_PATH;
+  if (orgLedgerPath === undefined || orgLedgerPath === '')
+    return fail('AUTHORITATIVE_LEDGER_UNREADABLE:SAKK_BUDGET_LEDGER_PATH_UNSET');
   try {
-    readLedger({
-      ledgerPath: process.env.SAKK_BUDGET_LEDGER_PATH,
-      maxAgeMs: Number.POSITIVE_INFINITY,
-    });
+    readLedger({ ledgerPath: orgLedgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
   } catch (e) {
     return fail(`AUTHORITATIVE_LEDGER_UNREADABLE:${e.code ?? 'ERR'}`);
   }

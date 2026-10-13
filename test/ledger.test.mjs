@@ -3,7 +3,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
@@ -17,6 +17,7 @@ import {
   clearReconciliation,
   totalsOf,
   defaultLedgerPath,
+  forceUnlock,
 } from '../src/ledger.mjs';
 
 /**
@@ -291,5 +292,82 @@ describe('settlement and reconciliation', () => {
       assert.equal(e.code, 'BUDGET_EXCEEDED');
       assert.equal(e.details.capUsd, 100);
     }
+  });
+});
+
+describe('review fixes: epsilon wall, settle mismatch, stale locks', () => {
+  test('float drift cannot fill the cap: the 10th 0.1 against a 1.0 cap is refused', () => {
+    // 10 × 0.1 accumulates to 0.9999999999999999 < 1.0 in IEEE doubles —
+    // without the epsilon guard the 10th reservation would fit inside the wall.
+    const { ledgerPath } = freshLedger(1);
+    for (let i = 0; i < 9; i += 1) reserve({ ledgerPath, callId: `c${i}`, estimatedMaxUsd: 0.1 });
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'c9', estimatedMaxUsd: 0.1 }),
+      (e) => e.code === 'BUDGET_EXCEEDED',
+    );
+  });
+  test('the epsilon never eats legitimate headroom', () => {
+    const { ledgerPath } = freshLedger(1);
+    reserve({ ledgerPath, callId: 'a', estimatedMaxUsd: 0.5 });
+    assert.equal(reserve({ ledgerPath, callId: 'b', estimatedMaxUsd: 0.49 }).ok, true);
+  });
+  test('re-settling with a different amount is refused, identical re-settle stays idempotent', () => {
+    const { ledgerPath } = freshLedger(10);
+    reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 2 });
+    settle({ ledgerPath, callId: 'x', actualUsd: 0.5 });
+    assert.equal(settle({ ledgerPath, callId: 'x', actualUsd: 0.5 }).duplicate, true);
+    assert.throws(
+      () => settle({ ledgerPath, callId: 'x', actualUsd: 0.7 }),
+      (e) => e.code === 'SETTLE_MISMATCH',
+    );
+    assert.throws(
+      () => settle({ ledgerPath, callId: 'x', failedUnknownCost: true }),
+      (e) => e.code === 'SETTLE_MISMATCH',
+    );
+    const alerts = readFileSync(join(ledgerPath, '..', 'sakk-alerts.jsonl'), 'utf8');
+    assert.match(alerts, /SETTLE_MISMATCH/);
+  });
+  test('a lock abandoned by a dead process on this host is broken automatically', () => {
+    const { ledgerPath } = freshLedger(10);
+    const child = spawnSync(process.execPath, ['-e', '0']); // exits immediately
+    const lock = `${ledgerPath}.lock`;
+    mkdirSync(lock);
+    writeFileSync(
+      join(lock, 'owner.json'),
+      JSON.stringify({ pid: child.pid, host: hostname(), at: 'x' }),
+    );
+    assert.equal(reserve({ ledgerPath, callId: 'alive', estimatedMaxUsd: 1 }).ok, true);
+    assert.equal(existsSync(lock), false, 'the retaken lock is released after the write');
+    const alerts = readFileSync(join(ledgerPath, '..', 'sakk-alerts.jsonl'), 'utf8');
+    assert.match(alerts, /STALE_LOCK_BROKEN/);
+  });
+  test('a lock held by a live process still refuses after the spin', () => {
+    const { ledgerPath } = freshLedger(10);
+    const lock = `${ledgerPath}.lock`;
+    mkdirSync(lock);
+    writeFileSync(
+      join(lock, 'owner.json'),
+      JSON.stringify({ pid: process.pid, host: hostname(), at: 'x' }),
+    );
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'y', estimatedMaxUsd: 1 }),
+      (e) => e.code === 'LEDGER_LOCK_UNAVAILABLE',
+    );
+  });
+  test('a lock without owner metadata is never broken automatically; forceUnlock requires a name and clears it', () => {
+    const { ledgerPath } = freshLedger(10);
+    mkdirSync(`${ledgerPath}.lock`);
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'z', estimatedMaxUsd: 1 }),
+      (e) => e.code === 'LEDGER_LOCK_UNAVAILABLE',
+    );
+    assert.throws(
+      () => forceUnlock({ ledgerPath }),
+      (e) => e.code === 'UNLOCK_BY_REQUIRED',
+    );
+    assert.equal(forceUnlock({ ledgerPath, by: 'maintainer' }).removed, true);
+    assert.equal(reserve({ ledgerPath, callId: 'z', estimatedMaxUsd: 1 }).ok, true);
+    const alerts = readFileSync(join(ledgerPath, '..', 'sakk-alerts.jsonl'), 'utf8');
+    assert.match(alerts, /LOCK_FORCED_OPEN/);
   });
 });
