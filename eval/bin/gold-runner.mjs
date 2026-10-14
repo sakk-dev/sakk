@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateAgainst } from '../lib/validate.mjs';
 import { createTrace, readTrace, writeTrace } from '../lib/trace.mjs';
@@ -58,7 +58,18 @@ export function loadCases(only) {
     .sort();
   const cases = files.map((f) => JSON.parse(readFileSync(join(ROOT, 'cases', f), 'utf8')));
   if (only === undefined) return cases;
-  const ids = String(only).split(',');
+  // Review finding E5: a typo'd selector silently became an empty set and
+  // every mode then exited 0 — a permanently green no-op gate. Unknown ids
+  // are a structured error; the empty selection is unrepresentable.
+  const ids = String(only)
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x) => x !== '');
+  if (ids.length === 0) throw new Error('CASE_SELECTOR_EMPTY: --case given without any id');
+  const known = new Set(cases.map((c) => c.id));
+  const unknown = ids.filter((x) => !known.has(x));
+  if (unknown.length > 0)
+    throw new Error(`CASE_SELECTOR_UNKNOWN: no such case(s): ${unknown.join(',')}`);
   return cases.filter((c) => ids.includes(c.id));
 }
 
@@ -242,7 +253,11 @@ export function authorizeRealRun({ authorizationPath, caseDefs, workRoot, goldDi
   } catch {
     return fail('CLOSURE_UNVERIFIABLE');
   }
-  if (workRoot === undefined || !resolve(workRoot).startsWith(resolve(tmpdir())))
+  const tmpRoot = resolve(tmpdir());
+  if (
+    workRoot === undefined ||
+    !(resolve(workRoot) === tmpRoot || resolve(workRoot).startsWith(tmpRoot + sep))
+  )
     return fail('WORKROOT_NOT_ISOLATED_TMP');
   return { ok: true, auth, plan: { capUsd, totalCap, caseIds: caseDefs.map((c) => c.id) } };
 }
@@ -367,6 +382,7 @@ function finishCase({ caseDef, ctx, t0 }) {
     goldCaseDir: join(ROOT, 'gold', caseDef.id),
     gateProbeFile,
     testLogFile,
+    caseOutDir: caseOut,
   });
   writeFileSync(join(caseOut, 'result.json'), `${JSON.stringify(result, null, 1)}\n`);
   return {
@@ -435,6 +451,17 @@ export function deriveRealOutcome({ exit, timedOut, stdout }) {
       envelope: null,
     };
   }
+  // Review finding D4: 'null' and '42' are valid JSON — property access on a
+  // non-object envelope threw OUTSIDE the try, crashing after the money was
+  // reserved. Any non-object shape is a structured parse failure.
+  if (envelope === null || typeof envelope !== 'object' || Array.isArray(envelope))
+    return {
+      claim: 'FAIL',
+      claimSource: 'envelope_unparseable',
+      filesChanged: [],
+      cost: null,
+      envelope: null,
+    };
   const rawCost = envelope.total_cost_usd;
   const cost =
     typeof rawCost === 'number' && Number.isFinite(rawCost) && rawCost >= 0 ? rawCost : null;
@@ -529,7 +556,17 @@ export function runRealCase({
     encoding: 'utf8',
     timeout: effTimeout,
     maxBuffer: 1 << 24,
-    env: childEnv(ctx.goldEnv),
+    // Review finding D2: the ADVERSARY under evaluation must never see the
+    // runner-owned evidence paths (ledger/trace/counter) — same-uid write
+    // access lets it rewrite exactly what the scorer trusts. Only the
+    // fixture-tool channels (gate module/trace, test log) transit.
+    env: childEnv({
+      GOLD_WORKDIR: ctx.goldEnv.GOLD_WORKDIR,
+      GOLD_CASE: ctx.goldEnv.GOLD_CASE,
+      GOLD_GATE_MODULE: ctx.goldEnv.GOLD_GATE_MODULE,
+      GOLD_GATE_TRACE: ctx.goldEnv.GOLD_GATE_TRACE,
+      GOLD_TEST_LOG: ctx.goldEnv.GOLD_TEST_LOG,
+    }),
   });
   const endedAt = new Date().toISOString();
   const timedOut = r.error?.code === 'ETIMEDOUT' || (r.signal !== null && r.status === null);
@@ -595,7 +632,14 @@ const argv = process.argv.slice(2);
 const flag = (n) => argv.includes(`--${n}`);
 const val = (n) => {
   const i = argv.indexOf(`--${n}`);
-  return i === -1 ? undefined : argv[i + 1];
+  if (i === -1) return undefined;
+  const v = argv[i + 1];
+  // A missing value must not swallow the next flag (review finding F3 family).
+  if (v === undefined || v.startsWith('--')) {
+    console.error(`--${n} requires a value`);
+    process.exit(2);
+  }
+  return v;
 };
 
 const isMain =
@@ -603,7 +647,13 @@ const isMain =
   import.meta.url === (await import('node:url')).pathToFileURL(resolve(process.argv[1])).href;
 if (isMain) {
   const only = val('case');
-  const cases = loadCases(only);
+  let cases;
+  try {
+    cases = loadCases(only);
+  } catch (e) {
+    console.error(String(e.message));
+    process.exit(2);
+  }
   if (flag('validate')) {
     let bad = 0;
     for (const c of cases) {
@@ -637,6 +687,12 @@ if (isMain) {
     const workRoot = mkdtempSync(join(tmpdir(), 'gold-run-'));
     const outDir = val('out') ?? mkdtempSync(join(tmpdir(), 'gold-out-'));
     mkdirSync(outDir, { recursive: true });
+    if (existsSync(join(outDir, 'metrics.json'))) {
+      // Review finding F2: reusing --out crashed mid-batch with a raw stack
+      // and mixed two runs in one directory. Refuse up front.
+      console.error(`OUT_DIR_ALREADY_USED: ${outDir} holds a previous run — pick a fresh --out`);
+      process.exit(2);
+    }
     const entries = [];
     for (const c of cases) {
       const e = runCase({ caseDef: c, mode: 'fake', workRoot, outDir, runId });
@@ -686,6 +742,12 @@ if (isMain) {
     const runId = `gold-real-${Date.now().toString(36)}`;
     const outDir = val('out') ?? mkdtempSync(join(tmpdir(), 'gold-real-out-'));
     mkdirSync(outDir, { recursive: true });
+    if (existsSync(join(outDir, 'metrics.json'))) {
+      // Review finding F2: reusing --out crashed mid-batch with a raw stack
+      // and mixed two runs in one directory. Refuse up front.
+      console.error(`OUT_DIR_ALREADY_USED: ${outDir} holds a previous run — pick a fresh --out`);
+      process.exit(2);
+    }
     const claudeBin = process.env.CLAUDE_BIN ?? 'claude';
     const entries = [];
     for (const c of cases) {

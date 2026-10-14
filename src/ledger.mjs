@@ -124,11 +124,21 @@ function breakIfStale(ledgerPath, lock) {
     } catch (e) {
       if (e.code !== 'ESRCH') return false; // EPERM etc.: assume alive
     }
-    rmSync(lock, { recursive: true, force: true });
+    /*
+     * Single-winner takeover (review finding D1): N waiters can all judge
+     * the same lock stale, and a plain rmSync here let the SECOND breaker
+     * delete the FIRST breaker's freshly retaken lock — two writers in the
+     * critical section. renameSync of a directory is atomic: exactly one
+     * breaker wins the rename; the losers throw and go back to spinning.
+     * Only the winner removes the renamed-away corpse.
+     */
+    const corpse = `${lock}.breaking-${process.pid}-${randomBytes(4).toString('hex')}`;
+    renameSync(lock, corpse); // throws for every breaker but one
+    rmSync(corpse, { recursive: true, force: true });
     emitAlert(ledgerPath, { kind: 'STALE_LOCK_BROKEN', deadPid: o.pid, lockedAt: o.at ?? null });
     return true;
   } catch {
-    return false; // no or unreadable owner file: never break what we cannot judge
+    return false; // lost the takeover race, or no readable owner file: never break what we cannot judge
   }
 }
 
@@ -173,6 +183,18 @@ function acquireLock(ledgerPath) {
 }
 
 function releaseLock(lock) {
+  // Ownership check (review finding D1): after a takeover race, never remove
+  // a lock that a different pid now holds — that would reopen the door the
+  // takeover just closed.
+  try {
+    const o = JSON.parse(readFileSync(join(lock, 'owner.json'), 'utf8'));
+    if (o.pid !== process.pid) {
+      emitAlert(lock.replace(/\.lock$/, ''), { kind: 'LOCK_RELEASE_MISMATCH', holder: o.pid });
+      return;
+    }
+  } catch {
+    /* no metadata: it is ours by construction (we just created it) */
+  }
   rmSync(lock, { recursive: true, force: true });
 }
 
@@ -231,6 +253,21 @@ export function readLedger({
     throw new LedgerError('LEDGER_SCHEMA_INVALID', 'Required fields missing or ill-typed', {
       ledgerPath,
     });
+  // flags is a TRUST field (review finding E2): the reconciliation halt
+  // lives in it, so a ledger without it is not a valid ledger — otherwise
+  // deleting one field would reopen spending without a signed clearance.
+  if (
+    doc.flags === null ||
+    typeof doc.flags !== 'object' ||
+    typeof doc.flags.reconciliationRequired !== 'boolean'
+  )
+    throw new LedgerError(
+      'LEDGER_SCHEMA_INVALID',
+      'flags.reconciliationRequired missing or ill-typed',
+      {
+        ledgerPath,
+      },
+    );
   const updatedAtMs = Date.parse(doc.updatedAt);
   if (!Number.isFinite(updatedAtMs))
     throw new LedgerError('LEDGER_SCHEMA_INVALID', 'updatedAt is not a timestamp', { ledgerPath });
@@ -369,7 +406,13 @@ export function reserve({
   const lock = acquireLock(ledgerPath);
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs, now });
-    if (doc.flags?.reconciliationRequired === true)
+    // Dual-source halt (review finding E2): the flag OR any entry still in
+    // RECONCILIATION_REQUIRED blocks new spending — the halt must not hinge
+    // on a single deletable field.
+    if (
+      doc.flags?.reconciliationRequired === true ||
+      doc.entries.some((x) => x.status === 'RECONCILIATION_REQUIRED')
+    )
       throw new LedgerError(
         'RECONCILIATION_REQUIRED',
         'Unresolved reconciliation — paid calls are refused until the books are squared',
@@ -475,6 +518,26 @@ export function settle({
     e.actualUsd = actualUsd;
     e.tokens = tokens;
     e.settledAt = new Date().toISOString();
+    if (actualUsd > e.estimatedMaxUsd + 1e-9) {
+      /*
+       * Overrun (review finding E1): the actual cost exceeded the reserved
+       * maximum — the one event that proves the pre-spend gate was pierced.
+       * The money is spent, so it is RECORDED (refusing would only make the
+       * books wrong), but it must never pass in silence: alert + global
+       * reconciliation halt until a named human squares the books.
+       */
+      emitAlert(ledgerPath, {
+        kind: 'BUDGET_OVERRUN',
+        callId,
+        reservedUsd: e.estimatedMaxUsd,
+        actualUsd,
+        capUsd: doc.capUsd,
+      });
+      doc.flags = {
+        reconciliationRequired: true,
+        reason: `call ${callId} settled ${actualUsd} against a ${e.estimatedMaxUsd} reservation`,
+      };
+    }
     writeLedger(ledgerPath, doc);
     return { ok: true, duplicate: false, callId };
   } finally {
@@ -503,6 +566,16 @@ export function clearReconciliation({ ledgerPath = defaultLedgerPath(), by }) {
   const lock = acquireLock(ledgerPath);
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
+    // Squaring the books means resolving the entries, not just signing the
+    // flag away (pairs with the dual-source halt, finding E2): every
+    // RECONCILIATION_REQUIRED entry must be settled first.
+    const open = doc.entries.filter((x) => x.status === 'RECONCILIATION_REQUIRED');
+    if (open.length > 0)
+      throw new LedgerError(
+        'RECONCILIATION_ENTRIES_OPEN',
+        'Settle every RECONCILIATION_REQUIRED entry before clearing the flag',
+        { callIds: open.map((x) => x.callId) },
+      );
     doc.flags = {
       reconciliationRequired: false,
       reason: null,

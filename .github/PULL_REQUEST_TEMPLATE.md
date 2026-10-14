@@ -9,7 +9,9 @@
 - [ ] `npm run format:check` passes
 - [ ] `CHANGELOG.md` updated under `[Unreleased]` (user-facing changes)
 - [ ] No new runtime dependencies
-- [ ] Case/fixture/scoring changes reviewed as executable code
+- [ ] Case/fixture/scoring/schema changes reviewed as executable code
+- [ ] Core-area change: three-tables + contract in `specs/` and converge check done (R-01/R-11)
+- [ ] Bugfix: attack-shaped regression included; self-report verified / partial / failed
 - [ ] CLA signed (bot will prompt on first PR)
 
 ## Money semantics

@@ -61,6 +61,13 @@ describe('sakk status', () => {
     assert.equal(s.outstanding_usd, 3);
     assert.equal(s.committed_usd, 4.25);
     assert.equal(s.remaining_usd, 5.75);
+    // E6: the advertised number must be actually reservable (the wall refuses
+    // exactly-remaining)
+    assert.ok(s.max_reservable_usd < s.remaining_usd);
+    assert.equal(
+      reserve({ ledgerPath: p, callId: 'fit', estimatedMaxUsd: s.max_reservable_usd }).ok,
+      true,
+    );
     assert.equal(s.entries.SETTLED, 1);
     assert.equal(s.entries.RESERVED, 1);
     assert.equal(s.reconciliation_required, false);
@@ -83,6 +90,11 @@ describe('sakk reconcile', () => {
     reserve({ ledgerPath: p, callId: 'x', estimatedMaxUsd: 2 });
     settle({ ledgerPath: p, callId: 'x', failedUnknownCost: true });
     assert.equal(run(['reconcile', '--ledger', p]).status, 2);
+    // Entry still unresolved: the signed clear must refuse (E2 semantics)
+    const blocked = run(['reconcile', '--by', 'maintainer', '--ledger', p]);
+    assert.equal(blocked.status, 1);
+    assert.match(blocked.stderr, /RECONCILIATION_ENTRIES_OPEN/);
+    settle({ ledgerPath: p, callId: 'x', actualUsd: 1.5 });
     const r = run(['reconcile', '--by', 'maintainer', '--ledger', p]);
     assert.equal(r.status, 0, r.stderr);
     assert.equal(run(['status', '--ledger', p]).status, 0);
@@ -109,5 +121,14 @@ describe('sakk unlock', () => {
     const r1 = run(['unlock', '--by', 'maintainer', '--ledger', p]);
     assert.equal(r1.status, 0, r1.stderr);
     assert.match(r1.stdout, /lock removed by maintainer/);
+  });
+});
+
+describe('review fix F3: flag parsing', () => {
+  test('a flag given without a value refuses instead of swallowing the next flag', () => {
+    const r = run(['init', '--cap', '5', '--ledger', '--json']);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /--ledger requires a value/);
+    assert.equal(existsSync('--json'), false);
   });
 });

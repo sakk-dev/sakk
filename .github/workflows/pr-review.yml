@@ -1,0 +1,42 @@
+name: pr-adversarial-review
+# v3 §十: every PR gets an automated adversarial review, scaled by what it
+# touches (Anthropic Code Review pattern: find → verify → rank; depth not
+# speed; it never replaces the human merge decision).
+#
+# Requires the ANTHROPIC_API_KEY repo secret. Until it is set, the job
+# reports "skipped" and the deterministic gates (ci.yml) remain the floor.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  adversarial-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Detect depth
+        id: depth
+        run: |
+          CORE=$(git diff --name-only origin/${{ github.base_ref }}... | grep -cE '^(src/|bin/|eval/(bin|lib)/)' || true)
+          echo "core=$CORE" >> "$GITHUB_OUTPUT"
+      - name: Adversarial review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEPTH: ${{ steps.depth.outputs.core }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::ANTHROPIC_API_KEY not set — adversarial review skipped (deterministic gates still apply)."
+            exit 0
+          fi
+          npm install -g @anthropic-ai/claude-code
+          MODE="light"; [ "$DEPTH" -gt 0 ] && MODE="deep"
+          git diff origin/${{ github.base_ref }}... > /tmp/pr.diff
+          claude -p "You are an independent adversarial reviewer (you did not write this). Review /tmp/pr.diff against this repo's CONSTITUTION.md, docs/RULES.md and (if present) the specs/ three-tables for this change. Mode: $MODE — deep means hunt concurrency, money-semantics and evidence-integrity defects and VERIFY top findings by running probes; light means a correctness skim. Report only findings that affect correctness or stated requirements (no style, no speculative gaps). Output: severity-ranked list with file:line, one-line defect, failure scenario, VERIFIED/SUSPECTED." \
+            --permission-mode dontAsk --allowedTools "Read,Grep,Glob,Bash(node *),Bash(npm test*),Bash(npm run *)" \
+            --output-format text | tee /tmp/review.txt
+          echo "::notice::Adversarial review completed in $MODE mode."

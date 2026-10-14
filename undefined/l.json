@@ -1,0 +1,22 @@
+{
+  "schema": "sakk-ledger.v1",
+  "initializedAt": "2026-10-14T09:45:35.711Z",
+  "initializedBy": "explicit-init",
+  "capUsd": 10,
+  "flags": {
+    "reconciliationRequired": false,
+    "reason": null
+  },
+  "entries": [
+    {
+      "callId": "a",
+      "runId": null,
+      "taskId": null,
+      "agentId": null,
+      "estimatedMaxUsd": 4,
+      "createdAt": "2026-10-14T09:45:35.715Z",
+      "status": "RESERVED"
+    }
+  ],
+  "updatedAt": "2026-10-14T09:45:35.715Z"
+}
