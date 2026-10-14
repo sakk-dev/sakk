@@ -77,6 +77,12 @@ argv shape (verified item by item against the local CLI's own `--help`):
 claude -p --output-format json --model <model_id> --max-budget-usd <cap> <packet>
 ```
 
+Machine-log integrity: in v1-open the test/gate logs are writable by the
+evaluated process itself (same uid) — they are process attestations
+cross-checked by the runner's own verification, not tamper-proof evidence;
+their paths reveal neither the evidence store nor the repo. Tamper-proof
+logging arrives with the enterprise broker.
+
 Cost: only `envelope.total_cost_usd` (finite, non-negative) counts. Unreadable
 → nothing fabricated: the reservation stays outstanding, the ledger enters
 reconciliation (all further reservations refused), the batch halts.

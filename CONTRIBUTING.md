@@ -41,9 +41,22 @@ user-facing changes get a line in `CHANGELOG.md` under `[Unreleased]`.
 ## Eval cases are executable code
 
 `eval/cases/*.json` and `eval/gold/*/scoring.json` contain shell commands the
-harness executes (`verification_commands`, `coverage_mutants.cmd`). Review
-changes to them with the same severity as source code — a case file edit IS
-arbitrary code execution in CI and on reviewers' machines.
+harness executes (`verification_commands`, `coverage_mutants.cmd`), and
+`eval/schemas/*.json` feed `new RegExp`. Review changes to them with the same
+severity as source code — a case or schema edit IS arbitrary code execution
+in CI and on reviewers' machines.
+
+## The v3 quality pipeline (required)
+
+CONSTITUTION.md states the non-negotiables; docs/RULES.md is the rulebook.
+In short: one-sentence diffs go straight in (L0); anything touching money,
+evidence, isolation or concurrency (L1 core) needs the three-tables +
+acceptance contract in `specs/`, lands with attack-shaped tests, passes the
+deterministic gates (`npm run test:all && npm run drill && npm run fuzz`),
+and gets independent adversarial review before merge; paid-core blocks (L2)
+additionally need a signed design review first. Fixes self-report
+verified / partial / failed; the same defect bounced twice stops the line
+for redesign.
 
 ## Reporting security issues
 

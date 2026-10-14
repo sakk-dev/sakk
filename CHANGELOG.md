@@ -19,8 +19,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Community files: contributing guide, security policy, code of conduct,
   issue/PR templates, architecture notes.
 
+### Added (v3 quality pipeline)
+
+- CONSTITUTION.md, AGENTS.md (+ eval/AGENTS.md), docs/RULES.md (R-01…R-13
+  with sources and the first attribution round), specs/ convention,
+  session stop-gate, `npm run fuzz` ledger invariant fuzzing, and an
+  automated per-PR adversarial review workflow (depth scales with the diff).
+
 ### Fixed
 
+- Adversarial-review round 2 (the fix batch reviewed author-blind before
+  merge): lock takeover rebuilt on a breaker mutex (judgement+removal in one
+  critical section; crashed breakers fail closed to `sakk unlock`); release
+  authority is a process-local registry; real-mode machine logs relocated
+  out of the evidence store and the gate module copied local (log
+  forgeability by the same-uid adversary is now a DOCUMENTED trade-off,
+  cross-checked by runner verification); fuzz oracle corrected; work-root
+  gate moved first with a real refusal test; --out guard catches crashed
+  runs; CI review workflow is static and base-context only (never executes
+  PR code with a secret).
+- Review batch D/E/F (16 findings, each with an attack-shaped regression
+  test): atomic single-winner stale-lock takeover + release ownership check;
+  runner-owned evidence paths no longer transit to the real-mode child;
+  real-mode test evidence now reads the machine test log (honest real passes
+  no longer structurally fail); non-object JSON stdout is a structured parse
+  failure; settle overrun records + alerts + halts; flags is schema-required
+  with a dual-source halt and entry-resolving signed clearance; retry limits
+  count tool machine logs; canary scan covers all run artifacts; strict case
+  selector (empty/unknown refuse); corrupt log heads fail closed; --out reuse
+  refuses; flag parsing rejects flag-shaped values; tmp-boundary separator.
 - Durability: ledger writes fsync before the atomic rename (and best-effort
   directory fsync) — the gate's decision survives power loss.
 - Cap comparison carries a conservative epsilon so float drift can never

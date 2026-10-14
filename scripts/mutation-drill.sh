@@ -80,8 +80,9 @@ run_drill MUT-A eval/lib/scorer.mjs \
   "8: forbidden path modified"
 
 # MUT-B: let "executor never ran tests" count as passing → the false-completion test must die red
+# (anchor updated with review fix D3: the rule now branches by executor capability)
 run_drill MUT-B eval/lib/scorer.mjs \
-  "if (scoring.require_executor_ran_tests === true && executorRuns.length === 0)" \
+  "if (executorRuns.length === 0)" \
   "if (false)" \
   "9b: executor never ran tests"
 

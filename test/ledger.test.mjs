@@ -243,6 +243,13 @@ describe('settlement and reconciliation', () => {
       () => reserve({ ledgerPath, callId: 'f2', estimatedMaxUsd: 1 }),
       /RECONCILIATION_REQUIRED/,
     );
+    // E2 semantics: the signed clear refuses while the entry is unresolved —
+    // squaring the books means resolving entries, not signing the flag away.
+    assert.throws(
+      () => clearReconciliation({ ledgerPath, by: 'test-reconciler' }),
+      (e) => e.code === 'RECONCILIATION_ENTRIES_OPEN',
+    );
+    settle({ ledgerPath, callId: 'f1', actualUsd: 20 }); // human decided the real figure
     clearReconciliation({ ledgerPath, by: 'test-reconciler' });
     assert.equal(reserve({ ledgerPath, callId: 'f3', estimatedMaxUsd: 1 }).ok, true);
   });
@@ -384,5 +391,126 @@ describe('audit fix F15: tmp-file symlink attack', () => {
     reserve({ ledgerPath, callId: 'atk', estimatedMaxUsd: 1 });
     assert.equal(readFileSync(victim, 'utf8'), 'PRECIOUS');
     assert.equal(readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY }).entries.length, 1);
+  });
+});
+
+describe('v3 batch: D1 stampede, E1 overrun, E2 trust-field', () => {
+  test('D1: a stale-lock stampede never loses a reservation (oks === ledger entries)', () => {
+    // Two breakers both judging the same lock stale used to double-enter the
+    // critical section and clobber one write. Single-winner takeover makes
+    // the invariant hold under any interleaving.
+    const worker = `
+      import { reserve } from ${JSON.stringify(new URL('../src/ledger.mjs', import.meta.url).pathname)};
+      try { reserve({ ledgerPath: process.argv[2], callId: process.argv[3], estimatedMaxUsd: 1 }); console.log('OK'); }
+      catch { console.log('NO'); }`;
+    for (let round = 0; round < 8; round += 1) {
+      const { ledgerPath, dir } = freshLedger(100);
+      const dead = spawnSync(process.execPath, ['-e', '0']);
+      mkdirSync(`${ledgerPath}.lock`);
+      writeFileSync(
+        join(`${ledgerPath}.lock`, 'owner.json'),
+        JSON.stringify({ pid: dead.pid, host: hostname(), at: 'x' }),
+      );
+      const wf = join(dir, 'w.mjs');
+      writeFileSync(wf, worker);
+      const procs = Array.from({ length: 6 }, (_, k) =>
+        spawnSync(process.execPath, [wf, ledgerPath, `r${round}-p${k}`], { encoding: 'utf8' }),
+      );
+      const oks = procs.filter((p) => p.stdout.includes('OK')).length;
+      const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
+      assert.equal(
+        doc.entries.length,
+        oks,
+        `round ${round}: granted ${oks}, booked ${doc.entries.length}`,
+      );
+      assert.equal(oks, 6, `round ${round}: all six fit under a $100 cap`);
+    }
+  });
+  test('E1: settling far above the reservation records, alerts BUDGET_OVERRUN, and halts', () => {
+    const { ledgerPath } = freshLedger(100);
+    reserve({ ledgerPath, callId: 'o1', estimatedMaxUsd: 10 });
+    settle({ ledgerPath, callId: 'o1', actualUsd: 5000 });
+    const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
+    assert.equal(doc.entries[0].actualUsd, 5000, 'the money is spent: it must be recorded');
+    assert.equal(doc.flags.reconciliationRequired, true, 'a pierced gate must halt the books');
+    assert.match(
+      readFileSync(join(ledgerPath, '..', 'sakk-alerts.jsonl'), 'utf8'),
+      /BUDGET_OVERRUN/,
+    );
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'o2', estimatedMaxUsd: 1 }),
+      /RECONCILIATION_REQUIRED/,
+    );
+  });
+  test('E2: a ledger without flags is schema-invalid; a reco entry alone still blocks', () => {
+    const dir = tmp();
+    const lp = L(dir);
+    writeFileSync(
+      lp,
+      JSON.stringify({
+        schema: LEDGER_SCHEMA,
+        capUsd: 10,
+        entries: [],
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+    assert.throws(
+      () => readLedger({ ledgerPath: lp }),
+      (e) => e.code === 'LEDGER_SCHEMA_INVALID',
+    );
+    // flags deleted but a RECONCILIATION_REQUIRED entry present → dual-source halt
+    writeFileSync(
+      lp,
+      JSON.stringify({
+        schema: LEDGER_SCHEMA,
+        capUsd: 10,
+        flags: { reconciliationRequired: false, reason: null },
+        entries: [{ callId: 'z', status: 'RECONCILIATION_REQUIRED', estimatedMaxUsd: 2 }],
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+    assert.throws(
+      () => reserve({ ledgerPath: lp, callId: 'n1', estimatedMaxUsd: 1 }),
+      /RECONCILIATION_REQUIRED/,
+    );
+  });
+});
+
+describe('AR round-2: breaker-mutex lock protocol', () => {
+  test('a stale BREAKER mutex disables auto-breaking (fail closed); forceUnlock clears both', () => {
+    const { ledgerPath } = freshLedger(10);
+    const dead = spawnSync(process.execPath, ['-e', '0']);
+    mkdirSync(`${ledgerPath}.lock`);
+    writeFileSync(
+      join(`${ledgerPath}.lock`, 'owner.json'),
+      JSON.stringify({ pid: dead.pid, host: hostname(), at: 'x' }),
+    );
+    mkdirSync(`${ledgerPath}.lock.breaklock`); // crashed breaker parked here
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'bm', estimatedMaxUsd: 1 }),
+      (e) => e.code === 'LEDGER_LOCK_UNAVAILABLE',
+      'with the breaker mutex held, even a dead-owner lock must NOT be auto-broken',
+    );
+    assert.equal(forceUnlock({ ledgerPath, by: 'maintainer' }).removed, true);
+    assert.equal(
+      existsSync(`${ledgerPath}.lock.breaklock`),
+      false,
+      'forceUnlock clears the breaker mutex',
+    );
+    assert.equal(reserve({ ledgerPath, callId: 'bm', estimatedMaxUsd: 1 }).ok, true);
+  });
+  test('release refuses a lock this process never acquired (registry authority)', () => {
+    const { ledgerPath } = freshLedger(10);
+    // a foreign live lock appears; our settle on another ledger must not touch it —
+    // simulate the dangerous path directly: craft a lock we did NOT acquire
+    mkdirSync(`${ledgerPath}.lock`);
+    writeFileSync(join(`${ledgerPath}.lock`, 'owner.json'), 'not-even-json');
+    // any ledger op now times out rather than clobbering the unreadable foreign lock
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'fr', estimatedMaxUsd: 1 }),
+      (e) => e.code === 'LEDGER_LOCK_UNAVAILABLE',
+      'unreadable metadata must never be broken or released by a stranger',
+    );
+    assert.equal(existsSync(`${ledgerPath}.lock`), true, 'the foreign lock survives');
   });
 });

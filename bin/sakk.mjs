@@ -35,7 +35,15 @@ const cmd = argv[0];
 const flag = (n) => argv.includes(`--${n}`);
 const val = (n) => {
   const i = argv.indexOf(`--${n}`);
-  return i === -1 ? undefined : argv[i + 1];
+  if (i === -1) return undefined;
+  const v = argv[i + 1];
+  // A missing value must not swallow the next flag (review finding F3):
+  // `--ledger --json` used to create a ledger file literally named --json.
+  if (v === undefined || v.startsWith('--')) {
+    console.error(`--${n} requires a value`);
+    process.exit(2);
+  }
+  return v;
 };
 
 function ledgerPath() {
@@ -52,6 +60,7 @@ Usage:
 
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status)
+max_reservable_usd of 0 means nothing fits under the cap (reserve requires a positive amount)
 `;
 
 function fail(e) {
@@ -98,6 +107,10 @@ if (cmd === 'init') {
     outstanding_usd: t.outstandingUsd,
     committed_usd: t.committedUsd,
     remaining_usd: Math.max(0, t.capUsd - t.committedUsd),
+    // Review finding E6: remaining is cap-committed, but the cap is a WALL —
+    // reserving exactly remaining always refuses. This is the largest
+    // amount a reserve() will actually accept.
+    max_reservable_usd: Math.max(0, t.capUsd - t.committedUsd - 1e-6),
     entries: byStatus,
     reconciliation_required: reco,
     reconciliation_reason: doc.flags?.reason ?? null,
@@ -110,7 +123,9 @@ if (cmd === 'init') {
     console.log(`cap         $${t.capUsd}`);
     console.log(`settled     $${t.settledUsd}`);
     console.log(`outstanding $${t.outstandingUsd}`);
-    console.log(`committed   $${t.committedUsd}  (remaining $${out.remaining_usd})`);
+    console.log(
+      `committed   $${t.committedUsd}  (remaining $${out.remaining_usd}, max reservable $${out.max_reservable_usd})`,
+    );
     console.log(
       `entries     ${doc.entries.length} (reserved ${byStatus.RESERVED}, settled ${byStatus.SETTLED}, reconciliation ${byStatus.RECONCILIATION_REQUIRED})`,
     );
