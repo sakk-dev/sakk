@@ -19,6 +19,7 @@ loop at the bottom; changing this file is an L1 review.
 | R-10 | Interface first: capability contracts of external/real modes freeze before rules that depend on them  | D3 + V6                            | cross-mode/cross-process feature       | design section in specs/                     |
 | R-11 | Done = converged: implementation checked against the written contract, adversarial coverage included  | D2, D3 + V6 Test Completeness Gate | before claiming done                   | converge check in PR                         |
 | R-12 | Cross-cutting doctrine audits: changing a doctrine greps every existing rule for consistency          | E3, F13                            | doctrine-level change                  | review checklist                             |
+| R-14 | Regression tests assert BEHAVIOR (the attack fails), never configuration (names/flags/shapes)         | AR-2, AR-4                         | every regression test                  | review checklist                             |
 | R-13 | Second-bounce breaker: the same defect bounced twice stops the line for redesign                      | V6 NO-WAKE-LOOP                    | any fix loop                           | process                                      |
 
 ## Attribution log (evolution loop, round 1 — 2026-10-15)
@@ -34,6 +35,33 @@ All 31 findings of the first review cycle attributed:
 - **Machine gates added this round**: strict selector (R-04), overrun alert
   - halt (R-08), schema-required flags + dual-source halt (R-09), hostile
     recorder suite + env strip (R-01), invariant fuzz (R-05 backstop).
+
+## Attribution log, round 2 — adversarial review of the fix batch (2026-10-15)
+
+The R-05 gate caught the fix batch's own defects BEFORE merge — second
+consecutive proof that author-blind review is load-bearing:
+
+- **AR-1 (critical)**: D1's rename-based takeover had a TOCTOU (stale
+  judgement never revalidated) → protocol v2: breaker mutex serializes
+  judgement+removal. Attribution: R-03 violated (interleaving space not
+  enumerated in the three-tables) — input-space tables must list
+  interleavings for concurrent code.
+- **AR-2 (critical)**: env-strip was cosmetic — log paths pivoted into the
+  evidence store, and the forgeability of adversary-writable logs was
+  undeclared → logs relocated to a scratch dir, gate module copied local,
+  trade-off now documented everywhere. Attribution: new rule **R-14** (the
+  D2 regression asserted env NAMES, not the failed attack).
+- **AR-3 (high)**: fuzz oracle false alarm on reco-entry overruns (~5% of
+  seeds) → oracle fixed; seeds 10/32/59 green. Attribution: R-03 applies to
+  test oracles too.
+- **AR-4 (medium)**: F4's regression was vacuous (asserted a predicate
+  reimplemented in the test) → workroot gate moved first in the chain + a
+  real refusal test. Attribution: R-14.
+- **AR-5..9**: CI workflow executed PR-controlled code with the secret →
+  base-ref static review only; release error-path force-removed foreign
+  locks → process-local registry authority; --out guard missed crashed runs
+  → any case-dir counts; committed `undefined/` debris removed; CLI
+  boundary note. AR-10 verified clean (no reconciliation deadlock).
 
 ## Evolution loop
 

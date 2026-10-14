@@ -108,13 +108,26 @@ function sleepMs(ms) {
 
 /**
  * Break a lock whose recorded owner is a dead process on THIS host.
- * Conservative on every unknown: a cross-host owner, a live (or
- * permission-denied) pid, or a lock without readable owner metadata is never
- * broken automatically — that falls through to the timeout refusal, and
- * `sakk unlock --by <name>` exists for the human override. Returns true when
- * the lock was removed and a retake should be attempted immediately.
+ *
+ * Protocol (post-review v2 — the rename-based v1 had a TOCTOU, finding
+ * AR-1): breakers serialize on a breaker mutex (`.breaklock`), and the
+ * staleness judgement and the removal happen inside that mutex. A fresh
+ * legitimate holder is therefore always visible in owner.json before
+ * removal, and no second breaker can act on a stale judgement. A breaker
+ * that crashes while holding the mutex disables auto-breaking entirely
+ * (fail closed) until `sakk unlock` clears both directories.
+ *
+ * Conservative on every unknown: cross-host owner, live (or
+ * permission-denied) pid, unreadable metadata, or a busy breaker mutex all
+ * return false and fall through to the timeout refusal.
  */
 function breakIfStale(ledgerPath, lock) {
+  const breaklock = `${lock}.breaklock`;
+  try {
+    mkdirSync(breaklock); // one breaker at a time — losers keep spinning
+  } catch {
+    return false;
+  }
   try {
     const o = JSON.parse(readFileSync(join(lock, 'owner.json'), 'utf8'));
     if (o.host !== hostname() || !Number.isInteger(o.pid)) return false;
@@ -124,21 +137,15 @@ function breakIfStale(ledgerPath, lock) {
     } catch (e) {
       if (e.code !== 'ESRCH') return false; // EPERM etc.: assume alive
     }
-    /*
-     * Single-winner takeover (review finding D1): N waiters can all judge
-     * the same lock stale, and a plain rmSync here let the SECOND breaker
-     * delete the FIRST breaker's freshly retaken lock — two writers in the
-     * critical section. renameSync of a directory is atomic: exactly one
-     * breaker wins the rename; the losers throw and go back to spinning.
-     * Only the winner removes the renamed-away corpse.
-     */
-    const corpse = `${lock}.breaking-${process.pid}-${randomBytes(4).toString('hex')}`;
-    renameSync(lock, corpse); // throws for every breaker but one
-    rmSync(corpse, { recursive: true, force: true });
+    // Judged dead UNDER the breaker mutex: no other breaker can intervene,
+    // and a fresh holder would have shown up in owner.json above.
+    rmSync(lock, { recursive: true, force: true });
     emitAlert(ledgerPath, { kind: 'STALE_LOCK_BROKEN', deadPid: o.pid, lockedAt: o.at ?? null });
     return true;
   } catch {
-    return false; // lost the takeover race, or no readable owner file: never break what we cannot judge
+    return false; // unreadable metadata: never break what we cannot judge
+  } finally {
+    rmSync(breaklock, { recursive: true, force: true });
   }
 }
 
@@ -147,11 +154,16 @@ export function forceUnlock({ ledgerPath = defaultLedgerPath(), by }) {
   if (typeof by !== 'string' || by === '')
     throw new LedgerError('UNLOCK_BY_REQUIRED', 'Breaking a lock by hand requires a name');
   const lock = `${ledgerPath}.lock`;
+  rmSync(`${lock}.breaklock`, { recursive: true, force: true }); // a crashed breaker parks here
   if (!existsSync(lock)) return { ok: true, removed: false };
   rmSync(lock, { recursive: true, force: true });
   emitAlert(ledgerPath, { kind: 'LOCK_FORCED_OPEN', by });
   return { ok: true, removed: true };
 }
+
+// Process-local registry of locks WE hold: release authority by
+// construction, with no file read whose error path could be abused (AR-6).
+const HELD_LOCKS = new Set();
 
 function acquireLock(ledgerPath) {
   const lock = `${ledgerPath}.lock`;
@@ -173,6 +185,7 @@ function acquireLock(ledgerPath) {
     } catch {
       /* a lock without metadata still mutually excludes; it just needs a human to break */
     }
+    HELD_LOCKS.add(lock);
     return lock;
   }
   throw new LedgerError(
@@ -183,18 +196,15 @@ function acquireLock(ledgerPath) {
 }
 
 function releaseLock(lock) {
-  // Ownership check (review finding D1): after a takeover race, never remove
-  // a lock that a different pid now holds — that would reopen the door the
-  // takeover just closed.
-  try {
-    const o = JSON.parse(readFileSync(join(lock, 'owner.json'), 'utf8'));
-    if (o.pid !== process.pid) {
-      emitAlert(lock.replace(/\.lock$/, ''), { kind: 'LOCK_RELEASE_MISMATCH', holder: o.pid });
-      return;
-    }
-  } catch {
-    /* no metadata: it is ours by construction (we just created it) */
+  // Release authority = the process-local registry (we added it when we
+  // acquired). Anything else — including unreadable metadata — refuses:
+  // the error path of an ownership check must never reopen the door the
+  // check closes (review finding AR-6).
+  if (!HELD_LOCKS.has(lock)) {
+    emitAlert(lock.replace(/\.lock$/, ''), { kind: 'LOCK_RELEASE_MISMATCH' });
+    return;
   }
+  HELD_LOCKS.delete(lock);
   rmSync(lock, { recursive: true, force: true });
 }
 

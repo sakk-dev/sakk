@@ -193,6 +193,13 @@ export function authorizeRealRun({ authorizationPath, caseDefs, workRoot, goldDi
   } catch {
     return fail('AUTHORIZATION_FILE_MALFORMED');
   }
+  // Work-root isolation is a cheap structural gate — checked first (AR-4).
+  const tmpRoot = resolve(tmpdir());
+  if (
+    workRoot === undefined ||
+    !(resolve(workRoot) === tmpRoot || resolve(workRoot).startsWith(tmpRoot + sep))
+  )
+    return fail('WORKROOT_NOT_ISOLATED_TMP');
   if (auth.approved !== true) return fail('NOT_APPROVED');
   if (auth.allow_real_model !== true) return fail('REAL_MODEL_NOT_ALLOWED');
   if (typeof auth.approved_by !== 'string' || auth.approved_by === '')
@@ -253,12 +260,6 @@ export function authorizeRealRun({ authorizationPath, caseDefs, workRoot, goldDi
   } catch {
     return fail('CLOSURE_UNVERIFIABLE');
   }
-  const tmpRoot = resolve(tmpdir());
-  if (
-    workRoot === undefined ||
-    !(resolve(workRoot) === tmpRoot || resolve(workRoot).startsWith(tmpRoot + sep))
-  )
-    return fail('WORKROOT_NOT_ISOLATED_TMP');
   return { ok: true, auth, plan: { capUsd, totalCap, caseIds: caseDefs.map((c) => c.id) } };
 }
 
@@ -519,6 +520,22 @@ export function runRealCase({
     modelId: auth.model_id,
     packetExtra: REAL_CLAIM_CONTRACT,
   });
+  /*
+   * Review finding AR-2: the machine-log paths transit to the adversary, so
+   * they must not reveal the evidence store. The logs live in their own
+   * scratch dir under the isolated work root — dirname($GOLD_TEST_LOG) now
+   * leads nowhere near ledger/trace/results — and the gate module is a
+   * local COPY so no repo path (and hence gold/) is derivable either. The
+   * logs themselves remain adversary-writable by same-uid design: in
+   * v1-open they are process attestations cross-checked by the runner's
+   * own verification, not tamper-proof evidence (enterprise broker:
+   * blueprint P2).
+   */
+  const evidDir = mkdtempSync(join(workRoot, 'evid-'));
+  mkdirSync(join(evidDir, 'tools'), { recursive: true });
+  cpSync(join(ROOT, 'examples', 'approval-gate.mjs'), join(evidDir, 'tools', 'approval-gate.mjs'));
+  ctx.gateProbeFile = join(evidDir, 'gate-probe.jsonl');
+  ctx.testLogFile = join(evidDir, 'test-runs.jsonl');
   const t0 = Date.now();
   const callId = `${runId}:${caseDef.id}:real-1`;
   try {
@@ -563,9 +580,9 @@ export function runRealCase({
     env: childEnv({
       GOLD_WORKDIR: ctx.goldEnv.GOLD_WORKDIR,
       GOLD_CASE: ctx.goldEnv.GOLD_CASE,
-      GOLD_GATE_MODULE: ctx.goldEnv.GOLD_GATE_MODULE,
-      GOLD_GATE_TRACE: ctx.goldEnv.GOLD_GATE_TRACE,
-      GOLD_TEST_LOG: ctx.goldEnv.GOLD_TEST_LOG,
+      GOLD_GATE_MODULE: join(evidDir, 'tools', 'approval-gate.mjs'),
+      GOLD_GATE_TRACE: ctx.gateProbeFile,
+      GOLD_TEST_LOG: ctx.testLogFile,
     }),
   });
   const endedAt = new Date().toISOString();
@@ -687,7 +704,7 @@ if (isMain) {
     const workRoot = mkdtempSync(join(tmpdir(), 'gold-run-'));
     const outDir = val('out') ?? mkdtempSync(join(tmpdir(), 'gold-out-'));
     mkdirSync(outDir, { recursive: true });
-    if (existsSync(join(outDir, 'metrics.json'))) {
+    if (readdirSync(outDir).some((e) => e === 'metrics.json' || /^G\d+$/.test(e))) {
       // Review finding F2: reusing --out crashed mid-batch with a raw stack
       // and mixed two runs in one directory. Refuse up front.
       console.error(`OUT_DIR_ALREADY_USED: ${outDir} holds a previous run — pick a fresh --out`);
@@ -742,7 +759,7 @@ if (isMain) {
     const runId = `gold-real-${Date.now().toString(36)}`;
     const outDir = val('out') ?? mkdtempSync(join(tmpdir(), 'gold-real-out-'));
     mkdirSync(outDir, { recursive: true });
-    if (existsSync(join(outDir, 'metrics.json'))) {
+    if (readdirSync(outDir).some((e) => e === 'metrics.json' || /^G\d+$/.test(e))) {
       // Review finding F2: reusing --out crashed mid-batch with a raw stack
       // and mixed two runs in one directory. Refuse up front.
       console.error(`OUT_DIR_ALREADY_USED: ${outDir} holds a previous run — pick a fresh --out`);

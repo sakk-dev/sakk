@@ -12,8 +12,10 @@ where stricter.
 - **After ANY change under `gold/`**, regenerate the manifest:
   `cd eval/gold && find . -type f ! -name manifest.sha256 -print0 | xargs -0 shasum -a 256 | sed 's|  \\./|  |' | sort -k2 > manifest.sha256`
 - Machine logs (trace, gate-probe, test log) are runner-owned and live
-  OUTSIDE workdirs. Fixture tools append to `$GOLD_TEST_LOG`; nothing else
-  writes evidence.
+  OUTSIDE workdirs. Fixture tools append to `$GOLD_TEST_LOG`. In real mode
+  these logs are adversary-writable (same uid) by design: they are process
+  attestations cross-checked by the runner's own verification, not
+  tamper-proof evidence — the tamper-proof channel is the enterprise broker.
 - The scorer never imports the runner. Keep the dependency direction.
 - Changing a refusal code, a rule name, a metrics field, or the packet
   prefix breaks the public contract — tests pin them; update both and say so.

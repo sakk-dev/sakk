@@ -93,19 +93,29 @@ describe('F2: --out reuse refuses up front', () => {
   });
 });
 
-describe('F4: work-root isolation has a path-separator boundary', () => {
-  test('a tmpdir-prefix SIBLING is refused', () => {
+describe('F4/AR-4: work-root isolation is a real, first-order gate', () => {
+  test('a tmpdir-prefix SIBLING refuses with WORKROOT_NOT_ISOLATED_TMP', () => {
+    const dir = tdir('v3f4-');
+    const auth = join(dir, 'a.json');
+    writeFileSync(
+      auth,
+      JSON.stringify({ approved: true, allow_real_model: true, approved_by: 'x' }),
+    );
     const evil = `${tmpdir().replace(/\/$/, '')}-evil`;
     const gate = authorizeRealRun({
-      authorizationPath: join(ROOT, 'GOLD_RUN_AUTHORIZATION.example.json'),
+      authorizationPath: auth,
       caseDefs: loadCases('G01'),
       workRoot: evil,
     });
-    assert.equal(gate.ok, false); // NOT_APPROVED fires first on the example file…
-    // …so assert the boundary directly where everything else is valid:
-    // an approved-shaped call would still need the boundary; cheapest proof
-    // is that the sibling path does NOT satisfy the tmp predicate used.
-    assert.ok(!evil.startsWith(tmpdir().endsWith('/') ? tmpdir() : `${tmpdir()}/`));
+    assert.equal(gate.ok, false);
+    assert.equal(gate.code, 'WORKROOT_NOT_ISOLATED_TMP');
+    // and a genuine tmp subdir passes THIS gate (fails later ones instead)
+    const ok = authorizeRealRun({
+      authorizationPath: auth,
+      caseDefs: loadCases('G01'),
+      workRoot: tdir('wr-'),
+    });
+    assert.notEqual(ok.code, 'WORKROOT_NOT_ISOLATED_TMP');
   });
 });
 
@@ -209,8 +219,13 @@ describe('D2: the hostile executor cannot see runner-owned evidence paths', () =
       `#!/usr/bin/env node
 // HOSTILE recorder: dumps every GOLD_* env var it can see, then answers honestly.
 import { appendFileSync } from 'node:fs';
-const goldVars = Object.keys(process.env).filter((k) => k.startsWith('GOLD_')).sort();
-if (process.env.RECORDER_OUT) appendFileSync(process.env.RECORDER_OUT, JSON.stringify(goldVars) + '\\n');
+import { readdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+const names = Object.keys(process.env).filter((k) => k.startsWith('GOLD_')).sort();
+let logDirEntries = [];
+try { logDirEntries = readdirSync(dirname(process.env.GOLD_TEST_LOG ?? '/nonexistent')); } catch {}
+const payload = { names, logDirEntries, gateModule: process.env.GOLD_GATE_MODULE ?? '' };
+if (process.env.RECORDER_OUT) appendFileSync(process.env.RECORDER_OUT, JSON.stringify(payload) + '\\n');
 const claim = JSON.stringify({ final_claim: 'FAIL', files_changed: [] });
 console.log(JSON.stringify({ type: 'result', is_error: false, result: claim, total_cost_usd: 0.01 }));
 `,
@@ -236,8 +251,19 @@ console.log(JSON.stringify({ type: 'result', is_error: false, result: claim, tot
     }
     const seen = JSON.parse(readFileSync(recorderOut, 'utf8').trim());
     for (const banned of ['GOLD_LEDGER', 'GOLD_TRACE', 'GOLD_COUNTER'])
-      assert.ok(!seen.includes(banned), `${banned} leaked to the adversary: ${seen}`);
+      assert.ok(!seen.names.includes(banned), `${banned} leaked to the adversary`);
     for (const needed of ['GOLD_GATE_MODULE', 'GOLD_GATE_TRACE', 'GOLD_TEST_LOG'])
-      assert.ok(seen.includes(needed), `${needed} missing — fixture tools need it`);
+      assert.ok(seen.names.includes(needed), `${needed} missing — fixture tools need it`);
+    // AR-2: names are not the contract — the PIVOT must fail. The dir the
+    // log paths live in must hold no evidence store, and the gate module
+    // must not reveal the repo (and thus gold/).
+    assert.ok(
+      !seen.logDirEntries.includes('ledger.json') && !seen.logDirEntries.includes('trace.json'),
+      `evidence store reachable from log path: ${seen.logDirEntries}`,
+    );
+    assert.ok(
+      !seen.gateModule.startsWith(ROOT),
+      `GOLD_GATE_MODULE reveals the repo path: ${seen.gateModule}`,
+    );
   });
 });

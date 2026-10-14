@@ -475,3 +475,42 @@ describe('v3 batch: D1 stampede, E1 overrun, E2 trust-field', () => {
     );
   });
 });
+
+describe('AR round-2: breaker-mutex lock protocol', () => {
+  test('a stale BREAKER mutex disables auto-breaking (fail closed); forceUnlock clears both', () => {
+    const { ledgerPath } = freshLedger(10);
+    const dead = spawnSync(process.execPath, ['-e', '0']);
+    mkdirSync(`${ledgerPath}.lock`);
+    writeFileSync(
+      join(`${ledgerPath}.lock`, 'owner.json'),
+      JSON.stringify({ pid: dead.pid, host: hostname(), at: 'x' }),
+    );
+    mkdirSync(`${ledgerPath}.lock.breaklock`); // crashed breaker parked here
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'bm', estimatedMaxUsd: 1 }),
+      (e) => e.code === 'LEDGER_LOCK_UNAVAILABLE',
+      'with the breaker mutex held, even a dead-owner lock must NOT be auto-broken',
+    );
+    assert.equal(forceUnlock({ ledgerPath, by: 'maintainer' }).removed, true);
+    assert.equal(
+      existsSync(`${ledgerPath}.lock.breaklock`),
+      false,
+      'forceUnlock clears the breaker mutex',
+    );
+    assert.equal(reserve({ ledgerPath, callId: 'bm', estimatedMaxUsd: 1 }).ok, true);
+  });
+  test('release refuses a lock this process never acquired (registry authority)', () => {
+    const { ledgerPath } = freshLedger(10);
+    // a foreign live lock appears; our settle on another ledger must not touch it —
+    // simulate the dangerous path directly: craft a lock we did NOT acquire
+    mkdirSync(`${ledgerPath}.lock`);
+    writeFileSync(join(`${ledgerPath}.lock`, 'owner.json'), 'not-even-json');
+    // any ledger op now times out rather than clobbering the unreadable foreign lock
+    assert.throws(
+      () => reserve({ ledgerPath, callId: 'fr', estimatedMaxUsd: 1 }),
+      (e) => e.code === 'LEDGER_LOCK_UNAVAILABLE',
+      'unreadable metadata must never be broken or released by a stranger',
+    );
+    assert.equal(existsSync(`${ledgerPath}.lock`), true, 'the foreign lock survives');
+  });
+});

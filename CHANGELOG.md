@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Adversarial-review round 2 (the fix batch reviewed author-blind before
+  merge): lock takeover rebuilt on a breaker mutex (judgement+removal in one
+  critical section; crashed breakers fail closed to `sakk unlock`); release
+  authority is a process-local registry; real-mode machine logs relocated
+  out of the evidence store and the gate module copied local (log
+  forgeability by the same-uid adversary is now a DOCUMENTED trade-off,
+  cross-checked by runner verification); fuzz oracle corrected; work-root
+  gate moved first with a real refusal test; --out guard catches crashed
+  runs; CI review workflow is static and base-context only (never executes
+  PR code with a secret).
 - Review batch D/E/F (16 findings, each with an attack-shaped regression
   test): atomic single-winner stale-lock takeover + release ownership check;
   runner-owned evidence paths no longer transit to the real-mode child;

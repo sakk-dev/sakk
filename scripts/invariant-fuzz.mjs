@@ -72,7 +72,8 @@ for (let step = 0; step < 250; step += 1) {
         const amt =
           op === 'settleOver' ? e.estimatedMaxUsd * (2 + rnd() * 3) : e.estimatedMaxUsd * rnd();
         settle({ ledgerPath, callId: id, actualUsd: amt });
-        if (op === 'settleOver' && e.status === 'RESERVED') overrunSeen = true;
+        // AR-3: an over-settle of a RECONCILIATION_REQUIRED entry is an overrun too
+        if (op === 'settleOver' && e && e.status !== 'SETTLED') overrunSeen = true;
       }
     } else if (op === 'clear') {
       clearReconciliation({ ledgerPath, by: 'fuzz' });

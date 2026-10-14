@@ -60,6 +60,7 @@ Usage:
 
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status)
+max_reservable_usd of 0 means nothing fits under the cap (reserve requires a positive amount)
 `;
 
 function fail(e) {
