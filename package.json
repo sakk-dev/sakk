@@ -1,7 +1,7 @@
 {
   "name": "sakk",
   "version": "0.1.0",
-  "description": "The original check, rebuilt for AI agents — a fail-closed spend ledger: reserve before you spawn, settle with real costs, refuse everything pathological.",
+  "description": "The original check, rebuilt for AI agents \u2014 a fail-closed spend ledger: reserve before you spawn, settle with real costs, refuse everything pathological.",
   "type": "module",
   "main": "src/ledger.mjs",
   "exports": {
@@ -19,7 +19,8 @@
     "format": "npx -y prettier@3.9.10 --write .",
     "format:check": "npx -y prettier@3.9.10 --check .",
     "fuzz": "node scripts/invariant-fuzz.mjs",
-    "fuzz:policy": "node scripts/policy-fuzz.mjs"
+    "fuzz:policy": "node scripts/policy-fuzz.mjs",
+    "certificate": "node scripts/gate-certificate.mjs"
   },
   "engines": {
     "node": ">=20"

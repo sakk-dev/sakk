@@ -144,12 +144,45 @@ three-tier profile. The kernel never imports the ledger and never performs
 actions; an enforcer composes the two: `decide()` → on `allow` only →
 `reserve()`.
 
+## MCP: put the gate in front of any agent
+
+`sakk mcp` speaks the Model Context Protocol over stdio — the same three
+operations as the library, as tools an agent must call. Claude Code
+config (Cursor/Copilot analogous):
+
+```json
+{
+  "mcpServers": {
+    "sakk": {
+      "command": "npx",
+      "args": [
+        "sakk",
+        "mcp",
+        "--ledger",
+        "/abs/path/ledger.json",
+        "--policy",
+        "/abs/path/policy.json"
+      ]
+    }
+  }
+}
+```
+
+The ledger path is REQUIRED (no cwd default — a server guessing where the
+books live is not a gate). `--policy` is optional; when set, every
+`sakk_reserve` is decided by the policy kernel first and every decision —
+allow and deny alike — lands hash-pinned in `sakk-decisions.jsonl` next to
+the ledger. `require_approval` refuses over MCP by design (approval
+collection is an enterprise concern, not an agent tool). The server adds
+no semantics: replaying the same calls through the library yields
+byte-identical books, and the test suite proves it.
+
 ## Roadmap — honest edition
 
 - [x] CLI (`sakk init / sakk status / sakk reconcile / sakk unlock`)
 - [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — ships in [`eval/`](eval/)
 - [x] Policy kernel (`sakk/policy`): declarative `sakk-policy.v1`, pure `decide()`, hash-pinned decision log
-- [ ] MCP server enforcer: reserve/settle/status as tools, policy-gated
+- [x] MCP server enforcer (`sakk mcp`): reserve/settle/status as tools, policy-gated
 - [ ] `sakk settle` CLI command (late settlement without writing code)
 - [ ] Evidence packs: replayable, manifest-hashed run records for third-party audit (what [docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) verifies today, made portable)
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise

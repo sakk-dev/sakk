@@ -29,6 +29,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (string|null) · `approversMin` (only on require_approval) · `policyHash`
   (64-hex) · `context` ({agent, action, scope, estimatedUsd, callId}).
 
+### Added (MCP enforcer)
+
+- `sakk mcp`: zero-dependency MCP stdio server exposing `sakk_reserve` /
+  `sakk_settle` / `sakk_status` — the policy kernel's first enforcer.
+  Ledger path is required (`MCP_LEDGER_PATH_REQUIRED`, no cwd default); a
+  configured policy is loaded once, hash-pinned, and refuses startup on
+  any `POLICY_*` code. Policy refusals surface as `POLICY_DENIED` /
+  `POLICY_APPROVAL_REQUIRED` (public API) with the full decision attached;
+  every decision logs to `sakk-decisions.jsonl` beside the ledger. 1 MiB
+  frame cap; contract tests drive the real binary over real frames,
+  including a thinness proof (library replay yields identical books).
+
+### Fixed (certificate + MCP adversarial-review round)
+
+R-05 on PR #3 found 4 merge-blocking defects and 11 more; all closed with
+attack-shaped regressions:
+
+- MCP `sakk_settle` swallowed the ledger-halt signal (replied
+  `settled:true` while the whole ledger froze) and truthy-coerced
+  `failedUnknownCost`, breaking thinness — the library's return now rides
+  the response and arguments pass verbatim (a divergence test pins MCP ==
+  library behavior).
+- Certificate freshness now requires EVERY drill kill to carry a verified
+  hash block (a parse drift silently shrank the verified set); the tree is
+  re-verified right before rendering (TOCTOU); refusals delete any stale
+  certificate; the final write is atomic; `src/mcp.mjs` and the issuer
+  itself join the certified surface; suite summaries with skipped/todo
+  holes refuse; internal failures obey the 0/2 exit contract.
+- MCP hardening: string args cap at 4096 (`MCP_ARG_TOO_LONG`, public
+  API); batch/primitive frames answer -32600 (never a silent drop); one
+  refusal per oversized flood; set-but-empty `SAKK_POLICY_PATH` refuses to
+  start; `sakk_status` reads with the CLI's Infinity staleness; agent
+  identity reaches the ledger (`agentId`); decision log is per-ledger
+  (`<ledger>.decisions.jsonl`).
+
+### Added (gate non-regression certificate)
+
+- `npm run certificate`: executes every gate (both suites, gold manifest,
+  6-mutant drill with evidence-freshness verification against the current
+  bytes, both seeded fuzz legs, double-run reproducibility fingerprint) and
+  renders CERTIFICATE.md. Fail-closed: any red gate, stale drill evidence
+  or dirty tree refuses with a `CERT_*` code and emits nothing — the
+  document's existence is the claim.
+
 ### Fixed (policy kernel adversarial-review round, 2026-10-15)
 
 The R-05 independent review of the first kernel implementation found 4
