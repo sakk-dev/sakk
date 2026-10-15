@@ -4,7 +4,7 @@
 // policy kernel (spec: specs/policy-engine/ — "one implementation, already
 // mutation-drilled"). Entries are PREFIX RULES, not wildcard globs:
 //   'docs'  or 'docs/'  → the docs/ subtree (and the literal path 'docs')
-//   'a/b.mjs'           → exactly that file
+//   'a/b.mjs'           → that path and anything under it ('a/b.mjs/x' too)
 // Bounded, deterministic, no regex — no ReDoS surface by construction.
 
 export function matchPath(p, x) {
@@ -24,6 +24,22 @@ export function matchPath(p, x) {
 }
 
 export const matchesAny = (p, prefixes) => prefixes.some((x) => matchPath(p, x));
+
+/** True iff `p` is a canonical relative path — the only shape matchPath can
+ * ever match. Review finding F2: in a deny-first policy, a path alias that
+ * silently matches NOTHING ('prod//x', './prod/x', '/prod/x') slides past
+ * an explicit deny into a later allow — so the policy kernel REFUSES
+ * non-canonical context scopes outright instead of not-matching them.
+ * (Unicode homoglyphs are indistinguishable from honest names here;
+ * normalizing those is the enforcer's documented duty.) */
+export function isCanonicalRelPath(p) {
+  return (
+    typeof p === 'string' &&
+    p !== '' &&
+    !p.startsWith('/') &&
+    !p.split('/').some((s) => s === '' || s === '.' || s === '..')
+  );
+}
 
 /** Decidable prefix-subset check: does rule `a` cover every path rule `b`
  * covers? Used by shadow detection; anything undecidable returns false

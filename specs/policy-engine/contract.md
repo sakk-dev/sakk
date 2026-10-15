@@ -51,3 +51,23 @@ audit artifact; its line format is semver-bound public API.
 
 Approval service, policy packs beyond the two references, hot reload,
 policy distribution/signing, MCP/hook enforcement (next block), Windows.
+
+## Amendments at implementation (adversarial-review round, 2026-10-15)
+
+The R-05 review of the first implementation found 4 merge-blocking defects
+(F1 fail-open default approval · F2 scope-alias bypass · F3 four-eyes
+dedup · F4 shadow-scan DoS with a best-case fuzz probe) and 8 more. All are
+fixed with attack-shaped regressions; the contract is amended accordingly:
+
+- Adversary #5: non-canonical ASCII scopes now REFUSE (`CONTEXT_INVALID`)
+  instead of silently matching nothing; unicode homoglyph normalization is
+  the enforcer's contractual duty, stated in spec and README.
+- Adversary #6: "what the auditor hashes is what decided" is defined as
+  replay through THIS kernel's loadPolicy; duplicate-key documents refuse.
+- Adversary #8: bounded time = bounded by success OR refusal
+  (`POLICY_TOO_COMPLEX`, work budget); the fuzz probe is adversarial-shaped.
+- Adversary #9: `approversMin` is carried on EVERY require_approval
+  decision including the default path; the reference enforcer counts a SET
+  of named approvers excluding the requester and refuses unreadable
+  requirements.
+- New public codes: `POLICY_TOO_COMPLEX`. Context strings cap at 4096 chars.

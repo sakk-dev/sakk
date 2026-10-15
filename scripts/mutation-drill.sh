@@ -101,8 +101,8 @@ run_drill MUT-D eval/lib/scorer.mjs \
 # MUT-E: evaluate policy rules in REVERSE order → the ordering test must die red
 # (policy suite lives under `npm test`, hence the 6th argument)
 run_drill MUT-E src/policy.mjs \
-  "for (const rule of policy.rules) {" \
-  "for (const rule of [...policy.rules].reverse()) {" \
+  "for (const rule of policy.rules)" \
+  "for (const rule of [...policy.rules].reverse())" \
   "first match wins: the earlier of two overlapping rules decides" \
   "test"
 

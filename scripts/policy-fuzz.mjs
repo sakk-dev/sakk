@@ -18,7 +18,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadPolicy, decide, PolicyError } from '../src/policy.mjs';
+import { loadPolicy, decide, logDecision, PolicyError } from '../src/policy.mjs';
 
 const seed = Number(process.env.SAKK_POLICY_FUZZ_SEED ?? Date.now());
 let s = seed >>> 0 || 1;
@@ -113,6 +113,8 @@ for (let step = 0; step < STEPS; step++) {
     if (a.ruleId === null) {
       if (a.verdict !== loaded.policy.default_verdict)
         die('I3 null ruleId but non-default verdict', a);
+      if (a.verdict === 'require_approval' && a.approversMin !== 1)
+        die('I2 default require_approval must carry approversMin=1 (review F1)', a);
     } else {
       if (!rule) die('I2 decision names a rule that does not exist', a);
       if (rule.verdict !== a.verdict) die('I2 verdict differs from the matched rule', a);
@@ -120,10 +122,34 @@ for (let step = 0; step < STEPS; step++) {
         die('I2 approversMin mismatch', a);
     }
     decisions++;
+    try {
+      logDecision({ decisionLogPath: join(dir, 'decisions.jsonl'), decision: a, by: 'fuzz' });
+    } catch (e) {
+      if (!(e instanceof PolicyError))
+        die(`I4 logDecision threw ${e.constructor.name}: ${e.message}`);
+      refusals[e.code] = (refusals[e.code] ?? 0) + 1;
+    }
   }
 }
 
-// I5: size probe — unique agents so nothing is provably shadowed.
+// I4 on the log gate itself: forged decisions must refuse TYPED (review F6)
+for (const forged of [
+  null,
+  { verdict: 'allow', policyHash: 'short', ruleId: null },
+  { verdict: 'maybe', policyHash: 'a'.repeat(64), ruleId: null },
+  { verdict: 'allow', policyHash: 'a'.repeat(64), ruleId: 42 },
+]) {
+  try {
+    logDecision({ decisionLogPath: join(dir, 'decisions.jsonl'), decision: forged, by: 'fuzz' });
+    die('I4 forged decision entered the audit trail', { forged });
+  } catch (e) {
+    if (!(e instanceof PolicyError)) die(`I4 forged-decision path threw ${e.constructor.name}`);
+  }
+}
+
+// I5 (reshaped after review F4 caught the first probe testing the BEST case):
+// "bounded time" means bounded by SUCCESS or by REFUSAL — never by hanging.
+// (a) benign shape: 10k rules, distinct agents — must load and decide fast
 const bigRules = Array.from({ length: 10_000 }, (_, i) => ({
   id: `big-${i}`,
   match: { agent: `agent-${i}`, max_estimated_usd: 1 + (i % 7) },
@@ -136,10 +162,33 @@ const bigLoaded = loadPolicy({
 });
 decide({ ...bigLoaded, context: { agent: 'agent-9999', estimatedUsd: 0.5, callId: 'big' } });
 const bigMs = Date.now() - t0;
-if (bigMs > 30_000) die(`I5 10k-rule policy took ${bigMs}ms`);
+if (bigMs > 30_000) die(`I5 benign 10k-rule policy took ${bigMs}ms`);
+// (b) adversarial shape (the review PoC): shared action, 30-entry scope
+// lists, nothing provably shadowed — must REFUSE fast, not hang
+const common = Array.from({ length: 29 }, (_, k) => `shared/${k}/`);
+const evilRules = Array.from({ length: 400 }, (_, i) => ({
+  id: `evil-${i}`,
+  match: { action: 'model_call', scope: [...common, `own/${i}/`] },
+  verdict: 'deny',
+}));
+const t1 = Date.now();
+let evilOutcome = 'loaded';
+try {
+  loadPolicy({
+    policyPath: write({ schema: 'sakk-policy.v1', default_verdict: 'deny', rules: evilRules }),
+  });
+} catch (e) {
+  if (!(e instanceof PolicyError)) die(`I5 adversarial probe threw ${e.constructor.name}`);
+  evilOutcome = e.code;
+}
+const evilMs = Date.now() - t1;
+if (evilMs > 15_000)
+  die(`I5 adversarial probe took ${evilMs}ms — bounded means fast success OR fast refusal`);
+if (evilOutcome !== 'POLICY_TOO_COMPLEX' && evilOutcome !== 'loaded')
+  die(`I5 adversarial probe unexpected refusal ${evilOutcome}`);
 
 console.log(
   `policy-fuzz: ${STEPS} policies, ${decisions} decisions, refusals ${JSON.stringify(
     refusals,
-  )}, 10k-rule probe ${bigMs}ms — all invariants held (seed=${seed})`,
+  )}, probes benign=${bigMs}ms adversarial=${evilOutcome}/${evilMs}ms — all invariants held (seed=${seed})`,
 );

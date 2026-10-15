@@ -22,7 +22,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scorer and policy kernel (scope entries are prefix rules, not wildcards).
 - Mutation drill grows to 6 mutants (MUT-E rule-order, MUT-F vacuous-allow);
   the pristine control now runs both suites. `npm run fuzz:policy`: seeded
-  policy/context fuzz (5 invariants, 10k-rule probe, replayable seed).
+  policy/context fuzz (5 invariants, benign + adversarial size probes,
+  replayable seed).
+- Decision log line format (public API): one JSON object per line with
+  `at` (ISO timestamp) · `by` (string|null) · `verdict` · `ruleId`
+  (string|null) · `approversMin` (only on require_approval) · `policyHash`
+  (64-hex) · `context` ({agent, action, scope, estimatedUsd, callId}).
+
+### Fixed (policy kernel adversarial-review round, 2026-10-15)
+
+The R-05 independent review of the first kernel implementation found 4
+merge-blocking defects and 8 more; all fixed with attack-shaped regressions:
+
+- **F1 (critical, fail-open)**: a `default_verdict: "require_approval"`
+  decision carried no `approversMin`, so the reference enforcer's
+  `0 < undefined` comparison acted with ZERO approvals. Every
+  require_approval decision — default path included — now carries it.
+- **F2**: non-canonical scopes (`prod//x`, `./prod/x`, `/prod/x`) matched no
+  rule and slid past explicit denies into later allows; they now refuse
+  (`CONTEXT_INVALID`). Unicode normalization is the enforcer's documented
+  duty.
+- **F3**: the reference enforcer counted the same approver twice toward
+  four-eyes; approvers are now a named set excluding the requester.
+- **F4**: a schema-legal policy could park the quadratic shadow scan for
+  minutes; a work budget now refuses with the new `POLICY_TOO_COMPLEX`, and
+  the fuzz size probe is adversarial-shaped instead of best-case.
+- F5 decide copies the context BEFORE validating (getter TOCTOU); F6 the
+  log gate accepts only decide()-shaped decisions and serialization
+  failures are typed; F7 duplicate JSON keys refuse (one hashed file, one
+  meaning); F10 glob-looking scope entries refuse at load; F11 context
+  strings cap at 4096 chars; F9 the schema drift guard now catalogs every
+  known kernel-vs-schema divergence honestly.
 
 ### Fixed (stranger-test findings, 2026-10-15)
 

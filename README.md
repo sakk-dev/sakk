@@ -133,7 +133,11 @@ this allowed on March 3rd?" is answered by replay, not by trust. Policy files
 (`sakk-policy.v1`, plain JSON) read top-to-bottom, **first match wins**, the
 `default_verdict` is mandatory, and everything pathological refuses:
 `POLICY_VACUOUS_ALLOW` (a gate that can only say yes), `POLICY_RULE_SHADOWED`
-(provably dead rules), `CONTEXT_INVALID` (no coercion), `DECISION_UNLOGGABLE`
+(provably dead rules), `CONTEXT_INVALID` (no coercion — and no path aliases:
+a non-canonical scope like `prod//x` refuses outright rather than sliding
+past a deny; normalizing paths and unicode before calling `decide()` is the
+enforcer's job), `POLICY_TOO_COMPLEX` (bounded by refusal, never by
+hanging), `DECISION_UNLOGGABLE`
 (an unauditable allow is a deny). Two reference policies ship in
 [`policies/`](policies/) — a permissive dev profile and a regulated
 three-tier profile. The kernel never imports the ledger and never performs

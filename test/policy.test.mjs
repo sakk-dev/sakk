@@ -305,6 +305,20 @@ describe('decide: first-match semantics', () => {
     );
     assert.equal(decide({ policy, policyHash, context: ctx({ action: 'merge' }) }).approversMin, 1);
   });
+  test('F1: the DEFAULT require_approval verdict carries approversMin too', () => {
+    const { policy, policyHash } = loadPolicy({
+      policyPath: writePolicy(
+        base({
+          default_verdict: 'require_approval',
+          rules: [{ id: 'block-rm', match: { action: 'rm_rf' }, verdict: 'deny' }],
+        }),
+      ),
+    });
+    const d = decide({ policy, policyHash, context: ctx({ action: 'deploy' }) });
+    assert.equal(d.verdict, 'require_approval');
+    assert.equal(d.ruleId, null);
+    assert.equal(d.approversMin, 1, 'unmatched-means-a-human-signs must not fall open');
+  });
   test('a scope-constrained rule never matches a context without a scope', () => {
     const { policy, policyHash } = loadPolicy({
       policyPath: writePolicy(
@@ -315,18 +329,55 @@ describe('decide: first-match semantics', () => {
     delete c.scope;
     assert.equal(decide({ policy, policyHash, context: c }).ruleId, null);
   });
-  test('path tricks match NO rule and land on the default: ../, absolute, //, ., unicode lookalike', () => {
+  test('F2 attack: ASCII path aliases REFUSE (CONTEXT_INVALID), never slide past a deny', () => {
     const { policy, policyHash } = loadPolicy({
       policyPath: writePolicy(
         base({ rules: [{ id: 'docs', match: { scope: ['docs/'] }, verdict: 'allow' }] }),
       ),
     });
-    for (const scope of ['../docs/x', '/docs/x', 'docs//x', 'docs/./x', 'dοcs/x'])
-      assert.equal(
-        decide({ policy, policyHash, context: ctx({ scope }) }).ruleId,
-        null,
-        `scope ${JSON.stringify(scope)} must fall through to default`,
+    for (const scope of ['../docs/x', '/docs/x', 'docs//x', 'docs/./x', 'docs/x/..'])
+      expectCode(() => decide({ policy, policyHash, context: ctx({ scope }) }), 'CONTEXT_INVALID');
+    // a unicode homoglyph is an honest-looking canonical string: it falls
+    // through to the default (normalization is the enforcer's documented duty)
+    const d = decide({ policy, policyHash, context: ctx({ scope: 'dοcs/x' }) });
+    assert.equal(d.ruleId, null);
+  });
+  test('F2 attack on the shipped profile: prod//api cannot dodge the prod deny into an allow', () => {
+    const l = loadPolicy({ policyPath: join(POLICIES, 'permissive-dev.json') });
+    for (const scope of ['prod//api', '/prod/api', './prod/api', 'prod/./api'])
+      expectCode(
+        () => decide({ ...l, context: ctx({ action: 'deploy', scope, estimatedUsd: 0.5 }) }),
+        'CONTEXT_INVALID',
       );
+  });
+  test('F5 attack: a getter cannot answer the validator one value and the matcher another', () => {
+    const loaded = loadPolicy({ policyPath: writePolicy(base()) });
+    let reads = 0;
+    const sneaky = {
+      agent: 'dev-1',
+      action: 'file_write',
+      scope: 'docs/readme.md',
+      callId: 'c-g',
+      get estimatedUsd() {
+        return reads++ === 0 ? 0.1 : NaN;
+      },
+    };
+    const d = decide({ ...loaded, context: sneaky });
+    assert.equal(d.context.estimatedUsd, 0.1, 'exactly one read, taken before validation');
+    const replay = decide({ ...loaded, context: d.context });
+    assert.deepEqual(
+      replay.verdict,
+      d.verdict,
+      'the logged context must replay to the same verdict',
+    );
+    let reads2 = 0;
+    const nanFirst = {
+      ...ctx(),
+      get estimatedUsd() {
+        return reads2++ === 0 ? NaN : 0.1;
+      },
+    };
+    expectCode(() => decide({ ...loaded, context: nanFirst }), 'CONTEXT_INVALID');
   });
   test('attack: mutating the context AFTER decide cannot rewrite the logged context', () => {
     const loaded = loadPolicy({ policyPath: writePolicy(base()) });
@@ -369,11 +420,93 @@ describe('logDecision: an unauditable allow is a deny', () => {
       'DECISION_UNLOGGABLE',
     );
   });
+  test('F6 attack: a circular context fails TYPED, never as a raw TypeError', () => {
+    const log = join(tdir(), 'd.jsonl');
+    const circ = { ...decision, context: {} };
+    circ.context.self = circ.context;
+    expectCode(
+      () => logDecision({ decisionLogPath: log, decision: circ, by: 'x' }),
+      'DECISION_UNLOGGABLE',
+    );
+  });
+  test('F6 attack: forged decision shapes cannot enter the audit trail', () => {
+    const log = join(tdir(), 'd.jsonl');
+    for (const forged of [
+      { ...decision, policyHash: '' },
+      { ...decision, policyHash: 'zz'.repeat(32) },
+      { ...decision, ruleId: 42 },
+      { ...decision, context: 'not-an-object' },
+      { ...decision, verdict: 'require_approval', approversMin: 0 },
+    ])
+      expectCode(
+        () => logDecision({ decisionLogPath: log, decision: forged, by: 'x' }),
+        'DECISION_UNLOGGABLE',
+      );
+  });
   test('a decision without verdict/hash cannot be logged', () => {
     expectCode(
       () => logDecision({ decisionLogPath: join(tdir(), 'd.jsonl'), decision: {}, by: 'x' }),
       'DECISION_UNLOGGABLE',
     );
+  });
+});
+
+describe('adversarial-review round: load-side attacks (F4/F7/F10/F11)', () => {
+  test('F7 attack: duplicate JSON keys refuse — one hashed file, one meaning', () => {
+    const dupTop =
+      '{"schema":"sakk-policy.v1","default_verdict":"deny","default_verdict":"allow","rules":[]}';
+    const e = expectCode(
+      () => loadPolicy({ policyPath: writePolicy(dupTop) }),
+      'POLICY_SCHEMA_INVALID',
+    );
+    assert.match(e.message, /duplicate JSON key/);
+    const dupNested =
+      '{"schema":"sakk-policy.v1","default_verdict":"deny","rules":[{"id":"a","match":{"action":"x","action":"y"},"verdict":"deny"}]}';
+    expectCode(() => loadPolicy({ policyPath: writePolicy(dupNested) }), 'POLICY_SCHEMA_INVALID');
+    const dupEscaped =
+      '{"schema":"sakk-policy.v1","default_verdict":"deny","rules":[{"id":"a","\\u006datch":{},"match":{},"verdict":"deny"}]}';
+    expectCode(() => loadPolicy({ policyPath: writePolicy(dupEscaped) }), 'POLICY_SCHEMA_INVALID');
+  });
+  test('F7 guard: braces, colons and escaped quotes inside string VALUES are not keys', () => {
+    const tricky = {
+      schema: 'sakk-policy.v1',
+      default_verdict: 'deny',
+      rules: [{ id: 'we{ird:,"x', match: { action: '{"a":1,"a":2}' }, verdict: 'deny' }],
+    };
+    const { policy } = loadPolicy({ policyPath: writePolicy(tricky) });
+    assert.equal(policy.rules[0].id, 'we{ird:,"x');
+  });
+  test('F10: a glob-looking scope entry is a dead rule — refused at load', () => {
+    expectCode(
+      () =>
+        loadPolicy({
+          policyPath: writePolicy(
+            base({ rules: [{ id: 'g', match: { scope: ['prod/**'] }, verdict: 'deny' }] }),
+          ),
+        }),
+      'POLICY_SCHEMA_INVALID',
+    );
+  });
+  test('F11: oversized context strings refuse instead of flooding the audit log', () => {
+    const loaded = loadPolicy({ policyPath: writePolicy(base()) });
+    expectCode(
+      () => decide({ ...loaded, context: ctx({ callId: 'x'.repeat(5000) }) }),
+      'CONTEXT_INVALID',
+    );
+  });
+  test('F4 attack: the quadratic shadow-scan shape refuses fast with POLICY_TOO_COMPLEX', () => {
+    const common = Array.from({ length: 29 }, (_, k) => `shared/${k}/`);
+    const rules = Array.from({ length: 300 }, (_, i) => ({
+      id: `r${i}`,
+      match: { action: 'model_call', scope: [...common, `own/${i}/`] },
+      verdict: 'deny',
+    }));
+    const t0 = Date.now();
+    expectCode(
+      () => loadPolicy({ policyPath: writePolicy(base({ rules })) }),
+      'POLICY_TOO_COMPLEX',
+    );
+    assert.ok(Date.now() - t0 < 15000, 'the refusal itself must be fast');
   });
 });
 
@@ -420,8 +553,16 @@ describe('integration demo: an enforcer composes kernel + ledger (ledger touched
     }
     if (decision.verdict === 'deny') return { acted: false, why: 'denied', decision };
     if (decision.verdict === 'require_approval') {
-      const distinct = approvals.filter((a) => a.by !== requester);
-      if (distinct.length < decision.approversMin)
+      // F1: an unreadable approval requirement is a refusal, never a compare
+      if (!(Number.isInteger(decision.approversMin) && decision.approversMin >= 1))
+        return { acted: false, why: 'approval_requirement_unreadable', decision };
+      // F3: approvers are a SET of named identities, requester excluded
+      const distinct = new Set(
+        approvals
+          .map((a) => a?.by)
+          .filter((by) => typeof by === 'string' && by !== '' && by !== requester),
+      );
+      if (distinct.size < decision.approversMin)
         return { acted: false, why: 'approval_missing', decision };
     }
     reserve({ ledgerPath, callId: context.callId, estimatedMaxUsd: context.estimatedUsd });
@@ -477,6 +618,41 @@ describe('integration demo: an enforcer composes kernel + ledger (ledger touched
     });
     assert.equal(fourEyes.acted, true);
     assert.equal(readLedger({ ledgerPath }).entries.length, 1);
+  });
+  test('F1 attack: default require_approval + empty approvals must NOT act (0 < undefined trap)', () => {
+    const { ledgerPath, logPath } = setup();
+    const defApproval = loadPolicy({
+      policyPath: writePolicy(
+        base({
+          default_verdict: 'require_approval',
+          rules: [{ id: 'block-rm', match: { action: 'rm_rf' }, verdict: 'deny' }],
+        }),
+      ),
+    });
+    const r = enforcer({
+      loaded: defApproval,
+      context: ctx({ action: 'deploy', callId: 'd-f1', estimatedUsd: 0.2 }),
+      ledgerPath,
+      logPath,
+      requester: 'dev-1',
+      approvals: [],
+    });
+    assert.equal(r.acted, false);
+    assert.equal(readLedger({ ledgerPath }).entries.length, 0, 'fail-open regression');
+  });
+  test('F3 attack: the same person approving twice does not make four eyes', () => {
+    const { ledgerPath, logPath } = setup();
+    const c = ctx({ action: 'deploy', callId: 'd-f3', estimatedUsd: 1 });
+    const bobTwice = enforcer({
+      loaded,
+      context: c,
+      ledgerPath,
+      logPath,
+      requester: 'dev-1',
+      approvals: [{ by: 'bob' }, { by: 'bob' }, {}, { by: '' }],
+    });
+    assert.equal(bobTwice.acted, false);
+    assert.equal(readLedger({ ledgerPath }).entries.length, 0);
   });
   test('unloggable decision → the enforcer refuses and the ledger stays untouched', () => {
     const { ledgerPath } = setup();
