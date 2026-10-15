@@ -17,7 +17,7 @@ const TOOLS = [
   {
     name: 'sakk_reserve',
     description:
-      'Reserve budget BEFORE a paid action. Refuses when the cap would be reached, the callId repeats, the ledger is halted, or the configured policy says deny/require_approval. scope must be a CANONICAL relative path — normalize paths and unicode BEFORE calling; aliases like prod//x are refused, not ignored.',
+      'Reserve budget BEFORE a paid action. Refuses when the cap would be reached, the callId repeats, the ledger is halted, or the configured policy says deny/require_approval. scope must be a CANONICAL relative path — normalize paths and unicode BEFORE calling; with a policy configured, aliases like prod//x are refused (without one, agent/action/scope are not evaluated and the response says so).',
     inputSchema: {
       type: 'object',
       required: ['callId', 'estimatedMaxUsd'],
@@ -58,8 +58,20 @@ const refusal = (obj) => ({
   isError: true,
 });
 
+const MAX_ARG_STRING = 4096;
+
 function callTool({ name, args, ledgerPath, loaded, decisionLogPath }) {
   try {
+    // Review F4: the ledger has no string caps of its own, so the enforcer
+    // bounds its inputs (contract adversary #8; seam rule 2 — refusing MORE
+    // than the library is always allowed, spending more never is).
+    for (const f of ['callId', 'agent', 'action', 'scope'])
+      if (typeof args?.[f] === 'string' && args[f].length > MAX_ARG_STRING)
+        return refusal({
+          code: 'MCP_ARG_TOO_LONG',
+          message: `${f} exceeds ${MAX_ARG_STRING} chars — bounded inputs, bounded books`,
+          details: { field: f },
+        });
     if (name === 'sakk_reserve') {
       if (loaded) {
         const context = {
@@ -83,24 +95,46 @@ function callTool({ name, args, ledgerPath, loaded, decisionLogPath }) {
             decision,
           });
       }
-      const r = reserve({ ledgerPath, callId: args.callId, estimatedMaxUsd: args.estimatedMaxUsd });
-      return ok({
-        reserved: true,
+      const r = reserve({
+        ledgerPath,
         callId: args.callId,
         estimatedMaxUsd: args.estimatedMaxUsd,
-        entryStatus: r?.status ?? 'RESERVED',
+        agentId: args.agent,
+      });
+      return ok({
+        reserved: true,
+        callId: r.callId,
+        estimatedMaxUsd: args.estimatedMaxUsd,
+        ...(loaded ? {} : { policy: 'not configured — agent/action/scope were not evaluated' }),
       });
     }
     if (name === 'sakk_settle') {
-      settle({
+      // Review F1/F2: arguments pass VERBATIM — the LIBRARY judges
+      // truthiness (thinness is the contract), and the library's return
+      // rides the response: a settle that just halted the whole ledger
+      // must say so (R-15: a verdict carries everything its enforcement
+      // needs).
+      const r = settle({
         ledgerPath,
         callId: args.callId,
-        ...(args.failedUnknownCost ? { failedUnknownCost: true } : { actualUsd: args.actualUsd }),
+        actualUsd: args.actualUsd,
+        failedUnknownCost: args.failedUnknownCost,
       });
-      return ok({ settled: true, callId: args.callId });
+      return ok({
+        settled: true,
+        callId: r.callId,
+        ...(r.duplicate ? { duplicate: true } : {}),
+        ...(r.reconciliationRequired
+          ? {
+              reconciliationRequired: true,
+              warning:
+                'the ledger is now HALTED: all further reservations refuse until a named human reconciles',
+            }
+          : {}),
+      });
     }
     if (name === 'sakk_status') {
-      const doc = readLedger({ ledgerPath });
+      const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
       const t = totalsOf(doc);
       return ok({
         cap_usd: t.capUsd,
@@ -148,7 +182,13 @@ export function startMcpServer({
       rpcError(null, -32700, 'parse error: frames are one JSON-RPC object per line');
       return;
     }
-    const { id, method, params } = msg ?? {};
+    // Review F5: a batch array or a bare JSON value is a valid parse but
+    // not a request object — "never a silent drop" (contract #5).
+    if (typeof msg !== 'object' || msg === null || Array.isArray(msg)) {
+      rpcError(null, -32600, 'invalid request: one JSON-RPC object per line (batches unsupported)');
+      return;
+    }
+    const { id, method, params } = msg;
     if (id === undefined) return; // notification — nothing to answer
     if (method === 'initialize')
       return reply(id, {
@@ -192,9 +232,10 @@ export function startMcpServer({
       handleLine(line);
     }
     if (buf.length > MAX_FRAME) {
-      // Oversized frame: answer a protocol error, discard until the next
-      // newline, keep serving (the connection survives the flood).
-      rpcError(null, -32600, `frame exceeds ${MAX_FRAME} bytes`);
+      // Oversized frame: ONE protocol error on entering the drop state
+      // (review F11 — a 1GB flood is one refusal, not a thousand), discard
+      // until the next newline, keep serving.
+      if (!dropping) rpcError(null, -32600, `frame exceeds ${MAX_FRAME} bytes`);
       buf = '';
       dropping = true;
     }

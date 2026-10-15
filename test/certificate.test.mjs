@@ -39,6 +39,14 @@ describe('F8 machine-enforced: drill evidence freshness', () => {
       ['MUT-E'],
     );
   });
+  test('F3: completeness is freshness — kills without verified hash blocks refuse', () => {
+    const partial = REPORT.replace(/\[MUT-E\] file=[\s\S]*?after=.*\n/, '');
+    const hashes = { 'eval/lib/scorer.mjs': 'a'.repeat(64) };
+    const r = verifyDrillFreshness({ reportText: partial, fileHashOf: (f) => hashes[f] });
+    assert.equal(r.kills, 2);
+    assert.equal(r.checked, 1);
+    assert.equal(r.fresh, false, '2 kills with 1 verified block must NOT be fresh');
+  });
   test('a report that testifies about NOTHING is not fresh (empty set is an error)', () => {
     const r = verifyDrillFreshness({ reportText: 'no hashes here', fileHashOf: () => 'x' });
     assert.equal(r.fresh, false);

@@ -25,7 +25,7 @@ on tools/call sakk_reserve(args):
 
 settle/status are pure passthroughs. Startup: resolve ledger path
 (flag > env; none → MCP_LEDGER_PATH_REQUIRED, exit 2); loadPolicy once if
-configured (any POLICY_* → exit 2); decision log = `<ledger>-decisions.jsonl`.
+configured (any POLICY_* → exit 2); decision log = `<ledger>.decisions.jsonl` (per-ledger).
 
 ## Frame cap
 

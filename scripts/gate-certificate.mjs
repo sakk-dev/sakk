@@ -13,7 +13,14 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,7 +68,10 @@ export function verifyDrillFreshness({ reportText, fileHashOf }) {
     const now = fileHashOf(file);
     if (now !== before) stale.push({ mut, file, before, now });
   }
-  return { kills, checked, stale, fresh: checked > 0 && stale.length === 0 };
+  // Review F3: completeness is part of freshness — a report whose hash
+  // blocks the regex failed to parse would silently shrink the verified
+  // set. Every kill must have a verified hash block.
+  return { kills, checked, stale, fresh: checked > 0 && checked === kills && stale.length === 0 };
 }
 
 /** Render only accepts an all-green dossier; a failing gate in the data is a
@@ -134,7 +144,19 @@ const isMain =
   })();
 
 if (isMain) {
+  // Review F14: ANY internal failure obeys the documented 0/2 exit
+  // contract — a stack trace with exit 1 is neither a certificate nor a
+  // refusal.
+  process.on('uncaughtException', (e) => {
+    rmSync(join(ROOT, 'CERTIFICATE.md'), { force: true });
+    console.error(`CERT_INTERNAL: ${e.message} — no certificate emitted`);
+    process.exit(2);
+  });
+  const EXPECTED_MUTANTS = 6;
   const refuse = (code, msg) => {
+    // Review F9: a stale certificate from an earlier commit lying around
+    // IS an emitted claim — refusal removes it.
+    rmSync(join(ROOT, 'CERTIFICATE.md'), { force: true });
     console.error(`${code}: ${msg} — no certificate emitted`);
     process.exit(2);
   };
@@ -145,8 +167,11 @@ if (isMain) {
   };
   const suiteCounts = (out, label) => {
     const c = parseSuiteSummary(out);
-    if (!(Number.isInteger(c.tests) && c.tests > 0 && c.fail === 0))
-      refuse('CERT_GATE_RED', `${label} summary unparsable or zero tests (${JSON.stringify(c)})`);
+    if (!(Number.isInteger(c.tests) && c.tests > 0 && c.fail === 0 && c.pass === c.tests))
+      refuse(
+        'CERT_GATE_RED',
+        `${label} summary unparsable, zero tests, or skipped/todo holes (${JSON.stringify(c)})`,
+      );
     return `${c.pass}/${c.tests} pass, ${c.fail} fail`;
   };
 
@@ -205,10 +230,10 @@ if (isMain) {
     reportText: readFileSync(join(ROOT, 'mutation-drill-report.txt'), 'utf8'),
     fileHashOf: (f) => sha256File(join(ROOT, f)),
   });
-  if (!freshness.fresh)
+  if (!freshness.fresh || freshness.checked !== EXPECTED_MUTANTS)
     refuse(
       'CERT_STALE_EVIDENCE',
-      `drill report hashes do not match current bytes: ${JSON.stringify(freshness.stale.map((s) => s.mut))}`,
+      `drill evidence incomplete or stale (kills=${freshness.kills} checked=${freshness.checked} expected=${EXPECTED_MUTANTS} stale=${JSON.stringify(freshness.stale.map((s) => s.mut))})`,
     );
 
   // Gate 4: seeded fuzz, both legs
@@ -235,6 +260,20 @@ if (isMain) {
   const h2 = fp();
   if (h1 !== h2) refuse('CERT_NONDETERMINISTIC', `judgement fingerprints differ: ${h1} vs ${h2}`);
 
+  // Review F6 (TOCTOU): the dirty check at Gate 0 is minutes old by now —
+  // re-verify that nothing moved while the gates ran, or the certificate
+  // would bind this commit to bytes that are neither in it nor tested.
+  const drifted = execFileSync('git', ['status', '--porcelain'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  }).trim();
+  const headNow = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  }).trim();
+  if (drifted !== '' || headNow !== commit)
+    refuse('CERT_TREE_DRIFTED', 'the working tree or HEAD changed while the gates were running');
+
   const cert = renderCertificate({
     issuedAt: new Date().toISOString(),
     commit,
@@ -250,7 +289,8 @@ if (isMain) {
     },
     suites: {
       'unit + CLI': suiteCounts(unit.out, 'unit suite'),
-      'gold manifest': (validate.out.match(/gold-manifest: \S+/) ?? ['gold-manifest: OK'])[0],
+      'gold manifest': (validate.out.match(/gold-manifest: OK/) ??
+        refuse('CERT_GATE_RED', '--validate output missing the manifest OK line'))[0],
       'eval harness': suiteCounts(evalSuite.out, 'eval suite'),
     },
     drill: freshness,
@@ -264,12 +304,16 @@ if (isMain) {
         'src/ledger.mjs',
         'src/policy.mjs',
         'src/match.mjs',
+        'src/mcp.mjs',
         'bin/sakk.mjs',
         'eval/lib/scorer.mjs',
         'eval/bin/gold-runner.mjs',
+        'scripts/gate-certificate.mjs',
       ].map((f) => [f, sha256File(join(ROOT, f))]),
     ),
   });
-  writeFileSync(join(ROOT, 'CERTIFICATE.md'), cert);
+  const tmp = join(ROOT, `CERTIFICATE.md.tmp-${process.pid}`);
+  writeFileSync(tmp, cert);
+  renameSync(tmp, join(ROOT, 'CERTIFICATE.md'));
   console.log(`certificate written: CERTIFICATE.md (commit ${commit.slice(0, 7)})`);
 }

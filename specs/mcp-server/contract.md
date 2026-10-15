@@ -34,16 +34,29 @@ protocol frames over a child process's stdio.
 
 ## Converge checklist
 
-- [ ] Every adversary row has a named test driving the REAL server binary
+- [x] Every adversary row has a named test driving the REAL server binary
       over stdio (spawned child, real frames)
-- [ ] Thinness proof: a test replays the same sequence through the library
+- [x] Thinness proof: a test replays the same sequence through the library
       directly and asserts byte-identical ledger entries
-- [ ] Zero new runtime deps; `src/ledger.mjs` and `src/policy.mjs` diffs
+- [x] Zero new runtime deps; `src/ledger.mjs` and `src/policy.mjs` diffs
       EMPTY
-- [ ] New code `MCP_LEDGER_PATH_REQUIRED` + tool schemas in CHANGELOG
+- [x] New codes `MCP_LEDGER_PATH_REQUIRED` / `POLICY_DENIED` / `POLICY_APPROVAL_REQUIRED` / `MCP_ARG_TOO_LONG` + tool schemas in CHANGELOG
       (public API)
-- [ ] README: one "MCP" section with the Claude Code / Cursor config
+- [x] README: one "MCP" section with the Claude Code / Cursor config
       snippet; tool descriptions state the enforcer's normalization duty
-- [ ] Self-report per finding: verified / partial / failed
-- [ ] Async adversarial review before merge (R-05; DeepSeek workflow once
+- [x] Self-report per finding: verified / partial / failed
+- [x] In-session adversarial review completed (round 1: 4 merge-blocking F1-F4 + 11 more — all closed with attack regressions); DeepSeek workflow pending secret (R-05; DeepSeek workflow once
       the secret lands, in-session reviewer regardless)
+
+## Amendments at review (2026-10-15/16)
+
+R-05 round on the first implementation: F1 settle swallowed the halt
+signal (R-15) → library return rides the response; F2 truthy coercion
+broke thinness → verbatim passthrough, divergence test; F4 no string caps
+without policy → enforcer-level `MCP_ARG_TOO_LONG` at 4096 (seam rule 2);
+F5 batch/primitive frames answered nothing → -32600; F8 set-but-empty
+policy env refused; F11 one refusal per flood; F12 status mirrors CLI
+staleness (Infinity); F13 honest no-policy response note + agentId reaches
+the books; F15 decision log is per-ledger (`<ledger>.decisions.jsonl`).
+Known bounds documented, not fixed in v1: frame cap counts UTF-16 units
+(~3MiB worst-case CJK); no outbound backpressure handling.

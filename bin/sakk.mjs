@@ -193,7 +193,10 @@ if (cmd === 'init') {
     );
     process.exit(2);
   }
-  const policyPath = val('policy') ?? (process.env.SAKK_POLICY_PATH || undefined);
+  // Review F8: SAKK_POLICY_PATH set-but-empty is a configured policy that
+  // cannot load — refusing beats silently running without a gate.
+  const envPolicy = 'SAKK_POLICY_PATH' in process.env ? process.env.SAKK_POLICY_PATH : undefined;
+  const policyPath = val('policy') ?? envPolicy;
   let loaded = null;
   if (policyPath !== undefined) {
     try {
@@ -206,7 +209,7 @@ if (cmd === 'init') {
   startMcpServer({
     ledgerPath: p,
     loaded,
-    decisionLogPath: join(dirname(resolve(p)), 'sakk-decisions.jsonl'),
+    decisionLogPath: `${resolve(p)}.decisions.jsonl`,
     input: process.stdin,
     output: process.stdout,
     version: pkg.version,

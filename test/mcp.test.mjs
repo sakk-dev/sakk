@@ -1,7 +1,7 @@
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,7 +40,10 @@ const POLICY = {
 function client({ ledgerPath, policyPath }) {
   const args = [CLI, 'mcp', '--ledger', ledgerPath];
   if (policyPath) args.push('--policy', policyPath);
-  const child = spawn(process.execPath, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, args, {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, SAKK_LEDGER_PATH: undefined, SAKK_POLICY_PATH: undefined },
+  });
   const pending = new Map();
   const errors = [];
   createInterface({ input: child.stdout }).on('line', (l) => {
@@ -114,6 +117,17 @@ describe('MCP enforcer: protocol surface', () => {
       'parse error was reported',
     );
   });
+  test('F5: batch arrays and bare JSON values answer -32600 — never a silent drop', async () => {
+    const d = tdir();
+    const ledgerPath = join(d, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    const c = mk({ ledgerPath });
+    for (const frame of ['[{"jsonrpc":"2.0","id":77,"method":"ping"}]', '"str"', '42', 'null'])
+      c.writeRaw(`${frame}\n`);
+    const st = await c.tool('sakk_status', {});
+    assert.equal(st.isError, false);
+    assert.equal(c.errors.filter((e) => e.error.code === -32600).length, 4);
+  });
   test('an oversized frame answers -32600 and the next call still works', async () => {
     const d = tdir();
     const ledgerPath = join(d, 'l.json');
@@ -122,7 +136,11 @@ describe('MCP enforcer: protocol surface', () => {
     c.writeRaw(`${'x'.repeat((1 << 20) + 50)}\n`);
     const status = await c.tool('sakk_status', {});
     assert.equal(status.isError, false);
-    assert.ok(c.errors.some((e) => e.error.code === -32600));
+    assert.equal(
+      c.errors.filter((e) => e.error.code === -32600).length,
+      1,
+      'one flood, ONE refusal (review F11)',
+    );
   });
 });
 
@@ -143,6 +161,48 @@ describe('MCP enforcer: money semantics are the ledger, verbatim', () => {
     assert.equal(st.payload.settled_usd, 0.4);
     assert.equal(st.payload.entries, 1);
     assert.equal(readLedger({ ledgerPath }).entries.length, 1);
+  });
+  test('F1 attack: a settle that HALTS the ledger says so — never a bare settled:true', async () => {
+    const d = tdir();
+    const ledgerPath = join(d, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    const c = mk({ ledgerPath });
+    await c.tool('sakk_reserve', { callId: 'u', estimatedMaxUsd: 1 });
+    const s = await c.tool('sakk_settle', { callId: 'u', failedUnknownCost: true });
+    assert.equal(s.isError, false);
+    assert.equal(s.payload.reconciliationRequired, true, 'the halt must ride the response (R-15)');
+    const next = await c.tool('sakk_reserve', { callId: 'v', estimatedMaxUsd: 1 });
+    assert.equal(next.isError, true);
+    assert.equal(next.payload.code, 'RECONCILIATION_REQUIRED');
+  });
+  test('F2 attack: truthy-but-not-true failedUnknownCost behaves EXACTLY like the library', async () => {
+    const d = tdir();
+    const viaMcp = join(d, 'mcp.json');
+    const viaLib = join(d, 'lib.json');
+    initLedger({ ledgerPath: viaMcp, capUsd: 10 });
+    initLedger({ ledgerPath: viaLib, capUsd: 10 });
+    const c = mk({ ledgerPath: viaMcp });
+    await c.tool('sakk_reserve', { callId: 'w', estimatedMaxUsd: 1 });
+    reserve({ ledgerPath: viaLib, callId: 'w', estimatedMaxUsd: 1 });
+    const viaMcpResp = await c.tool('sakk_settle', { callId: 'w', failedUnknownCost: 'false' });
+    let libCode = null;
+    try {
+      settle({ ledgerPath: viaLib, callId: 'w', failedUnknownCost: 'false' });
+    } catch (e) {
+      libCode = e.code;
+    }
+    if (libCode === null) {
+      assert.equal(viaMcpResp.isError, false, 'library accepted — MCP must too');
+    } else {
+      assert.equal(viaMcpResp.isError, true, 'library refused — MCP must too');
+      assert.equal(viaMcpResp.payload.code, libCode);
+    }
+    const entryOf = (lp) => readLedger({ ledgerPath: lp }).entries[0];
+    assert.equal(entryOf(viaMcp).status, entryOf(viaLib).status, 'books must not diverge');
+    assert.equal(
+      readLedger({ ledgerPath: viaMcp }).flags?.reconciliationRequired === true,
+      readLedger({ ledgerPath: viaLib }).flags?.reconciliationRequired === true,
+    );
   });
   test('settle without reserve refuses with the ledger code; nothing invented', async () => {
     const d = tdir();
@@ -177,6 +237,19 @@ describe('MCP enforcer: money semantics are the ledger, verbatim', () => {
   });
 });
 
+describe('MCP enforcer: bounded inputs (F4)', () => {
+  test('a 900KB callId refuses MCP_ARG_TOO_LONG and the books stay small', async () => {
+    const d = tdir();
+    const ledgerPath = join(d, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    const c = mk({ ledgerPath });
+    const r = await c.tool('sakk_reserve', { callId: 'x'.repeat(900_000), estimatedMaxUsd: 1 });
+    assert.equal(r.isError, true);
+    assert.equal(r.payload.code, 'MCP_ARG_TOO_LONG');
+    assert.equal(readLedger({ ledgerPath }).entries.length, 0);
+  });
+});
+
 describe('MCP enforcer: the policy gate', () => {
   const setup = () => {
     const d = tdir();
@@ -184,7 +257,7 @@ describe('MCP enforcer: the policy gate', () => {
     const policyPath = join(d, 'policy.json');
     initLedger({ ledgerPath, capUsd: 10 });
     writeFileSync(policyPath, JSON.stringify(POLICY));
-    return { d, ledgerPath, policyPath, decisions: join(d, 'sakk-decisions.jsonl') };
+    return { d, ledgerPath, policyPath, decisions: `${ledgerPath}.decisions.jsonl` };
   };
   test('allow reserves; THREE denied retries = three refusals, three log lines, ZERO entries', async () => {
     const { ledgerPath, policyPath, decisions } = setup();
@@ -206,11 +279,9 @@ describe('MCP enforcer: the policy gate', () => {
       assert.equal(r.isError, true);
       assert.equal(r.payload.code, 'POLICY_DENIED');
     }
-    assert.equal(
-      readLedger({ ledgerPath }).entries.length,
-      1,
-      'denied retries never touch the ledger',
-    );
+    const entries = readLedger({ ledgerPath }).entries;
+    assert.equal(entries.length, 1, 'denied retries never touch the ledger');
+    assert.equal(entries[0].agentId, 'dev', 'agent identity reaches the books');
     const lines = readFileSync(decisions, 'utf8').trim().split('\n');
     assert.equal(lines.length, 4, 'every decision logged, allow and deny alike');
     assert.ok(lines.every((l) => /"policyHash":"[0-9a-f]{64}"/.test(l)));
@@ -276,6 +347,56 @@ describe('MCP enforcer: startup is fail-closed', () => {
     });
     assert.equal(r.status, 2);
     assert.match(r.stderr, /POLICY_VACUOUS_ALLOW/);
+  });
+  test('F8: SAKK_POLICY_PATH set-but-empty refuses to start — never a silently ungated server', () => {
+    const d = tdir();
+    const ledgerPath = join(d, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    const r = spawnSync(process.execPath, [CLI, 'mcp', '--ledger', ledgerPath], {
+      encoding: 'utf8',
+      timeout: 10_000,
+      env: { ...process.env, SAKK_POLICY_PATH: '' },
+    });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /POLICY_UNREADABLE/);
+  });
+  test('F10: --ledger beats a different SAKK_LEDGER_PATH (flag wins)', async () => {
+    const d = tdir();
+    const flagLedger = join(d, 'flag.json');
+    const envLedger = join(d, 'env.json');
+    initLedger({ ledgerPath: flagLedger, capUsd: 10 });
+    initLedger({ ledgerPath: envLedger, capUsd: 10 });
+    const child = spawn(process.execPath, [CLI, 'mcp', '--ledger', flagLedger], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, SAKK_LEDGER_PATH: envLedger },
+    });
+    children.push(child);
+    const rl = createInterface({ input: child.stdout });
+    const resp = new Promise((res) => rl.on('line', (l) => res(JSON.parse(l))));
+    child.stdin.write(
+      `${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'sakk_reserve', arguments: { callId: 'f', estimatedMaxUsd: 1 } } })}\n`,
+    );
+    await resp;
+    assert.equal(readLedger({ ledgerPath: flagLedger }).entries.length, 1);
+    assert.equal(readLedger({ ledgerPath: envLedger }).entries.length, 0);
+  });
+  test('F10: an unwritable decision log refuses the action and the ledger stays untouched', async () => {
+    const d = tdir();
+    const ledgerPath = join(d, 'l.json');
+    const policyPath = join(d, 'policy.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    writeFileSync(policyPath, JSON.stringify(POLICY));
+    mkdirSync(`${ledgerPath}.decisions.jsonl`);
+    const c = mk({ ledgerPath, policyPath });
+    const r = await c.tool('sakk_reserve', {
+      callId: 'dl',
+      estimatedMaxUsd: 0.5,
+      agent: 'dev',
+      action: 'model_call',
+    });
+    assert.equal(r.isError, true);
+    assert.equal(r.payload.code, 'DECISION_UNLOGGABLE');
+    assert.equal(readLedger({ ledgerPath }).entries.length, 0);
   });
   test('missing ledger FILE refuses on first use with the ledger code (never auto-creates)', async () => {
     const d = tdir();
