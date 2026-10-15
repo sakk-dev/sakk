@@ -5,22 +5,24 @@ incident (a review finding of this repo, or a predecessor-system rule earned by
 incident), its trigger, and how it is checked. Rules evolve through the
 loop at the bottom; changing this file is an L1 review.
 
-| #    | Rule                                                                                                  | Source                                  | Trigger                                | Check                                        |
-| ---- | ----------------------------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------- | -------------------------------------------- |
-| R-01 | Threat model first: adversary table before coding                                                     | D2, E4, F15                             | touching money/evidence/isolation      | three-tables file in `specs/`, checked at PR |
-| R-02 | Evidence-source declaration: every judgement names its source of truth; self-reports only cross-check | D3, E3 + predecessor Verified Reporting | new/changed scoring rule               | declaration in specs/ + review               |
-| R-03 | Input-space enumeration: parsers/selectors cover null/empty/wrong-type/boundary                       | D4, E5, F1, F3                          | new parsing function                   | table in specs/ + negative tests             |
-| R-04 | Empty set is an error: a filter/gate selecting nothing refuses, never silently green                  | E5 + predecessor False-Green ban        | any filtered execution entry           | machine gate (tests pin exit 2)              |
-| R-05 | Concurrency / money-semantics diffs get independent adversarial review before merge                   | D1, F2 + predecessor CCR                | diff touches lock/reserve/settle/flags | PR process + reviewer that didn't write it   |
-| R-06 | Every fix ships an attack-shaped regression test; money fixes add a mutation anchor                   | whole batch                             | every bugfix                           | PR checklist                                 |
-| R-07 | Published numbers must be consumable: a reported figure must work when acted on                       | E6                                      | new output field                       | review checklist                             |
-| R-08 | Anomalies leave a trail: any event that pierces an expectation alerts/flags                           | E1                                      | gate-bypass/overrun paths              | machine gate (tests pin alerts)              |
-| R-09 | Trust fields are schema-required; halts judge from two sources                                        | E2                                      | schema change                          | machine gate                                 |
-| R-10 | Interface first: capability contracts of external/real modes freeze before rules that depend on them  | D3 + predecessor                        | cross-mode/cross-process feature       | design section in specs/                     |
-| R-11 | Done = converged: implementation checked against the written contract, adversarial coverage included  | D2, D3 + predecessor completeness gate  | before claiming done                   | converge check in PR                         |
-| R-12 | Cross-cutting doctrine audits: changing a doctrine greps every existing rule for consistency          | E3, F13                                 | doctrine-level change                  | review checklist                             |
-| R-14 | Regression tests assert BEHAVIOR (the attack fails), never configuration (names/flags/shapes)         | AR-2, AR-4                              | every regression test                  | review checklist                             |
-| R-13 | Second-bounce breaker: the same defect bounced twice stops the line for redesign                      | predecessor NO-WAKE-LOOP                | any fix loop                           | process                                      |
+| #    | Rule                                                                                                     | Source                                  | Trigger                                | Check                                        |
+| ---- | -------------------------------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------- | -------------------------------------------- |
+| R-01 | Threat model first: adversary table before coding                                                        | D2, E4, F15                             | touching money/evidence/isolation      | three-tables file in `specs/`, checked at PR |
+| R-02 | Evidence-source declaration: every judgement names its source of truth; self-reports only cross-check    | D3, E3 + predecessor Verified Reporting | new/changed scoring rule               | declaration in specs/ + review               |
+| R-03 | Input-space enumeration: parsers/selectors cover null/empty/wrong-type/boundary                          | D4, E5, F1, F3                          | new parsing function                   | table in specs/ + negative tests             |
+| R-04 | Empty set is an error: a filter/gate selecting nothing refuses, never silently green                     | E5 + predecessor False-Green ban        | any filtered execution entry           | machine gate (tests pin exit 2)              |
+| R-05 | Concurrency / money-semantics diffs get independent adversarial review before merge                      | D1, F2 + predecessor CCR                | diff touches lock/reserve/settle/flags | PR process + reviewer that didn't write it   |
+| R-06 | Every fix ships an attack-shaped regression test; money fixes add a mutation anchor                      | whole batch                             | every bugfix                           | PR checklist                                 |
+| R-07 | Published numbers must be consumable: a reported figure must work when acted on                          | E6                                      | new output field                       | review checklist                             |
+| R-08 | Anomalies leave a trail: any event that pierces an expectation alerts/flags                              | E1                                      | gate-bypass/overrun paths              | machine gate (tests pin alerts)              |
+| R-09 | Trust fields are schema-required; halts judge from two sources                                           | E2                                      | schema change                          | machine gate                                 |
+| R-10 | Interface first: capability contracts of external/real modes freeze before rules that depend on them     | D3 + predecessor                        | cross-mode/cross-process feature       | design section in specs/                     |
+| R-11 | Done = converged: implementation checked against the written contract, adversarial coverage included     | D2, D3 + predecessor completeness gate  | before claiming done                   | converge check in PR                         |
+| R-12 | Cross-cutting doctrine audits: changing a doctrine greps every existing rule for consistency             | E3, F13                                 | doctrine-level change                  | review checklist                             |
+| R-14 | Regression tests assert BEHAVIOR (the attack fails), never configuration (names/flags/shapes)            | AR-2, AR-4                              | every regression test                  | review checklist                             |
+| R-15 | A verdict carries everything its enforcement needs, on EVERY path that can produce it                    | F1 (default-path fail-open)             | any decision/verdict-producing code    | negative test per producing path             |
+| R-16 | Resource guards charge every path including the cheap one; probes exercise the ATTACK, not the best case | F4 + N1 (budget's own bypass)           | any work budget / rate limit / probe   | adversarial-shaped probe in fuzz             |
+| R-13 | Second-bounce breaker: the same defect bounced twice stops the line for redesign                         | predecessor NO-WAKE-LOOP                | any fix loop                           | process                                      |
 
 ## Attribution log (evolution loop, round 1 — 2026-10-15)
 
@@ -94,6 +96,32 @@ git cloner, ZIP downloader.
   ships** (the replacement comparison command was run twice to equal hashes
   before landing). Process note: the author of a doc cannot proofread it;
   the context-free reader is now part of the release gate.
+
+## Attribution round 4 — policy-kernel adversarial + verify pass (2026-10-15)
+
+First full 🔒L2 run of the v3 pipeline. Round A (12 findings, 4
+merge-blocking) on the author-green kernel; round B (verify pass) confirmed
+9/12, caught the F4 fix's own bypass (N1) and 3 more.
+
+- **F1 (critical, fail-open)**: the default require_approval path carried
+  no approversMin → `0 < undefined` acted with zero approvals.
+  Attribution: NEW RULE R-15 — **a verdict must carry everything its
+  enforcement needs, on every path that can produce it**; the default path
+  is a path.
+- **F2/N2**: values that can only ever match NOTHING (alias scopes in
+  contexts, dead entries in rules) are refusals, not silent no-matches —
+  R-04 extended: in a deny-first composition, "matches nothing" LOOSENS.
+- **F4/N1**: the work budget skipped its own fast path; the same defect
+  class returned once (R-13 counter = 1, line stops on a second return).
+  Attribution: NEW RULE R-16 — **resource guards charge every path,
+  including the cheap one; a probe that exercises the best case asserts
+  configuration, not the attack** (R-14 applied to fuzz probes).
+- **F5**: validate-then-copy getter TOCTOU — the D1 lock lesson (R-03)
+  re-earned in miniature: read each untrusted value exactly once.
+- **F8**: drill evidence must be a testimony about the FINAL bytes —
+  editing files mid-drill voids the run (R-02).
+- **F9**: a guard's self-description is a claim; guards get the same
+  honest-boundary treatment as auditor docs (S6 extended).
 
 ## Evolution loop
 

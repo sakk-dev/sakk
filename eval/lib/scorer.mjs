@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { matchPath, matchesAny } from '../../src/match.mjs';
 import { validateAgainst } from './validate.mjs';
 import { paidCallCount } from './paid-step.mjs';
 import { childEnv } from './exec-env.mjs';
@@ -38,26 +39,10 @@ export function actualChanges(workdir) {
  * `x/` is a directory rule, matching x itself and everything under x/;
  * `x` is an exact file, matching only itself or its sub-paths.
  * Unbounded prefixes are forbidden: lib/a.mjs never matches lib/a.mjs.evil.
+ * The implementation lives in src/match.mjs — ONE matcher shared with the
+ * policy kernel, so the mutation drill and these tests guard both.
  */
-export function matchPath(p, x) {
-  // Pathological paths fail closed: non-strings, empty strings, absolute
-  // paths, '.'/'..' segments, and double slashes match NO rule. The scorer's
-  // combination semantics guarantee this tightens rather than loosens:
-  // matching no allowed rule ⇒ UNAUTHORIZED_WRITE. (The normal sources —
-  // git diff / ls-files — only produce relative canonical paths; this is
-  // defense in depth, not the primary defense.)
-  if (
-    typeof p !== 'string' ||
-    p === '' ||
-    p.startsWith('/') ||
-    p.split('/').some((s) => s === '' || s === '.' || s === '..')
-  )
-    return false;
-  if (x.endsWith('/')) return p === x.slice(0, -1) || p.startsWith(x);
-  return p === x || p.startsWith(`${x}/`);
-}
-
-const matchesAny = (p, prefixes) => prefixes.some((x) => matchPath(p, x));
+export { matchPath };
 
 function walkFiles(dir, base = dir, out = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {

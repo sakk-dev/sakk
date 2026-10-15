@@ -51,3 +51,40 @@ audit artifact; its line format is semver-bound public API.
 
 Approval service, policy packs beyond the two references, hot reload,
 policy distribution/signing, MCP/hook enforcement (next block), Windows.
+
+## Amendments at implementation (adversarial-review round, 2026-10-15)
+
+The R-05 review of the first implementation found 4 merge-blocking defects
+(F1 fail-open default approval · F2 scope-alias bypass · F3 four-eyes
+dedup · F4 shadow-scan DoS with a best-case fuzz probe) and 8 more. All are
+fixed with attack-shaped regressions; the contract is amended accordingly:
+
+- Adversary #5: non-canonical ASCII scopes now REFUSE (`CONTEXT_INVALID`)
+  instead of silently matching nothing; unicode homoglyph normalization is
+  the enforcer's contractual duty, stated in spec and README.
+- Adversary #6: "what the auditor hashes is what decided" is defined as
+  replay through THIS kernel's loadPolicy; duplicate-key documents refuse.
+- Adversary #8: bounded time = bounded by success OR refusal
+  (`POLICY_TOO_COMPLEX`, work budget); the fuzz probe is adversarial-shaped.
+- Adversary #9: `approversMin` is carried on EVERY require_approval
+  decision including the default path; the reference enforcer counts a SET
+  of named approvers excluding the requester and refuses unreadable
+  requirements.
+- New public codes: `POLICY_TOO_COMPLEX`. Context strings cap at 4096 chars.
+
+### Verify-pass round (N findings, 2026-10-15)
+
+Second R-05 pass on the fixes: 9 VERIFIED / 3 PARTIAL / 0 NOT-FIXED, one
+merge-blocking residue — the F4 budget's own pre-filter was uncounted
+(N1), the same defect class returning once (R-13 counter at 1). Closed:
+
+- N1: every pair iteration is charged (weighted budget, 1/pair ·
+  1/simple-field · 10/scope-pair); distinct-agent mega-policies refuse
+  fast; the benign 10k shape still loads. Legit policies beyond ~20k rules
+  must be split — documented cost of bounded analysis.
+- N2: the whole non-canonical scope-entry family refuses at load (not only
+  globs) — a rule entry that can never match is a silent dead deny.
+- N3: the log gate binds approversMin ⇔ require_approval, exactly decide()'s
+  shape. N4: the signer name obeys the 4096-char cap.
+- N5 (doc): backslashes are ordinary characters to the kernel; Windows-style
+  normalization is the enforcer's duty (Windows itself out of contract).

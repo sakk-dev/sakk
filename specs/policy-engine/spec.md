@@ -44,14 +44,14 @@ as cases/traces. Shape (illustrative, the schema is the contract):
       "match": {
         "agent": "*",
         "action": "file_write",
-        "scope": ["docs/**", "*.md"],
+        "scope": ["docs/", "README.md"],
         "max_estimated_usd": 0.5
       },
       "verdict": "allow"
     },
     {
       "id": "prod-deploy-four-eyes",
-      "match": { "agent": "*", "action": "deploy", "scope": ["prod/**"] },
+      "match": { "agent": "*", "action": "deploy", "scope": ["prod/"] },
       "verdict": "require_approval",
       "approvers_min": 2
     }
@@ -66,8 +66,11 @@ as cases/traces. Shape (illustrative, the schema is the contract):
 - **`default_verdict` is mandatory.** A regulated profile sets `deny`; the
   schema accepts `allow` for permissive dev use, but there is no implicit
   default — absence is a validation error, not a fallback.
-- **Matchers are globs** (the scorer's existing `matchesAny` family), never
-  regexes — bounded, deterministic, no ReDoS surface.
+- **Matchers are the scorer's prefix rules** (the existing, mutation-drilled
+  `matchesAny` family — `x/` = subtree, `x` = exact path; no wildcards),
+  never regexes — bounded, deterministic, no ReDoS surface. (Amended at
+  implementation: the signed "reuse the scorer matcher" decision implies
+  prefix semantics, which are stricter than the draft's glob examples.)
 - **Amounts gate at reserve-estimate level**: `max_estimated_usd` caps what
   this rule may bless; a context whose estimate exceeds it does NOT match
   this rule and falls through to the next (so a tighter rule below, or the
@@ -75,15 +78,18 @@ as cases/traces. Shape (illustrative, the schema is the contract):
 
 ## Fail-closed clauses (the ones that will be attacked)
 
-| Situation                                        | Answer                                                                                                      |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| Policy file missing / unreadable / wrong schema  | `POLICY_UNREADABLE` — load refuses; enforcer must treat as deny                                             |
-| Empty `rules` + `default_verdict: allow`         | `POLICY_VACUOUS_ALLOW` — refused at load (R-04: a gate that can only say yes is not a gate)                 |
-| Rule that can never fire (shadowed by earlier)   | `POLICY_RULE_SHADOWED` — refused at load, names both rule ids                                               |
-| Context missing a field a matcher needs          | that rule does not match; if NO rule matches → default verdict                                              |
-| `estimated_usd` absent / NaN / negative / string | `CONTEXT_INVALID` — decide refuses, never coerces                                                           |
-| Decision log unwritable (enforcer side)          | enforcer refuses the action (`DECISION_UNLOGGABLE`) — an unauditable allow is a deny                        |
-| Policy swapped between load and decide           | irrelevant by construction: decide() takes the loaded, hashed object; the hash in the log pins what decided |
+| Situation                                                      | Answer                                                                                                                                                        |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Policy file missing / unreadable / wrong schema                | `POLICY_UNREADABLE` — load refuses; enforcer must treat as deny                                                                                               |
+| Empty `rules` + `default_verdict: allow`                       | `POLICY_VACUOUS_ALLOW` — refused at load (R-04: a gate that can only say yes is not a gate)                                                                   |
+| Rule that can never fire (shadowed by earlier)                 | `POLICY_RULE_SHADOWED` — refused at load, names both rule ids                                                                                                 |
+| Context missing a field a matcher needs                        | that rule does not match; if NO rule matches → default verdict                                                                                                |
+| `estimated_usd` absent / NaN / negative / string               | `CONTEXT_INVALID` — decide refuses, never coerces                                                                                                             |
+| Decision log unwritable (enforcer side)                        | enforcer refuses the action (`DECISION_UNLOGGABLE`) — an unauditable allow is a deny                                                                          |
+| Policy swapped between load and decide                         | irrelevant by construction: decide() takes the loaded, hashed object; the hash in the log pins what decided                                                   |
+| Non-canonical context scope (`prod//x`, `./x`, `/x`, `a/../b`) | `CONTEXT_INVALID` — an alias that matches nothing must not slide past a deny (adversarial-review F2); unicode normalization is the ENFORCER's documented duty |
+| Duplicate JSON keys in the policy file                         | `POLICY_SCHEMA_INVALID` — a hashed file must have exactly one meaning on every parser (review F7); replay is DEFINED as this kernel's loadPolicy              |
+| Shadow-scan work budget exceeded                               | `POLICY_TOO_COMPLEX` — bounded time by refusal, never by hanging (review F4)                                                                                  |
 
 ## Open kernel / closed packs
 

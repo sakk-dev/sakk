@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (policy engine kernel — 🔒L2, design signed 2026-10-15)
+
+- `sakk/policy` export: `loadPolicy` (validate + SHA-256 over raw bytes) ·
+  `decide` (pure, first-match-wins, mandatory `default_verdict`) ·
+  `logDecision` (hash-pinned JSONL) · `PolicyError`. New public error codes:
+  `POLICY_UNREADABLE`, `POLICY_SCHEMA_INVALID`, `POLICY_VACUOUS_ALLOW`,
+  `POLICY_RULE_SHADOWED`, `CONTEXT_INVALID`, `DECISION_UNLOGGABLE`. The
+  kernel never imports the ledger; enforcers compose the two.
+- `policies/` reference profiles (`permissive-dev`, `regulated-strict`) ship
+  in the npm package; documented schema at `eval/schemas/policy.schema.json`
+  with a drift-guard test against the kernel's own validation.
+- Path matcher extracted to `src/match.mjs` — ONE implementation shared by
+  scorer and policy kernel (scope entries are prefix rules, not wildcards).
+- Mutation drill grows to 6 mutants (MUT-E rule-order, MUT-F vacuous-allow);
+  the pristine control now runs both suites. `npm run fuzz:policy`: seeded
+  policy/context fuzz (5 invariants, benign + adversarial size probes,
+  replayable seed).
+- Decision log line format (public API): one JSON object per line with
+  `at` (ISO timestamp) · `by` (string|null) · `verdict` · `ruleId`
+  (string|null) · `approversMin` (only on require_approval) · `policyHash`
+  (64-hex) · `context` ({agent, action, scope, estimatedUsd, callId}).
+
+### Fixed (policy kernel adversarial-review round, 2026-10-15)
+
+The R-05 independent review of the first kernel implementation found 4
+merge-blocking defects and 8 more; all fixed with attack-shaped regressions:
+
+- **F1 (critical, fail-open)**: a `default_verdict: "require_approval"`
+  decision carried no `approversMin`, so the reference enforcer's
+  `0 < undefined` comparison acted with ZERO approvals. Every
+  require_approval decision — default path included — now carries it.
+- **F2**: non-canonical scopes (`prod//x`, `./prod/x`, `/prod/x`) matched no
+  rule and slid past explicit denies into later allows; they now refuse
+  (`CONTEXT_INVALID`). Unicode normalization is the enforcer's documented
+  duty.
+- **F3**: the reference enforcer counted the same approver twice toward
+  four-eyes; approvers are now a named set excluding the requester.
+- **F4**: a schema-legal policy could park the quadratic shadow scan for
+  minutes; a work budget now refuses with the new `POLICY_TOO_COMPLEX`, and
+  the fuzz size probe is adversarial-shaped instead of best-case.
+- F5 decide copies the context BEFORE validating (getter TOCTOU); F6 the
+  log gate accepts only decide()-shaped decisions and serialization
+  failures are typed; F7 duplicate JSON keys refuse (one hashed file, one
+  meaning); F10 glob-looking scope entries refuse at load; F11 context
+  strings cap at 4096 chars; F9 the schema drift guard now catalogs every
+  known kernel-vs-schema divergence honestly.
+- Verify-pass round (N1–N4): the shadow-scan budget now charges every pair
+  iteration including pre-filtered ones (the guard's own bypass was the
+  last hole — distinct-agent mega-policies spun unbounded); ALL
+  non-canonical scope entries refuse at load, not only globs; the log gate
+  binds `approversMin` to `require_approval` exactly as decide() emits;
+  the signer name obeys the 4096-char cap. Policies beyond ~20k rules must
+  be split (bounded-analysis cost, documented).
+
 ### Fixed (stranger-test findings, 2026-10-15)
 
 - README failure-path sample now shows the real recovery sequence: settle the

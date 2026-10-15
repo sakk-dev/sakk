@@ -5,7 +5,8 @@
   "type": "module",
   "main": "src/ledger.mjs",
   "exports": {
-    ".": "./src/ledger.mjs"
+    ".": "./src/ledger.mjs",
+    "./policy": "./src/policy.mjs"
   },
   "bin": {
     "sakk": "bin/sakk.mjs"
@@ -17,7 +18,8 @@
     "drill": "sh scripts/mutation-drill.sh",
     "format": "npx -y prettier@3.9.10 --write .",
     "format:check": "npx -y prettier@3.9.10 --check .",
-    "fuzz": "node scripts/invariant-fuzz.mjs"
+    "fuzz": "node scripts/invariant-fuzz.mjs",
+    "fuzz:policy": "node scripts/policy-fuzz.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -49,6 +51,7 @@
   "files": [
     "src",
     "bin",
+    "policies",
     "README.md",
     "LICENSE"
   ]

@@ -1,0 +1,22 @@
+{
+  "schema": "sakk-policy.v1",
+  "default_verdict": "allow",
+  "rules": [
+    {
+      "id": "no-prod-deploys",
+      "match": { "action": "deploy", "scope": ["prod/"] },
+      "verdict": "deny"
+    },
+    {
+      "id": "small-spend-auto",
+      "match": { "max_estimated_usd": 2 },
+      "verdict": "allow"
+    },
+    {
+      "id": "expensive-call-needs-eyes",
+      "match": {},
+      "verdict": "require_approval",
+      "approvers_min": 1
+    }
+  ]
+}
