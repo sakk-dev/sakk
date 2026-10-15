@@ -67,6 +67,12 @@ is the test of the test. (`npm run fuzz` additionally
 replays seeded random attacks on the ledger's money invariants —
 `SAKK_FUZZ_SEED=<n>` reproduces any reported seed exactly.)
 
+Shortcut for the whole exercise: `npm run certificate` runs §2–§4 plus both
+test suites end-to-end and renders the result as a one-page CERTIFICATE.md.
+It is fail-closed by construction — any red gate, stale drill evidence, or
+uncommitted tree refuses with a `CERT_*` code and emits nothing, so the
+document's existence is itself the claim.
+
 ## 5. Read a run's evidence (if you were handed an out-dir)
 
 Each case directory under an out-dir is runner-owned — the agent under test

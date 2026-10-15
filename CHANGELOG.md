@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (string|null) · `approversMin` (only on require_approval) · `policyHash`
   (64-hex) · `context` ({agent, action, scope, estimatedUsd, callId}).
 
+### Added (gate non-regression certificate)
+
+- `npm run certificate`: executes every gate (both suites, gold manifest,
+  6-mutant drill with evidence-freshness verification against the current
+  bytes, both seeded fuzz legs, double-run reproducibility fingerprint) and
+  renders CERTIFICATE.md. Fail-closed: any red gate, stale drill evidence
+  or dirty tree refuses with a `CERT_*` code and emits nothing — the
+  document's existence is the claim.
+
 ### Fixed (policy kernel adversarial-review round, 2026-10-15)
 
 The R-05 independent review of the first kernel implementation found 4
