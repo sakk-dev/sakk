@@ -32,7 +32,11 @@
               "scope": {
                 "type": "array",
                 "minItems": 1,
-                "items": { "type": "string", "minLength": 1, "pattern": "^[^/*][^*]*$" }
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!\\.\\.?(/|$))(?!.*//)[^/*][^*]*$"
+                }
               },
               "max_estimated_usd": { "type": "number", "exclusiveMinimum": 0 }
             }

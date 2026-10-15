@@ -437,11 +437,21 @@ describe('logDecision: an unauditable allow is a deny', () => {
       { ...decision, ruleId: 42 },
       { ...decision, context: 'not-an-object' },
       { ...decision, verdict: 'require_approval', approversMin: 0 },
+      // N3: approversMin iff require_approval — decide() never emits these
+      { ...decision, verdict: 'require_approval' },
+      { ...decision, approversMin: 3 },
     ])
       expectCode(
         () => logDecision({ decisionLogPath: log, decision: forged, by: 'x' }),
         'DECISION_UNLOGGABLE',
       );
+  });
+  test('N4: an unbounded signer name cannot flood the audit log', () => {
+    expectCode(
+      () =>
+        logDecision({ decisionLogPath: join(tdir(), 'd.jsonl'), decision, by: 'x'.repeat(5000) }),
+      'DECISION_UNLOGGABLE',
+    );
   });
   test('a decision without verdict/hash cannot be logged', () => {
     expectCode(
@@ -493,6 +503,51 @@ describe('adversarial-review round: load-side attacks (F4/F7/F10/F11)', () => {
       () => decide({ ...loaded, context: ctx({ callId: 'x'.repeat(5000) }) }),
       'CONTEXT_INVALID',
     );
+  });
+  test('N1 attack (verify pass): uncounted pre-filter spin — distinct-agent mega-policy refuses, never idles', () => {
+    const rules = Array.from({ length: 25_000 }, (_, i) => ({
+      id: `r${i}`,
+      match: { agent: `agent-${i}` },
+      verdict: 'deny',
+    }));
+    const t0 = Date.now();
+    expectCode(
+      () => loadPolicy({ policyPath: writePolicy(base({ rules })) }),
+      'POLICY_TOO_COMPLEX',
+    );
+    assert.ok(Date.now() - t0 < 10000, 'bounded by refusal means FAST refusal');
+  });
+  test('N1 boundary: the benign 10k distinct-agent policy still loads', () => {
+    const rules = Array.from({ length: 10_000 }, (_, i) => ({
+      id: `r${i}`,
+      match: { agent: `agent-${i}` },
+      verdict: 'deny',
+    }));
+    const { policy } = loadPolicy({ policyPath: writePolicy(base({ rules })) });
+    assert.equal(policy.rules.length, 10_000);
+  });
+  test('N2 attack: the whole dead-entry family refuses at load, not just globs', () => {
+    for (const entry of ['docs//x', './docs', 'a/../b', '.', 'docs/.', '/', 'docs//'])
+      expectCode(
+        () =>
+          loadPolicy({
+            policyPath: writePolicy(
+              base({ rules: [{ id: 'd', match: { scope: [entry] }, verdict: 'deny' }] }),
+            ),
+          }),
+        'POLICY_SCHEMA_INVALID',
+      );
+    // legit forms stay legit: dir rule, exact file, dot-named dir
+    const { policy } = loadPolicy({
+      policyPath: writePolicy(
+        base({
+          rules: [
+            { id: 'ok', match: { scope: ['docs/', 'a/b.mjs', '.github/'] }, verdict: 'deny' },
+          ],
+        }),
+      ),
+    });
+    assert.equal(policy.rules[0].match.scope.length, 3);
   });
   test('F4 attack: the quadratic shadow-scan shape refuses fast with POLICY_TOO_COMPLEX', () => {
     const common = Array.from({ length: 29 }, (_, k) => `shared/${k}/`);

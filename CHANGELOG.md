@@ -53,6 +53,13 @@ merge-blocking defects and 8 more; all fixed with attack-shaped regressions:
   meaning); F10 glob-looking scope entries refuse at load; F11 context
   strings cap at 4096 chars; F9 the schema drift guard now catalogs every
   known kernel-vs-schema divergence honestly.
+- Verify-pass round (N1–N4): the shadow-scan budget now charges every pair
+  iteration including pre-filtered ones (the guard's own bypass was the
+  last hole — distinct-agent mega-policies spun unbounded); ALL
+  non-canonical scope entries refuse at load, not only globs; the log gate
+  binds `approversMin` to `require_approval` exactly as decide() emits;
+  the signer name obeys the 4096-char cap. Policies beyond ~20k rules must
+  be split (bounded-analysis cost, documented).
 
 ### Fixed (stranger-test findings, 2026-10-15)
 

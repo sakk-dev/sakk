@@ -71,3 +71,20 @@ fixed with attack-shaped regressions; the contract is amended accordingly:
   of named approvers excluding the requester and refuses unreadable
   requirements.
 - New public codes: `POLICY_TOO_COMPLEX`. Context strings cap at 4096 chars.
+
+### Verify-pass round (N findings, 2026-10-15)
+
+Second R-05 pass on the fixes: 9 VERIFIED / 3 PARTIAL / 0 NOT-FIXED, one
+merge-blocking residue — the F4 budget's own pre-filter was uncounted
+(N1), the same defect class returning once (R-13 counter at 1). Closed:
+
+- N1: every pair iteration is charged (weighted budget, 1/pair ·
+  1/simple-field · 10/scope-pair); distinct-agent mega-policies refuse
+  fast; the benign 10k shape still loads. Legit policies beyond ~20k rules
+  must be split — documented cost of bounded analysis.
+- N2: the whole non-canonical scope-entry family refuses at load (not only
+  globs) — a rule entry that can never match is a silent dead deny.
+- N3: the log gate binds approversMin ⇔ require_approval, exactly decide()'s
+  shape. N4: the signer name obeys the 4096-char cap.
+- N5 (doc): backslashes are ordinary characters to the kernel; Windows-style
+  normalization is the enforcer's duty (Windows itself out of contract).

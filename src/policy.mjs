@@ -66,6 +66,16 @@ function validatePolicyDoc(doc, policyPath) {
       for (const s of r.match.scope) {
         if (typeof s !== 'string' || s === '' || s.startsWith('/'))
           inv(`rule "${r.id}": scope entries are relative path prefix rules`, { got: s });
+        // Review finding N2 (verify pass): ANY entry the matcher can never
+        // satisfy is a silent dead rule — 'docs//x', './docs', 'a/../b'
+        // fail-closed on the context side (F2), so as RULE entries they
+        // could only ever disable a deny. Refuse the whole family.
+        const dirBase = s.endsWith('/') ? s.slice(0, -1) : s;
+        if (!isCanonicalRelPath(dirBase))
+          inv(
+            `rule "${r.id}": scope entry "${s}" is non-canonical and can never match any valid context`,
+            { got: s },
+          );
         // Review finding F10: prefix semantics have no wildcards — a 'prod/**'
         // entry would be a dead rule that silently never fires.
         if (s.includes('*'))
@@ -114,25 +124,31 @@ function fieldCovers(a, b, field) {
 // for minutes. Two defenses: a cheap compatibility pre-filter so benign
 // many-rule policies stay near-linear, and a hard work budget — exceeding it
 // REFUSES (POLICY_TOO_COMPLEX): bounded time by refusal, never by hanging.
-const SHADOW_SCAN_BUDGET = 20_000_000;
+// Weighted units: 1 per pair ITERATION (review N1: the pre-filtered fast
+// path is charged too — a guard's own bypass is an attack surface), 1 per
+// simple field check, 10 per scope-entry comparison.
+const SHADOW_SCAN_BUDGET = 200_000_000;
 
 function findShadowedRule(rules, policyPath) {
   let ops = 0;
+  const overBudget = () =>
+    bad(
+      'POLICY_TOO_COMPLEX',
+      `shadow analysis exceeded its work budget — split the policy or reduce overlapping rules (${policyPath})`,
+      { policyPath, budget: SHADOW_SCAN_BUDGET },
+    );
   const coversWithBudget = (a, b, field) => {
     if (field === 'scope' && field in a.match && field in b.match)
-      ops += a.match.scope.length * b.match.scope.length;
+      ops += 10 * a.match.scope.length * b.match.scope.length;
     else ops += 1;
-    if (ops > SHADOW_SCAN_BUDGET)
-      bad(
-        'POLICY_TOO_COMPLEX',
-        `shadow analysis exceeded its work budget — simplify the policy (fewer overlapping scope lists) (${policyPath})`,
-        { policyPath, budget: SHADOW_SCAN_BUDGET },
-      );
+    if (ops > SHADOW_SCAN_BUDGET) overBudget();
     return fieldCovers(a, b, field);
   };
   for (let j = 1; j < rules.length; j++) {
     const mj = rules[j].match;
     for (let i = 0; i < j; i++) {
+      ops += 1; // N1: EVERY pair costs — including ones the pre-filter skips
+      if (ops > SHADOW_SCAN_BUDGET) overBudget();
       const mi = rules[i].match;
       // pre-filter: i can only cover j if its agent/action constraint is
       // absent, '*', or literally equal — O(1), no allocation
@@ -331,10 +347,12 @@ export function logDecision({ decisionLogPath, decision, by }) {
       decision.context === null ||
       isPlainObject(decision.context)
     ) ||
-    !(
-      decision.approversMin === undefined ||
-      (Number.isInteger(decision.approversMin) && decision.approversMin >= 1)
-    )
+    // N3: approversMin iff require_approval — exactly what decide() emits
+    !(decision.verdict === 'require_approval'
+      ? Number.isInteger(decision.approversMin) && decision.approversMin >= 1
+      : decision.approversMin === undefined) ||
+    // N4: the enforcer-supplied signer name obeys the same string cap
+    (typeof by === 'string' && by.length > MAX_CONTEXT_STRING)
   )
     bad('DECISION_UNLOGGABLE', 'only a decide()-shaped decision can enter the audit trail', {
       decisionLogPath,

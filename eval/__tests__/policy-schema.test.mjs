@@ -70,6 +70,16 @@ describe('policy schema ↔ kernel drift guard', () => {
         default_verdict: 'deny',
         rules: [{ id: 'x', match: { scope: ['prod/**'] }, verdict: 'deny' }],
       },
+      {
+        schema: 'sakk-policy.v1',
+        default_verdict: 'deny',
+        rules: [{ id: 'x', match: { scope: ['docs//x'] }, verdict: 'deny' }],
+      },
+      {
+        schema: 'sakk-policy.v1',
+        default_verdict: 'deny',
+        rules: [{ id: 'x', match: { scope: ['./docs'] }, verdict: 'deny' }],
+      },
     ]) {
       const v = validateAgainst(doc, 'policy.schema.json');
       assert.equal(v.ok, false, `schema accepted: ${JSON.stringify(doc).slice(0, 80)}`);
@@ -108,6 +118,15 @@ describe('policy schema ↔ kernel drift guard', () => {
           ],
         },
         'POLICY_RULE_SHADOWED',
+      ],
+      [
+        // N2: mid-path '.'/'..' segments slip the shape regex but are dead
+        {
+          schema: 'sakk-policy.v1',
+          default_verdict: 'deny',
+          rules: [{ id: 'x', match: { scope: ['a/./b'] }, verdict: 'deny' }],
+        },
+        'POLICY_SCHEMA_INVALID',
       ],
     ];
     for (const [doc, expected] of CATALOG) {
