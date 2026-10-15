@@ -43,7 +43,7 @@ never new ones (two exceptions below).
 | unknown tool / malformed JSON-RPC          | protocol error response; never a crash, never a silent drop                                                                                              |
 | agent sends `scope` aliases (`prod//x`)    | kernel refuses `CONTEXT_INVALID` (F2) — the server does NOT normalize paths in v1; normalization duty documented in the tool description the agent reads |
 
-New codes introduced by this block: `MCP_LEDGER_PATH_REQUIRED` only (startup).
+New codes introduced by this block: `MCP_LEDGER_PATH_REQUIRED` (startup) and the two policy-verdict surfaces `POLICY_DENIED` / `POLICY_APPROVAL_REQUIRED` (tool refusals carrying the full decision). Decision log lands as `sakk-decisions.jsonl` beside the ledger (the alerts-file convention).
 
 ## Policy pinning
 

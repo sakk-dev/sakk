@@ -11,6 +11,8 @@ import {
   forceUnlock,
   LedgerError,
 } from '../src/ledger.mjs';
+import { loadPolicy } from '../src/policy.mjs';
+import { startMcpServer } from '../src/mcp.mjs';
 
 /**
  * sakk CLI — the smallest useful surface over the ledger.
@@ -57,6 +59,7 @@ Usage:
   sakk status [--ledger <path>] [--json]                  totals, entries, reconciliation state
   sakk reconcile --by <name> [--ledger <path>]            clear the reconciliation flag (signed)
   sakk unlock --by <name> [--ledger <path>]               break a stuck lock by hand (signed)
+  sakk mcp --ledger <path> [--policy <path>]              MCP stdio server: reserve/settle/status as tools
 
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status)
@@ -179,6 +182,35 @@ if (cmd === 'init') {
     fail(e);
   }
   console.log(r.removed ? `lock removed by ${by}: ${p}.lock` : `no lock present: ${p}.lock`);
+} else if (cmd === 'mcp') {
+  // The MCP gate takes NO default ledger path: an MCP server's cwd is
+  // whatever the agent host chose, and a gate quietly booking into a
+  // guessed file is not a gate (specs/mcp-server/ fail-closed table).
+  const p = val('ledger') ?? (process.env.SAKK_LEDGER_PATH || undefined);
+  if (typeof p !== 'string' || p === '') {
+    console.error(
+      'MCP_LEDGER_PATH_REQUIRED: the MCP gate needs an explicit ledger (--ledger or SAKK_LEDGER_PATH)',
+    );
+    process.exit(2);
+  }
+  const policyPath = val('policy') ?? (process.env.SAKK_POLICY_PATH || undefined);
+  let loaded = null;
+  if (policyPath !== undefined) {
+    try {
+      loaded = loadPolicy({ policyPath });
+    } catch (e) {
+      console.error(String(e.message));
+      process.exit(2);
+    }
+  }
+  startMcpServer({
+    ledgerPath: p,
+    loaded,
+    decisionLogPath: join(dirname(resolve(p)), 'sakk-decisions.jsonl'),
+    input: process.stdin,
+    output: process.stdout,
+    version: pkg.version,
+  });
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);
 } else {

@@ -29,6 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (string|null) · `approversMin` (only on require_approval) · `policyHash`
   (64-hex) · `context` ({agent, action, scope, estimatedUsd, callId}).
 
+### Added (MCP enforcer)
+
+- `sakk mcp`: zero-dependency MCP stdio server exposing `sakk_reserve` /
+  `sakk_settle` / `sakk_status` — the policy kernel's first enforcer.
+  Ledger path is required (`MCP_LEDGER_PATH_REQUIRED`, no cwd default); a
+  configured policy is loaded once, hash-pinned, and refuses startup on
+  any `POLICY_*` code. Policy refusals surface as `POLICY_DENIED` /
+  `POLICY_APPROVAL_REQUIRED` (public API) with the full decision attached;
+  every decision logs to `sakk-decisions.jsonl` beside the ledger. 1 MiB
+  frame cap; contract tests drive the real binary over real frames,
+  including a thinness proof (library replay yields identical books).
+
 ### Added (gate non-regression certificate)
 
 - `npm run certificate`: executes every gate (both suites, gold manifest,
