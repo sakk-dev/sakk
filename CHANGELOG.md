@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (policy engine kernel — 🔒L2, design signed 2026-10-15)
+
+- `sakk/policy` export: `loadPolicy` (validate + SHA-256 over raw bytes) ·
+  `decide` (pure, first-match-wins, mandatory `default_verdict`) ·
+  `logDecision` (hash-pinned JSONL) · `PolicyError`. New public error codes:
+  `POLICY_UNREADABLE`, `POLICY_SCHEMA_INVALID`, `POLICY_VACUOUS_ALLOW`,
+  `POLICY_RULE_SHADOWED`, `CONTEXT_INVALID`, `DECISION_UNLOGGABLE`. The
+  kernel never imports the ledger; enforcers compose the two.
+- `policies/` reference profiles (`permissive-dev`, `regulated-strict`) ship
+  in the npm package; documented schema at `eval/schemas/policy.schema.json`
+  with a drift-guard test against the kernel's own validation.
+- Path matcher extracted to `src/match.mjs` — ONE implementation shared by
+  scorer and policy kernel (scope entries are prefix rules, not wildcards).
+- Mutation drill grows to 6 mutants (MUT-E rule-order, MUT-F vacuous-allow);
+  the pristine control now runs both suites. `npm run fuzz:policy`: seeded
+  policy/context fuzz (5 invariants, 10k-rule probe, replayable seed).
+
 ### Fixed (stranger-test findings, 2026-10-15)
 
 - README failure-path sample now shows the real recovery sequence: settle the

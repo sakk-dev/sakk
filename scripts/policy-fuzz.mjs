@@ -1,0 +1,145 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Policy-kernel invariant fuzz. Seeded PRNG → random policies (valid,
+// shadowed, vacuous and malformed alike) and random contexts (honest and
+// pathological). Replay any reported seed exactly:
+//   SAKK_POLICY_FUZZ_SEED=<n> npm run fuzz:policy
+//
+// Invariants (any violation exits 1 with the seed):
+//  I1 decide() is deterministic: same loaded policy + same context, twice,
+//     deep-equal results.
+//  I2 the verdict is either the matched rule's verdict or the default —
+//     nothing else exists.
+//  I3 ruleId === null  ⟺  the default verdict was applied.
+//  I4 the kernel only ever throws typed PolicyError (never TypeError & co).
+//  I5 a 10k-rule policy loads and decides in bounded time (no quadratic
+//     blow-up in the decidable shadow check's hot path).
+
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { loadPolicy, decide, PolicyError } from '../src/policy.mjs';
+
+const seed = Number(process.env.SAKK_POLICY_FUZZ_SEED ?? Date.now());
+let s = seed >>> 0 || 1;
+const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
+const pick = (a) => a[Math.floor(rnd() * a.length)];
+const dir = mkdtempSync(join(tmpdir(), 'sakk-pfuzz-'));
+let fileNo = 0;
+const write = (doc) => {
+  const p = join(dir, `p${fileNo++}.json`);
+  writeFileSync(p, typeof doc === 'string' ? doc : JSON.stringify(doc));
+  return p;
+};
+
+const ACTIONS = ['file_write', 'model_call', 'deploy', 'rm_rf', '*'];
+const AGENTS = ['dev-1', 'bot-7', '*'];
+const SCOPES = [['docs/'], ['src/', 'test/'], ['prod/'], ['a/b.mjs']];
+const VERDICTS = ['allow', 'deny', 'require_approval'];
+
+function genRule(i) {
+  const match = {};
+  if (rnd() < 0.5) match.agent = pick(AGENTS);
+  if (rnd() < 0.6) match.action = pick(ACTIONS);
+  if (rnd() < 0.4) match.scope = pick(SCOPES);
+  if (rnd() < 0.5) match.max_estimated_usd = Math.round(rnd() * 500) / 100 + 0.01;
+  const verdict = pick(VERDICTS);
+  const r = { id: `r${i}`, match, verdict };
+  if (verdict === 'require_approval' && rnd() < 0.5) r.approvers_min = 1 + Math.floor(rnd() * 3);
+  return r;
+}
+function genPolicy() {
+  if (rnd() < 0.12) {
+    // malformed on purpose — must surface as a TYPED refusal
+    return pick([
+      '{broken',
+      JSON.stringify({ schema: 'nope', default_verdict: 'deny', rules: [] }),
+      JSON.stringify({ schema: 'sakk-policy.v1', rules: [] }),
+      JSON.stringify({
+        schema: 'sakk-policy.v1',
+        default_verdict: 'deny',
+        rules: [{ id: 'x', match: { max_estimated_usd: '2' }, verdict: 'deny' }],
+      }),
+    ]);
+  }
+  const n = Math.floor(rnd() * 6);
+  return {
+    schema: 'sakk-policy.v1',
+    default_verdict: pick(VERDICTS),
+    rules: Array.from({ length: n }, (_, i) => genRule(i)),
+  };
+}
+function genContext() {
+  const bad = rnd() < 0.15;
+  return {
+    agent: pick(['dev-1', 'bot-7', 'intruder', undefined]),
+    action: pick(['file_write', 'model_call', 'deploy', 'alien', undefined]),
+    scope: pick(['docs/x.md', 'src/a.mjs', 'prod/api', '../up', '/abs', 'a//b', undefined]),
+    estimatedUsd: bad ? pick([NaN, -1, '1', Infinity, undefined]) : Math.round(rnd() * 600) / 100,
+    callId: bad && rnd() < 0.3 ? '' : `c-${Math.floor(rnd() * 1e6)}`,
+  };
+}
+
+const die = (why, extra = {}) => {
+  console.error(`policy-fuzz FAILED (seed=${seed}): ${why}`, JSON.stringify(extra));
+  process.exit(1);
+};
+
+const refusals = {};
+let decisions = 0;
+const STEPS = 220;
+for (let step = 0; step < STEPS; step++) {
+  let loaded;
+  try {
+    loaded = loadPolicy({ policyPath: write(genPolicy()) });
+  } catch (e) {
+    if (!(e instanceof PolicyError)) die(`I4 load threw ${e.constructor.name}: ${e.message}`);
+    refusals[e.code] = (refusals[e.code] ?? 0) + 1;
+    continue;
+  }
+  for (let k = 0; k < 6; k++) {
+    const context = genContext();
+    let a;
+    try {
+      a = decide({ ...loaded, context });
+    } catch (e) {
+      if (!(e instanceof PolicyError)) die(`I4 decide threw ${e.constructor.name}: ${e.message}`);
+      refusals[e.code] = (refusals[e.code] ?? 0) + 1;
+      continue;
+    }
+    const b = decide({ ...loaded, context });
+    if (JSON.stringify(a) !== JSON.stringify(b)) die('I1 nondeterministic decide', { a, b });
+    const rule = loaded.policy.rules.find((r) => r.id === a.ruleId) ?? null;
+    if (a.ruleId === null) {
+      if (a.verdict !== loaded.policy.default_verdict)
+        die('I3 null ruleId but non-default verdict', a);
+    } else {
+      if (!rule) die('I2 decision names a rule that does not exist', a);
+      if (rule.verdict !== a.verdict) die('I2 verdict differs from the matched rule', a);
+      if (rule.verdict === 'require_approval' && a.approversMin !== (rule.approvers_min ?? 1))
+        die('I2 approversMin mismatch', a);
+    }
+    decisions++;
+  }
+}
+
+// I5: size probe — unique agents so nothing is provably shadowed.
+const bigRules = Array.from({ length: 10_000 }, (_, i) => ({
+  id: `big-${i}`,
+  match: { agent: `agent-${i}`, max_estimated_usd: 1 + (i % 7) },
+  verdict: VERDICTS[i % 3],
+  ...(VERDICTS[i % 3] === 'require_approval' ? { approvers_min: 1 } : {}),
+}));
+const t0 = Date.now();
+const bigLoaded = loadPolicy({
+  policyPath: write({ schema: 'sakk-policy.v1', default_verdict: 'deny', rules: bigRules }),
+});
+decide({ ...bigLoaded, context: { agent: 'agent-9999', estimatedUsd: 0.5, callId: 'big' } });
+const bigMs = Date.now() - t0;
+if (bigMs > 30_000) die(`I5 10k-rule policy took ${bigMs}ms`);
+
+console.log(
+  `policy-fuzz: ${STEPS} policies, ${decisions} decisions, refusals ${JSON.stringify(
+    refusals,
+  )}, 10k-rule probe ${bigMs}ms — all invariants held (seed=${seed})`,
+);

@@ -44,7 +44,7 @@ as cases/traces. Shape (illustrative, the schema is the contract):
       "match": {
         "agent": "*",
         "action": "file_write",
-        "scope": ["docs/**", "*.md"],
+        "scope": ["docs/", "README.md"],
         "max_estimated_usd": 0.5
       },
       "verdict": "allow"
@@ -66,8 +66,11 @@ as cases/traces. Shape (illustrative, the schema is the contract):
 - **`default_verdict` is mandatory.** A regulated profile sets `deny`; the
   schema accepts `allow` for permissive dev use, but there is no implicit
   default — absence is a validation error, not a fallback.
-- **Matchers are globs** (the scorer's existing `matchesAny` family), never
-  regexes — bounded, deterministic, no ReDoS surface.
+- **Matchers are the scorer's prefix rules** (the existing, mutation-drilled
+  `matchesAny` family — `x/` = subtree, `x` = exact path; no wildcards),
+  never regexes — bounded, deterministic, no ReDoS surface. (Amended at
+  implementation: the signed "reuse the scorer matcher" decision implies
+  prefix semantics, which are stricter than the draft's glob examples.)
 - **Amounts gate at reserve-estimate level**: `max_estimated_usd` caps what
   this rule may bless; a context whose estimate exceeds it does NOT match
   this rule and falls through to the next (so a tighter rule below, or the

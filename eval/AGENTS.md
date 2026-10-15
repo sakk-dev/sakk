@@ -9,6 +9,9 @@ where stricter.
   edit them with the severity of source code.
 - **Never copy anything from `gold/` into `fixtures/` or any agent-visible
   surface.** The runner refuses runs on manifest mismatch.
+- **The path matcher lives in `src/match.mjs`**, shared with the policy
+  kernel. Its behavior is part of the scorer's contract (MUT-A drills it):
+  change it only with both suites green and the drill re-run.
 - **After ANY change under `gold/`**, regenerate the manifest:
   `cd eval/gold && find . -type f ! -name manifest.sha256 -print0 | xargs -0 shasum -a 256 | sed 's|  \\./|  |' | sort -k2 > manifest.sha256`
 - Machine logs (trace, gate-probe, test log) are runner-owned and live

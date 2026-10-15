@@ -119,10 +119,33 @@ verify on your own clean machine in under 30 minutes, without trusting us.
 
 Accounting rule: `settled actuals + outstanding reservations (at estimated max) + this estimate >= cap ⇒ refuse`.
 
+### `sakk/policy` — the decision kernel
+
+```js
+import { loadPolicy, decide, logDecision, PolicyError } from 'sakk/policy';
+```
+
+A declarative, hash-pinned answer to _"may this agent do this action at this
+cost?"_, decided **before** any reservation exists. `decide()` is pure: same
+policy bytes + same context → same verdict on any machine, and every logged
+decision carries the SHA-256 of the policy file that produced it — "why was
+this allowed on March 3rd?" is answered by replay, not by trust. Policy files
+(`sakk-policy.v1`, plain JSON) read top-to-bottom, **first match wins**, the
+`default_verdict` is mandatory, and everything pathological refuses:
+`POLICY_VACUOUS_ALLOW` (a gate that can only say yes), `POLICY_RULE_SHADOWED`
+(provably dead rules), `CONTEXT_INVALID` (no coercion), `DECISION_UNLOGGABLE`
+(an unauditable allow is a deny). Two reference policies ship in
+[`policies/`](policies/) — a permissive dev profile and a regulated
+three-tier profile. The kernel never imports the ledger and never performs
+actions; an enforcer composes the two: `decide()` → on `allow` only →
+`reserve()`.
+
 ## Roadmap — honest edition
 
 - [x] CLI (`sakk init / sakk status / sakk reconcile / sakk unlock`)
 - [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — ships in [`eval/`](eval/)
+- [x] Policy kernel (`sakk/policy`): declarative `sakk-policy.v1`, pure `decide()`, hash-pinned decision log
+- [ ] MCP server enforcer: reserve/settle/status as tools, policy-gated
 - [ ] `sakk settle` CLI command (late settlement without writing code)
 - [ ] Evidence packs: replayable, manifest-hashed run records for third-party audit (what [docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) verifies today, made portable)
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise

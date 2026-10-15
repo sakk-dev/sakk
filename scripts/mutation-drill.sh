@@ -29,9 +29,9 @@ copy_repo() {
   printf '%s' "$dir"
 }
 
-# run_drill <id> <file> <anchor> <replacement> <named-test-substring>
+# run_drill <id> <file> <anchor> <replacement> <named-test-substring> [npm-test-script]
 run_drill() {
-  id="$1"; file="$2"; anchor="$3"; replacement="$4"; named="$5"
+  id="$1"; file="$2"; anchor="$3"; replacement="$4"; named="$5"; ts="${6:-test:eval}"
   dir="$(copy_repo)"
   target="$dir/$file"
   before_hash="$(shasum -a 256 "$target" | cut -d' ' -f1)"
@@ -48,7 +48,7 @@ run_drill() {
     FAILED=1; rm -rf "$dir"; return
   fi
   after_hash="$(shasum -a 256 "$target" | cut -d' ' -f1)"
-  out="$(cd "$dir" && npm run --silent test:eval 2>&1)"
+  out="$(cd "$dir" && npm run --silent "$ts" 2>&1)"
   status=$?
   if [ $status -eq 0 ]; then
     log "[$id] MUTANT SURVIVED: suite stayed green after mutating $file — the guarding test does not exist"
@@ -98,9 +98,24 @@ run_drill MUT-D eval/lib/scorer.mjs \
   "const realModelPassRate = rateOf(modelCases);" \
   "FAKE mode: real_model_case_pass_rate must be null"
 
-# Pristine control: an unmutated copy must be fully green
+# MUT-E: evaluate policy rules in REVERSE order → the ordering test must die red
+# (policy suite lives under `npm test`, hence the 6th argument)
+run_drill MUT-E src/policy.mjs \
+  "for (const rule of policy.rules) {" \
+  "for (const rule of [...policy.rules].reverse()) {" \
+  "first match wins: the earlier of two overlapping rules decides" \
+  "test"
+
+# MUT-F: let an empty allow-by-default policy load → the vacuous-gate test must die red
+run_drill MUT-F src/policy.mjs \
+  "if (doc.rules.length === 0 && doc.default_verdict === 'allow')" \
+  "if (false)" \
+  "POLICY_VACUOUS_ALLOW: an empty allow-by-default policy refuses at load" \
+  "test"
+
+# Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
-out="$(cd "$dir" && npm run --silent test:eval 2>&1)"
+out="$(cd "$dir" && npm run --silent test:all 2>&1)"
 if [ $? -eq 0 ]; then
   log "[CONTROL] pristine copy green"
 else
@@ -111,7 +126,7 @@ fi
 rm -rf "$dir"
 
 if [ "$FAILED" -eq 0 ]; then
-  log "== DRILL PASS: 4/4 mutants killed by their named tests; control green. Report: $REPORT =="
+  log "== DRILL PASS: 6/6 mutants killed by their named tests; control green. Report: $REPORT =="
   exit 0
 else
   log "== DRILL FAIL: see $REPORT =="
