@@ -31,6 +31,19 @@ export class CertError extends Error {
 
 const sha256File = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
+/** node --test prints `# pass 103` (TAP) on some setups and `\u2139 pass 103`
+ * (spec reporter) on others — the first real certificate run discovered the
+ * second form the hard way (summary parsed to 0/0 and the gate still
+ * signed: R-04). Both prefixes parse; an unparsable or zero-test summary
+ * REFUSES upstream, never a "0/0 pass" line on a certificate. */
+export function parseSuiteSummary(out) {
+  const pick = (field) => {
+    const m = [...out.matchAll(new RegExp(`[#\u2139] ${field} (\\d+)`, 'g'))].at(-1);
+    return m ? Number(m[1]) : null;
+  };
+  return { tests: pick('tests'), pass: pick('pass'), fail: pick('fail') };
+}
+
 /** F8, machine-enforced: every `sha256 before=` the drill report testifies
  * about must equal the file's CURRENT hash — a drill that ran on different
  * bytes is a testimony about someone else's code. */
@@ -130,8 +143,12 @@ if (isMain) {
     const r = spawnSync(cmd, args, { cwd: ROOT, encoding: 'utf8', timeout, maxBuffer: 1 << 26 });
     return { exit: r.status ?? -1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
   };
-  const tap = (out, field) =>
-    Number((out.match(new RegExp(`# ${field} (\\d+)`, 'g'))?.at(-1) ?? '').split(' ').at(-1));
+  const suiteCounts = (out, label) => {
+    const c = parseSuiteSummary(out);
+    if (!(Number.isInteger(c.tests) && c.tests > 0 && c.fail === 0))
+      refuse('CERT_GATE_RED', `${label} summary unparsable or zero tests (${JSON.stringify(c)})`);
+    return `${c.pass}/${c.tests} pass, ${c.fail} fail`;
+  };
 
   // Gate 0: the tree itself
   const dirty = execFileSync('git', ['status', '--porcelain'], {
@@ -232,9 +249,9 @@ if (isMain) {
       repro: h1 === h2,
     },
     suites: {
-      'unit + CLI': `${tap(unit.out, 'pass')}/${tap(unit.out, 'tests')} pass, ${tap(unit.out, 'fail')} fail`,
+      'unit + CLI': suiteCounts(unit.out, 'unit suite'),
       'gold manifest': (validate.out.match(/gold-manifest: \S+/) ?? ['gold-manifest: OK'])[0],
-      'eval harness': `${tap(evalSuite.out, 'pass')}/${tap(evalSuite.out, 'tests')} pass, ${tap(evalSuite.out, 'fail')} fail`,
+      'eval harness': suiteCounts(evalSuite.out, 'eval suite'),
     },
     drill: freshness,
     fuzz: {

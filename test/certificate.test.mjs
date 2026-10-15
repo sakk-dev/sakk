@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   verifyDrillFreshness,
   renderCertificate,
+  parseSuiteSummary,
   CertError,
 } from '../scripts/gate-certificate.mjs';
 
@@ -42,6 +43,28 @@ describe('F8 machine-enforced: drill evidence freshness', () => {
     const r = verifyDrillFreshness({ reportText: 'no hashes here', fileHashOf: () => 'x' });
     assert.equal(r.fresh, false);
     assert.equal(r.checked, 0);
+  });
+});
+
+describe('suite-summary parsing survives both node reporters (the 0/0 incident)', () => {
+  test('TAP # prefix and spec \u2139 prefix both parse; last summary wins', () => {
+    assert.deepEqual(parseSuiteSummary('# tests 103\n# pass 103\n# fail 0\n'), {
+      tests: 103,
+      pass: 103,
+      fail: 0,
+    });
+    assert.deepEqual(parseSuiteSummary('\u2139 tests 59\n\u2139 pass 59\n\u2139 fail 0\n'), {
+      tests: 59,
+      pass: 59,
+      fail: 0,
+    });
+  });
+  test('an unrecognizable summary parses to nulls — the orchestrator must refuse, never print 0/0', () => {
+    assert.deepEqual(parseSuiteSummary('something else entirely'), {
+      tests: null,
+      pass: null,
+      fail: null,
+    });
   });
 });
 
