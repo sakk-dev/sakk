@@ -36,6 +36,9 @@ npx sakk status                 # totals, entries, reconciliation state (--json 
 npx sakk reconcile --by alice   # clear a reconciliation halt — takes a name
 ```
 
+Every command accepts `--ledger <path>` (default: `./sakk-ledger.json`, or
+`SAKK_LEDGER_PATH`).
+
 `sakk status` exits 3 while reconciliation is required — gate your CI on it.
 
 In code:
@@ -53,8 +56,12 @@ settle({ ledgerPath, callId: 'task-42:call-1', actualUsd: result.costUsd });
 
 // if the cost could not be determined:
 settle({ ledgerPath, callId: 'task-42:call-1', failedUnknownCost: true });
-// → ledger enters RECONCILIATION_REQUIRED; everything halts until a human signs off:
-// clearReconciliation({ ledgerPath, by: 'your-name' });
+// → ledger enters RECONCILIATION_REQUIRED; every further paid call refuses.
+// To recover, a human first settles the open entry with the figure they
+// decided on (the invoice amount, or a write-off) — clearing refuses while
+// any entry is still open (RECONCILIATION_ENTRIES_OPEN):
+settle({ ledgerPath, callId: 'task-42:call-1', actualUsd: 0.4 });
+clearReconciliation({ ledgerPath, by: 'your-name' });
 ```
 
 Zero dependencies. Plain Node (≥20) on **macOS or Linux** (the lock and the
@@ -72,6 +79,9 @@ beyond that (the enterprise hash-chained ledger is built for scale).
 If a process crashes while holding the lock, the next caller detects the
 dead owner (same host) and breaks the lock automatically; anything it cannot
 judge stays locked until `npx sakk unlock --by <your-name>`.
+
+**Auditors**: [docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) — what you can
+verify on your own clean machine in under 30 minutes, without trusting us.
 
 ## API
 

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (stranger-test findings, 2026-10-15)
+
+- README failure-path sample now shows the real recovery sequence: settle the
+  open entry with a human-decided figure, then `clearReconciliation` — the
+  previous snippet refused as written (`RECONCILIATION_ENTRIES_OPEN`).
+- Eval runner: execution modes from a ZIP/tarball download (no `.git`) now
+  refuse once with `HARNESS_GIT_REQUIRED` (exit 2) instead of eight scattered
+  crashes; `--validate` / `--dry-run` keep working without `.git`.
+- `sakk reconcile` on a ledger with no halt says `nothing to clear` instead
+  of claiming a clear that never happened.
+- `sakk status` human output formats money to ≤ 6 decimals (the `1e-6`
+  reserve guard no longer prints a float tail); `--json` keeps raw numbers.
+- Eval runner main-module detection now compares realpaths: invoked through a
+  symlinked path (macOS `/var` → `/private/var`) the CLI previously became a
+  silent exit-0 no-op — a false green. Regression proves a refusal fires.
+
+### Added (release line)
+
+- docs/AUDITOR_REPLAY.md: the one-page auditor manual — gold-set integrity,
+  deterministic verdict reproduction, judging the judge, and the honest
+  boundary of what is not yet replayable.
+
 ### Added
 
 - Gold eval harness: 12 cases, deterministic scorer, fixture/gold isolation

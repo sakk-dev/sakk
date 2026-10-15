@@ -42,6 +42,10 @@ npm run test:eval                               # harness self-tests
 npm run drill                                   # mutation drill: prove the judge can fail
 ```
 
+Execution modes need a **git clone**: every run records the harness commit as
+provenance, so a ZIP/tarball download refuses with `HARNESS_GIT_REQUIRED`
+(`--validate` and `--dry-run` still work without `.git`).
+
 ## Reuse over rebuild
 
 Budgets go through the real sakk ledger (`src/ledger.mjs`) — same fail-closed
