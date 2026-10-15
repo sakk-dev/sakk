@@ -15,7 +15,7 @@ Agents spend real money and report their own success. Both are problems:
 - A retry loop at 3 a.m. is indistinguishable from a working agent — until the invoice.
 - "All tests pass" from an agent that never ran the tests looks identical to the real thing.
 
-Sakk closes the first gap (the second is coming — see Roadmap). Every potentially paid action must **reserve** against a capped ledger _before_ it runs, and **settle** with the real cost after. Everything pathological refuses:
+The ledger closes the first gap. The eval harness in [`eval/`](eval/) grades the second from machine evidence (portable evidence packs are on the roadmap). Every potentially paid action must **reserve** against a capped ledger _before_ it runs, and **settle** with the real cost after. Everything pathological refuses:
 
 | Situation                                         | Sakk's answer                                                                                                                   |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -26,7 +26,13 @@ Sakk closes the first gap (the second is coming — see Roadmap). Every potentia
 | Lock held by another process                      | **Refused after timeout.** The budget is never judged without mutual exclusion.                                                 |
 | Ordinary read failure                             | **Never auto-creates an empty ledger.** "Lost ledger equals free money" is the exact back door this tool exists to close.       |
 
-Two concurrent agents cannot jointly overspend: read-modify-write runs under an atomic lock, writes are temp+rename, and there is a real two-process race in the test suite to prove it.
+Two concurrent agents cannot jointly overspend: read-modify-write runs under an atomic lock, writes are temp+rename, and there is a real two-process race in the test suite to prove it (`test/ledger.test.mjs`, "two concurrent reservations cannot jointly overspend").
+
+## Install
+
+```bash
+npm install sakk        # or call the CLI without installing: npx sakk …
+```
 
 ## Quickstart
 
@@ -44,14 +50,20 @@ Every command accepts `--ledger <path>` (default: `./sakk-ledger.json`, or
 In code:
 
 ```js
-import { initLedger, reserve, settle } from 'sakk';
+import { initLedger, reserve, settle, LedgerError } from 'sakk';
 
 const ledgerPath = './ledger.json';
 initLedger({ ledgerPath, capUsd: 25 }); // explicit — ledgers are never created implicitly
 
-// before every paid action:
-reserve({ ledgerPath, callId: 'task-42:call-1', estimatedMaxUsd: 1.5 });
-const result = await callYourModel(); // only runs if the reservation succeeded
+// before every paid action. reserve() THROWS a LedgerError on refusal
+// (e.code names the reason) — if it returns, the money is reserved:
+try {
+  reserve({ ledgerPath, callId: 'task-42:call-1', estimatedMaxUsd: 1.5 });
+} catch (e) {
+  if (e instanceof LedgerError) return skipThisAction(e.code); // do NOT call the model
+  throw e;
+}
+const result = await callYourModel();
 settle({ ledgerPath, callId: 'task-42:call-1', actualUsd: result.costUsd });
 
 // if the cost could not be determined:
@@ -74,7 +86,25 @@ The API is deliberately **synchronous** (lock waits block up to ~2s): correct
 for CLIs, hooks and per-task processes. Inside a long-running async server,
 call it from a worker thread. Ledgers are single JSON files scanned per call
 — right for hundreds-to-thousands of entries per ledger; archive or rotate
-beyond that (the enterprise hash-chained ledger is built for scale).
+beyond that (a hash-chained ledger mode — enterprise, on the roadmap — is
+the designed scale path).
+
+Practical notes, earned the hard way:
+
+- **`estimatedMaxUsd`** = the worst case the provider can bill for this one
+  call (e.g. max output tokens × price, or the provider's own budget cap
+  parameter). Too high parks budget; too low is dishonest — the cap check
+  runs against estimates until settlement corrects them.
+- **Crash between reserve and settle?** The reservation stays outstanding
+  and keeps occupying the cap — correctly, because the money may genuinely
+  have been spent. Recover by settling the **same `callId`** from any
+  process: `settle({ ledgerPath, callId, actualUsd })` once you know the
+  figure, or `failedUnknownCost: true` if it is unknowable (which halts the
+  ledger for a human). A `sakk settle` CLI command is on the roadmap; today
+  late settlement is a three-line Node script.
+- **`markReconciliationRequired`** is for out-of-band discoveries — an
+  invoice that disagrees with the books, a provider incident. It halts all
+  further reservations until a named human clears the flag.
 
 If a process crashes while holding the lock, the next caller detects the
 dead owner (same host) and breaks the lock automatically; anything it cannot
@@ -91,9 +121,10 @@ Accounting rule: `settled actuals + outstanding reservations (at estimated max) 
 
 ## Roadmap — honest edition
 
-- [x] CLI (`sakk init / sakk status / sakk reconcile`)
-- [ ] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — extraction in progress
-- [ ] Evidence packs: replayable, manifest-hashed run records for third-party audit
+- [x] CLI (`sakk init / sakk status / sakk reconcile / sakk unlock`)
+- [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — ships in [`eval/`](eval/)
+- [ ] `sakk settle` CLI command (late settlement without writing code)
+- [ ] Evidence packs: replayable, manifest-hashed run records for third-party audit (what [docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) verifies today, made portable)
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
 - [ ] Named-approver identity, SSO — enterprise
 

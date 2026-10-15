@@ -29,6 +29,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deterministic verdict reproduction, judging the judge, and the honest
   boundary of what is not yet replayable.
 
+### Fixed (second-stranger docs pass, 2026-10-15)
+
+A context-free AI reader walked the five public docs and audited them
+against the running code:
+
+- AUDITOR_REPLAY over-claimed "byte-identical" reproduction — run-local
+  fields (runId, durations) differ by construction. It now states precisely
+  what reproduces (judgements and scoring metrics) and ships a **verified**
+  canonical comparison command; defines "guardian test"; marks which
+  evidence files are per-case conditional; aligns the ZIP wording.
+- README: Install section; `reserve()` throws-on-refusal shown in the
+  sample; crash-between-reserve-and-settle recovery (late settlement by
+  callId) and `estimatedMaxUsd` guidance documented; roadmap ship-state
+  made consistent (eval harness ✅ in-repo, hash-chain/enterprise =
+  roadmap); the two-process race test named.
+- CONTRIBUTING: quality pipeline rewritten without internal jargon (plain
+  scope tiers, each gate explained); `npm run fuzz` added to the commands.
+- ARCHITECTURE: enterprise seam column explicitly marked forward-looking.
+- eval/README: `maintainer-label.json` (reviewer label) and the `PACKET.md` task
+  brief defined at first use.
+
 ### Added
 
 - Gold eval harness: 12 cases, deterministic scorer, fixture/gold isolation

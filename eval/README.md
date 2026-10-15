@@ -11,10 +11,12 @@ it measures discipline, with machine evidence only.
   scripted fake-executor validation chain
 - ✅ a minimal real-execution adapter, verified exclusively against a fake CLI
   recorder — **zero real-model calls are made by this repo's tests**
-- ❌ no official baseline yet: gold labels are unapproved, and real execution
-  is fail-closed behind an authorization chain (see
-  `06_REAL_RUN_INSTRUCTIONS.md`). A fresh checkout cannot run `--real`, by
-  design.
+- ❌ no official baseline yet: gold labels are unapproved — each case's
+  expected-behavior labels (`maintainer-label.json`, named for the project's human
+  reviewer) await maintainer sign-off, and real-model metrics carry no
+  authority until they have it. Real execution is fail-closed behind an
+  authorization chain (see `06_REAL_RUN_INSTRUCTIONS.md`); a fresh checkout
+  cannot run `--real`, by design.
 
 ## Directory map
 
@@ -51,9 +53,12 @@ provenance, so a ZIP/tarball download refuses with `HARNESS_GIT_REQUIRED`
 Budgets go through the real sakk ledger (`src/ledger.mjs`) — same fail-closed
 and `DUPLICATE_CALL_ID` semantics, no parallel cost source. The permission
 case (G06) drives a real injectable approval gate. Real execution spawns one
-headless CLI process per case (`claude -p <packet> --max-budget-usd <cap>`,
-binary injectable via `CLAUDE_BIN`). There is no orchestration loop and no
-session management.
+headless CLI process per case — the "packet" is the task brief the runner
+writes into the workdir (`PACKET.md`: task, allowed/forbidden paths, claim
+rules) and passes as the prompt: `claude -p <packet> --max-budget-usd <cap>`,
+binary injectable via `CLAUDE_BIN` (any CLI that accepts a prompt and emits
+a JSON result envelope can sit behind it). There is no orchestration loop
+and no session management.
 
 ## Document index
 

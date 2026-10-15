@@ -18,6 +18,9 @@ Thanks for your interest! Two ground rules keep this project sustainable:
 - `npm run drill` — mutation drill: breaks one safety rule at a time in a
   temp copy and requires the named guardian test to go red. Run it when you
   touch the scorer, the runner, or any fail-closed path.
+- `npm run fuzz` — seeded invariant fuzz on the ledger's money semantics
+  (`SAKK_FUZZ_SEED=<n>` replays a reported seed exactly). Run it when you
+  touch `src/ledger.mjs`.
 - `npm run format:check` — Prettier (config in `.prettierrc.json`). CI
   enforces it.
 
@@ -46,17 +49,30 @@ harness executes (`verification_commands`, `coverage_mutants.cmd`), and
 severity as source code — a case or schema edit IS arbitrary code execution
 in CI and on reviewers' machines.
 
-## The v3 quality pipeline (required)
+## Quality pipeline (required)
 
-CONSTITUTION.md states the non-negotiables; docs/RULES.md is the rulebook.
-In short: one-sentence diffs go straight in (L0); anything touching money,
-evidence, isolation or concurrency (L1 core) needs the three-tables +
-acceptance contract in `specs/`, lands with attack-shaped tests, passes the
-deterministic gates (`npm run test:all && npm run drill && npm run fuzz`),
-and gets independent adversarial review before merge; paid-core blocks (L2)
-additionally need a signed design review first. Fixes self-report
-verified / partial / failed; the same defect bounced twice stops the line
-for redesign.
+CONSTITUTION.md states the non-negotiables; docs/RULES.md is the living
+rulebook, where every rule carries the incident that earned it. What it
+means for your PR, by scope:
+
+- **Small diff** — explainable in one sentence, touches no core area:
+  green tests + `npm run format:check`, normal review. That's it.
+- **Core-area diff** — anything under `src/`, `bin/`, `eval/lib/` or
+  `eval/bin/` (money, evidence, isolation, concurrency): before coding,
+  add a short threat-model note to `specs/` (copy any file in
+  `specs/retro/` as the template — who attacks, which inputs are
+  pathological, what evidence judges success, what "done" means). The PR
+  then ships the change **with** a test that re-runs the attack, passes
+  `npm run test:all && npm run drill && npm run fuzz`, and gets a review
+  from someone — or some AI agent — who didn't write it.
+- **New subsystem**: all of the above, plus a maintainer-signed design
+  review before implementation starts (`specs/<feature>/` holds the
+  design: decide / spec / plan / contract).
+
+Two process rules worth knowing up front: a bugfix PR states per finding
+whether it is **verified fixed / partially fixed / not fixed** — no bare
+"done"; and when the same defect bounces twice, we stop patching and
+redesign instead of stacking a third patch.
 
 ## Reporting security issues
 

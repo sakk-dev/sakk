@@ -2,8 +2,21 @@
 
 What a third party can verify about Sakk **on their own clean machine,
 without trusting the vendor**. Requirements: git, Node ≥ 20, macOS/Linux.
-Time: under 30 minutes. Every step is deterministic; two auditors on two
-machines get byte-identical verdicts.
+Time: under 30 minutes.
+
+What "reproducible" means here, precisely: **the judgements reproduce; the
+run bookkeeping does not.** Per-case verdicts, violation lists, pass/total
+and every scoring-derived metric are identical for two auditors on two
+machines at the same commit. Run-local fields — `runId`, `outDir`, wall-clock
+durations (`p50_duration_ms`, `p95_duration_ms`), timestamps — differ by
+construction. Canonical comparison, judgements only:
+
+```bash
+node eval/bin/gold-runner.mjs --fake-executor --out /tmp/replay-a
+node -e "const m=require('/tmp/replay-a/metrics.json');delete m.runId;for(const k of ['p50_duration_ms','p95_duration_ms'])delete m.metrics[k];console.log(require('node:crypto').createHash('sha256').update(JSON.stringify(m)).digest('hex'))"
+```
+
+Two runs printing the same hash = the judge judged identically.
 
 ## 1. Pin what you are auditing
 
@@ -12,8 +25,9 @@ git clone https://github.com/sakk-dev/sakk && cd sakk
 git rev-parse HEAD        # record this commit in your notes
 ```
 
-A ZIP download refuses execution (`HARNESS_GIT_REQUIRED`): every run records
-the harness commit as provenance, and that is the point of the exercise.
+A ZIP download refuses the execution steps (`HARNESS_GIT_REQUIRED`): every
+run records the harness commit as provenance, and that is the point of the
+exercise. (§2's schema check and `--dry-run` still work from a ZIP.)
 
 ## 2. Verify the gold set is intact
 
@@ -32,8 +46,9 @@ node eval/bin/gold-runner.mjs --fake-executor
 ```
 
 Runs all 12 behavioral cases through the full chain (isolated git workdir,
-budget ledger, machine-trace scoring). The verdict per case and the final
-JSON metrics line reproduce deterministically. No network, no model, no
+budget ledger, machine-trace scoring) and prints where the evidence landed
+(`outDir` in the summary line — that is the directory §5 reads). Verdicts
+and scoring metrics reproduce as defined above. No network, no model, no
 cost.
 
 ## 4. Judge the judge
@@ -43,24 +58,29 @@ npm run drill
 ```
 
 The drill breaks exactly one scoring rule at a time in a disposable copy
-and requires the suite to go red **by the named guardian test**, then
-proves a pristine copy stays green. A judge that cannot fail is not
-evidence; this is the test of the test. (`npm run fuzz` additionally
+and requires the suite to go red **by the named guardian test** — the one
+specific test designated in advance to catch that mutation; the drill
+output prints its name next to each `MUTANT KILLED` line, and a kill by any
+_other_ test counts as a failure (`WRONG KILLER`). It then proves a
+pristine copy stays green. A judge that cannot fail is not evidence; this
+is the test of the test. (`npm run fuzz` additionally
 replays seeded random attacks on the ledger's money invariants —
 `SAKK_FUZZ_SEED=<n>` reproduces any reported seed exactly.)
 
 ## 5. Read a run's evidence (if you were handed an out-dir)
 
 Each case directory under an out-dir is runner-owned — the agent under test
-never saw these paths:
+never saw these paths. The first two exist for every case; the rest appear
+only when the case exercises that surface, so their absence on an unrelated
+case is normal, not missing evidence:
 
-| File                | What to check                                                                 |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `trace.json`        | `claim_source` — a PASS must trace to machine evidence, never to self-report |
-| `ledger.json`       | reserve→settle pairs; totals against `metrics.json`                           |
-| `test-runs.jsonl`   | real exit codes behind any "tests pass" claim                                 |
-| `gate-probe.jsonl`  | approval-gate invocations for paid steps                                      |
-| `sakk-alerts.jsonl` | greppable refusals/halts next to the ledger                                   |
+| File                | Present                                 | What to check                                                                |
+| ------------------- | --------------------------------------- | ---------------------------------------------------------------------------- |
+| `trace.json`        | always                                  | `claim_source` — a PASS must trace to machine evidence, never to self-report |
+| `ledger.json`       | always                                  | reserve→settle pairs; totals against `metrics.json`                          |
+| `test-runs.jsonl`   | when the case runs tests                | real exit codes behind any "tests pass" claim                                |
+| `gate-probe.jsonl`  | when a paid step hits the approval gate | gate invocations for paid steps                                              |
+| `sakk-alerts.jsonl` | when the ledger refused/halted          | greppable refusals/halts next to the ledger                                  |
 
 The ledger file is plain JSON; `npx sakk status --ledger <file>` summarizes
 it and exits 3 if the run ended in an unresolved reconciliation.

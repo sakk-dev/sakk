@@ -85,6 +85,15 @@ git cloner, ZIP downloader.
 - **S4/S5 (honesty polish)**: `reconcile` claimed "cleared" with nothing to
   clear; human status printed a 15-digit float tail. Attribution: R-02
   spirit — output must state what actually happened, in auditable form.
+- **S6 (docs as claims)**: a second stranger — a context-free AI reader —
+  caught the fresh auditor manual over-claiming "byte-identical"
+  reproduction (run-local fields differ), plus ship-state contradictions
+  between README roadmap and in-repo reality, and jargon walls in
+  CONTRIBUTING. Attribution: R-02/R-11 extended — **every verifiable
+  sentence in an auditor-facing doc is a claim and gets executed before it
+  ships** (the replacement comparison command was run twice to equal hashes
+  before landing). Process note: the author of a doc cannot proofread it;
+  the context-free reader is now part of the release gate.
 
 ## Evolution loop
 
