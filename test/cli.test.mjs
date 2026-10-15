@@ -99,6 +99,30 @@ describe('sakk reconcile', () => {
     assert.equal(r.status, 0, r.stderr);
     assert.equal(run(['status', '--ledger', p]).status, 0);
   });
+  test('stranger finding: reconcile on a clean ledger says "nothing to clear", never "cleared"', () => {
+    const p = join(tdir(), 'l.json');
+    run(['init', '--cap', '10', '--ledger', p]);
+    const r = run(['reconcile', '--by', 'alice', '--ledger', p]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /nothing to clear/);
+    assert.doesNotMatch(r.stdout, /cleared by/);
+  });
+});
+
+describe('stranger finding: human status output formats money', () => {
+  test('the 1e-6 reserve guard never prints a float tail', () => {
+    const p = join(tdir(), 'l.json');
+    run(['init', '--cap', '25', '--ledger', p]);
+    reserve({ ledgerPath: p, callId: 'a', estimatedMaxUsd: 1 });
+    reserve({ ledgerPath: p, callId: 'b', estimatedMaxUsd: 0.12 });
+    const r = run(['status', '--ledger', p]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /max reservable \$23\.879999\)/);
+    assert.doesNotMatch(r.stdout, /\$\d+\.\d{7,}/, 'no money figure may exceed 6 decimals');
+    // machines keep the raw number (tolerance: formatting must not touch it)
+    const j = JSON.parse(run(['status', '--json', '--ledger', p]).stdout);
+    assert.ok(Math.abs(j.max_reservable_usd - (25 - (1 + 0.12) - 1e-6)) < 1e-12);
+  });
 });
 
 describe('usage surface', () => {

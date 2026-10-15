@@ -44,9 +44,11 @@ structurally unreachable, by design.
 
 ## The seams (how the two first versions coexist)
 
-The same core must serve **v1-open** (this repo) and **v1-enterprise**
-(closed modules, separate delivery) without forking. Enterprise capability
-plugs into named seams instead of patching the core:
+The same core must serve **v1-open** (this repo, shipping today) and
+**v1-enterprise** (closed modules — on the roadmap, none shipped yet)
+without forking. The "Enterprise plug-in" column below is therefore
+forward-looking by design: the seams are named and kept honest now so that
+closed capability plugs in later instead of patching the core:
 
 | Seam            | Mechanism                                                   | Open default                        | Enterprise plug-in                          |
 | --------------- | ----------------------------------------------------------- | ----------------------------------- | ------------------------------------------- |

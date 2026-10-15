@@ -10,6 +10,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -264,7 +265,22 @@ export function authorizeRealRun({ authorizationPath, caseDefs, workRoot, goldDi
 }
 
 function gitRoot() {
-  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
+  // Stranger-test finding: a ZIP/tarball download has no .git, and the raw
+  // `git rev-parse` crash surfaced as eight scattered test failures. Refuse
+  // once, with a name.
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    const err = new Error(
+      'HARNESS_GIT_REQUIRED: gold runs record the harness commit as provenance; run from a git clone — a ZIP/tarball download has no .git (--validate and --dry-run still work)',
+    );
+    err.code = 'HARNESS_GIT_REQUIRED';
+    throw err;
+  }
 }
 
 function shIn(cwd, cmd, timeoutMs) {
@@ -659,9 +675,21 @@ const val = (n) => {
   return v;
 };
 
+// Stranger-test finding: URL equality breaks under symlinked paths (macOS
+// /var → /private/var), turning the CLI into a silent exit-0 no-op — the
+// exact false-green R-04 bans. Compare realpaths; anything unresolvable is
+// treated as an import, never as a half-executed CLI.
 const isMain =
   process.argv[1] !== undefined &&
-  import.meta.url === (await import('node:url')).pathToFileURL(resolve(process.argv[1])).href;
+  (() => {
+    try {
+      return (
+        realpathSync(fileURLToPath(import.meta.url)) === realpathSync(resolve(process.argv[1]))
+      );
+    } catch {
+      return false;
+    }
+  })();
 if (isMain) {
   const only = val('case');
   let cases;
@@ -708,6 +736,12 @@ if (isMain) {
       // Review finding F2: reusing --out crashed mid-batch with a raw stack
       // and mixed two runs in one directory. Refuse up front.
       console.error(`OUT_DIR_ALREADY_USED: ${outDir} holds a previous run — pick a fresh --out`);
+      process.exit(2);
+    }
+    try {
+      gitRoot();
+    } catch (e) {
+      console.error(e.message);
       process.exit(2);
     }
     const entries = [];
@@ -763,6 +797,12 @@ if (isMain) {
       // Review finding F2: reusing --out crashed mid-batch with a raw stack
       // and mixed two runs in one directory. Refuse up front.
       console.error(`OUT_DIR_ALREADY_USED: ${outDir} holds a previous run — pick a fresh --out`);
+      process.exit(2);
+    }
+    try {
+      gitRoot();
+    } catch (e) {
+      console.error(e.message);
       process.exit(2);
     }
     const claudeBin = process.env.CLAUDE_BIN ?? 'claude';

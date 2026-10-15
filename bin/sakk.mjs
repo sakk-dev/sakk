@@ -119,12 +119,19 @@ if (cmd === 'init') {
   if (flag('json')) {
     console.log(JSON.stringify(out, null, 1));
   } else {
+    // Human display only — JSON keeps raw numbers. 6 decimals, trailing
+    // zeros trimmed, so the 1e-6 reserve guard never prints a float tail.
+    const usd = (n) =>
+      `$${Number(n)
+        .toFixed(6)
+        .replace(/(\.\d*?)0+$/, '$1')
+        .replace(/\.$/, '')}`;
     console.log(`ledger      ${p}`);
-    console.log(`cap         $${t.capUsd}`);
-    console.log(`settled     $${t.settledUsd}`);
-    console.log(`outstanding $${t.outstandingUsd}`);
+    console.log(`cap         ${usd(t.capUsd)}`);
+    console.log(`settled     ${usd(t.settledUsd)}`);
+    console.log(`outstanding ${usd(t.outstandingUsd)}`);
     console.log(
-      `committed   $${t.committedUsd}  (remaining $${out.remaining_usd}, max reservable $${out.max_reservable_usd})`,
+      `committed   ${usd(t.committedUsd)}  (remaining ${usd(out.remaining_usd)}, max reservable ${usd(out.max_reservable_usd)})`,
     );
     console.log(
       `entries     ${doc.entries.length} (reserved ${byStatus.RESERVED}, settled ${byStatus.SETTLED}, reconciliation ${byStatus.RECONCILIATION_REQUIRED})`,
@@ -140,6 +147,18 @@ if (cmd === 'init') {
     process.exit(2);
   }
   const p = ledgerPath();
+  // Stranger-test finding: claiming "cleared" on a ledger that required no
+  // clearing misreports an action that never happened. Say so instead.
+  let doc;
+  try {
+    doc = readLedger({ ledgerPath: p });
+  } catch (e) {
+    fail(e);
+  }
+  if (doc.flags?.reconciliationRequired !== true) {
+    console.log(`nothing to clear: no reconciliation required on ${p}`);
+    process.exit(0);
+  }
   try {
     clearReconciliation({ ledgerPath: p, by });
   } catch (e) {

@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (stranger-test findings, 2026-10-15)
+
+- README failure-path sample now shows the real recovery sequence: settle the
+  open entry with a human-decided figure, then `clearReconciliation` — the
+  previous snippet refused as written (`RECONCILIATION_ENTRIES_OPEN`).
+- Eval runner: execution modes from a ZIP/tarball download (no `.git`) now
+  refuse once with `HARNESS_GIT_REQUIRED` (exit 2) instead of eight scattered
+  crashes; `--validate` / `--dry-run` keep working without `.git`.
+- `sakk reconcile` on a ledger with no halt says `nothing to clear` instead
+  of claiming a clear that never happened.
+- `sakk status` human output formats money to ≤ 6 decimals (the `1e-6`
+  reserve guard no longer prints a float tail); `--json` keeps raw numbers.
+- Eval runner main-module detection now compares realpaths: invoked through a
+  symlinked path (macOS `/var` → `/private/var`) the CLI previously became a
+  silent exit-0 no-op — a false green. Regression proves a refusal fires.
+
+### Added (release line)
+
+- docs/AUDITOR_REPLAY.md: the one-page auditor manual — gold-set integrity,
+  deterministic verdict reproduction, judging the judge, and the honest
+  boundary of what is not yet replayable.
+
+### Fixed (second-stranger docs pass, 2026-10-15)
+
+A context-free AI reader walked the five public docs and audited them
+against the running code:
+
+- AUDITOR_REPLAY over-claimed "byte-identical" reproduction — run-local
+  fields (runId, durations) differ by construction. It now states precisely
+  what reproduces (judgements and scoring metrics) and ships a **verified**
+  canonical comparison command; defines "guardian test"; marks which
+  evidence files are per-case conditional; aligns the ZIP wording.
+- README: Install section; `reserve()` throws-on-refusal shown in the
+  sample; crash-between-reserve-and-settle recovery (late settlement by
+  callId) and `estimatedMaxUsd` guidance documented; roadmap ship-state
+  made consistent (eval harness ✅ in-repo, hash-chain/enterprise =
+  roadmap); the two-process race test named.
+- CONTRIBUTING: quality pipeline rewritten without internal jargon (plain
+  scope tiers, each gate explained); `npm run fuzz` added to the commands.
+- ARCHITECTURE: enterprise seam column explicitly marked forward-looking.
+- eval/README: `maintainer-label.json` (reviewer label) and the `PACKET.md` task
+  brief defined at first use.
+
 ### Added
 
 - Gold eval harness: 12 cases, deterministic scorer, fixture/gold isolation
