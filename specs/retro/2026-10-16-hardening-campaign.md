@@ -51,3 +51,19 @@ lines) are asserted by the harnesses themselves; every run prints seeds —
   directory is the permission gate). The harness asserts the design now.
 - **Conductor lesson**: `cmd | tail` launders exit codes — long runs are
   launched bare.
+
+## Final results (all legs, 2026-10-16)
+
+| Leg                 | Verdict | Headline numbers                                                                                                                                              |
+| ------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T1 soak 30min×8w    | PASS    | 481 SIGKILLs (one per ~3.7s), 57.8k sampled ops, wall held at $999.99/1000 throughout, lock-timeout rate 0.019%, 1 unexplained entry within a 481-kill window |
+| T2 faults           | PASS    | 41/41 typed refusals or correct recovery                                                                                                                      |
+| T3 torture 10min×3s | PASS    | 43,785 valid calls → 43,785 answered (ZERO silent drops), 29.6k garbage frames absorbed, 24,099 decision lines all hash-pinned                                |
+| T4 matrix           | PASS    | node 20/22/24 all green incl. ENOSPC: refusal = LEDGER_WRITE_FAILED and the books remain readable                                                             |
+| T5 real client      | PENDING | local claude CLI OAuth expired — maintainer login required                                                                                                    |
+| T6 compat           | PASS    | genesis-commit books read/written seamlessly by current code                                                                                                  |
+
+Product fixes earned: C-1 (closed schema) and C-4 (short-write could
+install truncated books — found only by real tmpfs). Ops lesson stack:
+exit-code-laundering pipes, task-timeout headroom, orphaned workers,
+root-blind permission legs, regex corruption on pretty JSON.
