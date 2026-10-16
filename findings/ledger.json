@@ -1364,6 +1364,31 @@
       "sweep": "Follow-up: bundle eval/packs/<id>.json from the harness commit and recompute meaning/clause_status/not_covered.",
       "sweep_status": "not_done",
       "status": "open"
+    },
+    {
+      "id": "F-51",
+      "date": "2026-10-16",
+      "title": "A conditional skip in the new ledger gate made the certificate unissuable",
+      "symptom": "npm run certificate refused (CERT_GATE_RED: 368 tests, 367 pass) — the taxonomy hash test skipped wherever the shared standard is not beside the repository.",
+      "evidence": "certificate engine run on 154dc7e",
+      "found_by": "T0",
+      "introduced_in": "154dc7e",
+      "direct_cause": "t.skip() when the canonical taxonomy file is absent.",
+      "why": [
+        "The test assumed the author's folder layout.",
+        "A skip was used for 'optional dependency missing'.",
+        "The certificate correctly treats any skip as a hole (R-04)."
+      ],
+      "root_cause": "An assumption about the environment a test runs in was never measured.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "instance_fix": "9fc85e3 the test always runs: structure everywhere, hash where present",
+      "class_fix": null,
+      "guard": "test/findings-ledger.test.mjs::the taxonomy lock is well-formed, and equals the canonical taxonomy wherever that is present",
+      "sweep": "Remaining conditional skips: two root-only permission tests and one test that needs `shasum` (present on macOS and Ubuntu). If any of them skips, the certificate refuses — the intended fail-closed signal, not a hole.",
+      "sweep_status": "done",
+      "status": "fixed"
     }
   ]
 }
