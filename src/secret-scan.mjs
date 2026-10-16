@@ -154,7 +154,7 @@ export function scanText(text, path = '(inline)') {
 }
 
 /** Names are output too: escape control characters, redact anything secret-shaped. */
-function display(p) {
+export function display(p) {
   const hits = rawFindings(p).filter((h) => !isExempt(h.secret));
   if (hits.length > 0) return `[redacted path ${fingerprint(hits[0].secret)}]`;
   // C0, DEL, C1 and the Unicode line separators never reach a terminal raw

@@ -16,7 +16,7 @@ import {
 } from '../src/ledger.mjs';
 import { loadPolicy } from '../src/policy.mjs';
 import { startMcpServer } from '../src/mcp.mjs';
-import { scanPaths, scanStaged, ScanError } from '../src/secret-scan.mjs';
+import { display, scanPaths, scanStaged, ScanError } from '../src/secret-scan.mjs';
 
 /**
  * sakk CLI — the smallest useful surface over the ledger.
@@ -188,12 +188,16 @@ if (cmd === 'init') {
       `entries     ${doc.entries.length} (reserved ${byStatus.RESERVED}, settled ${byStatus.SETTLED}, reconciliation ${byStatus.RECONCILIATION_REQUIRED})`,
     );
     console.log(`updated     ${doc.updatedAt}`);
+    // names and reasons are operator input: escaped like file names, so a
+    // hostile `--by` cannot write terminal control sequences (review nit)
     if (out.halted)
       console.log(
-        `⛔ HALTED by ${out.halted.by} at ${out.halted.at}${out.halted.reason ? ` — ${out.halted.reason}` : ''} (all new spending refused)`,
+        `⛔ HALTED by ${display(out.halted.by)} at ${out.halted.at}${out.halted.reason ? ` — ${display(out.halted.reason)}` : ''} (all new spending refused)`,
       );
     for (const [id, r] of Object.entries(out.halted_agents))
-      console.log(`⛔ agent ${id} halted by ${r.by} at ${r.at}${r.reason ? ` — ${r.reason}` : ''}`);
+      console.log(
+        `⛔ agent ${display(id)} halted by ${display(r.by)} at ${r.at}${r.reason ? ` — ${display(r.reason)}` : ''}`,
+      );
     if (reco) console.log(`⚠ RECONCILIATION REQUIRED: ${out.reconciliation_reason}`);
   }
   process.exit(out.halted ? 4 : reco ? 3 : 0);

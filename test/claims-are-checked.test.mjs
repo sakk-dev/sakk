@@ -122,6 +122,8 @@ describe('a stopwatch never stands in for a work bound (findings F-62)', () => {
   const UPPER = [
     /Date\.now\(\)\s*-\s*\w+\s*[<>](?!=)\s*([\w]+)/g,
     /\b\w+Ms\s*[<>](?!=)\s*([\w]+)/g,
+    // a deadline that decides pass/fail is a stopwatch too (F-66)
+    /Date\.now\(\)\s*\+\s*([\d_]+)\b/g,
   ];
   const offenders = (src) => {
     const bad = [];
@@ -146,6 +148,8 @@ describe('a stopwatch never stands in for a work bound (findings F-62)', () => {
     assert.equal(offenders('const P = 30_000; ok(Date.now() - t0 < P);').bad.length, 0);
     assert.equal(offenders('assert.ok(Date.now() - t0 >= 2900);').bad.length, 0);
     assert.equal(offenders('while (Date.now() - t < 5000) {}').bad.length, 0);
+    assert.equal(offenders('const until = Date.now() + 20000;').bad.length, 1);
+    assert.equal(offenders('const until = Date.now() + 120_000;').bad.length, 0);
   });
   test('no test or check script asserts speed with a tight wall clock', () => {
     let checked = 0;

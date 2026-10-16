@@ -348,7 +348,7 @@ const isHaltRecord = (r) =>
   !Array.isArray(r) &&
   Object.keys(r).every((k) => ['by', 'at', 'reason'].includes(k)) &&
   typeof r.by === 'string' &&
-  r.by !== '' &&
+  r.by.trim() !== '' &&
   typeof r.at === 'string' &&
   Number.isFinite(Date.parse(r.at)) &&
   typeof r.reason === 'string';
@@ -359,13 +359,31 @@ function validateHalt(h, ledgerPath) {
     throw new LedgerError('LEDGER_SCHEMA_INVALID', 'halt record malformed', { ledgerPath });
   };
   if (h === null || typeof h !== 'object' || Array.isArray(h)) bad();
-  if (!Object.keys(h).every((k) => ['global', 'agents'].includes(k))) bad();
+  if (!Object.keys(h).every((k) => ['global', 'agents', 'lifts'].includes(k))) bad();
   if (!(h.global === null || isHaltRecord(h.global))) bad();
   if (h.agents === null || typeof h.agents !== 'object' || Array.isArray(h.agents)) bad();
-  for (const r of Object.values(h.agents)) if (!isHaltRecord(r)) bad();
+  for (const [k, r] of Object.entries(h.agents)) if (k === '' || !isHaltRecord(r)) bad();
+  if (!Array.isArray(h.lifts) || !h.lifts.every(isLiftRecord)) bad();
 }
 
-const emptyHalt = () => ({ global: null, agents: {} });
+/** Who lifted which halt, kept in the books — the alert log is best-effort (review S2). */
+const isLiftRecord = (r) =>
+  r !== null &&
+  typeof r === 'object' &&
+  !Array.isArray(r) &&
+  Object.keys(r).every((k) =>
+    ['by', 'at', 'scope', 'agentId', 'haltedBy', 'haltedAt'].includes(k),
+  ) &&
+  typeof r.by === 'string' &&
+  r.by.trim() !== '' &&
+  typeof r.at === 'string' &&
+  Number.isFinite(Date.parse(r.at)) &&
+  ((r.scope === 'global' && r.agentId === null) ||
+    (r.scope === 'agent' && typeof r.agentId === 'string' && r.agentId !== '')) &&
+  typeof r.haltedBy === 'string' &&
+  typeof r.haltedAt === 'string';
+
+const emptyHalt = () => ({ global: null, agents: {}, lifts: [] });
 
 /**
  * Agent ids are caller data used as object keys: only OWN keys count, and
@@ -412,8 +430,11 @@ export function totalsOf(doc) {
   };
 }
 
-function writeLedger(ledgerPath, doc) {
-  doc.updatedAt = new Date().toISOString();
+function writeLedger(ledgerPath, doc, { keepUpdatedAt = false } = {}) {
+  // updatedAt means "the books were last confirmed": a halt or resume
+  // confirms nothing, so it keeps the stamp — a stop must never reopen
+  // spending on a stale ledger (kill-switch review S1)
+  if (!keepUpdatedAt) doc.updatedAt = new Date().toISOString();
   // Unpredictable name + O_EXCL ('wx'): a pre-planted symlink at a guessable
   // tmp path would otherwise let openSync('w') write THROUGH it onto any
   // file the caller can touch (audit finding F15, PoC-confirmed). 'wx'
@@ -724,7 +745,8 @@ export function markReconciliationRequired({ ledgerPath = defaultLedgerPath(), r
  * halt upgrades the ledger to v2 (see LEDGER_SCHEMA_V2).
  */
 export function halt({ ledgerPath = defaultLedgerPath(), by, reason = '', agentId }) {
-  if (typeof by !== 'string' || by === '')
+  // blank names refused here, or the record would fail its own read check
+  if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('HALT_BY_REQUIRED', 'Halting requires a name');
   checkAgentId(agentId, { scope: true });
   const scoped = typeof agentId === 'string';
@@ -739,7 +761,7 @@ export function halt({ ledgerPath = defaultLedgerPath(), by, reason = '', agentI
     else h.global = record;
     doc.schema = LEDGER_SCHEMA_V2;
     doc.halt = h;
-    writeLedger(ledgerPath, doc);
+    writeLedger(ledgerPath, doc, { keepUpdatedAt: true });
     emitAlert(ledgerPath, {
       kind: 'HALT_SET',
       scope: scoped ? 'agent' : 'global',
@@ -754,11 +776,12 @@ export function halt({ ledgerPath = defaultLedgerPath(), by, reason = '', agentI
 
 /**
  * Lift a halt. Requires a name; reports honestly when nothing was halted.
- * The ledger stays v2: an emptied halt record (`global: null, agents: {}`)
- * is the record that a halt existed and was lifted.
+ * The ledger stays v2, and `halt.lifts` keeps who lifted which halt and
+ * when — in the books, not only in the best-effort alert log.
  */
 export function resume({ ledgerPath = defaultLedgerPath(), by, agentId }) {
-  if (typeof by !== 'string' || by === '')
+  // blank names refused here, or the record would fail its own read check
+  if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('RESUME_BY_REQUIRED', 'Resuming requires a name');
   checkAgentId(agentId, { scope: true });
   const scoped = typeof agentId === 'string';
@@ -770,13 +793,22 @@ export function resume({ ledgerPath = defaultLedgerPath(), by, agentId }) {
     if (!existing) return { ok: true, wasHalted: false };
     if (scoped) delete h.agents[agentId];
     else h.global = null;
-    writeLedger(ledgerPath, doc);
-    emitAlert(ledgerPath, {
-      kind: 'HALT_CLEARED',
-      scope: scoped ? 'agent' : 'global',
-      agentId: scoped ? agentId : null,
+    const lift = {
       by,
       at: new Date().toISOString(),
+      scope: scoped ? 'agent' : 'global',
+      agentId: scoped ? agentId : null,
+      haltedBy: existing.by,
+      haltedAt: existing.at,
+    };
+    h.lifts.push(lift);
+    writeLedger(ledgerPath, doc, { keepUpdatedAt: true });
+    emitAlert(ledgerPath, {
+      kind: 'HALT_CLEARED',
+      scope: lift.scope,
+      agentId: lift.agentId,
+      by,
+      at: lift.at,
       haltedBy: existing.by,
     });
     return { ok: true, wasHalted: true, lifted: existing };

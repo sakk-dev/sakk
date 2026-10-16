@@ -156,7 +156,8 @@ While halted, `reserve()` refuses `LEDGER_HALTED` (or `AGENT_HALTED`),
 every reservation the halt refuses is logged to `sakk-alerts.jsonl`
 (attempts refused earlier for another reason — an invalid agent id, a stale
 ledger — carry their own code and are not halt alerts), and `sakk status`
-shows who stopped it and exits 4 — so CI stops too. In-flight calls can
+shows who stopped it and, for a global halt, exits 4 — so CI stops too
+(per-agent halts are listed, exit 0: other agents may still spend). In-flight calls can
 still settle their real cost. The halt cannot be lifted by any money
 operation, only by `resume`; agents cannot resume themselves over MCP. A
 stale ledger or one in reconciliation can still be halted. Per-agent halts

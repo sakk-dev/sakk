@@ -138,6 +138,15 @@
           "ref": "scripts/l1-fuzz.mjs::F-63 class: a declared fiction right before the secret"
         }
       ]
+    },
+    "RC-08": {
+      "landed_in": "this commit",
+      "refs": [
+        {
+          "kind": "detector",
+          "ref": "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option"
+        }
+      ]
     }
   },
   "findings": [
@@ -1771,6 +1780,131 @@
       "class_fix": "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
       "guard": "test/evidence-bundle.test.mjs::a REAL run whose metrics name no model → METRICS_UNVERIFIABLE, even with traces relabelled",
       "sweep": "Exhaustive key deletion over a real pack bundle (every document, every key): 46 keys still pass, each declared with its reason (descriptive case fields, scorer evidence, ledger fields sakk itself does not require). Drill MUT-U/MUT-V hold the checks.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-66",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "T0",
+      "title": "The lock-storm test decided pass/fail with a 20 s deadline",
+      "symptom": "Under load the halt CLI took longer than the workers' 20 s window, every worker exited 3 and the test failed; 96 instrumented storms showed halt latency p50 1.4 s, max 8.1 s, and 0 reservations booked after any halt.",
+      "evidence": "kill-switch.test.mjs full-file run during this round; scratch storm harness (96 storms, 24-way concurrency)",
+      "direct_cause": "Workers stopped at Date.now() + 20000 and treated that as failure; the F-62 sweep and detector only matched `Date.now() - t` comparisons.",
+      "why": [
+        "The test proved 'the halt is seen' with a clock, not with order.",
+        "The mkdir lock is not fair, so halt latency grows with load.",
+        "The class sweep searched one textual shape of the class."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-02"],
+      "instance_fix": "this commit: workers learn the halt returned through a signal file; a reservation granted after it exits 5 (the bug), and no entry may be created after halt.at; 120 s is a hang guard only",
+      "class_fix": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
+      "guard": "test/kill-switch.test.mjs::CLI halt succeeds while 6 processes hammer the ledger",
+      "sweep": "Detector extended to deadline shapes (Date.now() + literal); fault-injection's +3600_000 is a fixture timestamp, soak's minutes-based deadline is a campaign length, not a pass/fail bound.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-67",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Halting or resuming a stale ledger made it fresh",
+      "symptom": "halt({agentId:'bot'}) on a 365-day-old ledger restamped updatedAt, so an anonymous reserve that refused LEDGER_STALE before the halt succeeded after it.",
+      "evidence": "Fable 5 review of plan item ③ (2026-10-16), S1",
+      "direct_cause": "writeLedger stamps updatedAt on every write, including halt and resume.",
+      "why": [
+        "updatedAt means 'books confirmed', but it was written as 'file touched'.",
+        "The halt path reads with infinite staleness on purpose, then wrote a fresh stamp.",
+        "No test combined a stale ledger with a stop."
+      ],
+      "root_cause": "A value's meaning was used outside its scope: a file-touched stamp stood in for books-confirmed.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-08"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: halt and resume keep updatedAt",
+      "class_fix": "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option",
+      "guard": "test/kill-switch.test.mjs::review S1: halting or resuming a STALE ledger never makes it fresh",
+      "sweep": "Other writes that confirm nothing about the books: none — settle/mark/clear are money operations and keep refreshing.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-68",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Who lifted a halt lived only in the best-effort alert log",
+      "symptom": "With sakk-alerts.jsonl unwritable, resume({by:'mallory'}) succeeded and the name appeared nowhere; the spec called resume signed.",
+      "evidence": "Fable 5 review of plan item ③ (2026-10-16), S2",
+      "direct_cause": "resume() nulled the record and wrote the resumer only to emitAlert, which swallows errors.",
+      "why": [
+        "Alerts are best-effort so a broken alert path never blocks a stop.",
+        "The same best-effort channel was used for evidence that must survive.",
+        "Nothing tested the record after a resume with the alert path broken."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: halt.lifts (append-only, closed entries) records by/at/scope/agentId/haltedBy/haltedAt in the ledger; deleting it refuses",
+      "class_fix": null,
+      "guard": "test/kill-switch.test.mjs::genesis is v1 with no halt key; the first halt makes it v2; resume keeps v2 with an emptied record",
+      "sweep": "halt() records its signer in the ledger already; clearReconciliation records by in the entry history.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-69",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Two kill-switch guarantees were held only by a probabilistic fuzz",
+      "symptom": "A scoped resume that also cleared the global halt, a global resume that wiped agent halts, and reconciliation checked before the halt all passed npm test; the fuzz caught the first on some seeds only.",
+      "evidence": "Fable 5 review of plan item ③ (2026-10-16), S3+S4 (mutants M1, M2, M3)",
+      "direct_cause": "Spec rows claimed named tests, but the tests drove only CLI usage errors, not the library path.",
+      "why": [
+        "Row tests were written for the CLI attack, not for the library guarantee.",
+        "The fuzz was counted as the guard although its seed is Date.now().",
+        "No mutation targeted resume scoping."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: deterministic tests for both resume directions and halt-over-reconciliation; drill MUT-W",
+      "class_fix": null,
+      "guard": "test/kill-switch.test.mjs::a scoped resume leaves the global halt in force",
+      "sweep": "Adversary rows 17-20 added with named tests; each M1/M2/M3 mutant applied by hand dies.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-70",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Kill-switch nits: raw control characters in status, blank names, docs that disagreed",
+      "symptom": "`sakk status` printed `--by $'\\e[2J'` raw; halt records accepted by ' ' and agents['']; the README put 'exits 4' under the per-agent example; the spec said null was anonymous for halt/resume while row 15 refuses it.",
+      "evidence": "Fable 5 review of plan item ③ (2026-10-16), nits",
+      "direct_cause": "Operator input reached the terminal unescaped; validation checked non-empty, not non-blank; docs were edited row by row.",
+      "why": [
+        "Names were treated as trusted because operators type them.",
+        "Escaping existed for file names only.",
+        "Doc rows were not cross-read after row 15 landed."
+      ],
+      "root_cause": "A trust boundary left undefended.",
+      "dt": ["DT-SHAPE"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: status escapes names, reasons and agent ids; blank names refuse at halt/resume and in the record check; README and spec corrected",
+      "class_fix": null,
+      "guard": "test/kill-switch.test.mjs::CLI status never writes an operator-supplied control sequence to the terminal",
+      "sweep": "Other CLI outputs of operator text: `sakk scan` already escapes via display(); reconcile prints the reason through the same status path.",
       "sweep_status": "done",
       "status": "fixed"
     }

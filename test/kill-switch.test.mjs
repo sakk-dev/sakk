@@ -121,19 +121,103 @@ describe('row 4: a stop is never blocked by the conditions it exists for', () =>
       null,
     );
   });
+  test('review S1: halting or resuming a STALE ledger never makes it fresh — a stop never reopens spending', () => {
+    for (const ops of [
+      (lp) => halt({ ledgerPath: lp, by: 'maintainer', agentId: 'bot' }),
+      (lp) => {
+        halt({ ledgerPath: lp, by: 'maintainer' });
+        resume({ ledgerPath: lp, by: 'maintainer' });
+      },
+    ]) {
+      const lp = fresh();
+      const doc = onDisk(lp);
+      doc.updatedAt = new Date(Date.now() - 365 * 864e5).toISOString();
+      writeFileSync(lp, JSON.stringify(doc));
+      assert.equal(
+        code(() => reserve({ ledgerPath: lp, callId: 'c0', estimatedMaxUsd: 1 })),
+        'LEDGER_STALE',
+      );
+      ops(lp);
+      assert.equal(
+        code(() => reserve({ ledgerPath: lp, callId: 'c1', estimatedMaxUsd: 1 })),
+        'LEDGER_STALE',
+      );
+    }
+  });
+  test('review S4: a halt outranks reconciliation — LEDGER_HALTED, and the attempt is alerted', () => {
+    const lp = fresh();
+    markReconciliationRequired({ ledgerPath: lp, reason: 'r' });
+    halt({ ledgerPath: lp, by: 'maintainer' });
+    assert.equal(
+      code(() => reserve({ ledgerPath: lp, callId: 'c', estimatedMaxUsd: 1 })),
+      'LEDGER_HALTED',
+    );
+    assert.equal(alerts(lp).filter((a) => a.kind === 'HALT_REFUSED').length, 1);
+  });
+});
+
+describe('review S3: a resume lifts exactly its own scope', () => {
+  const both = () => {
+    const lp = fresh();
+    halt({ ledgerPath: lp, by: 'maintainer' });
+    halt({ ledgerPath: lp, by: 'maintainer', agentId: 'bot' });
+    return lp;
+  };
+  test('a scoped resume leaves the global halt in force', () => {
+    const lp = both();
+    resume({ ledgerPath: lp, by: 'maintainer', agentId: 'bot' });
+    assert.ok(onDisk(lp).halt.global, 'global halt survived');
+    assert.equal(
+      code(() => reserve({ ledgerPath: lp, callId: 'c', estimatedMaxUsd: 1, agentId: 'bot' })),
+      'LEDGER_HALTED',
+    );
+  });
+  test('a global resume leaves every agent halt in force', () => {
+    const lp = both();
+    resume({ ledgerPath: lp, by: 'maintainer' });
+    assert.ok(onDisk(lp).halt.agents.bot, 'agent halt survived');
+    assert.equal(
+      code(() => reserve({ ledgerPath: lp, callId: 'c', estimatedMaxUsd: 1, agentId: 'bot' })),
+      'AGENT_HALTED',
+    );
+    assert.equal(
+      code(() => reserve({ ledgerPath: lp, callId: 'd', estimatedMaxUsd: 1 })),
+      null,
+    );
+  });
+  test('a blank name cannot halt or resume (its record would fail its own read check)', () => {
+    const lp = fresh();
+    assert.equal(
+      code(() => halt({ ledgerPath: lp, by: '  ' })),
+      'HALT_BY_REQUIRED',
+    );
+    halt({ ledgerPath: lp, by: 'maintainer' });
+    assert.equal(
+      code(() => resume({ ledgerPath: lp, by: '\t' })),
+      'RESUME_BY_REQUIRED',
+    );
+    assert.ok(onDisk(lp).halt.global);
+  });
 });
 
 describe('row 5: halting wins a lock storm', () => {
-  // Workers stop on their own after 20s (exit 3): with the halt check
-  // broken (drill MUT-G) this test must fail, not hang the suite.
-  test('CLI halt succeeds while 6 processes hammer the ledger', { timeout: 90_000 }, async () => {
+  // Pass/fail is decided by order, never by a stopwatch (F-66): once the
+  // CLI halt has RETURNED, a worker's next reserve must refuse — one that
+  // still books is the bug (exit 5). The halt may take seconds under load
+  // (the lock is not fair); the 120 s deadline only stops a broken build
+  // (drill MUT-G) from hanging the suite.
+  test('CLI halt succeeds while 6 processes hammer the ledger', { timeout: 180_000 }, async () => {
     const lp = fresh(1e6);
+    const signal = `${lp}.halt-returned`;
     const worker = `
+      import { existsSync } from 'node:fs';
       import { reserve } from ${JSON.stringify(new URL('../src/ledger.mjs', import.meta.url).href)};
-      const until = Date.now() + 20000;
+      const until = Date.now() + 120_000;
       for (let i = 0; Date.now() < until; i++) {
+        const after = existsSync(${JSON.stringify(signal)});
         try { reserve({ ledgerPath: ${JSON.stringify(lp)}, callId: process.pid + '-' + i, estimatedMaxUsd: 0.01 }); }
-        catch (e) { if (e.code === 'LEDGER_HALTED') process.exit(0); }
+        catch (e) { if (e.code === 'LEDGER_HALTED') process.exit(0); continue; }
+        if (after) process.exit(5);
       }
       process.exit(3);`;
     const kids = Array.from({ length: 6 }, () =>
@@ -145,8 +229,9 @@ describe('row 5: halting wins a lock storm', () => {
       await new Promise((r) => setTimeout(r, 400));
       h = spawnSync(process.execPath, [CLI, 'halt', '--by', 'maintainer', '--ledger', lp], {
         encoding: 'utf8',
-        timeout: 60_000,
+        timeout: 120_000,
       });
+      writeFileSync(signal, '');
       exits = await Promise.all(
         kids.map(
           (k) => new Promise((r) => (k.exitCode !== null ? r(k.exitCode) : k.on('exit', r))),
@@ -156,13 +241,18 @@ describe('row 5: halting wins a lock storm', () => {
       for (const k of kids) if (k.exitCode === null) k.kill('SIGKILL');
     }
     assert.equal(h.status, 0, h.stderr);
-    assert.deepEqual(exits, [0, 0, 0, 0, 0, 0], 'every worker saw LEDGER_HALTED and stopped');
-    const n = readLedger({ ledgerPath: lp }).entries.length;
+    assert.deepEqual(
+      exits,
+      [0, 0, 0, 0, 0, 0],
+      'every worker saw LEDGER_HALTED; none booked after it',
+    );
+    const d = readLedger({ ledgerPath: lp });
+    const booked = d.entries.filter((e) => Date.parse(e.createdAt) > Date.parse(d.halt.global.at));
+    assert.equal(booked.length, 0, 'nothing booked after the halt record was written');
     assert.equal(
       code(() => reserve({ ledgerPath: lp, callId: 'late', estimatedMaxUsd: 0.01 })),
       'LEDGER_HALTED',
     );
-    assert.equal(readLedger({ ledgerPath: lp }).entries.length, n, 'nothing booked after the halt');
   });
 });
 
@@ -171,11 +261,21 @@ describe('row 6: a malformed halt record never reads as "not halted"', () => {
     for (const bad of [
       'yes',
       null,
-      { global: true, agents: {} },
-      { global: { by: '', at: new Date().toISOString(), reason: '' }, agents: {} },
-      { global: null, agents: { x: 'halted' } },
-      { global: null },
-      { global: null, agents: {}, extra: 1 },
+      // each shape carries every other part valid, so ITS defect is what refuses
+      { global: true, agents: {}, lifts: [] },
+      { global: { by: '', at: new Date().toISOString(), reason: '' }, agents: {}, lifts: [] },
+      { global: { by: '  ', at: new Date().toISOString(), reason: '' }, agents: {}, lifts: [] },
+      { global: null, agents: { x: 'halted' }, lifts: [] },
+      {
+        global: null,
+        agents: { '': { by: 'r', at: new Date().toISOString(), reason: '' } },
+        lifts: [],
+      },
+      { global: null, lifts: [] },
+      { global: null, agents: {}, lifts: [], extra: 1 },
+      { global: null, agents: {} }, // review S2: the lift history may not be deleted
+      { global: null, agents: {}, lifts: [{ by: 'r' }] },
+      { global: null, agents: {}, lifts: 'none' },
     ]) {
       const lp = fresh();
       const doc = JSON.parse(readFileSync(lp, 'utf8'));
@@ -259,6 +359,27 @@ describe('row 9 + record semantics', () => {
         .stdout,
     );
     assert.equal(j.halted.by, 'maintainer');
+  });
+  test('CLI status never writes an operator-supplied control sequence to the terminal', () => {
+    const lp = fresh();
+    halt({ ledgerPath: lp, by: 'maintainer\u001b[2Jx', reason: 'r\u009b2K' });
+    halt({ ledgerPath: lp, by: 'mo', agentId: 'bot\u001b]0;pwn\u0007' });
+    const r = spawnSync(process.execPath, [CLI, 'status', '--ledger', lp], { encoding: 'utf8' });
+    assert.equal(r.status, 4);
+    assert.doesNotMatch(
+      r.stdout,
+      // eslint-disable-next-line no-control-regex -- the control characters ARE the assertion
+      /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/,
+      JSON.stringify(r.stdout),
+    );
+    assert.match(r.stdout, /HALTED by maintainer\\x1b\[2Jx/);
+  });
+  test('an agent-only halt is listed by status and exits 0 (only a global halt stops CI)', () => {
+    const lp = fresh();
+    halt({ ledgerPath: lp, by: 'maintainer', agentId: 'bot-7' });
+    const r = spawnSync(process.execPath, [CLI, 'status', '--ledger', lp], { encoding: 'utf8' });
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /agent bot-7 halted by maintainer/);
   });
 });
 
@@ -364,10 +485,21 @@ describe('review B2: a halted ledger is a different schema', () => {
     assert.equal(onDisk(lp).schema, LEDGER_SCHEMA);
     halt({ ledgerPath: lp, by: 'maintainer', agentId: 'a' });
     assert.equal(onDisk(lp).schema, LEDGER_SCHEMA_V2);
-    resume({ ledgerPath: lp, by: 'maintainer', agentId: 'a' });
+    resume({ ledgerPath: lp, by: 'mo', agentId: 'a' });
     const d = onDisk(lp);
     assert.equal(d.schema, LEDGER_SCHEMA_V2);
-    assert.deepEqual(d.halt, { global: null, agents: {} });
+    assert.deepEqual([d.halt.global, d.halt.agents], [null, {}]);
+    // review S2: who lifted it is in the books, not only in the alert log
+    assert.equal(d.halt.lifts.length, 1);
+    assert.deepEqual(
+      [
+        d.halt.lifts[0].by,
+        d.halt.lifts[0].scope,
+        d.halt.lifts[0].agentId,
+        d.halt.lifts[0].haltedBy,
+      ],
+      ['mo', 'agent', 'a', 'maintainer'],
+    );
   });
   test('a pre-kill-switch reader refuses a halted ledger by schema name', () => {
     const lp = fresh();
@@ -378,7 +510,7 @@ describe('review B2: a halted ledger is a different schema', () => {
   test('v1 carrying halt, or v2 missing it, refuses — deleting the record never reads as "not halted"', () => {
     const v1 = fresh();
     const a = onDisk(v1);
-    a.halt = { global: null, agents: {} };
+    a.halt = { global: null, agents: {}, lifts: [] };
     writeFileSync(v1, JSON.stringify(a));
     assert.equal(
       code(() => readLedger({ ledgerPath: v1 })),
@@ -459,7 +591,7 @@ describe('verify pass round 2: paths the suite did not drive', () => {
     clearReconciliation({ ledgerPath: lp, by: 'maintainer' });
     const d = onDisk(lp);
     assert.equal(d.schema, LEDGER_SCHEMA_V2);
-    assert.deepEqual(d.halt, { global: null, agents: {} });
+    assert.deepEqual([d.halt.global, d.halt.agents, d.halt.lifts.length], [null, {}, 1]);
   });
   test('CLI: `--agent=bot`, `--agnet bot` or a repeated --agent never widen a resume to all spending (S1)', () => {
     const lp = fresh();
@@ -499,5 +631,31 @@ describe('verify pass round 2: paths the suite did not drive', () => {
       'LEDGER_HALTED',
       'null stays anonymous for reserve',
     );
+  });
+});
+
+describe('RC-08 class: every ledger write declares whether it confirms the books', () => {
+  // updatedAt means "the books were last confirmed" (freshness bound). A
+  // write that confirms nothing — a stop, a resume — must keep it (F-67).
+  // A new write path fails here until someone decides which it is.
+  const CONFIRMS = new Set([
+    'initLedger',
+    'reserve',
+    'settle',
+    'markReconciliationRequired',
+    'clearReconciliation',
+  ]);
+  const KEEPS = new Set(['halt', 'resume']);
+  test('each writeLedger call sits in a classified function, with the matching option', () => {
+    const src = readFileSync(join(HERE, '..', 'src', 'ledger.mjs'), 'utf8');
+    const calls = [...src.matchAll(/(?<!function )writeLedger\(ledgerPath, [^;]*?\);/gs)];
+    assert.ok(calls.length >= 7, `only ${calls.length} writes found — pattern drifted?`);
+    for (const m of calls) {
+      const before = src.slice(0, m.index);
+      const fn = [...before.matchAll(/^export function (\w+)\(/gm)].at(-1)?.[1];
+      const keeps = /keepUpdatedAt: true/.test(m[0]);
+      assert.ok(CONFIRMS.has(fn) || KEEPS.has(fn), `write in ${fn} is not classified`);
+      assert.equal(keeps, KEEPS.has(fn), `${fn}: keepUpdatedAt must be ${KEEPS.has(fn)}`);
+    }
   });
 });

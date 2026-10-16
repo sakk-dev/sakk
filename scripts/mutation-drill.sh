@@ -159,6 +159,13 @@ run_drill MUT-V eval/lib/bundle-verify.mjs \
   "every silently deletable key is declared, and every declaration is still needed" \
   "test"
 
+# MUT-W: a scoped resume also clears the global halt → its test must die red (kill-switch review S3)
+run_drill MUT-W src/ledger.mjs \
+  "    else h.global = null;" \
+  "    h.global = null;" \
+  "a scoped resume leaves the global halt in force" \
+  "test"
+
 # MUT-J: judge the fiction-token exemption on the WHOLE match → a token in a
 # username exempts a real password, and its test must die red
 run_drill MUT-J src/secret-scan.mjs \
