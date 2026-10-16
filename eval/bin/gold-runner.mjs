@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { validateAgainst } from '../lib/validate.mjs';
 import { createTrace, readTrace, writeTrace } from '../lib/trace.mjs';
 import { scoreCase, aggregateMetrics, actualChanges } from '../lib/scorer.mjs';
+import { loadAllPacks, loadPack, packCaseIds, packReport } from '../lib/packs.mjs';
 import { paidCallCount } from '../lib/paid-step.mjs';
 import { childEnv } from '../lib/exec-env.mjs';
 import {
@@ -692,13 +693,35 @@ const isMain =
   })();
 if (isMain) {
   const only = val('case');
+  const packId = val('pack');
   let cases;
+  let pack = null;
   try {
-    cases = loadCases(only);
+    if (only !== undefined && packId !== undefined)
+      throw new Error('SELECTOR_CONFLICT: use --case OR --pack, not both');
+    if (packId !== undefined) {
+      pack = loadPack(packId, new Set(loadCases().map((c) => c.id)));
+      cases = loadCases(packCaseIds(pack).join(','));
+    } else cases = loadCases(only);
   } catch (e) {
     console.error(String(e.message));
     process.exit(2);
   }
+  // A pack run ends with a per-requirement verdict, written beside the
+  // metrics so the evidence and its regulatory reading travel together.
+  const emitPackReport = (entries, outDir) => {
+    if (!pack) return;
+    const report = packReport(pack, entries);
+    writeFileSync(join(outDir, 'pack-report.json'), `${JSON.stringify(report, null, 1)}\n`);
+    console.log(`\npack ${report.pack} — ${report.title}`);
+    for (const r of report.requirements)
+      console.log(
+        `  ${r.status === 'COVERED' ? 'COVERED    ' : 'NOT COVERED'}  ${r.id}  (${r.cases.map((c) => `${c.case}:${c.verdict}`).join(' ')})`,
+      );
+    console.log(
+      `  ${report.covered}/${report.total} requirements covered · ${report.clause_status.split(' — ')[0]}`,
+    );
+  };
   if (flag('validate')) {
     let bad = 0;
     for (const c of cases) {
@@ -714,12 +737,20 @@ if (isMain) {
         bad += 1;
       }
     }
+    let packsOk = true;
+    try {
+      const packs = loadAllPacks(new Set(loadCases().map((c) => c.id)));
+      console.log(`packs: OK (${packs.map((p) => p.id).join(', ')})`);
+    } catch (e) {
+      console.log(`packs: ${e.message}`);
+      packsOk = false;
+    }
     const gm = goldManifestStatus();
     console.log(`gold-manifest: ${gm.ok ? 'OK' : gm.why}`);
     console.log(
       JSON.stringify({ cases: cases.length, schema_failures: bad, gold_manifest_ok: gm.ok }),
     );
-    process.exit(bad === 0 && gm.ok ? 0 : 1);
+    process.exit(bad === 0 && gm.ok && packsOk ? 0 : 1);
   } else if (flag('dry-run')) {
     for (const c of cases)
       console.log(
@@ -770,6 +801,7 @@ if (isMain) {
       }),
     );
     console.log(JSON.stringify(metrics));
+    emitPackReport(entries, outDir);
     process.exit(entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1);
   } else if (flag('real')) {
     const workRoot = mkdtempSync(join(tmpdir(), 'gold-real-'));
@@ -838,10 +870,11 @@ if (isMain) {
       `${JSON.stringify({ runId, mode: 'REAL', model_id: gate.auth.model_id, metrics }, null, 1)}\n`,
     );
     console.log(JSON.stringify({ runId, outDir, total: entries.length }));
+    emitPackReport(entries, outDir);
     process.exit(entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1);
   } else {
     console.log(
-      'Usage: gold-runner.mjs --validate | --dry-run | --fake-executor [--case Gxx] [--out dir] | --real --authorization <path>',
+      'Usage: gold-runner.mjs --validate | --dry-run | --fake-executor [--case Gxx | --pack <id>] [--out dir] | --real --authorization <path> [--pack <id>]',
     );
     process.exit(2);
   }
