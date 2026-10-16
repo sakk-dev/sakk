@@ -93,19 +93,39 @@ it and exits 3 if the run ended in an unresolved reconciliation.
 
 ## 6. If you were handed an evidence bundle (.tgz)
 
-No clone needed. Unpack it anywhere and run its own verifier:
+No clone needed. The bundle ships its own verifier (`verify.mjs`), which
+is exactly why you check the bundle WITHOUT it first — a forged bundle can
+ship a verifier that prints PASS. In this order:
 
 ```bash
-tar -xzf sakk-evidence-*.tgz && cd sakk-evidence-* && node verify.mjs
+tar -tzf bundle.tgz                         # one top-level sakk-evidence-<run>/ dir, no absolute or ../ paths
+mkdir fresh && tar -xzf bundle.tgz -C fresh && cd fresh/sakk-evidence-*
+shasum -a 256 MANIFEST.sha256               # = the fingerprint the issuer gave you SEPARATELY? if not: stop
+shasum -a 256 -c MANIFEST.sha256            # every file, verify.mjs included, matches
+node verify.mjs                             # only now
 ```
 
-PASS means every file matches the manifest and the files agree with each
-other (verdicts vs violations, per-case cost vs per-case ledger, one run,
-one harness commit, metrics and pack report recomputed). It does NOT prove
-who made the bundle: compare the printed fingerprint with the one the
-issuer gave you separately. Issuers build bundles with
-`node scripts/evidence-bundle.mjs <out-dir> --to <file.tgz>`, which refuses
-to write a bundle that fails its own verifier.
+(`sha256sum` works the same on Linux.) Optionally compare `verify.mjs`
+byte for byte with `eval/lib/bundle-verify.mjs` of the sakk version named
+in `bundle.json`.
+
+verify.mjs PASS means: only regular files, all matching the manifest; one
+run, one harness commit, one executor mode (cross-checked against every
+trace's provider); the case list equals the case directories; verdicts
+agree with violations; each case's cost equals what its own ledger
+settled; metrics.json recomputes from the per-case files (all metrics
+except `trace_completeness_rate`, which is range-checked); the pack report
+recomputes (a FAKE run can only read HARNESS_ONLY). Anything unreadable or
+ill-typed is a named failure, never a skipped check.
+
+It does NOT show who made the bundle: a full rebuild — verdicts edited, a
+failing case dropped, metrics and manifest recomputed — passes verify.mjs.
+Only the out-of-band fingerprint catches that. Nor does it re-judge
+verdicts against the agent's workspace (see the boundary below). `run/`
+holds raw logs that can contain whatever the agent printed, secrets
+included — review before forwarding. Issuers build bundles with
+`node scripts/evidence-bundle.mjs <out-dir> --to <file.tgz>`, which
+refuses to write a bundle whose archive fails its own verifier.
 
 ## Honest boundary (today)
 

@@ -9,6 +9,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -61,6 +62,12 @@ const editJson = (b, rel, fn) => {
   writeFileSync(p, JSON.stringify(j));
 };
 const codes = (b) => verifyBundle(b).problems.map((p) => p.code);
+const forge = (b, rel, fn) => {
+  editJson(b, rel, fn);
+  reManifest(b);
+  return codes(b);
+};
+const hasShasum = spawnSync('shasum', ['--version']).status === 0;
 
 before(() => {
   RUN = join(tdir(), 'run');
@@ -198,5 +205,219 @@ describe('building refuses rather than ships something unverifiable', () => {
       (e) => e.code === 'BUNDLE_SELF_CHECK_FAILED',
     );
     assert.equal(spawnSync('test', ['-e', to]).status, 1, 'no bundle file was written');
+  });
+});
+
+describe('review B1: falsy or non-object JSON is a failure, never a skipped check', () => {
+  for (const planted of ['null', '0', 'false', '[]', '"x"']) {
+    test(`run/G05/result.json = ${planted} → CASE_FILE_INVALID + METRICS_UNVERIFIABLE`, () => {
+      const b = copyOf(PRISTINE);
+      writeFileSync(join(b, 'run/G05/result.json'), planted);
+      reManifest(b);
+      const r = verifyBundle(b);
+      assert.equal(r.ok, false);
+      const c = r.problems.map((p) => p.code);
+      assert.ok(c.includes('CASE_FILE_INVALID'), c.join());
+      assert.ok(c.includes('METRICS_UNVERIFIABLE'), c.join());
+    });
+  }
+  test('metrics.json = null → METRICS_UNVERIFIABLE', () => {
+    const b = copyOf(PRISTINE);
+    writeFileSync(join(b, 'run/metrics.json'), 'null');
+    reManifest(b);
+    assert.ok(codes(b).includes('METRICS_UNVERIFIABLE'));
+  });
+  test('ill-typed fields are named problems, and the verifier never throws', () => {
+    for (const [rel, fn] of [
+      ['run/G03/result.json', (r) => (r.violations = 'none')],
+      ['run/G03/trace.json', (t) => (t.actual_cost_usd = '0')],
+      ['run/G03/trace.json', (t) => delete t.state_transitions],
+      ['run/G03/ledger.json', (l) => (l.entries = [{ status: 'SETTLED' }])],
+    ]) {
+      const b = copyOf(PRISTINE);
+      assert.ok(forge(b, rel, fn).includes('CASE_FILE_INVALID'), rel);
+    }
+  });
+  test('a case without its ledger.json → CASE_FILE_INVALID (cost cannot be checked)', () => {
+    const b = copyOf(PRISTINE);
+    rmSync(join(b, 'run/G04/ledger.json'));
+    reManifest(b);
+    assert.ok(codes(b).includes('CASE_FILE_INVALID'));
+  });
+});
+
+describe('review B2: the auditor can check the bundle without running its code', () => {
+  test('the fingerprint is exactly sha256(MANIFEST.sha256)', () => {
+    const fp = createHash('sha256')
+      .update(readFileSync(join(PRISTINE, 'MANIFEST.sha256')))
+      .digest('hex');
+    assert.equal(verifyBundle(PRISTINE).fingerprint, fp);
+  });
+  test(
+    '`shasum -a 256 -c MANIFEST.sha256` passes on a pristine bundle and fails on a swapped verify.mjs',
+    { skip: !hasShasum },
+    () => {
+      const ok = spawnSync('shasum', ['-a', '256', '-c', 'MANIFEST.sha256'], {
+        cwd: PRISTINE,
+        encoding: 'utf8',
+      });
+      assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+      const b = copyOf(PRISTINE);
+      writeFileSync(join(b, 'verify.mjs'), 'console.log("VERIFY PASS"); process.exit(0);\n');
+      assert.notEqual(
+        spawnSync('shasum', ['-a', '256', '-c', 'MANIFEST.sha256'], { cwd: b }).status,
+        0,
+      );
+    },
+  );
+  test('the bundle README orders the independent checks BEFORE running verify.mjs', () => {
+    const readme = readFileSync(join(PRISTINE, 'README.md'), 'utf8');
+    const fp = readme.indexOf('shasum -a 256 MANIFEST.sha256');
+    const all = readme.indexOf('shasum -a 256 -c MANIFEST.sha256');
+    const run = readme.indexOf('node verify.mjs');
+    assert.ok(fp > 0 && all > fp && run > all, 'fingerprint → manifest check → run');
+    assert.match(readme, /What a PASS does not show/);
+    assert.match(readme, /secrets/);
+  });
+});
+
+describe('review B3: links and archives', () => {
+  test('a symlink in the run directory → BUNDLE_SOURCE_INVALID, nothing written', () => {
+    const src = join(tdir(), 'run');
+    cpSync(RUN, src, { recursive: true });
+    symlinkSync('/etc/hosts', join(src, 'G01', 'evidence.log'));
+    const to = join(tdir(), 's.tgz');
+    assert.throws(
+      () => buildBundle({ source: src, to }),
+      (e) => e.code === 'BUNDLE_SOURCE_INVALID' && /evidence\.log/.test(e.message),
+    );
+    assert.equal(spawnSync('test', ['-e', to]).status, 1);
+  });
+  test('a symlink planted in an unpacked bundle → NOT_A_REGULAR_FILE (never followed)', () => {
+    const b = copyOf(PRISTINE);
+    symlinkSync('/etc/hosts', join(b, 'run', 'planted.log'));
+    assert.ok(codes(b).includes('NOT_A_REGULAR_FILE'));
+  });
+  test('a successful build leaves exactly the target — no partial files beside it', () => {
+    const dir = tdir();
+    buildBundle({ source: RUN, to: join(dir, 'ok.tgz') });
+    assert.deepEqual(readdirSync(dir), ['ok.tgz']);
+  });
+  test('the archive lists one top-level directory and no absolute or parent paths', () => {
+    const dir = tdir();
+    buildBundle({ source: RUN, to: join(dir, 'ok.tgz') });
+    const names = execFileSync('tar', ['-tzf', join(dir, 'ok.tgz')], { encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean);
+    const tops = new Set(names.map((n) => n.split('/')[0]));
+    assert.equal(tops.size, 1);
+    assert.ok(names.every((n) => !n.startsWith('/') && !n.split('/').includes('..')));
+  });
+});
+
+describe('review B4: the claims in the README are the checks in the code', () => {
+  for (const [field, value] of [
+    ['first_pass_yield', 0.123],
+    ['cost_per_case', 9],
+    ['p95_duration_ms', 1],
+    ['p50_duration_ms', 1],
+    ['model_eligible_case_count', 12],
+    ['control_plane_case_count', 0],
+    ['fake_executor_case_pass_rate', null],
+  ])
+    test(`a forged ${field} → METRIC_MISMATCH`, () => {
+      const b = copyOf(PRISTINE);
+      assert.ok(
+        forge(b, 'run/metrics.json', (m) => (m.metrics[field] = value)).includes('METRIC_MISMATCH'),
+      );
+    });
+  test('a FAKE run relabelled REAL with a real-model pass rate → MODE_MISMATCH', () => {
+    const b = copyOf(PRISTINE);
+    editJson(b, 'run/metrics.json', (m) => {
+      m.metrics.executor_mode = 'REAL';
+      m.metrics.real_model_case_pass_rate = 1;
+      m.metrics.real_model_case_status = 'RUN';
+      m.metrics.real_model_called = true;
+      m.metrics.fake_executor_case_pass_rate = null;
+    });
+    const c = forge(b, 'bundle.json', (x) => (x.executorMode = 'REAL'));
+    assert.ok(c.includes('MODE_MISMATCH'), c.join());
+  });
+  test('metrics.json from another run → RUN_ID_MISMATCH', () => {
+    const b = copyOf(PRISTINE);
+    assert.ok(
+      forge(b, 'run/metrics.json', (m) => (m.runId = 'gold-fake-other')).includes(
+        'RUN_ID_MISMATCH',
+      ),
+    );
+  });
+  test('case list and case directories must agree → CASE_SET_MISMATCH', () => {
+    const b = copyOf(PRISTINE);
+    assert.ok(forge(b, 'bundle.json', (x) => x.cases.pop()).includes('CASE_SET_MISMATCH'));
+    const c = copyOf(PRISTINE);
+    assert.ok(forge(c, 'bundle.json', (x) => x.cases.push('G99')).includes('CASE_SET_MISMATCH'));
+  });
+  test('a traversal case id in bundle.json is refused, not read', () => {
+    const b = copyOf(PRISTINE);
+    assert.ok(
+      forge(b, 'bundle.json', (x) => x.cases.push('../../etc')).includes('BUNDLE_META_INVALID'),
+    );
+  });
+  test('a pack report may not read COVERED in a FAKE bundle → PACK_STATUS_MISMATCH', () => {
+    const b = copyOf(PRISTINE);
+    const runId = JSON.parse(readFileSync(join(b, 'bundle.json'), 'utf8')).runId;
+    writeFileSync(
+      join(b, 'run/pack-report.json'),
+      JSON.stringify({
+        executor_mode: 'FAKE',
+        run_id: runId,
+        covered: 1,
+        requirements: [{ id: 'r', status: 'COVERED', cases: [{ case: 'G05' }] }],
+      }),
+    );
+    reManifest(b);
+    assert.ok(codes(b).includes('PACK_STATUS_MISMATCH'));
+  });
+});
+
+describe("building: case definitions come from the run's own commit", () => {
+  test('a commit this repository does not have → BUNDLE_SOURCE_INVALID', () => {
+    const src = join(tdir(), 'run');
+    cpSync(RUN, src, { recursive: true });
+    for (const id of readdirSync(src).filter((d) => /^G\d+$/.test(d))) {
+      const p = join(src, id, 'trace.json');
+      const t = JSON.parse(readFileSync(p, 'utf8'));
+      t.git_commit = 'e'.repeat(40);
+      writeFileSync(p, JSON.stringify(t));
+    }
+    assert.throws(
+      () => buildBundle({ source: src, to: join(tdir(), 'c.tgz') }),
+      (e) => e.code === 'BUNDLE_SOURCE_INVALID' && /harness commit/.test(e.message),
+    );
+  });
+  test("the bundled case definitions are byte-identical to the commit's", () => {
+    const meta = JSON.parse(readFileSync(join(PRISTINE, 'bundle.json'), 'utf8'));
+    for (const id of meta.cases)
+      assert.equal(
+        readFileSync(join(PRISTINE, 'cases', `${id}.json`), 'utf8'),
+        execFileSync('git', ['show', `${meta.harnessCommit}:eval/cases/${id}.json`], {
+          cwd: join(HERE, '..'),
+          encoding: 'utf8',
+        }),
+      );
+  });
+  test('a run id that is not a plain name → BUNDLE_SOURCE_INVALID', () => {
+    const src = join(tdir(), 'run');
+    cpSync(RUN, src, { recursive: true });
+    for (const id of readdirSync(src).filter((d) => /^G\d+$/.test(d))) {
+      const p = join(src, id, 'trace.json');
+      const t = JSON.parse(readFileSync(p, 'utf8'));
+      t.run_id = '../escape';
+      writeFileSync(p, JSON.stringify(t));
+    }
+    assert.throws(
+      () => buildBundle({ source: src, to: join(tdir(), 'r.tgz') }),
+      (e) => e.code === 'BUNDLE_SOURCE_INVALID',
+    );
   });
 });

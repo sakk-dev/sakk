@@ -10,17 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added (evidence bundles)
 
 - `scripts/evidence-bundle.mjs <out-dir> --to <file.tgz>` (`npm run
-evidence`): packs a run into one self-contained bundle — the untouched
-  out-dir, the case definitions, `bundle.json`, `MANIFEST.sha256`, a README
-  and `verify.mjs`, a zero-dependency verifier that runs with Node alone.
-  Verify checks integrity (manifest) and internal consistency: verdict vs
-  violations, per-case cost vs per-case ledger, one run id and one harness
-  commit across traces, metrics.json and pack-report.json recomputed from
-  the per-case files — so a forger who also rewrites the manifest is still
-  caught. Building refuses (`BUNDLE_SOURCE_INVALID`, `BUNDLE_TARGET_EXISTS`,
-  `BUNDLE_SELF_CHECK_FAILED`) rather than ship an unverifiable bundle.
-  Authenticity is explicitly out of scope until the anchored ledger ships:
-  the fingerprint must reach the auditor separately.
+evidence`): packs a run into one self-contained bundle — the out-dir, the
+  case definitions read from the run's own harness commit (`git show`),
+  `bundle.json` (schema `sakk-evidence-bundle.v1`), `MANIFEST.sha256`, a
+  README and `verify.mjs`, a zero-dependency verifier that runs with Node
+  alone. The auditor checks the bundle WITHOUT running its code first:
+  fingerprint = `shasum -a 256 MANIFEST.sha256` against a value received
+  out of band, then `shasum -a 256 -c MANIFEST.sha256` (AUDITOR_REPLAY §6).
+  verify.mjs then checks integrity (regular files only — links are
+  failures, never followed) and internal consistency: one run, one commit,
+  one executor mode cross-checked against every trace's provider; case list
+  vs case directories; verdict vs violations; per-case cost vs its own
+  ledger; every metric except trace_completeness_rate recomputed (pass
+  rates, first-pass yield, counts, costs, p50/p95); pack report recomputed
+  (a FAKE run can only read HARNESS_ONLY). Unreadable, falsy or ill-typed
+  files are named failures (`CASE_FILE_INVALID`, `METRICS_UNVERIFIABLE`,
+  `BUNDLE_META_INVALID`, `NOT_A_REGULAR_FILE`, `MODE_MISMATCH`,
+  `CASE_SET_MISMATCH`, …), never skipped checks. Building refuses
+  (`BUNDLE_SOURCE_INVALID` incl. symlinks and commits the clone lacks,
+  `BUNDLE_TARGET_EXISTS`, `BUNDLE_SELF_CHECK_FAILED`, `BUNDLE_WRITE_FAILED`),
+  verifies the archive itself after unpacking it fresh, and places it with
+  an exclusive link — no partial file is ever left at the target.
+  Authenticity is out of scope until the anchored ledger ships: a full
+  rebuild passes verify.mjs; only the out-of-band fingerprint catches it.
 
 ### Fixed (hardening campaign, 2026-10-16)
 
