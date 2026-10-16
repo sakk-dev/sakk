@@ -26,6 +26,13 @@ lines) are asserted by the harnesses themselves; every run prints seeds —
 
 ## Findings → fixes (the loop, round 5)
 
+- **C-4 (HIGH, product, fixed)**: unchecked `writeSync` return — a short
+  write under ENOSPC installed truncated books atomically. Byte-accounted
+  write loop + typed `LEDGER_WRITE_FAILED` + temp cleanup; the matrix
+  ENOSPC probe now asserts post-disk-full readability. Found ONLY by the
+  real-tmpfs leg: no amount of mocking found it locally — the chaos plan
+  earning its keep.
+
 - **C-1 (product, fixed here)**: `readLedger` tolerated unknown top-level
   keys — incl. an own `__proto__` key via JSON.parse. v1 is now a CLOSED
   schema (`LEDGER_TOP_KEYS`); unknown keys refuse `LEDGER_SCHEMA_INVALID`.

@@ -351,18 +351,38 @@ function writeLedger(ledgerPath, doc) {
   // fsync before rename: the gate's decision must survive power loss — a
   // reservation that vanishes after the paid call launched is the one
   // corruption this module cannot tolerate.
-  const fd = openSync(tmp, 'wx');
+  // Campaign finding C-4 (ENOSPC probe): writeSync can SHORT-WRITE without
+  // throwing, and an unchecked return meant a truncated temp file could be
+  // fsynced and renamed into place — atomically installing broken books.
+  // Every byte is now accounted for; zero forward progress refuses typed;
+  // any failure cleans the temp and surfaces as LEDGER_WRITE_FAILED.
   try {
-    writeSync(fd, `${JSON.stringify(doc, null, 1)}\n`);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  try {
+    const fd = openSync(tmp, 'wx');
+    try {
+      const buf = Buffer.from(`${JSON.stringify(doc, null, 1)}\n`);
+      let written = 0;
+      while (written < buf.length) {
+        const w = writeSync(fd, buf, written, buf.length - written);
+        if (!(w > 0))
+          throw new LedgerError(
+            'LEDGER_WRITE_FAILED',
+            'write made no progress — refusing to install partial books',
+            { ledgerPath, written, total: buf.length },
+          );
+        written += w;
+      }
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
     renameSync(tmp, ledgerPath);
   } catch (e) {
     rmSync(tmp, { force: true }); // never leave a half-written tmp behind
-    throw e;
+    if (e instanceof LedgerError) throw e;
+    throw new LedgerError('LEDGER_WRITE_FAILED', `ledger write failed: ${e.code ?? e.message}`, {
+      ledgerPath,
+      cause: e.code ?? String(e.message).slice(0, 80),
+    });
   }
   try {
     // Directory fsync makes the rename itself durable (best effort — not

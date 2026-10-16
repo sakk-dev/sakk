@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (hardening campaign, 2026-10-16)
+
+- **C-4 (disk-full could install broken books)**: `writeSync`'s return was
+  unchecked, so a short write under ENOSPC could be fsynced and renamed
+  into place — an atomically installed TRUNCATED ledger (found by the
+  container matrix's tmpfs probe; the post-mortem read came back
+  `LEDGER_MALFORMED`). Writes now account for every byte, zero-progress
+  refuses, any write failure cleans the temp file and surfaces as the new
+  public code `LEDGER_WRITE_FAILED` — and the matrix probe asserts the
+  books remain readable after disk-full.
+- **C-1**: `sakk-ledger.v1` is a CLOSED schema — unknown top-level keys
+  (incl. a smuggled own `__proto__` key) refuse `LEDGER_SCHEMA_INVALID`.
+- Campaign harnesses added under `scripts/campaign/` (soak with SIGKILL
+  injection, fault-injection corpus, seeded MCP torture, container matrix
+  with ENOSPC probe); measured lock-contention refusal rate ~0.016% under
+  8-way chaos (C-2).
+
 ### Added (policy engine kernel — 🔒L2, design signed 2026-10-15)
 
 - `sakk/policy` export: `loadPolicy` (validate + SHA-256 over raw bytes) ·

@@ -39,6 +39,7 @@ for NODEV in 20 22 24; do
       if (typed === null) { console.error(\"ENOSPC never hit — enlarge the probe\"); process.exit(1); }
       console.log(\"ENOSPC probe → typed refusal:\", typed);
       const doc = m.readLedger({ ledgerPath: \"/tiny/l.json\", maxAgeMs: Infinity });
+      if (typed !== \"LEDGER_WRITE_FAILED\") { console.error(\"C-4 regression: disk-full surfaced as\", typed, \"not LEDGER_WRITE_FAILED\"); process.exit(1); }
       console.log(\"ledger still readable after disk-full:\", doc.entries.length, \"entries — OK\");
     " --input-type=module
     echo "cell node:'"$NODEV"' PASS"
