@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (gold runner)
+
+- A relative `--out` (e.g. `--out run1`) reached executors and verification
+  commands that run in other working directories, so every case scored
+  FAIL while the same run with an absolute path passed. The out path is now
+  resolved to an absolute path once, at parse time; the printed `outDir` is
+  absolute. Fails safe before and after (no false PASS), but a real-model
+  run with a relative path would have spent budget on wrong verdicts.
+
 ### Fixed (hardening campaign, 2026-10-16)
 
 - **C-4 (disk-full could install broken books)**: `writeSync`'s return was

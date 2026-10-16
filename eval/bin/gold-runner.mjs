@@ -730,7 +730,10 @@ if (isMain) {
   } else if (flag('fake-executor')) {
     const runId = `gold-fake-${Date.now().toString(36)}`;
     const workRoot = mkdtempSync(join(tmpdir(), 'gold-run-'));
-    const outDir = val('out') ?? mkdtempSync(join(tmpdir(), 'gold-out-'));
+    // Absolute from here on: executors and verification commands run with
+    // other working directories, and a relative --out silently pointed them
+    // at the wrong place (every case scored FAIL).
+    const outDir = resolve(val('out') ?? mkdtempSync(join(tmpdir(), 'gold-out-')));
     mkdirSync(outDir, { recursive: true });
     if (readdirSync(outDir).some((e) => e === 'metrics.json' || /^G\d+$/.test(e))) {
       // Review finding F2: reusing --out crashed mid-batch with a raw stack
@@ -791,7 +794,10 @@ if (isMain) {
     // Authorized path: one adapter run per case; an unknown cost or a budget
     // refusal halts the batch.
     const runId = `gold-real-${Date.now().toString(36)}`;
-    const outDir = val('out') ?? mkdtempSync(join(tmpdir(), 'gold-real-out-'));
+    // Absolute from here on: executors and verification commands run with
+    // other working directories, and a relative --out silently pointed them
+    // at the wrong place (every case scored FAIL).
+    const outDir = resolve(val('out') ?? mkdtempSync(join(tmpdir(), 'gold-real-out-')));
     mkdirSync(outDir, { recursive: true });
     if (readdirSync(outDir).some((e) => e === 'metrics.json' || /^G\d+$/.test(e))) {
       // Review finding F2: reusing --out crashed mid-batch with a raw stack
