@@ -396,13 +396,19 @@ const isMain = (() => {
   }
 })();
 if (isMain) {
-  const source = process.argv[2];
-  const i = process.argv.indexOf('--to');
-  const to = i > 0 ? process.argv[i + 1] : undefined;
-  if (!source || !to || to.startsWith('--')) {
-    console.error('usage: node scripts/evidence-bundle.mjs <run-out-dir> --to <bundle.tgz>');
+  // Exactly `<run-out-dir> --to <bundle.tgz>`: anything else refuses rather
+  // than being ignored (findings class fail-open-absence).
+  const args = process.argv.slice(2);
+  const i = args.indexOf('--to');
+  const to = i >= 0 ? args[i + 1] : undefined;
+  const rest = args.filter((_, k) => k !== i && k !== i + 1);
+  if (i < 0 || !to || to.startsWith('--') || rest.length !== 1 || rest[0].startsWith('--')) {
+    console.error(
+      'USAGE_UNKNOWN_ARGUMENT: usage is node scripts/evidence-bundle.mjs <run-out-dir> --to <bundle.tgz>',
+    );
     process.exit(2);
   }
+  const source = rest[0];
   // A signal waits for the synchronous build, so the finally block always
   // removes the temp archive and staging copy (SIGKILL excepted).
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(130));

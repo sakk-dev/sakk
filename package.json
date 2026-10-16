@@ -1,7 +1,7 @@
 {
   "name": "sakk",
   "version": "0.1.0",
-  "description": "The original check, rebuilt for AI agents \u2014 a fail-closed spend ledger: reserve before you spawn, settle with real costs, refuse everything pathological.",
+  "description": "The original check, rebuilt for AI agents — a fail-closed spend ledger: reserve before you spawn, settle with real costs, refuse everything pathological.",
   "type": "module",
   "main": "src/ledger.mjs",
   "exports": {
@@ -12,8 +12,8 @@
     "sakk": "bin/sakk.mjs"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs",
-    "test:eval": "node eval/bin/gold-runner.mjs --validate && node --test eval/__tests__/*.test.mjs",
+    "test": "node --test --test-timeout=300000 test/*.test.mjs",
+    "test:eval": "node eval/bin/gold-runner.mjs --validate && node --test --test-timeout=300000 eval/__tests__/*.test.mjs",
     "test:all": "npm test && npm run test:eval",
     "drill": "sh scripts/mutation-drill.sh",
     "format": "npx -y prettier@3.9.10 --write .",
