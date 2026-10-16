@@ -12,6 +12,8 @@ it; `test/core-specs.test.mjs` checks the names resolve.
 | Exemption   | A real secret passes because a fiction token sits somewhere in the match        | exemption judged on the secret capture only · `test/secret-scan.test.mjs::a token in the USERNAME does not exempt a real password` (drill MUT-J)                 |
 | Exemption   | An exempt match swallows a real secret beside it (F-63)                         | only reported findings close a span to the second pass · `test/secret-scan.test.mjs::F-63: an exempt match never hides a real secret it swallowed` (drill MUT-S) |
 | Staged scan | A blob the commit records goes unscanned (type change, odd names, subdirectory) | blob ids from one `git diff --raw` record · `test/secret-scan.test.mjs::a TYPE change (symlink → file holding a secret) is scanned` (drill MUT-K)                |
+| Staged scan | A replace ref makes the scan read other bytes than the commit records (S1)      | `GIT_NO_REPLACE_OBJECTS=1` · `test/secret-scan.test.mjs::review S1: a git replace ref cannot make --staged read other bytes than the commit records`             |
+| Hook        | A merge commit brings a secret in without any hook running (S2)                 | pre-merge-commit hook, both or neither · `test/secret-scan.test.mjs::review S2: a merge commit bringing in a secret is refused by the pre-merge-commit hook`     |
 | Staged scan | Two names that decode alike hide a secret blob                                  | no name join · `test/secret-scan.test.mjs::two names that decode alike cannot hide a secret blob from the installed hook`                                        |
 | Hook        | The hook runs something other than this installation, or is silently ignored    | absolute path, `wx`, chmod past umask · `test/secret-scan.test.mjs::installed under umask 177 the hook is still executable and still refuses secrets`            |
 | Inputs      | A scan of nothing reads clean                                                   | missing/unreadable/special ⇒ exit 2 · `test/secret-scan.test.mjs::a mistyped path exits 2 SCAN_PATH_MISSING`                                                     |
@@ -21,9 +23,10 @@ it; `test/core-specs.test.mjs` checks the names resolve.
 ## Table 2 — failure modes
 
 - Finding → exit 1, one line per finding (rule, path, line, fingerprint).
-- Could not look everywhere → exit 2 (`SCAN_PATH_MISSING`, `SCAN_UNREADABLE`, `SCAN_NOT_A_REPO`, `SCAN_GIT_MISSING`, `SCAN_USAGE`).
-- Hook cannot be installed → exit 2 (`SCAN_HOOK_EXISTS`, `SCAN_HOOK_DIR_MISSING`, `SCAN_HOOK_UNWRITABLE`, `SCAN_HOOK_EPHEMERAL`).
-- Not covered by design (stated in README): unquoted `.env` values, encoded or split secrets, personal data — measured in `scripts/attack-asr.mjs` as KNOWN rows.
+- Could not look everywhere → exit 2 (`SCAN_PATH_MISSING`, `SCAN_UNREADABLE`, `SCAN_NOT_A_REPO`, `SCAN_GIT_MISSING`, `SCAN_USAGE`, `SCAN_FAILED` — git output it cannot account for).
+- Hook cannot be installed → exit 2 (`SCAN_HOOK_EXISTS`, `SCAN_HOOK_DIR_MISSING`, `SCAN_HOOK_UNWRITABLE`, `SCAN_HOOK_EPHEMERAL`); both hooks or neither.
+- Installed hook whose node or sakk is gone → the commit refuses with `SCAN_HOOK_STALE`.
+- Not covered by design (stated in README): unquoted `.env` values, encoded or split secrets, personal data — measured in `scripts/attack-asr.mjs` as KNOWN rows; fast-forward merges, rebases, cherry-picks and `--no-verify` (no git hook runs) — CI scan recommended.
 
 ## Table 3 — audit questions
 

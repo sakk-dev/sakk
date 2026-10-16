@@ -65,7 +65,7 @@ export const RULES = Object.freeze([
     name: 'github_token',
     re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{22,255})/g,
   },
-  { name: 'private_key_block', re: /-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----/g },
+  { name: 'private_key_block', re: /-----BEGIN [A-Z ]{0,40}PRIVATE KEY(?: BLOCK)?-----/g },
   { name: 'bearer_token', re: /\bBearer\s{1,5}[A-Za-z0-9._-]{25,500}/g },
   {
     name: 'password_assignment',
@@ -314,6 +314,9 @@ export function scanStaged(cwd = process.cwd()) {
         cwd,
         maxBuffer: Number.POSITIVE_INFINITY,
         stdio: ['pipe', 'pipe', 'pipe'],
+        // refs/replace/* would make cat-file return OTHER bytes than the
+        // commit records, under the same sha (review S1)
+        env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' },
         ...opts,
       });
     } catch (e) {

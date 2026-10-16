@@ -287,6 +287,57 @@ describe('the hook as SHIPPED (review S-1: no npx, nothing rewritten in the test
       'nothing written through the link',
     );
   });
+  test('review S2: a merge commit bringing in a secret is refused by the pre-merge-commit hook', () => {
+    const d = repo();
+    writeFileSync(join(d, 'base.txt'), 'base\n');
+    git(d, 'add', 'base.txt');
+    git(d, 'commit', '-qm', 'base');
+    assert.equal(cli(['--install-hook'], { cwd: d }).status, 0);
+    git(d, 'checkout', '-qb', 'feat');
+    writeFileSync(join(d, 'app.env'), `DB=${FAKE_DSN}\n`);
+    git(d, 'add', 'app.env');
+    git(d, 'commit', '--no-verify', '-qm', 'leak on a branch');
+    git(d, 'checkout', '-q', '-');
+    const head = git(d, 'rev-parse', 'HEAD').trim();
+    const m = spawnSync('git', ['merge', '--no-ff', '-q', '-m', 'merge', 'feat'], { cwd: d });
+    assert.notEqual(m.status, 0, 'the merge commit is refused');
+    assert.equal(git(d, 'rev-parse', 'HEAD').trim(), head, 'nothing recorded');
+  });
+  test('review S2: an existing pre-merge-commit hook means NOTHING is installed (both or neither)', () => {
+    const d = repo();
+    writeFileSync(join(d, '.git', 'hooks', 'pre-merge-commit'), '#!/bin/sh\n');
+    const r = cli(['--install-hook'], { cwd: d });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /SCAN_HOOK_EXISTS: .*pre-merge-commit/);
+    assert.equal(spawnSync('test', ['-e', join(d, '.git', 'hooks', 'pre-commit')]).status, 1);
+  });
+  test('review S6: a hook whose node is gone refuses with SCAN_HOOK_STALE, not a bare shell error', () => {
+    const d = repo();
+    assert.equal(cli(['--install-hook'], { cwd: d }).status, 0);
+    const hookPath = join(d, '.git', 'hooks', 'pre-commit');
+    writeFileSync(
+      hookPath,
+      readFileSync(hookPath, 'utf8').replaceAll(
+        process.execPath,
+        '/nonexistent/Cellar/node/0/bin/node',
+      ),
+    );
+    writeFileSync(join(d, 'ok.txt'), 'clean\n');
+    git(d, 'add', 'ok.txt');
+    const c = spawnSync('git', ['commit', '-qm', 'x'], { cwd: d, encoding: 'utf8' });
+    assert.notEqual(c.status, 0);
+    assert.match(c.stderr, /SCAN_HOOK_STALE/);
+  });
+  test('review S1: a git replace ref cannot make --staged read other bytes than the commit records', () => {
+    const d = repo();
+    writeFileSync(join(d, 'clean.txt'), 'nothing here\n');
+    const cleanSha = git(d, 'hash-object', '-w', 'clean.txt').trim();
+    writeFileSync(join(d, 'app.env'), `DB=${FAKE_DSN}\n`);
+    git(d, 'add', 'app.env');
+    const secretSha = git(d, 'rev-parse', ':app.env').trim();
+    git(d, 'replace', secretSha, cleanSha);
+    assert.equal(scanStaged(d).findings.length, 1);
+  });
   test('a hooksPath pointing nowhere → SCAN_HOOK_DIR_MISSING, exit 2', () => {
     const d = repo();
     git(d, 'config', 'core.hooksPath', 'no/such/dir');
@@ -597,6 +648,10 @@ describe('verify pass round 3', () => {
   test('N8: a key glued right after the fiction token is found', () => {
     const glued = [FICTIONAL_EXEMPTION_TOKEN, 'sk', '_live_', '7Kd'.repeat(10)].join('');
     assert.equal(scanText(glued).findings.length, 1);
+  });
+  test('review S4: a PGP private key block is a private-key block', () => {
+    const pgp = ['-----BEGIN PGP', 'PRIVATE KEY BLOCK-----'].join(' ');
+    assert.equal(scanText(pgp).findings.length, 1);
   });
   test('RC-03 class: a fiction token beside any real secret, in any position, never hides it', () => {
     // judged in context, not on the literal capture: every recognized shape

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
-import { chmodSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -356,7 +356,8 @@ if (cmd === 'init') {
       );
       process.exit(2);
     }
-    const hook = join(hooksDir, 'pre-commit');
+    // pre-merge-commit too: a merge commit never runs pre-commit (review S2)
+    const hooks = ['pre-commit', 'pre-merge-commit'].map((h) => join(hooksDir, h));
     // Review S-1: never `npx sakk` at commit time — the hook runs THIS
     // installation by absolute path. An installation inside the npx cache
     // is temporary: once the cache is cleaned every commit would fail.
@@ -373,29 +374,52 @@ if (cmd === 'init') {
       process.exit(2);
     }
     const q = (x) => `'${x.replace(/'/g, `'\\''`)}'`;
+    // node upgrades (Homebrew Cellar, nvm) move the realpath this pins: say
+    // so in sakk's words instead of a bare shell error (review S6)
+    const guard = `[ -x ${q(process.execPath)} ] && [ -f ${q(self)} ] || { echo 'sakk: SCAN_HOOK_STALE: the node or sakk this hook runs is gone (node upgraded? sakk moved?) - re-run: sakk scan --install-hook' >&2; exit 1; }`;
     const line = `${q(process.execPath)} ${q(self)} scan --staged || exit 1`;
-    const body = `#!/bin/sh\n# installed by sakk scan --install-hook (re-run it if sakk moves)\n${line}\n`;
+    const body = `#!/bin/sh\n# installed by sakk scan --install-hook (re-run it if node or sakk moves)\n${guard}\n${line}\n`;
+    const exists = (p) => {
+      try {
+        lstatSync(p); // a dangling symlink exists too
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const taken = hooks.find(exists);
+    if (taken) {
+      console.error(
+        `SCAN_HOOK_EXISTS: ${taken} already exists — nothing installed; add these lines to your pre-commit and pre-merge-commit hooks instead:\n  ${guard}\n  ${line}`,
+      );
+      process.exit(2);
+    }
+    const written = [];
     try {
-      // 'wx' = O_EXCL: refuses ANY existing entry, a dangling symlink
-      // included, so an existing hook is never overwritten or written through.
-      writeFileSync(hook, body, { flag: 'wx', mode: 0o755 });
-      chmodSync(hook, 0o755); // the create mode is masked by umask; git ignores a non-executable hook
+      for (const hook of hooks) {
+        // 'wx' = O_EXCL: refuses ANY existing entry, a dangling symlink
+        // included, so an existing hook is never overwritten or written through.
+        writeFileSync(hook, body, { flag: 'wx', mode: 0o755 });
+        written.push(hook);
+        chmodSync(hook, 0o755); // the create mode is masked by umask; git ignores a non-executable hook
+      }
     } catch (e) {
+      for (const w of written) rmSync(w, { force: true }); // both or neither
       if (e.code === 'EEXIST') {
-        console.error(
-          `SCAN_HOOK_EXISTS: ${hook} already exists — add this line to it instead:\n  ${line}`,
-        );
+        console.error(`SCAN_HOOK_EXISTS: a hook appeared while installing — nothing installed`);
         process.exit(2);
       }
       if (e.code === 'ENOENT') {
         console.error(`SCAN_HOOK_DIR_MISSING: ${hooksDir} does not exist (check core.hooksPath)`);
         process.exit(2);
       }
-      console.error(`SCAN_HOOK_UNWRITABLE: ${hook} could not be written (${e.code ?? e.message})`);
+      console.error(
+        `SCAN_HOOK_UNWRITABLE: ${hooksDir} hooks could not be written (${e.code ?? e.message})`,
+      );
       process.exit(2);
     }
     console.log(
-      `pre-commit hook installed: ${hook} — commits containing recognized secrets will be refused`,
+      `pre-commit and pre-merge-commit hooks installed in ${hooksDir} — commits and merge commits containing recognized secrets will be refused. Not covered by any git hook: fast-forward merges, rebases, cherry-picks, --no-verify. Run \`sakk scan .\` in CI as well.`,
     );
   } else if (flag('staged') && paths.length > 0) {
     usage('--staged scans the index and takes no paths — run the two scans separately');
@@ -405,7 +429,10 @@ if (cmd === 'init') {
     try {
       report(flag('staged') ? scanStaged() : scanPaths(paths));
     } catch (e) {
-      console.error(e instanceof ScanError ? e.message : `SCAN_FAILED: ${e.code ?? e.message}`);
+      // git's own stderr can carry paths: escaped and redacted like any name (review N5)
+      console.error(
+        e instanceof ScanError ? e.message : `SCAN_FAILED: ${display(String(e.code ?? e.message))}`,
+      );
       process.exitCode = 2;
     }
   }
