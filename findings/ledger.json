@@ -56,6 +56,10 @@
         {
           "kind": "detector",
           "ref": "test/schema-pins.test.mjs::the v1 ledger key list is pinned"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/core-specs.test.mjs::every source file is classified core or not core"
         }
       ]
     },
@@ -1414,6 +1418,81 @@
       "sweep": "README sections, CHANGELOG and AUDITOR_REPLAY reread after the merge; no other stale shipped/not-shipped claim found.",
       "sweep_status": "done",
       "status": "fixed"
+    },
+    {
+      "id": "F-53",
+      "date": "2026-10-16",
+      "title": "Three L1 changes merged without a three-tables spec",
+      "symptom": "Case packs, secret scanning and evidence bundles touch L1 areas (evaluation verdicts, a safety red line, cost evidence) but had no specs/ entry; only the kill switch had one.",
+      "evidence": "testing-standard audit, §5 change matrix",
+      "found_by": "review",
+      "introduced_in": "4769e33",
+      "direct_cause": "AGENTS.md required specs only for ledger and scorer diffs; the standard's L1 list is wider.",
+      "why": [
+        "The project's core-area list was narrower than the standard's.",
+        "Whether a change was 'core' was the author's call.",
+        "Nothing checked that a core file has a spec."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: specs/case-packs, specs/secret-scan, specs/evidence-bundle",
+      "class_fix": "test/core-specs.test.mjs",
+      "guard": "test/core-specs.test.mjs::every source file is classified core or not core",
+      "sweep": "Every file under src/, eval/lib/, eval/bin/ classified CORE (with spec) or NOT_CORE (with reason).",
+      "sweep_status": "done",
+      "status": "class_closed"
+    },
+    {
+      "id": "F-54",
+      "date": "2026-10-16",
+      "title": "Seven core files had no mutation-drill anchor",
+      "symptom": "The drill held 7 anchors; the new guards of plan items 1-4 and four older core files (MCP gate, path matcher, paid step, bundle builder) had none, so their tests were never shown able to fail.",
+      "evidence": "testing-standard audit, T0",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Adding a guard did not require adding a drill anchor.",
+      "why": [
+        "The drill list was edited by hand.",
+        "Nothing compared core files against drill targets.",
+        "Tests of new guards were never mutated."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: 11 anchors MUT-H..MUT-R, 18 total, all killed by their named tests",
+      "class_fix": "test/core-specs.test.mjs",
+      "guard": "test/core-specs.test.mjs::has a spec and a mutation-drill anchor",
+      "sweep": "All 11 core files now have at least one anchor; the certificate expects 18.",
+      "sweep_status": "done",
+      "status": "class_closed"
+    },
+    {
+      "id": "F-55",
+      "date": "2026-10-16",
+      "title": "The standard's T2, T3 and §14 layers had no executable in Sakk",
+      "symptom": "Reliability (k-runs), the attack list with ASR, and the evolution indicators existed only as ad-hoc reviews; nothing re-ran them on demand.",
+      "evidence": "testing-standard audit, §13 onboarding",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Sakk adopted the standard's ledger (§14.7) but not its executors.",
+      "why": [
+        "Onboarding copied the ledger, not the runnable layers.",
+        "Each review was a one-off.",
+        "There was no single command that runs every applicable layer."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: scripts/golden-k.mjs, scripts/attack-asr.mjs, scripts/findings-report.mjs, scripts/audit.mjs",
+      "class_fix": "scripts/audit.mjs",
+      "guard": "test/core-specs.test.mjs::scripts/audit.mjs covers T0, T2, T3 and §14",
+      "sweep": "Layer map in docs/testing-profile.md: T1/T4 not applicable, T5 not started, T6 partial — each with its reason.",
+      "sweep_status": "done",
+      "status": "class_closed"
     }
   ]
 }

@@ -21,7 +21,11 @@
     "fuzz": "node scripts/invariant-fuzz.mjs",
     "fuzz:policy": "node scripts/policy-fuzz.mjs",
     "certificate": "node scripts/gate-certificate.mjs",
-    "evidence": "node scripts/evidence-bundle.mjs"
+    "evidence": "node scripts/evidence-bundle.mjs",
+    "audit": "node scripts/audit.mjs",
+    "golden-k": "node scripts/golden-k.mjs",
+    "attack-asr": "node scripts/attack-asr.mjs",
+    "findings-report": "node scripts/findings-report.mjs"
   },
   "engines": {
     "node": ">=20"
