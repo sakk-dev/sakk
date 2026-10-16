@@ -155,13 +155,13 @@ npx sakk scan --install-hook    # refuse commits that contain secrets
 It recognizes eight formats: database URLs with a password (`postgres`,
 `postgresql`, `mysql`, `mariadb`, `mongodb`, `mongodb+srv`, `redis`, `rediss`,
 `amqp`, `amqps`, `mssql`, `sqlserver`), URL-encoded passwords in any URL,
-AWS access keys, `sk-…` and `sk_live_`/`sk_test_`/`rk_…` API keys (with at
-least one digit, so identifiers like `sk_set_flags` don't match), GitHub
+AWS access keys, API keys shaped `sk_live_…`/`sk_test_…`/`rk_live_…`/`rk_test_…`, or `sk-…`/`sk_…` with a digit or at least 40 characters (so identifiers like `sk_set_flags` don't match), GitHub
 tokens (classic and fine-grained), private-key blocks, bearer tokens, and
 quoted `password = "…"` assignments. It does NOT catch secrets in any other
 shape — an unquoted `.env` line such as `PASSWORD=hunter2hunter2`, other URL
-schemes, a bare random string, personal data. A clean scan means "none of
-these formats", not "no secrets".
+schemes, a bare random string, personal data. A reference to a secret in
+the secret's place (`${REDIS_PASSWORD}`, `$PW`, `%(pw)s`, `{{ pw }}`) is not
+reported. A clean scan means "none of these formats", not "no secrets".
 
 Findings print the rule, path, line and a 12-character keyed fingerprint —
 never the secret. The key is random per run; set `SAKK_SCAN_KEY` (and keep
@@ -187,8 +187,8 @@ modified or type-changed blob in the index, wherever you run it from;
 a staged symlink's target counts as content. `--install-hook` writes a
 pre-commit hook that runs the installed sakk by absolute path. It refuses
 if any pre-commit hook already exists (even a dangling symlink), and it
-refuses to install from the temporary `npx` cache (`SCAN_HOOK_EPHEMERAL`) —
-that copy disappears when the cache is cleaned. Re-run it if you move or
+refuses to install from a temporary `npx`, `bunx` or `pnpm dlx` cache
+(`SCAN_HOOK_EPHEMERAL`) — that copy disappears when the cache is cleaned. Re-run it if you move or
 reinstall sakk.
 
 ## MCP: put the gate in front of any agent

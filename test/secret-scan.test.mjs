@@ -484,7 +484,7 @@ describe('verify pass: installing the hook', () => {
     assert.ok(!existsSync(join(d, 'PWNED')) && !existsSync(join(d, 'PWNED2')));
   });
   test('installing from the temporary npx cache is refused (SCAN_HOOK_EPHEMERAL)', () => {
-    const base = join(tdir(), '_npx', 'abc', 'node_modules', 'sakk');
+    const base = join(tdir(), '_npx', '0a1b2c3d4e5f6789', 'node_modules', 'sakk');
     for (const part of ['bin', 'src'])
       cpSync(join(HERE, '..', part), join(base, part), { recursive: true });
     cpSync(join(HERE, '..', 'package.json'), join(base, 'package.json'));
@@ -498,5 +498,99 @@ describe('verify pass: installing the hook', () => {
     );
     assert.equal(r.status, 2);
     assert.match(r.stderr, /SCAN_HOOK_EPHEMERAL/);
+  });
+});
+
+describe('verify pass round 3', () => {
+  test('S1: Stripe-style prefixed keys without digits, sk_<hex> and long sk- keys are found', () => {
+    for (const k of [
+      ['sk', '_live_', 'abcdefghijklmnopqrstuvwx'].join(''),
+      ['rk', '_live_', 'abcdefghijklmnopqrstuvwx'].join(''),
+      ['sk', '_', '0123456789abcdef'.repeat(3)].join(''),
+      ['sk', '-', 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuv'].join(''),
+    ])
+      assert.equal(scanText(k).findings.length, 1, k.slice(0, 10));
+  });
+  test('S2: diff.relative=true does not hide files from a subdirectory scan', () => {
+    const d = repo();
+    mkdirSync(join(d, 'sub'));
+    writeFileSync(join(d, 'a.env'), `DB=${FAKE_DSN}\n`);
+    writeFileSync(join(d, 'sub', 'ok'), 'clean\n');
+    git(d, 'add', '-A');
+    git(d, 'config', 'diff.relative', 'true');
+    assert.equal(cli(['--staged'], { cwd: join(d, 'sub') }).status, 1);
+  });
+  test('N1: values on the next line (YAML, wrapped Bearer) are found', () => {
+    for (const t of [
+      `password:\n    "${FAKE_PW}abc"`,
+      `password =\n  "${FAKE_PW}"`,
+      `Bearer\n${'Zx9pQ7rT2v'.repeat(4)}`,
+    ])
+      assert.equal(scanText(t).findings.length, 1, JSON.stringify(t.slice(0, 12)));
+  });
+  test('N2: a placeholder in the secret position is not a secret', () => {
+    for (const t of [
+      `REDIS_URL=redis${':'}//:\${REDIS_PASSWORD}@redis:6379/0`,
+      `rediss${':'}//:%(redis_password)s@cache:6380`,
+      `DB=${SCHEME}app:{{ db_password }}@db/app`,
+      ['password', ' = "${DB_PASSWORD_FROM_VAULT}"'].join(''),
+    ])
+      assert.equal(scanText(t).findings.length, 0, t);
+  });
+  test('N3: a staged object missing from the repository is named as missing', () => {
+    const d = repo();
+    git(d, 'update-index', '--add', '--cacheinfo', `100644,${'1234567890'.repeat(4)},ghost.txt`);
+    const r = cli(['--staged'], { cwd: d });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /object missing from the repository/);
+  });
+  test('N4/N6: --install-hook without git says SCAN_GIT_MISSING; with paths it is SCAN_USAGE', () => {
+    const d = repo();
+    const nogit = cli(['--install-hook'], {
+      cwd: d,
+      env: { ...process.env, PATH: '/nonexistent' },
+    });
+    assert.equal(nogit.status, 2);
+    assert.match(nogit.stderr, /SCAN_GIT_MISSING/);
+    const withPath = cli(['--install-hook', 'src'], { cwd: d });
+    assert.equal(withPath.status, 2);
+    assert.match(withPath.stderr, /SCAN_USAGE/);
+  });
+  test('N5: a legit path containing _npx installs; bunx and pnpm dlx caches are refused', () => {
+    const mk = (...parts) => {
+      const base = join(tdir(), ...parts);
+      for (const part of ['bin', 'src'])
+        cpSync(join(HERE, '..', part), join(base, part), { recursive: true });
+      cpSync(join(HERE, '..', 'package.json'), join(base, 'package.json'));
+      return spawnSync(
+        process.execPath,
+        [join(base, 'bin', 'sakk.mjs'), 'scan', '--install-hook'],
+        {
+          cwd: repo(),
+          encoding: 'utf8',
+        },
+      );
+    };
+    assert.equal(mk('work', '_npx', 'tools', 'sakk').status, 0, 'a legit install');
+    for (const parts of [
+      ['bunx-501-sakk@0.1.0', 'node_modules', 'sakk'],
+      ['.cache', 'pnpm', 'dlx', 'abc123', 'node_modules', 'sakk'],
+    ]) {
+      const r = mk(...parts);
+      assert.equal(r.status, 2, parts.join('/'));
+      assert.match(r.stderr, /SCAN_HOOK_EPHEMERAL/);
+    }
+  });
+  test('N7: C1 controls and Unicode line separators in names are escaped', () => {
+    const d = tdir();
+    writeFileSync(join(d, 'a\u009b2K\u2028b.env'), `DB=${FAKE_DSN}\n`);
+    const r = cli([d]);
+    assert.equal(r.status, 1);
+    assert.ok(!/[\u0080-\u009f\u2028\u2029]/.test(r.stdout), JSON.stringify(r.stdout));
+    assert.match(r.stdout, /\\x9b2K\\u2028b/);
+  });
+  test('N8: a key glued right after the fiction token is found', () => {
+    const glued = [FICTIONAL_EXEMPTION_TOKEN, 'sk', '_live_', '7Kd'.repeat(10)].join('');
+    assert.equal(scanText(glued).findings.length, 1);
   });
 });

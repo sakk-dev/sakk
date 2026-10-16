@@ -41,6 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   key exempts nothing. UTF-32 and odd-length UTF-16 decoded; names with
   control characters printed escaped; exit codes set without truncating
   piped output.
+  Verify round 3: key shapes the digit rule had dropped are back
+  (`sk_live_`/`rk_test_`-prefixed keys need no digit; `sk_<hex>` and `sk-`
+  keys of 40+ chars match); `--no-relative` so `diff.relative=true` cannot
+  hide files from a subdirectory scan; values on the next line
+  (`password:` + newline, wrapped `Bearer`) found; placeholders such as
+  `${REDIS_PASSWORD}` in the secret position are not secrets; a key glued
+  right after the fiction token is found; C1 controls and U+2028/2029 in
+  names escaped; a missing staged object is named as missing;
+  `--install-hook` with paths is `SCAN_USAGE`, without git
+  `SCAN_GIT_MISSING`; ephemeral-cache detection covers npx hash dirs, bunx
+  and pnpm dlx without refusing ordinary paths that contain `_npx`.
 
 ### Fixed (hardening campaign, 2026-10-16)
 

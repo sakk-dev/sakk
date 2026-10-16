@@ -242,15 +242,21 @@ if (cmd === 'init') {
     process.exitCode = 2;
   };
   const paths = argv.slice(1).filter((a) => !a.startsWith('--'));
-  if (flag('install-hook')) {
+  if (flag('install-hook') && (paths.length > 0 || flag('staged'))) {
+    usage('--install-hook takes no paths and no --staged');
+  } else if (flag('install-hook')) {
     let hooksDir;
     try {
       hooksDir = execFileSync('git', ['rev-parse', '--git-path', 'hooks'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
       }).trim();
-    } catch {
-      console.error('SCAN_NOT_A_REPO: run --install-hook inside a git repository');
+    } catch (e) {
+      console.error(
+        e.code === 'ENOENT'
+          ? 'SCAN_GIT_MISSING: git is not on PATH'
+          : 'SCAN_NOT_A_REPO: run --install-hook inside a git repository',
+      );
       process.exit(2);
     }
     const hook = join(hooksDir, 'pre-commit');
@@ -258,7 +264,12 @@ if (cmd === 'init') {
     // installation by absolute path. An installation inside the npx cache
     // is temporary: once the cache is cleaned every commit would fail.
     const self = realpathSync(fileURLToPath(import.meta.url));
-    if (/[\\/]_npx[\\/]/.test(self)) {
+    // npm exec / npx, bunx and pnpm dlx unpack into caches that get cleaned
+    if (
+      /[\\/]_npx[\\/][0-9a-f]{6,}[\\/]node_modules[\\/]|[\\/]bunx-\d+-|[\\/]pnpm[\\/]dlx[\\/]/.test(
+        self,
+      )
+    ) {
       console.error(
         'SCAN_HOOK_EPHEMERAL: this sakk runs from the temporary npx cache — install it first (npm install --save-dev sakk, or npm install -g sakk), then run the installed `sakk scan --install-hook`',
       );

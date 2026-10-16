@@ -55,18 +55,21 @@ export const RULES = Object.freeze([
   {
     // `sk-…` (OpenAI/Anthropic style) or Stripe-style `sk_live_`/`rk_test_`;
     // a digit is required so identifiers like sk_set_flags never match.
+    // Stripe-style `sk_live_`/`rk_test_` prefixes are strong enough alone;
+    // a bare `sk-`/`sk_` needs a digit or 40+ chars, so identifiers like
+    // sk_set_memalloc_and_flags never match.
     name: 'generic_api_key',
-    re: /\b(?:sk-(?=[A-Za-z0-9_-]{0,200}\d)[A-Za-z0-9_-]{20,200}|[sr]k_(?:live|test)_(?=[A-Za-z0-9]{0,200}\d)[A-Za-z0-9]{20,200})/g,
+    re: /\b(?:[sr]k_(?:live|test)_[A-Za-z0-9]{20,200}|sk-[A-Za-z0-9_-]{40,200}|(?:sk|rk)[-_](?=[A-Za-z0-9_-]{0,200}\d)[A-Za-z0-9_-]{20,200})/g,
   },
   {
     name: 'github_token',
     re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{22,255})/g,
   },
   { name: 'private_key_block', re: /-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----/g },
-  { name: 'bearer_token', re: /\bBearer[ \t]{1,5}[A-Za-z0-9._-]{25,500}/g },
+  { name: 'bearer_token', re: /\bBearer\s{1,5}[A-Za-z0-9._-]{25,500}/g },
   {
     name: 'password_assignment',
-    re: /(?:password|passwd|pwd)["']?[ \t]{0,40}[:=][ \t]{0,40}["']([^"'\n]{8,256})["']/gi,
+    re: /(?:password|passwd|pwd)["']?\s{0,40}[:=]\s{0,40}["']([^"'\n]{8,256})["']/gi,
     group: 1,
   },
 ]);
@@ -74,16 +77,28 @@ export const RULES = Object.freeze([
 const KEY = process.env.SAKK_SCAN_KEY ? Buffer.from(process.env.SAKK_SCAN_KEY) : randomBytes(32);
 const fingerprint = (value) => createHmac('sha256', KEY).update(value).digest('hex').slice(0, 12);
 
+// A reference to a secret is not a secret: `${REDIS_PASSWORD}`, `$PW`,
+// `%(pw)s`, `{{ pw }}` as the whole secret part of a URL or assignment.
+const PLACEHOLDER =
+  /^(?:\$\{[^}\s]{1,200}\}|\$[A-Za-z_][A-Za-z0-9_]{0,100}|%\([A-Za-z_][A-Za-z0-9_]{0,100}\)s|\{\{[^}]{1,200}\}\})$/;
+
 function rawFindings(text) {
   const out = [];
   for (const rule of RULES) {
     const re = new RegExp(rule.re.source, rule.re.flags);
     let m;
-    while ((m = re.exec(text)) !== null)
-      out.push({ rule, index: m.index, secret: rule.group ? m[rule.group] : m[0] });
+    while ((m = re.exec(text)) !== null) {
+      const secret = rule.group ? m[rule.group] : m[0];
+      if (rule.group && PLACEHOLDER.test(secret)) continue;
+      out.push({ rule, index: m.index, end: m.index + m[0].length, secret });
+    }
   }
   return out;
 }
+
+/** The text with every fiction token blanked (same length, so indices hold). */
+const blankTokens = (text) =>
+  EXEMPTIONS.reduce((t, tok) => t.split(tok).join(' '.repeat(tok.length)), text);
 
 /** Exempt only a declared fiction with nothing secret-shaped left beside the token. */
 function isExempt(secret) {
@@ -112,18 +127,28 @@ export function scanText(text, path = '(inline)') {
     }
     return lo + 1;
   };
-  for (const h of rawFindings(text)) {
-    if (isExempt(h.secret)) {
-      exempted += 1; // counted, never silent
-      continue;
-    }
+  const spans = [];
+  const add = (h) =>
     findings.push({
       rule: h.rule.name,
       path,
       line: lineOf(h.index),
       fingerprint: fingerprint(h.secret),
     });
+  for (const h of rawFindings(text)) {
+    spans.push([h.index, h.end]);
+    if (isExempt(h.secret)) {
+      exempted += 1; // counted, never silent
+      continue;
+    }
+    add(h);
   }
+  // A real key glued to a fiction token (TOKENsk_live_…) hides from `\b`;
+  // with the tokens blanked it stands alone. Only hits the first pass did
+  // not already cover are new.
+  if (EXEMPTIONS.some((t) => text.includes(t)))
+    for (const h of rawFindings(blankTokens(text)))
+      if (!spans.some(([a, b]) => h.index < b && h.end > a)) add(h);
   return { findings, exempted };
 }
 
@@ -131,11 +156,14 @@ export function scanText(text, path = '(inline)') {
 function display(p) {
   const hits = rawFindings(p).filter((h) => !isExempt(h.secret));
   if (hits.length > 0) return `[redacted path ${fingerprint(hits[0].secret)}]`;
+  // C0, DEL, C1 and the Unicode line separators never reach a terminal raw
   // eslint-disable-next-line no-control-regex
-  return p.replace(
-    /[\x00-\x1f\x7f]/g,
-    (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`,
-  );
+  return p.replace(/[\x00-\x1f\x7f-\x9f\u2028\u2029]/g, (c) => {
+    const n = c.charCodeAt(0);
+    return n > 0xff
+      ? `\\u${n.toString(16).padStart(4, '0')}`
+      : `\\x${n.toString(16).padStart(2, '0')}`;
+  });
 }
 
 /** A secret in a name is a finding — counted once, at the entry that carries it. */
@@ -303,6 +331,7 @@ export function scanStaged(cwd = process.cwd()) {
     '--cached',
     '--raw',
     '-z',
+    '--no-relative', // diff.relative=true would hide files outside the cwd
     '--no-renames',
     '--no-abbrev',
     '--diff-filter=AMT',
@@ -373,7 +402,11 @@ export function scanStaged(cwd = process.cwd()) {
     bytes = 0;
   };
   todo.forEach((t, i) => {
-    if (!(sizes[i] >= 0) || sizes[i] > MAX_SCAN_BYTES) {
+    if (!(sizes[i] >= 0)) {
+      unreadable.push(`${t.shown} (object missing from the repository)`);
+      return;
+    }
+    if (sizes[i] > MAX_SCAN_BYTES) {
       unreadable.push(`${t.shown} (larger than ${MAX_SCAN_BYTES} bytes)`);
       return;
     }
