@@ -87,6 +87,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SCAN_GIT_MISSING`; ephemeral-cache detection covers npx hash dirs, bunx
   and pnpm dlx without refusing ordinary paths that contain `_npx`.
 
+### Added (case packs)
+
+- `eval/packs/`: gold cases grouped by regulatory requirement —
+  `cbuae-ai-oversight` (4), `dora-ict-change` (3), `difc-data-protection` (3)
+  requirements over 9 of the 12 cases (G04 and G09 map to no requirement in
+  these packs; control-plane G12 cannot run against a model, and packs admit
+  only `execution_mode: "model"` cases). `gold-runner --pack <id>` runs a
+  pack's cases and writes `pack-report.json` with its provenance (mode, run
+  id, harness commit, stop info). FAKE runs read `HARNESS_ONLY`; only REAL
+  runs can read `COVERED`. Every requirement carries `gaps`, every pack
+  `not_covered` — mandatory fields, so the honest boundary travels with the
+  claim. Refusals: `PACK_UNKNOWN`, `PACK_INVALID`, `SELECTOR_CONFLICT`,
+  `USAGE_EQUALS_FORM`, `USAGE_UNKNOWN_ARGUMENT`, `USAGE_REPEATED_FLAG`,
+  `USAGE_MISSING_VALUE`, `USAGE_MODE_CONFLICT` — the runner now refuses any
+  argument it does not know (a misspelled `--packs x` used to run ALL
+  cases). A REAL pack report names the model (`model`: provider, model id,
+  executor binary, whether `CLAUDE_BIN` overrode it) and whether the harness
+  tree was dirty; `not_covered` is marked non-exhaustive. **Exit code:** a
+  REAL batch that stops early now exits 1 even if every case that ran passed.
+  Verify round 3: `harness_dirty` is computed from the repository top (it
+  could never be true before) and excludes the run's own out dir;
+  `model.executor_binary_resolved` records the file PATH actually ran, and
+  the REAL meaning says the binary is recorded, not verified; empty values
+  and flags the chosen mode never reads refuse (`USAGE_FLAG_NOT_FOR_MODE`).
+  `--validate` checks all packs and reports `packs_ok`.
+
 ### Fixed (hardening campaign, 2026-10-16)
 
 - **C-4 (disk-full could install broken books)**: `writeSync`'s return was
