@@ -41,6 +41,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refuse a v2 ledger by schema name — they can never ignore a stop. Drill gains MUT-G (7 mutants); invariant fuzz gains halt ops and
   refuses vacuous seeds that never probe a halt.
 
+### Added (secret scanning)
+
+- `sakk scan <paths> | --staged | --install-hook` and `src/secret-scan.mjs`
+  (ported from the predecessor system, English-ized and hardened): eight
+  rules (DSNs with passwords, URL-encoded passwords, AWS keys, `sk-`/`rk-`
+  keys, GitHub tokens, private-key blocks, bearer tokens, password
+  assignments); fingerprint-only findings; a single declared-fiction
+  exemption token, judged on the secret part of a match only (a token in a
+  username exempts nothing). New over the predecessor: staged-blob scanning
+  for pre-commit (read by blob id, so type changes and names like `0:foo`
+  are scanned; submodule pointers skipped and counted), a hook that runs the
+  installed copy by absolute path and is written with `wx` (never overwrites,
+  never writes through a symlink), symlinks skipped (no loops, no escaping
+  the tree), NUL-sniffed binary skipping with UTF-16 decoded as text,
+  keyed fingerprints (random per run, `SAKK_SCAN_KEY` to compare), redacted
+  secret-bearing paths, length-bounded patterns (a 200KB hostile line scans
+  in linear time). Exit 0 clean / 1 findings / 2 the scan could not do its
+  job (`SCAN_PATH_MISSING`, `SCAN_UNREADABLE`, `SCAN_NOT_A_REPO`,
+  `SCAN_HOOK_EXISTS`, `SCAN_HOOK_DIR_MISSING`, `SCAN_FAILED`). Recognized
+  formats only — unquoted `.env` passwords are not detected.
+  Verify-pass round: `--staged` reads each blob id from one `git diff
+--cached --raw` record (two names that decode alike, or a run from a
+  subdirectory, can no longer hide a blob) and batches blob reads; staged
+  symlink targets are scanned; explicit roots are followed, a fifo/device
+  or a >256 MB input is `SCAN_UNREADABLE`; `--staged` with paths is
+  `SCAN_USAGE`; git missing is `SCAN_GIT_MISSING`; hook write failures are
+  `SCAN_HOOK_UNWRITABLE`, installing from the npx cache is
+  `SCAN_HOOK_EPHEMERAL`; the hook line is shell-quoted and chmod'ed past the
+  umask. Patterns: `sk`/`rk` keys need a digit (identifiers no longer
+  match), `mariadb`/`rediss`/`amqps`/`mssql`/`sqlserver` and empty-user URLs
+  added, aligned `password    = "…"` found, a fiction token glued to a real
+  key exempts nothing. UTF-32 and odd-length UTF-16 decoded; names with
+  control characters printed escaped; exit codes set without truncating
+  piped output.
+  Verify round 3: key shapes the digit rule had dropped are back
+  (`sk_live_`/`rk_test_`-prefixed keys need no digit; `sk_<hex>` and `sk-`
+  keys of 40+ chars match); `--no-relative` so `diff.relative=true` cannot
+  hide files from a subdirectory scan; values on the next line
+  (`password:` + newline, wrapped `Bearer`) found; placeholders such as
+  `${REDIS_PASSWORD}` in the secret position are not secrets; a key glued
+  right after the fiction token is found; C1 controls and U+2028/2029 in
+  names escaped; a missing staged object is named as missing;
+  `--install-hook` with paths is `SCAN_USAGE`, without git
+  `SCAN_GIT_MISSING`; ephemeral-cache detection covers npx hash dirs, bunx
+  and pnpm dlx without refusing ordinary paths that contain `_npx`.
+
 ### Fixed (hardening campaign, 2026-10-16)
 
 - **C-4 (disk-full could install broken books)**: `writeSync`'s return was
