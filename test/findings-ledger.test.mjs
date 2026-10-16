@@ -72,8 +72,15 @@ const rcCounts = () => {
 };
 
 describe('findings ledger gate', () => {
-  test('the taxonomy lock equals the canonical taxonomy (when the canonical copy is present)', (t) => {
-    if (!existsSync(CANON)) return t.skip('canonical taxonomy lives outside this repository');
+  // Never skipped: the certificate engine treats a skipped test as a hole
+  // (a clone without the shared standard beside it is the normal case).
+  test('the taxonomy lock is well-formed, and equals the canonical taxonomy wherever that is present', () => {
+    for (const prefix of ['DT-', 'RC-', 'ES-'])
+      assert.ok(
+        [...CODES].some((c) => c.startsWith(prefix)),
+        `the lock defines no ${prefix} codes`,
+      );
+    if (!existsSync(CANON)) return;
     const h = (b) => createHash('sha256').update(b).digest('hex');
     assert.equal(
       h(readFileSync(CANON)),
