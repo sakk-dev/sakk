@@ -250,10 +250,13 @@ byte-identical books, and the test suite proves it.
 
 ## Roadmap — honest edition
 
-- [x] CLI (`sakk init / sakk status / sakk reconcile / sakk unlock`)
+- [x] CLI (`sakk init / status / reconcile / unlock / halt / resume / scan / mcp`)
 - [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — ships in [`eval/`](eval/)
 - [x] Policy kernel (`sakk/policy`): declarative `sakk-policy.v1`, pure `decide()`, hash-pinned decision log
 - [x] MCP server enforcer (`sakk mcp`): reserve/settle/status as tools, policy-gated
+- [x] Kill switch (`sakk halt / resume`): signed, global or per agent; stop state provable from the books
+- [x] Secret scanning (`sakk scan`, pre-commit hook): eight recognized formats, fingerprints only
+- [x] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts
 - [ ] `sakk settle` CLI command (late settlement without writing code)
 - [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6)
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
