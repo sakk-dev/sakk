@@ -79,6 +79,10 @@ if (process.argv[2] === '--worker') {
   // the worker log so the auditor can cross-check granted vs booked.
   for (;;) {
     n += 1;
+    // Orphan guard (campaign finding: a dead conductor left workers
+    // hammering forever — the V6 zombie-worker lesson, re-earned): if our
+    // parent died we were re-parented to PID 1; stop immediately.
+    if (process.ppid === 1) process.exit(0);
     const callId = `w${wid}-${n}`;
     const est = Math.round(rnd() * 300) / 100 + 0.01;
     try {
