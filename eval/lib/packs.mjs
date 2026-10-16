@@ -75,11 +75,12 @@ export function validatePack(doc, file, knownCases) {
     for (const c of r.cases) {
       const def = knownCases.get(c);
       if (!def) bad(`requirement ${r.id}: unknown case "${c}"`);
-      // Review C-2: control-plane cases cannot run against a model, so a
-      // pack holding one could never produce real evidence.
-      if (def.execution_mode === 'control_plane_only')
+      // Review C-2: packs carry agent evidence, which a real run must be able
+      // to produce — and the real-run gate admits execution_mode "model" only
+      // (an allowlist, so an unknown or misspelled mode is refused too).
+      if (def.execution_mode !== 'model')
         bad(
-          `requirement ${r.id}: ${c} is control-plane only — packs carry agent evidence, which a real run must be able to produce`,
+          `requirement ${r.id}: ${c} has execution_mode "${def.execution_mode}" — only "model" cases can produce real evidence`,
         );
     }
   }
@@ -107,7 +108,7 @@ export function loadAllPacks(knownCases, dir = PACKS_DIR) {
     try {
       packs.push(validatePack(parsePack(dir, f), f, knownCases));
     } catch (e) {
-      errors.push(e.message);
+      errors.push(e.message.replace(/^PACK_INVALID: /, ''));
     }
   }
   if (errors.length > 0) throw new PackError('PACK_INVALID', errors.join(' | '));
@@ -128,20 +129,30 @@ export function loadPack(id, knownCases, dir = PACKS_DIR) {
 /** The distinct, sorted case ids a pack needs. */
 export const packCaseIds = (pack) => [...new Set(pack.requirements.flatMap((r) => r.cases))].sort();
 
+const MEANING = {
+  REAL: 'REAL run: COVERED means every backing case ran against the model named in `model` and passed',
+  FAKE: 'FAKE run: proves the harness chain only — says nothing about any model or agent (no requirement can read COVERED)',
+  UNKNOWN:
+    'executor mode not stated: nothing about any model or agent can be read from this report (no requirement can read COVERED)',
+};
+
 /**
  * Per-requirement verdicts. `run` carries the provenance that must travel
- * with the report: executorMode (FAKE|REAL), runId, harnessCommit, and
- * stopped (the batch halted early, or null).
+ * with the report: executorMode (FAKE|REAL), runId, harnessCommit,
+ * harnessDirty, model ({provider, model_id, executor_binary,
+ * binary_overridden} for REAL runs), and stopped (the batch halted early,
+ * or null).
  */
 export function packReport(pack, entries, run) {
   const verdictOf = new Map();
   for (const e of entries) {
     const id = e.caseDef?.id ?? e.result?.case_id;
-    const v = e.result?.verdict;
-    // duplicates: any non-PASS outcome for a case wins (review, low)
+    const v = e.result?.verdict ?? 'NO_VERDICT';
+    // duplicates: any non-PASS outcome for a case wins, in either order
     if (!verdictOf.has(id) || v !== 'PASS') verdictOf.set(id, v);
   }
   const real = run?.executorMode === 'REAL';
+  const mode = real ? 'REAL' : run?.executorMode === 'FAKE' ? 'FAKE' : 'UNKNOWN';
   const requirements = pack.requirements.map((r) => {
     const cases = r.cases.map((c) => ({ case: c, verdict: verdictOf.get(c) ?? 'NOT_RUN' }));
     const allPass = cases.every((x) => x.verdict === 'PASS');
@@ -158,16 +169,17 @@ export function packReport(pack, entries, run) {
     title: pack.title,
     regulator: pack.regulator,
     clause_status: pack.clause_status,
-    executor_mode: run?.executorMode ?? 'UNKNOWN',
-    meaning: real
-      ? 'REAL run: COVERED means every backing case ran against the model and passed'
-      : 'FAKE run: proves the harness chain only — says nothing about any model or agent (no requirement can read COVERED)',
+    executor_mode: mode,
+    meaning: MEANING[mode],
+    model: real ? (run?.model ?? null) : null,
     run_id: run?.runId ?? null,
     harness_commit: run?.harnessCommit ?? null,
+    harness_dirty: run?.harnessDirty ?? null,
     batch_stopped: run?.stopped ?? null,
     covered: requirements.filter((r) => r.status === 'COVERED').length,
     total: requirements.length,
     not_covered: pack.not_covered,
+    not_covered_is_exhaustive: false,
     requirements,
   };
 }

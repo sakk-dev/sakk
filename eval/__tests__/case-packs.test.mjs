@@ -13,7 +13,13 @@ import {
   packReport,
   PackError,
 } from '../lib/packs.mjs';
-import { loadCases, authorizeRealRun } from '../bin/gold-runner.mjs';
+import {
+  loadCases,
+  authorizeRealRun,
+  checkArgv,
+  realExitCode,
+  SUPPORTED_PROVIDERS,
+} from '../bin/gold-runner.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RUNNER = join(HERE, '..', 'bin', 'gold-runner.mjs');
@@ -83,11 +89,51 @@ describe('C-1: a fake run can never read COVERED', () => {
     assert.equal(notRun.status, 'NOT_COVERED');
     assert.equal(notRun.cases[1].verdict, 'NOT_RUN');
   });
-  test('duplicate entries for one case: any non-PASS wins', () => {
-    const r = packReport(pack, [entry('G05', 'FAIL'), entry('G05', 'PASS'), entry('G06', 'PASS')], {
-      executorMode: 'REAL',
-    });
-    assert.equal(r.requirements[0].status, 'NOT_COVERED');
+  test('duplicate entries for one case: any non-PASS wins, in either order', () => {
+    for (const order of [
+      ['FAIL', 'PASS'],
+      ['PASS', 'FAIL'],
+    ]) {
+      const r = packReport(
+        pack,
+        [entry('G05', order[0]), entry('G05', order[1]), entry('G06', 'PASS')],
+        { executorMode: 'REAL' },
+      );
+      assert.equal(r.requirements[0].status, 'NOT_COVERED', order.join(','));
+    }
+  });
+  test('an entry without a verdict shows NO_VERDICT, not NOT_RUN', () => {
+    const r = packReport(pack, [{ caseDef: { id: 'G05' }, result: {} }], { executorMode: 'REAL' });
+    assert.equal(r.requirements[0].cases[0].verdict, 'NO_VERDICT');
+  });
+  test('an unknown or mis-cased mode never reads COVERED and never claims to be FAKE', () => {
+    for (const executorMode of [undefined, 'real', 'Real']) {
+      const r = packReport(pack, [entry('G05', 'PASS'), entry('G06', 'PASS')], { executorMode });
+      assert.equal(r.executor_mode, 'UNKNOWN');
+      assert.equal(r.covered, 0);
+      assert.doesNotMatch(r.meaning, /FAKE/);
+    }
+  });
+  test('review N-1: a REAL report names its model; a FAKE report has none', () => {
+    const model = {
+      provider: 'anthropic',
+      model_id: 'm',
+      executor_binary: '/stub',
+      binary_overridden: true,
+    };
+    const real = packReport(pack, [entry('G05', 'PASS')], { executorMode: 'REAL', model });
+    assert.deepEqual(real.model, model);
+    assert.match(real.meaning, /model named in `model`/);
+    const fake = packReport(pack, [entry('G05', 'PASS')], { executorMode: 'FAKE', model });
+    assert.equal(fake.model, null);
+    assert.equal(fake.not_covered_is_exhaustive, false);
+  });
+  test('review N-2: a REAL batch that stopped early is never exit 0', () => {
+    const pass = [entry('G05', 'PASS')];
+    assert.equal(realExitCode({ entries: pass, selected: 1, stopped: null }), 0);
+    assert.equal(realExitCode({ entries: pass, selected: 2, stopped: null }), 1);
+    assert.equal(realExitCode({ entries: pass, selected: 1, stopped: { at: 'G05' } }), 1);
+    assert.equal(realExitCode({ entries: [entry('G05', 'FAIL')], selected: 1, stopped: null }), 1);
   });
 });
 
@@ -97,22 +143,58 @@ describe('C-2: every shipped pack can produce REAL evidence', () => {
     d.requirements[0].cases = ['G12'];
     expectCode(() => validatePack(d, 'p.json', CASES), 'PACK_INVALID');
   });
-  test('each shipped pack passes the real-run case-type gate', () => {
+  // Review N-3: the earlier fixture was refused at MODEL_PROVIDER_UNSUPPORTED
+  // before the case-type gate, so this test could not fail. The fixture now
+  // passes every gate up to the case loop, and the next refusal (no org
+  // ledger) proves the loop was passed; the G12 control proves it is reached.
+  const gateFixture = () => {
     const auth = join(tdir(), 'a.json');
     writeFileSync(
       auth,
-      JSON.stringify({ approved: true, allow_real_model: true, approved_by: 'x' }),
+      JSON.stringify({
+        approved: true,
+        allow_real_model: true,
+        approved_by: 'x',
+        model_provider: SUPPORTED_PROVIDERS[0],
+        model_id: 'probe-model',
+        pilot_total_budget_usd: 1000,
+        full_total_budget_usd: 1000,
+        default_case_budget_usd: 0.01,
+        per_case_hard_cap_usd: 0.01,
+        pilot_case_ids: [...CASES.keys()],
+      }),
     );
-    for (const p of loadAllPacks(CASES)) {
-      const gate = authorizeRealRun({
-        authorizationPath: auth,
-        caseDefs: loadCases(packCaseIds(p).join(',')),
+    return auth;
+  };
+  const gateFor = (ids) => {
+    const saved = process.env.SAKK_BUDGET_LEDGER_PATH;
+    delete process.env.SAKK_BUDGET_LEDGER_PATH;
+    try {
+      return authorizeRealRun({
+        authorizationPath: gateFixture(),
+        caseDefs: loadCases(ids.join(',')),
         workRoot: tdir(),
       });
-      assert.ok(
-        !String(gate.code).startsWith('CASE_NOT_MODEL_EXECUTABLE'),
-        `${p.id}: ${gate.code}`,
+    } finally {
+      if (saved !== undefined) process.env.SAKK_BUDGET_LEDGER_PATH = saved;
+    }
+  };
+  test('control: the fixture reaches the case-type gate (G12 is refused there)', () => {
+    assert.equal(gateFor(['G05', 'G12']).code, 'CASE_NOT_MODEL_EXECUTABLE:G12');
+  });
+  test('each shipped pack passes the real-run case-type gate', () => {
+    for (const p of loadAllPacks(CASES))
+      assert.match(
+        String(gateFor(packCaseIds(p)).code),
+        /^AUTHORITATIVE_LEDGER_UNREADABLE/,
+        `${p.id}: refused before or at the case loop`,
       );
+  });
+  test('packs admit execution_mode "model" only (allowlist, not denylist)', () => {
+    for (const mode of [undefined, 'Control_Plane_Only', 'agent']) {
+      const cases = new Map(CASES);
+      cases.set('G05', { ...CASES.get('G05'), execution_mode: mode });
+      expectCode(() => validatePack(goodPack(), 'p.json', cases), 'PACK_INVALID');
     }
   });
 });
@@ -161,6 +243,7 @@ describe('malformed packs refuse with a name', () => {
     const e = expectCode(() => loadAllPacks(CASES, d), 'PACK_INVALID');
     assert.match(e.message, /broken\.json/);
     assert.match(e.message, /p\.json/);
+    assert.equal(e.message.match(/PACK_INVALID/g).length, 1, 'one prefix, not one per pack');
   });
 });
 
@@ -212,5 +295,47 @@ describe('runner CLI', () => {
       /packs: OK \(cbuae-ai-oversight, difc-data-protection, dora-ict-change\)/,
     );
     assert.match(r.stdout, /"packs_ok":true/);
+  });
+});
+
+describe('review N-4: the runner refuses arguments it does not know', () => {
+  test('checkArgv: unknown, single-dash, positional, repeated, missing value, two modes', () => {
+    for (const [args, code] of [
+      [['--fake-executor', '--packs', 'dora-ict-change'], 'USAGE_UNKNOWN_ARGUMENT'],
+      [['--dry-run', '--Pack', 'x'], 'USAGE_UNKNOWN_ARGUMENT'],
+      [['--dry-run', '-pack=x'], 'USAGE_UNKNOWN_ARGUMENT'],
+      [['--dry-run', 'dora-ict-change'], 'USAGE_UNKNOWN_ARGUMENT'],
+      [['--dry-run', '--pack', 'a', '--pack', 'b'], 'USAGE_REPEATED_FLAG'],
+      [['--dry-run', '--pack'], 'USAGE_MISSING_VALUE'],
+      [['--dry-run', '--case', '--pack', 'x'], 'USAGE_MISSING_VALUE'],
+      [['--fake-executor', '--real'], 'USAGE_MODE_CONFLICT'],
+      [['--dry-run', '--pack=x'], 'USAGE_EQUALS_FORM'],
+    ])
+      assert.throws(
+        () => checkArgv(args),
+        (e) => e.message.startsWith(code),
+        args.join(' '),
+      );
+    checkArgv(['--fake-executor', '--pack', 'dora-ict-change', '--out', '/tmp/x']);
+  });
+  test('a misspelled selector exits 2 instead of running every case', () => {
+    const r = run(['--fake-executor', '--packs', 'cbuae-ai-oversight', '--out', join(tdir(), 'o')]);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /USAGE_UNKNOWN_ARGUMENT/);
+    assert.doesNotMatch(r.stdout, /^G\d\d:/m, 'no case ran');
+  });
+});
+
+describe('review N-5: documented pack coverage matches the packs', () => {
+  test('eval/README states the true number of cases that appear in packs', () => {
+    const union = new Set(loadAllPacks(CASES).flatMap((p) => packCaseIds(p)));
+    const readme = readFileSync(join(HERE, '..', 'README.md'), 'utf8');
+    const m = readme.match(/\((\d+) of the\s+(\d+) cases appear/);
+    assert.ok(m, 'the README states the count');
+    assert.equal(Number(m[1]), union.size);
+    assert.equal(Number(m[2]), CASES.size);
+    const absent = [...CASES.keys()].filter((id) => !union.has(id));
+    for (const id of absent)
+      assert.match(readme, new RegExp(`\\b${id}\\b`), `${id} named as absent`);
   });
 });

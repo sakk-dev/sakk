@@ -661,6 +661,64 @@ export function runRealCase({
   return { entry, stopBatch: !costKnown, costKnown };
 }
 
+/**
+ * Exit code of a REAL batch: 0 only when every selected case ran and
+ * passed. A batch that stopped early (unknown cost, budget refusal) is
+ * never a success, even if every case that did run passed.
+ */
+export function realExitCode({ entries, selected, stopped }) {
+  if (stopped || entries.length < selected) return 1;
+  return entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1;
+}
+
+const VALUE_FLAGS = ['case', 'pack', 'out', 'authorization'];
+const MODE_FLAGS = ['validate', 'dry-run', 'fake-executor', 'real'];
+/**
+ * Strict argv: an unknown flag, a stray word, a repeated flag or two modes
+ * refuse with exit 2. Before this, `--packs x`, `--Pack x` or a bare pack
+ * name were ignored and the run fell back to ALL cases (review N-4).
+ */
+export function checkArgv(args) {
+  const seen = new Set();
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (/^--[^=]+=/.test(a))
+      throw new Error(
+        `USAGE_EQUALS_FORM: write "${a.replace('=', ' ')}" — --flag=value is not accepted`,
+      );
+    const name = a.startsWith('--') ? a.slice(2) : null;
+    if (name === null || !(VALUE_FLAGS.includes(name) || MODE_FLAGS.includes(name)))
+      throw new Error(
+        `USAGE_UNKNOWN_ARGUMENT: "${a}" — known flags: ${[...MODE_FLAGS, ...VALUE_FLAGS].map((f) => `--${f}`).join(' ')}`,
+      );
+    if (seen.has(name)) throw new Error(`USAGE_REPEATED_FLAG: --${name} given more than once`);
+    seen.add(name);
+    if (VALUE_FLAGS.includes(name)) {
+      if (args[i + 1] === undefined || args[i + 1].startsWith('--'))
+        throw new Error(`USAGE_MISSING_VALUE: --${name} requires a value`);
+      i += 1;
+    }
+  }
+  const modes = MODE_FLAGS.filter((m) => seen.has(m));
+  if (modes.length > 1)
+    throw new Error(`USAGE_MODE_CONFLICT: ${modes.map((m) => `--${m}`).join(' and ')} — pick one`);
+}
+
+/** True when eval/ or src/ differ from the recorded harness commit (tracked or untracked). */
+function harnessDirty() {
+  try {
+    return (
+      execFileSync('git', ['status', '--porcelain', '--', 'eval', 'src', 'package.json'], {
+        cwd: ROOT,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim() !== ''
+    );
+  } catch {
+    return null;
+  }
+}
+
 // ── CLI ─────────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
 const flag = (n) => argv.includes(`--${n}`);
@@ -692,19 +750,18 @@ const isMain =
     }
   })();
 if (isMain) {
+  try {
+    checkArgv(argv);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(2);
+  }
   const only = val('case');
   const packId = val('pack');
   let cases;
   let pack = null;
   const caseMap = () => new Map(loadCases().map((c) => [c.id, c]));
   try {
-    // Review (medium): `--pack=x` / `--case=x` were silently ignored and the
-    // run fell back to ALL cases. Flags take their value as the next word.
-    const eqFlag = argv.find((a) => /^--[^=]+=/.test(a));
-    if (eqFlag)
-      throw new Error(
-        `USAGE_EQUALS_FORM: write "${eqFlag.replace('=', ' ')}" — --flag=value is not accepted`,
-      );
     if (only !== undefined && packId !== undefined)
       throw new Error('SELECTOR_CONFLICT: use --case OR --pack, not both');
     if (packId !== undefined) {
@@ -717,17 +774,31 @@ if (isMain) {
   }
   // A pack run ends with a per-requirement verdict, written beside the
   // metrics so the evidence and its regulatory reading travel together.
-  const emitPackReport = (entries, outDir, { executorMode, runId, stopped = null }) => {
+  const emitPackReport = (
+    entries,
+    outDir,
+    { executorMode, runId, stopped = null, model = null },
+  ) => {
     if (!pack) return;
     const report = packReport(pack, entries, {
       executorMode,
       runId,
       harnessCommit: entries[0]?.trace?.git_commit ?? null,
+      harnessDirty: harnessDirty(),
+      model,
       stopped,
     });
     writeFileSync(join(outDir, 'pack-report.json'), `${JSON.stringify(report, null, 1)}\n`);
     console.log(`\npack ${report.pack} — ${report.title}`);
     console.log(`  mode ${report.executor_mode}: ${report.meaning}`);
+    if (report.model)
+      console.log(
+        `  model ${report.model.provider}/${report.model.model_id} via ${report.model.executor_binary}${report.model.binary_overridden ? ' (CLAUDE_BIN override — this binary was not verified to be that model)' : ''}`,
+      );
+    if (report.harness_dirty)
+      console.log(
+        '  harness tree differs from the recorded commit (uncommitted eval/ or src/ changes)',
+      );
     if (stopped) console.log(`  BATCH STOPPED at ${stopped.at}: ${stopped.why}`);
     for (const r of report.requirements)
       console.log(
@@ -736,7 +807,8 @@ if (isMain) {
     console.log(
       `  ${report.covered}/${report.total} requirements covered · ${report.clause_status.split(' — ')[0]}`,
     );
-    for (const g of report.not_covered) console.log(`  not covered by any case: ${g}`);
+    for (const g of report.not_covered)
+      console.log(`  not covered by any case (list is not exhaustive): ${g}`);
   };
   if (flag('validate')) {
     let bad = 0;
@@ -887,8 +959,18 @@ if (isMain) {
       `${JSON.stringify({ runId, mode: 'REAL', model_id: gate.auth.model_id, metrics }, null, 1)}\n`,
     );
     console.log(JSON.stringify({ runId, outDir, total: entries.length }));
-    emitPackReport(entries, outDir, { executorMode: 'REAL', runId, stopped: stoppedInfo });
-    process.exit(entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1);
+    emitPackReport(entries, outDir, {
+      executorMode: 'REAL',
+      runId,
+      stopped: stoppedInfo,
+      model: {
+        provider: gate.auth.model_provider,
+        model_id: gate.auth.model_id,
+        executor_binary: claudeBin,
+        binary_overridden: process.env.CLAUDE_BIN !== undefined,
+      },
+    });
+    process.exit(realExitCode({ entries, selected: cases.length, stopped: stoppedInfo }));
   } else {
     console.log(
       'Usage: gold-runner.mjs --validate | --dry-run | --fake-executor [--case Gxx | --pack <id>] [--out dir] | --real --authorization <path> [--pack <id>]',
