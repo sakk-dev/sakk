@@ -158,8 +158,11 @@ shows who stopped it and exits 4 — so CI stops too. In-flight calls can
 still settle their real cost. The halt cannot be lifted by any money
 operation, only by `resume`; agents cannot resume themselves over MCP. A
 stale ledger or one in reconciliation can still be halted. Per-agent halts
-rely on the caller's self-declared agent id; the global halt is the hard
-stop.
+match the agent id exactly (case-sensitive) and rely on the id the caller
+declares when it reserves — an agent that switches ids escapes a per-agent
+halt; the global halt is the hard stop. The first halt upgrades the ledger
+file to schema `sakk-ledger.v2`, which earlier sakk versions refuse to read:
+an old binary can never spend through a stop it does not understand.
 
 ## MCP: put the gate in front of any agent
 

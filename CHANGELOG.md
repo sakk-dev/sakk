@@ -11,16 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `halt()` / `resume()` and `sakk halt|resume --by <name> [--agent <id>]`:
   stop all new spending (or one agent's) with a signed record stored in a
-  new optional top-level ledger key `halt` — deliberately outside `flags`,
-  which four money paths rewrite wholesale. New public codes:
+  top-level ledger key `halt` — deliberately outside `flags`, which four
+  money paths rewrite wholesale. **Schema `sakk-ledger.v2`**: the first
+  halt upgrades the file to v2, which REQUIRES `halt` (deleting it refuses
+  rather than reading as "not halted"); v1 forbids it; resume keeps v2
+  with an emptied record. Genesis ledgers stay v1. New public codes:
   `LEDGER_HALTED`, `AGENT_HALTED`, `HALT_BY_REQUIRED`,
-  `RESUME_BY_REQUIRED`; `sakk status` exits **4** while globally halted.
+  `RESUME_BY_REQUIRED`, `AGENT_ID_INVALID` (reserve/halt/resume now refuse
+  a non-string or empty agent id — a numeric id could never match a halt;
+  `null` stays anonymous); `sakk status` exits **4** while globally halted
+  (4 wins over 3; both conditions are printed). Agent ids are matched
+  exactly as own keys, so ids like `__proto__` or `constructor` halt and
+  resume like any other.
   Halting works on stale ledgers and during reconciliation; the CLI
   retries lock contention; settle stays open for in-flight calls; first
   halt wins; alerts `HALT_SET` / `HALT_REFUSED` / `HALT_CLEARED`. MCP
   status shows halts, and no MCP tool can halt or resume. Older versions
-  refuse a ledger carrying `halt` (closed schema) — they can never ignore
-  a stop. Drill gains MUT-G (7 mutants); invariant fuzz gains halt ops and
+  refuse a v2 ledger by schema name — they can never ignore a stop. Drill gains MUT-G (7 mutants); invariant fuzz gains halt ops and
   refuses vacuous seeds that never probe a halt.
 
 ### Fixed (hardening campaign, 2026-10-16)

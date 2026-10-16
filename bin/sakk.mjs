@@ -22,13 +22,16 @@ import { startMcpServer } from '../src/mcp.mjs';
  *   sakk init --cap <usd> [--ledger <path>] [--by <name>]
  *   sakk status [--ledger <path>] [--json]
  *   sakk reconcile --by <name> [--ledger <path>]
+ *   sakk halt|resume --by <name> [--agent <id>] [--ledger <path>]
  *
  * Path resolution: --ledger flag > SAKK_LEDGER_PATH > ./sakk-ledger.json
  * (the CLI's one explicit convenience default — always printed, never
  * guessed silently; the library itself keeps no default at all).
  *
  * Exit codes: 0 ok · 1 ledger error (every refusal code on stderr) ·
- * 2 usage error · 3 status: reconciliation required (gate your CI on it).
+ * 2 usage error · 3 status: reconciliation required (gate your CI on it) ·
+ * 4 status: globally halted. 4 wins over 3 when both hold; the text and
+ * --json output show both conditions.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -66,7 +69,7 @@ Usage:
   sakk mcp --ledger <path> [--policy <path>]              MCP stdio server: reserve/settle/status as tools
 
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
-Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status) · 4 halted (status)
+Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status) · 4 halted (status; wins over 3, both shown)
 max_reservable_usd of 0 means nothing fits under the cap (reserve requires a positive amount)
 `;
 
@@ -188,6 +191,11 @@ if (cmd === 'init') {
   }
   const p = ledgerPath();
   const agentId = val('agent');
+  if (agentId === '') {
+    // An empty id must not silently widen to "all spending" in either direction.
+    console.error(`AGENT_ID_INVALID: --agent needs a non-empty id (exact, case-sensitive)`);
+    process.exit(2);
+  }
   // A runaway storm is exactly when the lock is contended: retry rather
   // than let a kill switch lose a race (specs/kill-switch row 5).
   let r;
@@ -204,7 +212,7 @@ if (cmd === 'init') {
       fail(e);
     }
   }
-  const scope = agentId ? `agent ${agentId}` : 'all spending';
+  const scope = agentId !== undefined ? `agent ${JSON.stringify(agentId)}` : 'all spending';
   if (cmd === 'halt')
     console.log(
       r.alreadyHalted

@@ -7,7 +7,7 @@
  * rerun with SAKK_FUZZ_SEED=<seed> to replay a failing sequence.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -65,7 +65,9 @@ for (let step = 0; step < 250; step += 1) {
     'resume',
     'resumeAgent',
   ]);
-  const agent = pick(['a1', 'a2', 'a3']);
+  // Prototype names are in the pool on purpose (review B1): as object keys
+  // they read as "halted" off the prototype, or vanish on write.
+  const agent = pick(['a1', 'a2', '__proto__', 'constructor', 'toString']);
   try {
     if (op === 'reserve') {
       if (killed || killedAgents.has(agent)) killProbes += 1;
@@ -106,7 +108,20 @@ for (let step = 0; step < 250; step += 1) {
     check(Boolean(doc.halt?.global), `global halt lost by ${op}`, step);
   for (const a of killedAgents)
     if (!(op === 'resumeAgent' && a === agent))
-      check(Boolean(doc.halt?.agents?.[a]), `agent halt ${a} lost by ${op}`, step);
+      check(
+        doc.halt != null && Object.hasOwn(doc.halt.agents, a),
+        `agent halt ${a} lost by ${op}`,
+        step,
+      );
+  if (op === 'haltAgent') {
+    // the halt must be ON DISK as an own key, not just in memory
+    const raw = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+    check(Object.hasOwn(raw.halt?.agents ?? {}, agent), `haltAgent ${agent} not on disk`, step);
+  }
+  // a halted ledger is v2 and never drops back to v1 (review B2)
+  if (doc0.schema === 'sakk-ledger.v2')
+    check(doc.schema === 'sakk-ledger.v2', `schema downgraded by ${op}`, step);
+  check((doc.schema === 'sakk-ledger.v2') === 'halt' in doc, 'halt record vs schema', step);
   const t = totalsOf(doc);
   if (!overrunSeen)
     check(
