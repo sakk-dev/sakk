@@ -9,15 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added (case packs)
 
-- `eval/packs/`: the 12 gold cases grouped by regulatory requirement —
-  `cbuae-ai-oversight` (4 requirements), `dora-ict-change` (4),
-  `difc-data-protection` (3). `gold-runner --pack <id>` runs exactly a
-  pack's cases and writes `pack-report.json` with a COVERED / NOT COVERED
-  verdict per requirement (COVERED only when every backing case ran and
-  passed). `--validate` checks every pack. New refusal codes:
-  `PACK_UNKNOWN`, `PACK_INVALID`, `SELECTOR_CONFLICT` (`--case` with
-  `--pack`). Themes are paraphrased; clause numbers are explicitly marked
-  as pending verification against official texts.
+- `eval/packs/`: gold cases grouped by regulatory requirement —
+  `cbuae-ai-oversight` (4), `dora-ict-change` (3), `difc-data-protection` (3);
+  11 of 12 cases (control-plane G12 cannot run against a model, so packs
+  exclude control-plane cases by rule). `gold-runner --pack <id>` runs a
+  pack's cases and writes `pack-report.json` with its provenance (mode, run
+  id, harness commit, stop info). FAKE runs read `HARNESS_ONLY`; only REAL
+  runs can read `COVERED`. Every requirement carries `gaps`, every pack
+  `not_covered` — mandatory fields, so the honest boundary travels with the
+  claim. Refusals: `PACK_UNKNOWN`, `PACK_INVALID`, `SELECTOR_CONFLICT`,
+  `USAGE_EQUALS_FORM` (`--flag=value` was silently ignored before).
+  `--validate` checks all packs and reports `packs_ok`.
 
 ### Fixed (hardening campaign, 2026-10-16)
 

@@ -46,20 +46,27 @@ npm run drill                                   # mutation drill: prove the judg
 
 ### Case packs (by regulation)
 
-`eval/packs/` groups the gold cases by regulatory requirement — currently
-`cbuae-ai-oversight`, `dora-ict-change` and `difc-data-protection`. Run one
-and get a per-requirement verdict beside the metrics (`pack-report.json`):
+`eval/packs/` groups gold cases by regulatory requirement — currently
+`cbuae-ai-oversight`, `dora-ict-change` and `difc-data-protection` (11 of the
+12 cases appear; the control-plane budget case G12 cannot run against a
+model, so it is in no pack). Run one and get a per-requirement verdict beside
+the metrics (`pack-report.json`):
 
 ```bash
 node eval/bin/gold-runner.mjs --fake-executor --pack cbuae-ai-oversight
 ```
 
-A requirement reads COVERED only when every case behind it ran and passed;
-a failed or never-run case makes it NOT COVERED. Packs are selections over
-existing cases — they add no scoring logic. Requirement themes are
-paraphrased: clause numbers must be verified against the official text
-before a pack is cited as compliance evidence (every pack says so in its
-`clause_status`).
+What the verdict means depends on the run:
+
+- **FAKE** runs read `HARNESS_ONLY` for every requirement — they prove the
+  harness chain works and say nothing about any model or agent.
+- **REAL** runs (only possible with approved gold labels) read `COVERED` when
+  every case behind a requirement ran and passed, otherwise `NOT_COVERED`.
+
+Every requirement lists its `gaps` (what its cases do not show) and every
+pack lists `not_covered` regulatory themes that no case exercises. Themes
+are paraphrased; clause numbers must be verified against the official text
+before a pack is cited as compliance evidence.
 
 Execution modes need a **git clone**: every run records the harness commit as
 provenance, so a ZIP/tarball download refuses with `HARNESS_GIT_REQUIRED`

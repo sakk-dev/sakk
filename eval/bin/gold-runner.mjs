@@ -696,11 +696,19 @@ if (isMain) {
   const packId = val('pack');
   let cases;
   let pack = null;
+  const caseMap = () => new Map(loadCases().map((c) => [c.id, c]));
   try {
+    // Review (medium): `--pack=x` / `--case=x` were silently ignored and the
+    // run fell back to ALL cases. Flags take their value as the next word.
+    const eqFlag = argv.find((a) => /^--[^=]+=/.test(a));
+    if (eqFlag)
+      throw new Error(
+        `USAGE_EQUALS_FORM: write "${eqFlag.replace('=', ' ')}" — --flag=value is not accepted`,
+      );
     if (only !== undefined && packId !== undefined)
       throw new Error('SELECTOR_CONFLICT: use --case OR --pack, not both');
     if (packId !== undefined) {
-      pack = loadPack(packId, new Set(loadCases().map((c) => c.id)));
+      pack = loadPack(packId, caseMap());
       cases = loadCases(packCaseIds(pack).join(','));
     } else cases = loadCases(only);
   } catch (e) {
@@ -709,18 +717,26 @@ if (isMain) {
   }
   // A pack run ends with a per-requirement verdict, written beside the
   // metrics so the evidence and its regulatory reading travel together.
-  const emitPackReport = (entries, outDir) => {
+  const emitPackReport = (entries, outDir, { executorMode, runId, stopped = null }) => {
     if (!pack) return;
-    const report = packReport(pack, entries);
+    const report = packReport(pack, entries, {
+      executorMode,
+      runId,
+      harnessCommit: entries[0]?.trace?.git_commit ?? null,
+      stopped,
+    });
     writeFileSync(join(outDir, 'pack-report.json'), `${JSON.stringify(report, null, 1)}\n`);
     console.log(`\npack ${report.pack} — ${report.title}`);
+    console.log(`  mode ${report.executor_mode}: ${report.meaning}`);
+    if (stopped) console.log(`  BATCH STOPPED at ${stopped.at}: ${stopped.why}`);
     for (const r of report.requirements)
       console.log(
-        `  ${r.status === 'COVERED' ? 'COVERED    ' : 'NOT COVERED'}  ${r.id}  (${r.cases.map((c) => `${c.case}:${c.verdict}`).join(' ')})`,
+        `  ${r.status.padEnd(12)} ${r.id}  (${r.cases.map((c) => `${c.case}:${c.verdict}`).join(' ')})`,
       );
     console.log(
       `  ${report.covered}/${report.total} requirements covered · ${report.clause_status.split(' — ')[0]}`,
     );
+    for (const g of report.not_covered) console.log(`  not covered by any case: ${g}`);
   };
   if (flag('validate')) {
     let bad = 0;
@@ -739,7 +755,7 @@ if (isMain) {
     }
     let packsOk = true;
     try {
-      const packs = loadAllPacks(new Set(loadCases().map((c) => c.id)));
+      const packs = loadAllPacks(caseMap());
       console.log(`packs: OK (${packs.map((p) => p.id).join(', ')})`);
     } catch (e) {
       console.log(`packs: ${e.message}`);
@@ -748,7 +764,12 @@ if (isMain) {
     const gm = goldManifestStatus();
     console.log(`gold-manifest: ${gm.ok ? 'OK' : gm.why}`);
     console.log(
-      JSON.stringify({ cases: cases.length, schema_failures: bad, gold_manifest_ok: gm.ok }),
+      JSON.stringify({
+        cases: cases.length,
+        schema_failures: bad,
+        gold_manifest_ok: gm.ok,
+        packs_ok: packsOk,
+      }),
     );
     process.exit(bad === 0 && gm.ok && packsOk ? 0 : 1);
   } else if (flag('dry-run')) {
@@ -801,7 +822,7 @@ if (isMain) {
       }),
     );
     console.log(JSON.stringify(metrics));
-    emitPackReport(entries, outDir);
+    emitPackReport(entries, outDir, { executorMode: 'FAKE', runId });
     process.exit(entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1);
   } else if (flag('real')) {
     const workRoot = mkdtempSync(join(tmpdir(), 'gold-real-'));
@@ -839,6 +860,7 @@ if (isMain) {
     }
     const claudeBin = process.env.CLAUDE_BIN ?? 'claude';
     const entries = [];
+    let stoppedInfo = null;
     for (const c of cases) {
       const { entry, stopBatch, refused } = runRealCase({
         caseDef: c,
@@ -854,13 +876,8 @@ if (isMain) {
         `${c.id}: ${entry.result.verdict} claim_source=${entry.trace.claim_source ?? 'n/a'}`,
       );
       if (stopBatch) {
-        console.error(
-          JSON.stringify({
-            stopped: true,
-            at: c.id,
-            why: refused ?? 'COST_UNKNOWN_RECONCILIATION_REQUIRED',
-          }),
-        );
+        stoppedInfo = { at: c.id, why: refused ?? 'COST_UNKNOWN_RECONCILIATION_REQUIRED' };
+        console.error(JSON.stringify({ stopped: true, ...stoppedInfo }));
         break;
       }
     }
@@ -870,7 +887,7 @@ if (isMain) {
       `${JSON.stringify({ runId, mode: 'REAL', model_id: gate.auth.model_id, metrics }, null, 1)}\n`,
     );
     console.log(JSON.stringify({ runId, outDir, total: entries.length }));
-    emitPackReport(entries, outDir);
+    emitPackReport(entries, outDir, { executorMode: 'REAL', runId, stopped: stoppedInfo });
     process.exit(entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1);
   } else {
     console.log(
