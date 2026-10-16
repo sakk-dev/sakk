@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
-import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +14,7 @@ import {
 } from '../src/ledger.mjs';
 import { loadPolicy } from '../src/policy.mjs';
 import { startMcpServer } from '../src/mcp.mjs';
-import { scanPaths, scanStaged } from '../src/secret-scan.mjs';
+import { scanPaths, scanStaged, ScanError } from '../src/secret-scan.mjs';
 
 /**
  * sakk CLI — the smallest useful surface over the ledger.
@@ -220,14 +220,23 @@ if (cmd === 'init') {
 } else if (cmd === 'scan') {
   const report = (r) => {
     for (const f of r.findings) console.log(`${f.path}:${f.line}  ${f.rule}  fp=${f.fingerprint}`);
+    const skips = Object.entries(r.skipped ?? {})
+      .filter(([, n]) => n > 0)
+      .map(([k, n]) => `${n} ${k}`)
+      .join(', ');
     console.log(
-      `scanned ${r.scanned} file(s): ${r.findings.length} finding(s), ${r.exempted} exempted (${'TEST_ONLY_FAKE_SECRET_DO_NOT_USE'} marker)`,
+      `scanned ${r.scanned} file(s): ${r.findings.length} finding(s), ${r.exempted} exempted (TEST_ONLY_FAKE_SECRET_DO_NOT_USE marker)${skips ? `; skipped ${skips}` : ''}`,
     );
+    if (r.unreadable.length > 0) {
+      // A scan that could not look everywhere it was told to is not clean.
+      console.error(
+        `SCAN_UNREADABLE: ${r.unreadable.length} path(s) could not be read: ${r.unreadable.slice(0, 5).join(', ')}`,
+      );
+      process.exit(2);
+    }
     process.exit(r.findings.length === 0 ? 0 : 1);
   };
   if (flag('install-hook')) {
-    // Never overwrite an existing hook — a team's own pre-commit logic is
-    // not ours to replace; print the one line to add instead.
     let hooksDir;
     try {
       hooksDir = execFileSync('git', ['rev-parse', '--git-path', 'hooks'], {
@@ -238,34 +247,49 @@ if (cmd === 'init') {
       process.exit(2);
     }
     const hook = join(hooksDir, 'pre-commit');
-    if (existsSync(hook)) {
-      console.error(
-        `SCAN_HOOK_EXISTS: ${hook} already exists — add this line to it instead:\n  npx sakk scan --staged || exit 1`,
-      );
-      process.exit(2);
+    // Review S-1: never `npx sakk` — an unpublished name can be squatted,
+    // and npx auto-installs without a TTY (git hooks have none). The hook
+    // runs THIS installation by absolute path; reinstall after moving it.
+    const self = realpathSync(fileURLToPath(import.meta.url));
+    const body = `#!/bin/sh\n# installed by sakk scan --install-hook (re-run it if sakk moves)\n"${process.execPath}" "${self}" scan --staged || exit 1\n`;
+    try {
+      // 'wx' = O_EXCL: refuses ANY existing entry, a dangling symlink
+      // included, so an existing hook is never overwritten or written through.
+      writeFileSync(hook, body, { flag: 'wx', mode: 0o755 });
+    } catch (e) {
+      if (e.code === 'EEXIST') {
+        console.error(
+          `SCAN_HOOK_EXISTS: ${hook} already exists — add this line to it instead:\n  "${process.execPath}" "${self}" scan --staged || exit 1`,
+        );
+        process.exit(2);
+      }
+      if (e.code === 'ENOENT') {
+        console.error(`SCAN_HOOK_DIR_MISSING: ${hooksDir} does not exist (check core.hooksPath)`);
+        process.exit(2);
+      }
+      throw e;
     }
-    writeFileSync(
-      hook,
-      '#!/bin/sh\n# installed by sakk scan --install-hook\nnpx sakk scan --staged || exit 1\n',
+    console.log(
+      `pre-commit hook installed: ${hook} — commits containing recognized secrets will be refused`,
     );
-    chmodSync(hook, 0o755);
-    console.log(`pre-commit hook installed: ${hook} — commits containing secrets will be refused`);
     process.exit(0);
   }
-  if (flag('staged')) {
-    try {
-      report(scanStaged());
-    } catch {
-      console.error('SCAN_NOT_A_REPO: --staged must run inside a git repository');
+  try {
+    if (flag('staged')) report(scanStaged());
+    const paths = argv.slice(1).filter((a) => !a.startsWith('--'));
+    if (paths.length === 0) {
+      console.error('scan requires paths, --staged, or --install-hook');
       process.exit(2);
     }
-  }
-  const paths = argv.slice(1).filter((a) => !a.startsWith('--'));
-  if (paths.length === 0) {
-    console.error('scan requires paths, --staged, or --install-hook');
+    report(scanPaths(paths));
+  } catch (e) {
+    if (e instanceof ScanError) {
+      console.error(e.message);
+      process.exit(2);
+    }
+    console.error(`SCAN_FAILED: ${e.code ?? e.message}`);
     process.exit(2);
   }
-  report(scanPaths(paths));
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);
 } else {

@@ -14,10 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rules (DSNs with passwords, URL-encoded passwords, AWS keys, `sk-`/`rk-`
   keys, GitHub tokens, private-key blocks, bearer tokens, password
   assignments); fingerprint-only findings; a single declared-fiction
-  exemption token. New over the predecessor: staged-blob scanning for
-  pre-commit, a hook installer that never overwrites, symlinks skipped (no
-  loops, no escaping the tree), NUL-sniffed binary skipping. Exit 0 clean /
-  1 findings / 2 usage (`SCAN_NOT_A_REPO`, `SCAN_HOOK_EXISTS`).
+  exemption token, judged on the secret part of a match only (a token in a
+  username exempts nothing). New over the predecessor: staged-blob scanning
+  for pre-commit (read by blob id, so type changes and names like `0:foo`
+  are scanned; submodule pointers skipped and counted), a hook that runs the
+  installed copy by absolute path and is written with `wx` (never overwrites,
+  never writes through a symlink), symlinks skipped (no loops, no escaping
+  the tree), NUL-sniffed binary skipping with UTF-16 decoded as text,
+  keyed fingerprints (random per run, `SAKK_SCAN_KEY` to compare), redacted
+  secret-bearing paths, length-bounded patterns (a 200KB hostile line scans
+  in linear time). Exit 0 clean / 1 findings / 2 the scan could not do its
+  job (`SCAN_PATH_MISSING`, `SCAN_UNREADABLE`, `SCAN_NOT_A_REPO`,
+  `SCAN_HOOK_EXISTS`, `SCAN_HOOK_DIR_MISSING`, `SCAN_FAILED`). Recognized
+  formats only — unquoted `.env` passwords are not detected.
 
 ### Fixed (hardening campaign, 2026-10-16)
 
