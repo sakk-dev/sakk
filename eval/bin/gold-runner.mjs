@@ -937,7 +937,13 @@ if (isMain) {
     writeFileSync(
       join(outDir, 'metrics.json'),
       `${JSON.stringify(
-        { runId, mode: 'FAKE_EXECUTOR (harness validation, not a model baseline)', metrics },
+        {
+          runId,
+          mode: 'FAKE_EXECUTOR (harness validation, not a model baseline)',
+          selected_cases: cases.map((c) => c.id),
+          stopped: null,
+          metrics,
+        },
         null,
         1,
       )}\n`,
@@ -1013,7 +1019,20 @@ if (isMain) {
     const metrics = aggregateMetrics(entries, { executorMode: 'REAL' });
     writeFileSync(
       join(outDir, 'metrics.json'),
-      `${JSON.stringify({ runId, mode: 'REAL', model_id: gate.auth.model_id, metrics }, null, 1)}\n`,
+      `${JSON.stringify(
+        {
+          runId,
+          mode: 'REAL',
+          model_id: gate.auth.model_id,
+          // A bundle must be able to tell a stopped or partial batch from a
+          // complete one: what was selected, and whether it stopped.
+          selected_cases: cases.map((c) => c.id),
+          stopped: stoppedInfo,
+          metrics,
+        },
+        null,
+        1,
+      )}\n`,
     );
     console.log(JSON.stringify({ runId, outDir, total: entries.length }));
     emitPackReport(entries, outDir, {
