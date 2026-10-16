@@ -433,3 +433,71 @@ describe('review M1: the CLI outlasts a lock held longer than one acquire budget
     },
   );
 });
+
+describe('verify pass round 2: paths the suite did not drive', () => {
+  test('an OVERRUN settle under a global and an agent halt keeps both halts (S2: overrunLifts)', () => {
+    const lp = fresh();
+    reserve({ ledgerPath: lp, callId: 'x', estimatedMaxUsd: 1 });
+    halt({ ledgerPath: lp, by: 'maintainer' });
+    halt({ ledgerPath: lp, by: 'maintainer', agentId: 'bot' });
+    settle({ ledgerPath: lp, callId: 'x', actualUsd: 5 }); // overrun: flags rewritten wholesale
+    const d = onDisk(lp);
+    assert.equal(d.flags.reconciliationRequired, true, 'the overrun was flagged');
+    assert.equal(d.halt.global.by, 'maintainer', 'the global halt survived');
+    assert.ok(Object.hasOwn(d.halt.agents, 'bot'), 'the agent halt survived');
+  });
+  test('settle, mark and clear on a RESUMED ledger keep it v2 with its halt record (S2: settleDowngrades)', () => {
+    const lp = fresh();
+    reserve({ ledgerPath: lp, callId: 'a', estimatedMaxUsd: 1 });
+    reserve({ ledgerPath: lp, callId: 'b', estimatedMaxUsd: 1 });
+    halt({ ledgerPath: lp, by: 'maintainer' });
+    resume({ ledgerPath: lp, by: 'maintainer' });
+    settle({ ledgerPath: lp, callId: 'a', actualUsd: 0.5 });
+    settle({ ledgerPath: lp, callId: 'b', failedUnknownCost: true });
+    settle({ ledgerPath: lp, callId: 'b', actualUsd: 0.2 });
+    markReconciliationRequired({ ledgerPath: lp, reason: 'r' });
+    clearReconciliation({ ledgerPath: lp, by: 'maintainer' });
+    const d = onDisk(lp);
+    assert.equal(d.schema, LEDGER_SCHEMA_V2);
+    assert.deepEqual(d.halt, { global: null, agents: {} });
+  });
+  test('CLI: `--agent=bot`, `--agnet bot` or a repeated --agent never widen a resume to all spending (S1)', () => {
+    const lp = fresh();
+    halt({ ledgerPath: lp, by: 'maintainer' });
+    for (const args of [
+      ['--agent=bot'],
+      ['--agnet', 'bot'],
+      ['--agent', 'a', '--agent', 'b'],
+      ['-a', 'bot'],
+    ]) {
+      const r = spawnSync(
+        process.execPath,
+        [CLI, 'resume', '--by', 'op', ...args, '--ledger', lp],
+        {
+          encoding: 'utf8',
+        },
+      );
+      assert.equal(r.status, 2, `${args.join(' ')}: ${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /USAGE_/);
+    }
+    assert.equal(onDisk(lp).halt.global.by, 'maintainer', 'the global halt is still on disk');
+  });
+  test('halt/resume with agentId null refuse — a failed id lookup never means "everyone" (N2)', () => {
+    const lp = fresh();
+    halt({ ledgerPath: lp, by: 'maintainer' });
+    assert.equal(
+      code(() => resume({ ledgerPath: lp, by: 'maintainer', agentId: null })),
+      'AGENT_ID_INVALID',
+    );
+    assert.equal(
+      code(() => halt({ ledgerPath: lp, by: 'maintainer', agentId: null })),
+      'AGENT_ID_INVALID',
+    );
+    assert.equal(onDisk(lp).halt.global.by, 'maintainer');
+    assert.equal(
+      code(() => reserve({ ledgerPath: lp, callId: 'n', estimatedMaxUsd: 1, agentId: null })),
+      'LEDGER_HALTED',
+      'null stays anonymous for reserve',
+    );
+  });
+});

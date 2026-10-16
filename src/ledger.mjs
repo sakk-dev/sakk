@@ -383,9 +383,14 @@ const setAgentHalt = (h, id, record) =>
     configurable: true,
   });
 
-/** undefined/null = anonymous; anything else must be a non-empty string (a numeric id could never match a halt). */
-function checkAgentId(agentId) {
-  if (agentId === undefined || agentId === null) return;
+/**
+ * reserve: undefined/null = anonymous; anything else must be a non-empty
+ * string (a numeric id could never match a halt). halt/resume (`scope`):
+ * only undefined means "everyone" — a null from a failed id lookup must
+ * never widen a stop or a resume to all spending.
+ */
+function checkAgentId(agentId, { scope = false } = {}) {
+  if (agentId === undefined || (agentId === null && !scope)) return;
   if (typeof agentId !== 'string' || agentId === '')
     throw new LedgerError('AGENT_ID_INVALID', 'agentId must be a non-empty string when given', {
       agentId: typeof agentId === 'string' ? agentId : typeof agentId,
@@ -721,7 +726,7 @@ export function markReconciliationRequired({ ledgerPath = defaultLedgerPath(), r
 export function halt({ ledgerPath = defaultLedgerPath(), by, reason = '', agentId }) {
   if (typeof by !== 'string' || by === '')
     throw new LedgerError('HALT_BY_REQUIRED', 'Halting requires a name');
-  checkAgentId(agentId);
+  checkAgentId(agentId, { scope: true });
   const scoped = typeof agentId === 'string';
   const lock = acquireLock(ledgerPath);
   try {
@@ -755,7 +760,7 @@ export function halt({ ledgerPath = defaultLedgerPath(), by, reason = '', agentI
 export function resume({ ledgerPath = defaultLedgerPath(), by, agentId }) {
   if (typeof by !== 'string' || by === '')
     throw new LedgerError('RESUME_BY_REQUIRED', 'Resuming requires a name');
-  checkAgentId(agentId);
+  checkAgentId(agentId, { scope: true });
   const scoped = typeof agentId === 'string';
   const lock = acquireLock(ledgerPath);
   try {

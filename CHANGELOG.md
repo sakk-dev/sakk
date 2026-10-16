@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (kill switch — behaviour of existing APIs)
+
+- `reserve()` now refuses an `agentId` that is not a non-empty string
+  (`AGENT_ID_INVALID`); before, `agentId: 7` or `""` was accepted and
+  recorded. `null`/absent stays anonymous. Reason: a numeric id could never
+  match a per-agent halt.
+- The `sakk` CLI refuses unknown flags, the `--flag=value` form and repeated
+  flags with exit 2 (`USAGE_UNKNOWN_ARGUMENT`, `USAGE_EQUALS_FORM`,
+  `USAGE_REPEATED_FLAG`); before, they were ignored — `sakk resume --by op
+--agent=bot` lifted the GLOBAL halt.
+
 ### Added (kill switch)
 
 - `halt()` / `resume()` and `sakk halt|resume --by <name> [--agent <id>]`:

@@ -65,6 +65,9 @@ the alerts log alone.
 | 11  | Agent reserves with a numeric id to dodge a string halt    | `AGENT_ID_INVALID` before the lock                                            |
 | 12  | Delete the `halt` key from a v2 file                       | `LEDGER_SCHEMA_INVALID` — never reads as "not halted"                         |
 | 13  | Lock held by a live process longer than one acquire budget | CLI halt keeps retrying and lands once the holder lets go                     |
+| 14  | `resume --agent=bot` / misspelled or repeated `--agent`    | exit 2 — never widens to a global resume                                      |
+| 15  | `halt`/`resume` with `agentId: null` (failed id lookup)    | `AGENT_ID_INVALID` — null never means "everyone" for a stop or a resume       |
+| 16  | Overrun settle while halted; money paths after a resume    | halts survive the flags rewrite; a resumed ledger stays v2                    |
 
 ## Input space
 
@@ -81,7 +84,7 @@ halted). Never process output alone.
 
 ## Contract (done = converged)
 
-- [x] every adversary row has a named test (rows 1-6, 8-13 unit; 7 MCP)
+- [x] every adversary row has a named test (rows 1-6, 8-16 unit; 7 MCP)
 - [x] invariant fuzz gains halt/resume ops: no reservation is granted
       while a global halt is active, nor to a halted agent; the agent pool
       includes `__proto__`/`constructor`/`toString`, every agent halt must

@@ -70,13 +70,16 @@ for (let step = 0; step < 250; step += 1) {
   const agent = pick(['a1', 'a2', '__proto__', 'constructor', 'toString']);
   try {
     if (op === 'reserve') {
-      if (killed || killedAgents.has(agent)) killProbes += 1;
+      // anonymous callers too: a global halt must stop them (verify N1)
+      const who = rnd() < 0.25 ? pick([undefined, null]) : agent;
+      const agentHalted = typeof who === 'string' && killedAgents.has(who);
+      if (killed || agentHalted) killProbes += 1;
       const id = `c${nextId++}`;
-      reserve({ ledgerPath, callId: id, estimatedMaxUsd: 1 + rnd() * 5, agentId: agent });
+      reserve({ ledgerPath, callId: id, estimatedMaxUsd: 1 + rnd() * 5, agentId: who });
       ids.push(id);
       check(!halted, 'reserve succeeded while halted', step);
-      check(!killed, 'reserve succeeded while the kill switch was on', step);
-      check(!killedAgents.has(agent), `reserve succeeded for halted agent ${agent}`, step);
+      check(!killed, `reserve succeeded while the kill switch was on (agent ${who})`, step);
+      check(!agentHalted, `reserve succeeded for halted agent ${who}`, step);
     } else if (op === 'dupReserve' && ids.length) {
       reserve({ ledgerPath, callId: pick(ids), estimatedMaxUsd: 1 });
       check(false, 'duplicate callId was accepted', step);

@@ -153,12 +153,16 @@ npx sakk resume --by alice                          # lift it (signed)
 ```
 
 While halted, `reserve()` refuses `LEDGER_HALTED` (or `AGENT_HALTED`),
-every refused attempt is logged to `sakk-alerts.jsonl`, and `sakk status`
+every reservation the halt refuses is logged to `sakk-alerts.jsonl`
+(attempts refused earlier for another reason — an invalid agent id, a stale
+ledger — carry their own code and are not halt alerts), and `sakk status`
 shows who stopped it and exits 4 — so CI stops too. In-flight calls can
 still settle their real cost. The halt cannot be lifted by any money
 operation, only by `resume`; agents cannot resume themselves over MCP. A
 stale ledger or one in reconciliation can still be halted. Per-agent halts
-match the agent id exactly (case-sensitive) and rely on the id the caller
+match the agent id exactly (case-sensitive, code point for code point — no
+Unicode normalisation, so `café` typed two ways is two ids) and rely on the
+id the caller
 declares when it reserves — an agent that switches ids escapes a per-agent
 halt; the global halt is the hard stop. The first halt upgrades the ledger
 file to schema `sakk-ledger.v2`, which earlier sakk versions refuse to read:

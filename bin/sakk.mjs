@@ -83,6 +83,42 @@ function fail(e) {
   process.exit(1);
 }
 
+// Every flag each command accepts. Anything else refuses (exit 2) instead of
+// being ignored: `sakk resume --by op --agent=bot` used to lift the GLOBAL
+// halt because the `=` form was not recognised (verify pass S1).
+const COMMANDS = {
+  init: { values: ['cap', 'ledger', 'by'], bools: [] },
+  status: { values: ['ledger'], bools: ['json'] },
+  reconcile: { values: ['by', 'ledger'], bools: [] },
+  unlock: { values: ['by', 'ledger'], bools: [] },
+  halt: { values: ['by', 'reason', 'agent', 'ledger'], bools: [] },
+  resume: { values: ['by', 'agent', 'ledger'], bools: [] },
+  mcp: { values: ['ledger', 'policy'], bools: [] },
+  scan: { values: [], bools: ['staged', 'install-hook'], positional: true },
+};
+if (Object.hasOwn(COMMANDS, cmd)) {
+  const spec = COMMANDS[cmd];
+  const seen = new Set();
+  const usage = (code, msg) => {
+    console.error(`${code}: ${msg} — see sakk --help`);
+    process.exit(2);
+  };
+  for (let i = 1; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (/^--[^=]+=/.test(a)) usage('USAGE_EQUALS_FORM', `write "${a.replace('=', ' ')}"`);
+    if (!a.startsWith('--')) {
+      if (!spec.positional) usage('USAGE_UNKNOWN_ARGUMENT', `"${a}" is not an argument of ${cmd}`);
+      continue;
+    }
+    const name = a.slice(2);
+    if (!spec.values.includes(name) && !spec.bools.includes(name))
+      usage('USAGE_UNKNOWN_ARGUMENT', `${a} is not a flag of ${cmd}`);
+    if (seen.has(name)) usage('USAGE_REPEATED_FLAG', `${a} given more than once`);
+    seen.add(name);
+    if (spec.values.includes(name)) i += 1; // val() refuses a missing value
+  }
+}
+
 if (cmd === 'init') {
   const cap = Number(val('cap'));
   if (!Number.isFinite(cap) || cap <= 0) {
