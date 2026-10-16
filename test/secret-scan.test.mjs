@@ -349,10 +349,11 @@ describe('the hook as SHIPPED (review S-1: no npx, nothing rewritten in the test
 
 describe('the repository itself', () => {
   test('the whole repository — tests included — scans clean', () => {
+    // the ROOT, not a list of directories: README, CHANGELOG, findings/ and
+    // specs/ were never scanned while the list said "whole repository" (F-79)
     const root = join(HERE, '..');
-    const r = scanPaths(
-      ['src', 'bin', 'eval', 'scripts', 'test', 'docs', 'policies'].map((p) => join(root, p)),
-    );
+    const r = scanPaths([root]);
+    assert.ok(r.scanned > 200, `scanned only ${r.scanned} files`);
     assert.deepEqual(r.findings, []);
     assert.deepEqual(r.unreadable, []);
   });

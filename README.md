@@ -183,7 +183,7 @@ It recognizes eight formats: database URLs with a password (`postgres`,
 AWS access keys, API keys shaped `sk_live_…`/`sk_test_…`/`rk_live_…`/`rk_test_…`,
 `sk-`/`sk_`/`rk-`/`rk_` followed by at least 20 characters that include a
 digit, or `sk-` followed by at least 40 (so `sk_set_flags` does not match,
-but an identifier such as `sk_learn_model_v2_config` does), GitHub
+but a long identifier that starts `sk_` and contains a digit does), GitHub
 tokens (classic and fine-grained), private-key blocks (PEM and PGP), bearer tokens, and
 quoted `password = "…"` assignments. It does NOT catch secrets in any other
 shape — an unquoted `.env` line such as `PASSWORD=hunter2hunter2`, other URL

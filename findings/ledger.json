@@ -1713,7 +1713,7 @@
       "found_by": "review",
       "introduced_in": "unknown",
       "title": "An exempt fiction-token match hid a real secret it swallowed",
-      "symptom": "`postgresql://u:<TOKEN>postgresql://x:<pw>@h` (also comma lists, URL-encoded) scanned clean with exempted:1 — a recognized-format DSN was literally present.",
+      "symptom": "A DSN carrying the fiction token as its password, glued directly to a second DSN with a real password (also comma lists, URL-encoded passwords), scanned clean with exempted:1 — a recognized-format DSN was literally present.",
       "evidence": "Fable 5 review of plan item ② (2026-10-16), blocker B1",
       "direct_cause": "The first pass recorded every match's span before deciding exemption, so the second (token-blanked) pass skipped the real DSN overlapping the exempt one.",
       "why": [
@@ -2105,6 +2105,32 @@
       "class_fix": null,
       "guard": "test/evidence-bundle.test.mjs::a RESERVED entry left open is unresolved spend too",
       "sweep": "Other guards asserting only a code: SPEND_OVER_CAP and BATCH_STOPPED tests already assert status.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-79",
+      "date": "2026-10-17",
+      "introduced_in": "unknown",
+      "found_by": "T0",
+      "pattern": "fail-open-absence",
+      "title": "The 'whole repository' self-scan test scanned seven named directories",
+      "symptom": "The audit's `sakk scan .` found two secret-shaped strings this round wrote into README.md and findings/ledger.json; the commit gate stayed green because the test named 'the whole repository' scanned only src, bin, eval, scripts, test, docs and policies.",
+      "evidence": "audit-logs/2026-10-16T20-11-05/05.log",
+      "direct_cause": "A fixed directory list stood in for the repository; root files, findings/ and specs/ were absent from it.",
+      "why": [
+        "The list was written when those were the only directories with content.",
+        "Absence from the list read as clean, not as unscanned.",
+        "Neither the gate nor CI runs the CLI self-scan; only the audit does."
+      ],
+      "root_cause": "An assumption about the environment was never verified (pattern fail-open-absence).",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: the test scans the repository root (with a file-count floor); both strings reworded",
+      "class_fix": "test/secret-scan.test.mjs::the whole repository — tests included — scans clean",
+      "guard": "test/secret-scan.test.mjs::the whole repository — tests included — scans clean",
+      "sweep": "Other fixed directory lists in tests (claims-are-checked, core-specs, the stopwatch detector) are scoped by name to source or test directories and claim nothing wider.",
       "sweep_status": "done",
       "status": "fixed"
     }

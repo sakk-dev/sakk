@@ -4,7 +4,7 @@ Standard §14.4. The first review on a different model (Claude Fable 5,
 fresh clone, rule R-21) found 3 blockers and 17 should-fix items across
 the four modules, after three same-model rounds had passed them. Four
 classes recurred past the earlier stop-line (`2026-10-16-stopline.md`).
-Ledger: F-62 … F-78.
+Ledger: F-62 … F-79.
 
 The common answer to "why did the countermeasure not hold": **the
 detectors from the first stop-line each pinned one textual shape of their
@@ -24,6 +24,8 @@ report missing a key: each read as agreement.
   every document in a real bundle and requires each deletion that still
   passes to be declared with its reason (46 are). New keys are covered
   without anyone thinking of them. Drill MUT-U, MUT-V hold the checks.
+- F-79 (found by this round's audit): the "whole repository" self-scan
+  test scanned seven named directories; it now scans the root.
 - Remaining exposure: library function arguments (unchanged since the
   first stop-line); the runner-observed facts themselves (`harness_dirty`,
   requested model id) can be flipped by a forger — measured as a KNOWN
