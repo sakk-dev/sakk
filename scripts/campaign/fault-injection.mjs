@@ -117,16 +117,24 @@ const freshLedger = () => {
   chmodSync(p, 0o644);
 }
 {
-  const d = dir();
-  const p = join(d, 'l.json');
-  initLedger({ ledgerPath: p, capUsd: 10 });
-  chmodSync(d, 0o555); // directory read-only: the LOCK cannot be created
-  try {
-    expectTyped('readonly-dir (reserve, lock uncreatable)', () =>
-      reserve({ ledgerPath: p, callId: 'x', estimatedMaxUsd: 1 }),
-    );
-  } finally {
-    chmodSync(d, 0o755);
+  // Container matrix lesson: ROOT ignores permission bits entirely, so
+  // this leg can only be staged as an unprivileged user. Skipping under
+  // root is stated loudly, never silently.
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+  if (isRoot) {
+    console.log('↷ readonly-dir skipped: running as root, permission bits are not enforceable');
+  } else {
+    const d = dir();
+    const p = join(d, 'l.json');
+    initLedger({ ledgerPath: p, capUsd: 10 });
+    chmodSync(d, 0o555); // directory read-only: the LOCK cannot be created
+    try {
+      expectTyped('readonly-dir (reserve, lock uncreatable)', () =>
+        reserve({ ledgerPath: p, callId: 'x', estimatedMaxUsd: 1 }),
+      );
+    } finally {
+      chmodSync(d, 0o755);
+    }
   }
 }
 
