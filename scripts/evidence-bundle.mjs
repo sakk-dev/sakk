@@ -101,8 +101,10 @@ without it first; only then run it.
   the case's own budget as its cap, settled no more than that cap, and its
   settled spend equals the trace's cost.
 - Completeness: a ledger with unsettled or unreconciled spend, a trace with
-  unknown cost, a stopped batch, or selected cases that never ran make the
-  outcome INCOMPLETE (exit 3), never PASS.
+  unknown or estimated cost, an overrun past a case cap that sakk flagged, a
+  stopped batch, or selected cases that never ran make the outcome
+  INCOMPLETE (exit 3), never PASS. Every paid step in a trace has a ledger
+  entry and every ledger entry a paid step.
 - metrics.json recomputes from the per-case files: pass rates (overall,
   fake/real split, recovery, escalation), first-pass yield, violation
   counts, case counts, total and per-case cost, p50/p95 duration.
@@ -195,7 +197,7 @@ function verifierProvenance() {
 export function buildBundle({ source, to, now = new Date() }) {
   const src = resolve(source);
   const target = resolve(to);
-  if (to.endsWith('/') || !/\.(tgz|tar\.gz)$/.test(target))
+  if (to.endsWith('/') || !/(^|[\\/])[^\\/.][^\\/]*\.(tgz|tar\.gz)$/.test(target))
     throw new BundleError(
       'BUNDLE_TARGET_INVALID',
       `${to}: the target must be a .tgz or .tar.gz file path`,

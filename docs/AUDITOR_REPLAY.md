@@ -127,7 +127,8 @@ JSON key is a named failure, never a skipped check.
 **INCOMPLETE** (exit 3, like `sakk status` for a ledger awaiting
 reconciliation) means the files are intact and consistent, but the run is
 not final: some spend is unsettled or unreconciled, a trace's cost is
-unknown, the batch stopped early, or selected cases never ran. Treat its
+unknown or estimated, a case overspent its cap (sakk flagged it), the batch
+stopped early, or selected cases never ran. Treat its
 results and costs as provisional. Such a bundle is still issued, labelled.
 
 It does NOT show who made the bundle: a full rebuild — verdicts edited, a

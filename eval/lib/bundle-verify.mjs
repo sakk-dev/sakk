@@ -34,6 +34,25 @@ const CASE_ID = /^G\d+$/;
 const RULE_NAME = /^[A-Z][A-Z0-9_]*$/;
 const LEDGER_SCHEMAS = ['sakk-ledger.v1', 'sakk-ledger.v2'];
 const ENTRY_STATUS = ['RESERVED', 'SETTLED', 'RECONCILIATION_REQUIRED'];
+const LEDGER_KEYS = [
+  'schema',
+  'initializedAt',
+  'initializedBy',
+  'capUsd',
+  'flags',
+  'entries',
+  'updatedAt',
+];
+/** Deep equality that ignores object key order. */
+const canon = (x) =>
+  isObj(x)
+    ? `{${Object.keys(x)
+        .sort()
+        .map((k) => `${JSON.stringify(k)}:${canon(x[k])}`)
+        .join(',')}}`
+    : Array.isArray(x)
+      ? `[${x.map(canon).join(',')}]`
+      : fmt(x);
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
@@ -268,12 +287,16 @@ function check(root, bad, gap) {
       continue;
     }
     // sakk's own ledger rules, plus: this run's ledger, with this case's cap
+    const ledgerKeys = [...LEDGER_KEYS, ...(ledger.schema === 'sakk-ledger.v2' ? ['halt'] : [])];
+    const callIds = Array.isArray(ledger.entries) ? ledger.entries.map((e) => e?.callId) : [];
     const ledgerErr =
       (!LEDGER_SCHEMAS.includes(ledger.schema) && 'schema') ||
+      (Object.keys(ledger).some((k) => !ledgerKeys.includes(k)) && 'unknown top-level key') ||
+      (typeof ledger.updatedAt !== 'string' && 'updatedAt') ||
       (ledger.initializedBy !== `gold-runner:${meta.runId}` && 'initializedBy is another run') ||
       (!(isNum(ledger.capUsd) && ledger.capUsd > 0) && 'capUsd') ||
       (ledger.capUsd !== caseDef.max_budget_usd &&
-        `capUsd ${ledger.capUsd} ≠ case limit ${caseDef.max_budget_usd}`) ||
+        `capUsd ${ledger.capUsd} ≠ case limit ${caseDef.max_budget_usd} (was the run made from uncommitted case files?)`) ||
       (!(isObj(ledger.flags) && typeof ledger.flags.reconciliationRequired === 'boolean') &&
         'flags') ||
       (!(
@@ -288,7 +311,14 @@ function check(root, bad, gap) {
             (e.status !== 'SETTLED' || (isNum(e.actualUsd) && e.actualUsd >= 0)),
         )
       ) &&
-        'entries');
+        'entries') ||
+      (new Set(callIds).size !== callIds.length && 'duplicate callId') ||
+      // sakk flags every settle above its reservation; an unflagged one is not sakk's output
+      (!ledger.flags.reconciliationRequired &&
+        ledger.entries.some(
+          (e) => e.status === 'SETTLED' && e.actualUsd > e.estimatedMaxUsd + 1e-9,
+        ) &&
+        'an overrun without the reconciliation flag sakk sets');
     if (ledgerErr) {
       bad('LEDGER_INVALID', `${id}: ${ledgerErr}`);
       continue;
@@ -312,28 +342,61 @@ function check(root, bad, gap) {
         `${id}: provider ${fmt(trace.model_provider)} in a ${meta.executorMode} bundle`,
       );
     modelIds.add(trace.model_id);
+    // only judged against a usable metrics.json (no echo of its own failure)
+    const metricsModel = typeof metricsDoc?.model_id === 'string' ? metricsDoc.model_id : undefined;
     if (
-      (real && trace.model_id !== metricsDoc?.model_id) ||
+      (real && metricsModel !== undefined && trace.model_id !== metricsModel) ||
       (!real && !String(trace.model_id).startsWith('fake-'))
     )
       bad(
         'MODE_MISMATCH',
         `${id}: model id ${fmt(trace.model_id)} in a ${meta.executorMode} bundle`,
       );
-    if (
-      ledger.flags.reconciliationRequired ||
-      ledger.entries.some((e) => e.status !== 'SETTLED') ||
-      trace.cost_known === false
-    )
-      gap(
-        'SPEND_UNRESOLVED',
-        `${id}: the ledger has unsettled or unreconciled spend — its true cost is not known`,
-      );
+    // every paid step the trace records has a ledger entry, and vice versa
+    const paid = trace.tool_calls === undefined ? [] : trace.tool_calls;
+    const paidIds = Array.isArray(paid)
+      ? paid.filter((t) => isObj(t) && t.kind === 'paid_step').map((t) => t.callId)
+      : null;
+    const entryIds = ledger.entries.map((e) => e.callId);
+    if (paidIds === null) bad('CASE_FILE_INVALID', `${id}: trace.tool_calls ill-typed`);
+    else {
+      for (const c of paidIds)
+        if (!entryIds.includes(c))
+          bad('LEDGER_INVALID', `${id}: paid step ${fmt(c)} has no ledger entry`);
+      for (const c of entryIds)
+        if (!paidIds.includes(c))
+          bad('LEDGER_INVALID', `${id}: ledger entry ${fmt(c)} has no paid step in the trace`);
+    }
+    const realExec = onDisk.has(`run/${id}/real-exec.json`)
+      ? obj(`run/${id}/real-exec.json`, 'CASE_FILE_INVALID')
+      : undefined;
     const settled = ledger.entries
       .filter((e) => e.status === 'SETTLED')
       .reduce((a, e) => a + e.actualUsd, 0);
+    const reason = ledger.flags.reason ? ` (${ledger.flags.reason})` : '';
+    if (ledger.entries.some((e) => e.status !== 'SETTLED'))
+      gap(
+        'SPEND_UNRESOLVED',
+        `${id}: a reservation was never settled — its true cost is not known`,
+      );
+    else if (
+      trace.cost_known === false ||
+      trace.cost_is_estimate === true ||
+      (realExec && !isNum(realExec.cost_usd))
+    )
+      gap('SPEND_UNRESOLVED', `${id}: the cost recorded is an estimate, not a reported cost`);
     if (settled > ledger.capUsd + 1e-6)
-      bad('LEDGER_OVER_CAP', `${id}: settled ${settled} > cap ${ledger.capUsd}`);
+      // a truthful ledger flags its own overrun: evidence of the worst spend
+      // event must still be issuable, labelled — an unflagged one is a forgery
+      if (ledger.flags.reconciliationRequired)
+        gap('SPEND_OVER_CAP', `${id}: settled ${settled} > cap ${ledger.capUsd}${reason}`);
+      else
+        bad(
+          'LEDGER_OVER_CAP',
+          `${id}: settled ${settled} > cap ${ledger.capUsd} without a reconciliation flag`,
+        );
+    else if (ledger.flags.reconciliationRequired)
+      gap('SPEND_UNRESOLVED', `${id}: the ledger awaits reconciliation${reason}`);
     if (Math.abs(settled - trace.actual_cost_usd) > 1e-6)
       bad('COST_MISMATCH', `${id}: trace says ${trace.actual_cost_usd}, ledger settled ${settled}`);
     per.push({ id, result, trace, caseDef });
@@ -412,10 +475,21 @@ function check(root, bad, gap) {
         bad('RUN_ID_MISMATCH', `pack-report.json names ${fmt(pr.run_id)}`);
       if (pr.harness_commit !== meta.harnessCommit)
         mismatch(`harness_commit ${fmt(pr.harness_commit)}`);
-      if (metricsDoc && fmt(pr.batch_stopped ?? null) !== fmt(metricsDoc.stopped ?? null))
+      if (metricsDoc && canon(pr.batch_stopped ?? null) !== canon(metricsDoc.stopped ?? null))
         mismatch(`batch_stopped ${fmt(pr.batch_stopped)} vs metrics ${fmt(metricsDoc.stopped)}`);
+      if ('model' in pr) {
+        const want = real ? metricsDoc?.model_id : null;
+        const got = isObj(pr.model) ? pr.model.model_id : pr.model;
+        if (got !== want) mismatch(`model ${fmt(got)} but the run's model is ${fmt(want)}`);
+      }
+      const selected = Array.isArray(metricsDoc?.selected_cases) ? metricsDoc.selected_cases : null;
       const verdictOf = new Map(per.map((e) => [e.id, e.result.verdict]));
       const reqs = Array.isArray(pr.requirements) ? pr.requirements : [];
+      if (selected)
+        for (const r of reqs)
+          for (const c of isObj(r) && Array.isArray(r.cases) ? r.cases : [])
+            if (isObj(c) && !selected.includes(c.case))
+              mismatch(`${r.id}: ${fmt(c.case)} is quoted but was never selected for this run`);
       if (reqs.length === 0) bad('PACK_REPORT_INVALID', 'no requirements');
       if (pr.total !== reqs.length)
         mismatch(`total ${fmt(pr.total)} for ${reqs.length} requirement(s)`);

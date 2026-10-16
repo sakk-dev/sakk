@@ -445,7 +445,10 @@ describe('verify pass N1: unresolved spend is never a PASS', () => {
         status: 'RECONCILIATION_REQUIRED',
       });
     });
-    editJson(b, 'run/G03/trace.json', (t) => (t.cost_known = false));
+    editJson(b, 'run/G03/trace.json', (t) => {
+      t.cost_known = false;
+      t.tool_calls.push({ kind: 'paid_step', callId: 'x', reservedUsd: 1.9 });
+    });
     reManifest(b);
   };
   test('a reconciliation flag / unknown cost → INCOMPLETE with SPEND_UNRESOLVED, CLI exit 3', () => {
@@ -672,5 +675,124 @@ describe('verify pass N7/N10: never throws, targets are checked', () => {
       (e) => e.code === 'BUNDLE_TARGET_EXISTS' && !/appeared/.test(e.message),
     );
     assert.deepEqual(readdirSync(d).sort(), ['dangling.tgz']);
+  });
+});
+
+describe('verify round 3', () => {
+  const metricsAdd = (b, deltaUsd) =>
+    editJson(b, 'run/metrics.json', (m) => {
+      m.metrics.total_cost_usd += deltaUsd;
+      m.metrics.cost_per_case = m.metrics.total_cost_usd / m.selected_cases.length;
+    });
+  test('S1: an overrun past the case cap that sakk flagged is INCOMPLETE (SPEND_OVER_CAP), not unbundleable', () => {
+    const b = copyOf(PRISTINE);
+    editJson(b, 'run/G12/ledger.json', (l) => {
+      l.entries[0].actualUsd = 0.6; // reserved 0.4, cap 0.5
+      l.flags = {
+        reconciliationRequired: true,
+        reason: 'call x settled 0.6 against a 0.4 reservation',
+      };
+    });
+    editJson(b, 'run/G12/trace.json', (t) => (t.actual_cost_usd = 0.6));
+    metricsAdd(b, 0.2);
+    reManifest(b);
+    const r = verifyBundle(b);
+    assert.deepEqual(r.problems, []);
+    assert.equal(r.status, 'INCOMPLETE');
+    assert.ok(r.incomplete.some((p) => p.code === 'SPEND_OVER_CAP'));
+  });
+  test('the same overrun WITHOUT sakk’s flag is a forgery (LEDGER_INVALID / LEDGER_OVER_CAP)', () => {
+    const b = copyOf(PRISTINE);
+    editJson(b, 'run/G12/ledger.json', (l) => (l.entries[0].actualUsd = 0.6));
+    editJson(b, 'run/G12/trace.json', (t) => (t.actual_cost_usd = 0.6));
+    metricsAdd(b, 0.2);
+    reManifest(b);
+    assert.ok(codes(b).includes('LEDGER_INVALID'));
+  });
+  test('S3: paid steps and ledger entries must match one to one', () => {
+    const a = copyOf(PRISTINE);
+    assert.ok(
+      forge(a, 'run/G12/trace.json', (t) =>
+        t.tool_calls.push({ kind: 'paid_step', callId: 'ghost', reservedUsd: 0.1 }),
+      ).includes('LEDGER_INVALID'),
+    );
+    const b = copyOf(PRISTINE);
+    assert.ok(
+      forge(
+        b,
+        'run/G12/trace.json',
+        (t) => (t.tool_calls = t.tool_calls.filter((x) => x.kind !== 'paid_step')),
+      ).includes('LEDGER_INVALID'),
+    );
+  });
+  test('S3: an estimated cost is unresolved spend', () => {
+    const b = copyOf(PRISTINE);
+    editJson(b, 'run/G12/trace.json', (t) => (t.cost_is_estimate = true));
+    reManifest(b);
+    assert.ok(gaps(b).includes('SPEND_UNRESOLVED'));
+  });
+  test('N4: ledgers are closed documents (unknown key, missing updatedAt, duplicate callId)', () => {
+    for (const fn of [
+      (l) => (l.extra = 1),
+      (l) => delete l.updatedAt,
+      (l) => l.entries.push({ ...l.entries[0] }),
+    ]) {
+      const b = copyOf(PRISTINE);
+      assert.ok(forge(b, 'run/G12/ledger.json', fn).includes('LEDGER_INVALID'));
+    }
+  });
+  test('S3/S4: a pack report may quote only selected cases and must name the run’s model', () => {
+    const b = copyOf(PRISTINE);
+    const meta = JSON.parse(readFileSync(join(b, 'bundle.json'), 'utf8'));
+    writeFileSync(
+      join(b, 'run/pack-report.json'),
+      JSON.stringify({
+        executor_mode: 'FAKE',
+        run_id: meta.runId,
+        harness_commit: meta.harnessCommit,
+        batch_stopped: null,
+        model: { model_id: 'claude-opus-production' },
+        covered: 0,
+        total: 1,
+        requirements: [
+          { id: 'r', status: 'HARNESS_ONLY', cases: [{ case: 'G13', verdict: 'NOT_RUN' }] },
+        ],
+      }),
+    );
+    reManifest(b);
+    const details = verifyBundle(b)
+      .problems.filter((p) => p.code === 'PACK_STATUS_MISMATCH')
+      .map((p) => p.detail)
+      .join(' | ');
+    assert.match(details, /never selected/);
+    assert.match(details, /model/);
+  });
+  test('N5: stop records compare regardless of key order', () => {
+    const b = copyOf(PRISTINE);
+    const meta = JSON.parse(readFileSync(join(b, 'bundle.json'), 'utf8'));
+    editJson(b, 'run/metrics.json', (m) => (m.stopped = { at: 'G12', why: 'BUDGET' }));
+    writeFileSync(
+      join(b, 'run/pack-report.json'),
+      JSON.stringify({
+        executor_mode: 'FAKE',
+        run_id: meta.runId,
+        harness_commit: meta.harnessCommit,
+        batch_stopped: { why: 'BUDGET', at: 'G12' },
+        model: null,
+        covered: 0,
+        total: 1,
+        requirements: [
+          { id: 'r', status: 'HARNESS_ONLY', cases: [{ case: 'G05', verdict: 'PASS' }] },
+        ],
+      }),
+    );
+    reManifest(b);
+    assert.deepEqual(verifyBundle(b).problems, []);
+  });
+  test('N6: a hidden-dotfile target is refused', () => {
+    assert.throws(
+      () => buildBundle({ source: RUN, to: join(tdir(), '.tgz') }),
+      (e) => e.code === 'BUNDLE_TARGET_INVALID',
+    );
   });
 });

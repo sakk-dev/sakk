@@ -47,8 +47,18 @@ status`), for a genuine run with unsettled/unreconciled spend, unknown
   `verifyBundle` never throws. The shipped verifier must be committed
   (`BUNDLE_VERIFIER_DIRTY`) and its commit is recorded (`verifierCommit`);
   targets must be `.tgz`/`.tar.gz` (`BUNDLE_TARGET_INVALID`), a dangling
-  symlink counts as existing, files over 1 GiB are refused, and SIGINT /
-  SIGTERM no longer leave temp files (SIGKILL can).
+  symlink counts as existing, files over 1 GiB are refused. A SIGINT or
+  SIGTERM during a build lets it finish or fail as a whole — it does not
+  cancel it — and temp files are always removed (SIGKILL excepted).
+  Verify round 3: a truthful overrun past a case cap (sakk flagged it) is
+  INCOMPLETE (`SPEND_OVER_CAP`) and ships, labelled — it used to be
+  unbundleable; an unflagged one is a forgery. Ledgers are checked as
+  closed documents (unknown keys, missing updatedAt, duplicate callIds, an
+  overrun without the flag sakk sets); every paid step in a trace must have
+  a ledger entry and vice versa; estimated costs (`cost_is_estimate`,
+  `real-exec.json` without a cost) are INCOMPLETE; pack reports may only
+  quote selected cases and must name the run's model; stop records compare
+  regardless of key order; hidden-dotfile targets are refused.
 
 ### Fixed (hardening campaign, 2026-10-16)
 
