@@ -1389,6 +1389,31 @@
       "sweep": "Remaining conditional skips: two root-only permission tests and one test that needs `shasum` (present on macOS and Ubuntu). If any of them skips, the certificate refuses — the intended fail-closed signal, not a hole.",
       "sweep_status": "done",
       "status": "fixed"
+    },
+    {
+      "id": "F-52",
+      "date": "2026-10-16",
+      "title": "The README roadmap did not list three shipped features",
+      "symptom": "After the plan 1-4 merge the roadmap still omitted the kill switch, secret scanning and case packs, and the CLI line lacked halt/resume/scan.",
+      "evidence": "pre-merge read of main README",
+      "found_by": "human",
+      "introduced_in": "056554e",
+      "direct_cause": "Each feature PR added its own README section; none updated the roadmap list.",
+      "why": [
+        "Feature PRs edit their own section.",
+        "The roadmap is a second place that states what ships.",
+        "No check ties the roadmap to the commands that exist."
+      ],
+      "root_cause": "Claims in customer-facing artifacts are not structurally tied to the checks that back them.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-01"],
+      "instance_fix": "4dab751 roadmap and CLI line updated",
+      "class_fix": null,
+      "guard": "test/cli-strictness.test.mjs::sakk --help lists the commands this detector covers",
+      "sweep": "README sections, CHANGELOG and AUDITOR_REPLAY reread after the merge; no other stale shipped/not-shipped claim found.",
+      "sweep_status": "done",
+      "status": "fixed"
     }
   ]
 }
