@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
-import { initLedger, reserve, settle, readLedger } from '../src/ledger.mjs';
+import { initLedger, reserve, settle, readLedger, halt } from '../src/ledger.mjs';
 
 /** Contract tests for the MCP enforcer (specs/mcp-server/contract.md):
  * every adversary row drives the REAL server binary over REAL stdio
@@ -319,6 +319,32 @@ describe('MCP enforcer: the policy gate', () => {
     const c = mk({ ledgerPath, policyPath });
     const st = await c.tool('sakk_status', {});
     assert.match(st.payload.policy_hash, /^[0-9a-f]{64}$/);
+  });
+});
+
+describe('MCP enforcer: kill switch (specs/kill-switch rows 1 and 7)', () => {
+  test('a halted ledger refuses over MCP with LEDGER_HALTED; status shows who stopped it', async () => {
+    const d = tdir();
+    const ledgerPath = join(d, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    halt({ ledgerPath, by: 'maintainer', reason: 'incident' });
+    const c = mk({ ledgerPath });
+    const r = await c.tool('sakk_reserve', { callId: 'h1', estimatedMaxUsd: 1 });
+    assert.equal(r.isError, true);
+    assert.equal(r.payload.code, 'LEDGER_HALTED');
+    const st = await c.tool('sakk_status', {});
+    assert.equal(st.payload.halted.by, 'maintainer');
+  });
+  test('row 7: no MCP tool can halt or resume — an agent cannot lift its own stop', async () => {
+    const d = tdir();
+    const ledgerPath = join(d, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    const c = mk({ ledgerPath });
+    const list = await c.call('tools/list', {});
+    const names = list.result.tools.map((t) => t.name);
+    assert.ok(!names.some((n) => /halt|resume|unlock|reconcile/.test(n)), names.join(','));
+    const tried = await c.call('tools/call', { name: 'sakk_resume', arguments: { by: 'agent' } });
+    assert.equal(tried.error.code, -32602);
   });
 });
 

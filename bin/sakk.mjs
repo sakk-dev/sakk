@@ -9,6 +9,8 @@ import {
   totalsOf,
   clearReconciliation,
   forceUnlock,
+  halt,
+  resume,
   LedgerError,
 } from '../src/ledger.mjs';
 import { loadPolicy } from '../src/policy.mjs';
@@ -59,10 +61,12 @@ Usage:
   sakk status [--ledger <path>] [--json]                  totals, entries, reconciliation state
   sakk reconcile --by <name> [--ledger <path>]            clear the reconciliation flag (signed)
   sakk unlock --by <name> [--ledger <path>]               break a stuck lock by hand (signed)
+  sakk halt --by <name> [--reason <t>] [--agent <id>]     kill switch: refuse all new spending (signed)
+  sakk resume --by <name> [--agent <id>]                  lift a halt (signed)
   sakk mcp --ledger <path> [--policy <path>]              MCP stdio server: reserve/settle/status as tools
 
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
-Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status)
+Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status) · 4 halted (status)
 max_reservable_usd of 0 means nothing fits under the cap (reserve requires a positive amount)
 `;
 
@@ -117,6 +121,8 @@ if (cmd === 'init') {
     entries: byStatus,
     reconciliation_required: reco,
     reconciliation_reason: doc.flags?.reason ?? null,
+    halted: doc.halt?.global ?? null,
+    halted_agents: doc.halt?.agents ?? {},
     updated_at: doc.updatedAt,
   };
   if (flag('json')) {
@@ -140,9 +146,15 @@ if (cmd === 'init') {
       `entries     ${doc.entries.length} (reserved ${byStatus.RESERVED}, settled ${byStatus.SETTLED}, reconciliation ${byStatus.RECONCILIATION_REQUIRED})`,
     );
     console.log(`updated     ${doc.updatedAt}`);
+    if (out.halted)
+      console.log(
+        `⛔ HALTED by ${out.halted.by} at ${out.halted.at}${out.halted.reason ? ` — ${out.halted.reason}` : ''} (all new spending refused)`,
+      );
+    for (const [id, r] of Object.entries(out.halted_agents))
+      console.log(`⛔ agent ${id} halted by ${r.by} at ${r.at}${r.reason ? ` — ${r.reason}` : ''}`);
     if (reco) console.log(`⚠ RECONCILIATION REQUIRED: ${out.reconciliation_reason}`);
   }
-  process.exit(reco ? 3 : 0);
+  process.exit(out.halted ? 4 : reco ? 3 : 0);
 } else if (cmd === 'reconcile') {
   const by = val('by');
   if (typeof by !== 'string' || by === '') {
@@ -168,6 +180,43 @@ if (cmd === 'init') {
     fail(e);
   }
   console.log(`reconciliation cleared by ${by}: ${p}`);
+} else if (cmd === 'halt' || cmd === 'resume') {
+  const by = val('by');
+  if (typeof by !== 'string' || by === '') {
+    console.error(`${cmd} requires --by <name> — stopping and restarting spend takes a signature`);
+    process.exit(2);
+  }
+  const p = ledgerPath();
+  const agentId = val('agent');
+  // A runaway storm is exactly when the lock is contended: retry rather
+  // than let a kill switch lose a race (specs/kill-switch row 5).
+  let r;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      r =
+        cmd === 'halt'
+          ? halt({ ledgerPath: p, by, reason: val('reason') ?? '', agentId })
+          : resume({ ledgerPath: p, by, agentId });
+      break;
+    } catch (e) {
+      if (e instanceof LedgerError && e.code === 'LEDGER_LOCK_UNAVAILABLE' && attempt < 15)
+        continue;
+      fail(e);
+    }
+  }
+  const scope = agentId ? `agent ${agentId}` : 'all spending';
+  if (cmd === 'halt')
+    console.log(
+      r.alreadyHalted
+        ? `already halted (${scope}) by ${r.halt.by} at ${r.halt.at} — original record kept`
+        : `HALTED ${scope} by ${by}: every new reservation now refuses. Refusals are logged to sakk-alerts.jsonl beside the ledger.`,
+    );
+  else
+    console.log(
+      r.wasHalted
+        ? `resumed ${scope} by ${by} (was halted by ${r.lifted.by})`
+        : `nothing halted (${scope})`,
+    );
 } else if (cmd === 'unlock') {
   const by = val('by');
   if (typeof by !== 'string' || by === '') {

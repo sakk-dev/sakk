@@ -144,6 +144,8 @@ function callTool({ name, args, ledgerPath, loaded, decisionLogPath }) {
         max_reservable_usd: Math.max(0, t.capUsd - t.committedUsd - 1e-6),
         entries: doc.entries.length,
         reconciliation_required: doc.flags?.reconciliationRequired === true,
+        halted: doc.halt?.global ?? null,
+        halted_agents: doc.halt?.agents ?? {},
         policy_hash: loaded?.policyHash ?? null,
       });
     }

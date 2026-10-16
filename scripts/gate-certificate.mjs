@@ -101,7 +101,7 @@ ${rows(d.suites)}
 
 ## 2. The judge was judged (mutation drill)
 
-${d.drill.kills}/6 mutants killed, each by its pre-named guardian test; pristine control green on both suites. Evidence freshness: ${d.drill.checked} tampered-file hashes in the report verified equal to the bytes certified here.
+${d.drill.kills}/7 mutants killed, each by its pre-named guardian test; pristine control green on both suites. Evidence freshness: ${d.drill.checked} tampered-file hashes in the report verified equal to the bytes certified here.
 
 ## 3. Randomized invariants (seeded, replayable)
 
@@ -152,7 +152,7 @@ if (isMain) {
     console.error(`CERT_INTERNAL: ${e.message} — no certificate emitted`);
     process.exit(2);
   });
-  const EXPECTED_MUTANTS = 6;
+  const EXPECTED_MUTANTS = 7;
   const refuse = (code, msg) => {
     // Review F9: a stale certificate from an earlier commit lying around
     // IS an emitted claim — refusal removes it.
@@ -222,7 +222,7 @@ if (isMain) {
   const drillRun = run(
     'sh',
     ['scripts/mutation-drill.sh'],
-    'mutation drill (6 mutants + control)',
+    'mutation drill (7 mutants + control)',
     1_800_000,
   );
   if (drillRun.exit !== 0) refuse('CERT_GATE_RED', 'mutation drill failed');

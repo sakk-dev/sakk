@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (kill switch)
+
+- `halt()` / `resume()` and `sakk halt|resume --by <name> [--agent <id>]`:
+  stop all new spending (or one agent's) with a signed record stored in a
+  new optional top-level ledger key `halt` — deliberately outside `flags`,
+  which four money paths rewrite wholesale. New public codes:
+  `LEDGER_HALTED`, `AGENT_HALTED`, `HALT_BY_REQUIRED`,
+  `RESUME_BY_REQUIRED`; `sakk status` exits **4** while globally halted.
+  Halting works on stale ledgers and during reconciliation; the CLI
+  retries lock contention; settle stays open for in-flight calls; first
+  halt wins; alerts `HALT_SET` / `HALT_REFUSED` / `HALT_CLEARED`. MCP
+  status shows halts, and no MCP tool can halt or resume. Older versions
+  refuse a ledger carrying `halt` (closed schema) — they can never ignore
+  a stop. Drill gains MUT-G (7 mutants); invariant fuzz gains halt ops and
+  refuses vacuous seeds that never probe a halt.
+
 ### Fixed (hardening campaign, 2026-10-16)
 
 - **C-4 (disk-full could install broken books)**: `writeSync`'s return was

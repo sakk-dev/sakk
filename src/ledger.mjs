@@ -63,6 +63,10 @@ const LEDGER_TOP_KEYS = [
   'flags',
   'entries',
   'updatedAt',
+  // Kill switch (specs/kill-switch): a TOP-LEVEL key on purpose — four
+  // code paths rewrite `flags` wholesale, so a halt stored there would be
+  // silently lifted by an ordinary settle. Optional: absent = not halted.
+  'halt',
 ];
 /** Freshness bound: older than this is refused (every write refreshes updatedAt). */
 export const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -296,6 +300,7 @@ export function readLedger({
   // top-level keys (including an own '__proto__' key smuggled through
   // JSON.parse) are refused, not carried. Future fields mean a schema
   // version bump, never silent extras.
+  if ('halt' in doc) validateHalt(doc.halt, ledgerPath);
   for (const k of Object.keys(doc))
     if (!LEDGER_TOP_KEYS.includes(k))
       throw new LedgerError('LEDGER_SCHEMA_INVALID', `unknown top-level key "${k}"`, {
@@ -325,6 +330,31 @@ export function readLedger({
 }
 
 /** Settled entries count at actuals; unsettled (including awaiting reconciliation) at their maximum — see header. */
+const isHaltRecord = (r) =>
+  r !== null &&
+  typeof r === 'object' &&
+  !Array.isArray(r) &&
+  Object.keys(r).every((k) => ['by', 'at', 'reason'].includes(k)) &&
+  typeof r.by === 'string' &&
+  r.by !== '' &&
+  typeof r.at === 'string' &&
+  Number.isFinite(Date.parse(r.at)) &&
+  typeof r.reason === 'string';
+
+/** A malformed halt record must never read as "not halted" (spec row 6). */
+function validateHalt(h, ledgerPath) {
+  const bad = () => {
+    throw new LedgerError('LEDGER_SCHEMA_INVALID', 'halt record malformed', { ledgerPath });
+  };
+  if (h === null || typeof h !== 'object' || Array.isArray(h)) bad();
+  if (!Object.keys(h).every((k) => ['global', 'agents'].includes(k))) bad();
+  if (!(h.global === null || isHaltRecord(h.global))) bad();
+  if (h.agents === null || typeof h.agents !== 'object' || Array.isArray(h.agents)) bad();
+  for (const r of Object.values(h.agents)) if (!isHaltRecord(r)) bad();
+}
+
+const emptyHalt = () => ({ global: null, agents: {} });
+
 export function totalsOf(doc) {
   let settledUsd = 0;
   let outstandingUsd = 0;
@@ -462,6 +492,28 @@ export function reserve({
   const lock = acquireLock(ledgerPath);
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs, now });
+    // Kill switch first: a deliberate stop outranks every other check. The
+    // refusal is alerted so "did anything try to get through" is on record.
+    if (doc.halt?.global) {
+      emitAlert(ledgerPath, {
+        kind: 'HALT_REFUSED',
+        scope: 'global',
+        callId,
+        agentId: agentId ?? null,
+      });
+      throw new LedgerError('LEDGER_HALTED', `spending halted by ${doc.halt.global.by} — refused`, {
+        callId,
+        halt: doc.halt.global,
+      });
+    }
+    if (typeof agentId === 'string' && doc.halt?.agents?.[agentId]) {
+      emitAlert(ledgerPath, { kind: 'HALT_REFUSED', scope: 'agent', callId, agentId });
+      throw new LedgerError(
+        'AGENT_HALTED',
+        `agent ${agentId} halted by ${doc.halt.agents[agentId].by} — refused`,
+        { callId, agentId, halt: doc.halt.agents[agentId] },
+      );
+    }
     // Dual-source halt (review finding E2): the flag OR any entry still in
     // RECONCILIATION_REQUIRED blocks new spending — the halt must not hinge
     // on a single deletable field.
@@ -616,6 +668,68 @@ export function markReconciliationRequired({ ledgerPath = defaultLedgerPath(), r
 }
 
 /** Explicit, signed clearance after a human squares the books. Entries are never deleted — history is evidence. */
+/**
+ * Kill switch: stop spending on this ledger, globally or for one agent id.
+ * Reads with infinite staleness and ignores reconciliation state — a stop
+ * must never be blocked by the conditions it exists for. First halt wins:
+ * halting an already-halted scope keeps the original record.
+ */
+export function halt({ ledgerPath = defaultLedgerPath(), by, reason = '', agentId }) {
+  if (typeof by !== 'string' || by === '')
+    throw new LedgerError('HALT_BY_REQUIRED', 'Halting requires a name');
+  if (agentId !== undefined && (typeof agentId !== 'string' || agentId === ''))
+    throw new LedgerError('HALT_BY_REQUIRED', 'agentId must be a non-empty string when given');
+  const lock = acquireLock(ledgerPath);
+  try {
+    const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
+    const h = doc.halt ?? emptyHalt();
+    const existing = agentId === undefined ? h.global : h.agents[agentId];
+    if (existing) return { ok: true, alreadyHalted: true, halt: existing };
+    const record = { by, at: new Date().toISOString(), reason: String(reason) };
+    if (agentId === undefined) h.global = record;
+    else h.agents[agentId] = record;
+    doc.halt = h;
+    writeLedger(ledgerPath, doc);
+    emitAlert(ledgerPath, {
+      kind: 'HALT_SET',
+      scope: agentId === undefined ? 'global' : 'agent',
+      agentId: agentId ?? null,
+      ...record,
+    });
+    return { ok: true, alreadyHalted: false, halt: record };
+  } finally {
+    releaseLock(lock);
+  }
+}
+
+/** Lift a halt. Requires a name; reports honestly when nothing was halted. */
+export function resume({ ledgerPath = defaultLedgerPath(), by, agentId }) {
+  if (typeof by !== 'string' || by === '')
+    throw new LedgerError('RESUME_BY_REQUIRED', 'Resuming requires a name');
+  const lock = acquireLock(ledgerPath);
+  try {
+    const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
+    const h = doc.halt ?? emptyHalt();
+    const existing = agentId === undefined ? h.global : h.agents[agentId];
+    if (!existing) return { ok: true, wasHalted: false };
+    if (agentId === undefined) h.global = null;
+    else delete h.agents[agentId];
+    doc.halt = h;
+    writeLedger(ledgerPath, doc);
+    emitAlert(ledgerPath, {
+      kind: 'HALT_CLEARED',
+      scope: agentId === undefined ? 'global' : 'agent',
+      agentId: agentId ?? null,
+      by,
+      at: new Date().toISOString(),
+      haltedBy: existing.by,
+    });
+    return { ok: true, wasHalted: true, lifted: existing };
+  } finally {
+    releaseLock(lock);
+  }
+}
+
 export function clearReconciliation({ ledgerPath = defaultLedgerPath(), by }) {
   if (typeof by !== 'string' || by === '')
     throw new LedgerError('RECONCILE_BY_REQUIRED', 'Clearing the flag requires a name');

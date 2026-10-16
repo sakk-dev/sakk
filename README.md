@@ -144,6 +144,23 @@ three-tier profile. The kernel never imports the ledger and never performs
 actions; an enforcer composes the two: `decide()` → on `allow` only →
 `reserve()`.
 
+## Kill switch
+
+```bash
+npx sakk halt --by alice --reason "runaway agent"   # every new reservation refuses
+npx sakk halt --by alice --agent bot-7              # stop one agent only
+npx sakk resume --by alice                          # lift it (signed)
+```
+
+While halted, `reserve()` refuses `LEDGER_HALTED` (or `AGENT_HALTED`),
+every refused attempt is logged to `sakk-alerts.jsonl`, and `sakk status`
+shows who stopped it and exits 4 — so CI stops too. In-flight calls can
+still settle their real cost. The halt cannot be lifted by any money
+operation, only by `resume`; agents cannot resume themselves over MCP. A
+stale ledger or one in reconciliation can still be halted. Per-agent halts
+rely on the caller's self-declared agent id; the global halt is the hard
+stop.
+
 ## MCP: put the gate in front of any agent
 
 `sakk mcp` speaks the Model Context Protocol over stdio — the same three
