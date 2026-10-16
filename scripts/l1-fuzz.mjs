@@ -77,9 +77,10 @@ for (let trial = 0; trial < TRIALS; trial += 1) {
             : { result: { case_id: id, verdict: pick(VERDICTS) } },
         );
   const executorMode = pick(MODES);
+  const harnessDirty = pick([false, false, true, null, undefined]);
   let r;
   try {
-    r = packReport(pack, entries, { executorMode });
+    r = packReport(pack, entries, { executorMode, harnessDirty });
   } catch (e) {
     fail('packs', trial, `threw ${e.message}`);
     continue;
@@ -94,9 +95,16 @@ for (let trial = 0; trial < TRIALS; trial += 1) {
   if (!['REAL', 'FAKE', 'UNKNOWN'].includes(r.executor_mode))
     fail('packs', trial, `mode ${r.executor_mode}`);
   r.requirements.forEach((q, i) => {
-    const want = !real ? 'HARNESS_ONLY' : reqs[i].cases.every(allPass) ? 'COVERED' : 'NOT_COVERED';
+    // COVERED needs all three: a REAL run, every case passed, a tree proven clean (F-65)
+    let want = 'HARNESS_ONLY';
+    if (real) want = !reqs[i].cases.every(allPass) ? 'NOT_COVERED' : 'HARNESS_MODIFIED';
+    if (want === 'HARNESS_MODIFIED' && harnessDirty === false) want = 'COVERED';
     if (q.status !== want)
-      fail('packs', trial, `${q.id} ${q.status} ≠ ${want} (mode ${String(executorMode)})`);
+      fail(
+        'packs',
+        trial,
+        `${q.id} ${q.status} ≠ ${want} (mode ${String(executorMode)}, dirty ${String(harnessDirty)})`,
+      );
   });
   if (r.covered !== r.requirements.filter((q) => q.status === 'COVERED').length)
     fail('packs', trial, 'covered count');

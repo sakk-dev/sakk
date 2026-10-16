@@ -256,6 +256,25 @@ function check(root, bad, gap) {
       bad('METRICS_UNVERIFIABLE', 'metrics.json does not say whether the batch stopped');
     else if (metricsDoc.stopped !== null)
       gap('BATCH_STOPPED', `the batch stopped: ${fmt(metricsDoc.stopped)}`);
+    // F-65: absence is not success — a REAL run must name its model, and
+    // every run must say whether its tree matched the commit it names
+    if (real && !(typeof metricsDoc.model_id === 'string' && metricsDoc.model_id.trim() !== ''))
+      bad(
+        'METRICS_UNVERIFIABLE',
+        'a REAL run whose metrics.json names no model — the traces cannot be checked against it',
+      );
+    if (![true, false, null].includes(metricsDoc.harness_dirty))
+      bad(
+        'METRICS_UNVERIFIABLE',
+        'metrics.json does not say whether the harness tree matched its commit (made by an older runner?)',
+      );
+    else if (real && metricsDoc.harness_dirty !== false)
+      gap(
+        'HARNESS_MODIFIED',
+        metricsDoc.harness_dirty
+          ? 'the harness tree differed from the commit the traces name — the scorer that judged this run is not provably the one at that commit'
+          : 'the harness tree could not be compared with the commit the traces name',
+      );
   }
 
   // 3. per case
@@ -477,11 +496,16 @@ function check(root, bad, gap) {
         mismatch(`harness_commit ${fmt(pr.harness_commit)}`);
       if (metricsDoc && canon(pr.batch_stopped ?? null) !== canon(metricsDoc.stopped ?? null))
         mismatch(`batch_stopped ${fmt(pr.batch_stopped)} vs metrics ${fmt(metricsDoc.stopped)}`);
-      if ('model' in pr) {
+      if (!('model' in pr)) bad('PACK_REPORT_INVALID', 'no model field (F-65)');
+      else {
         const want = real ? metricsDoc?.model_id : null;
         const got = isObj(pr.model) ? pr.model.model_id : pr.model;
         if (got !== want) mismatch(`model ${fmt(got)} but the run's model is ${fmt(want)}`);
       }
+      if (metricsDoc && pr.harness_dirty !== metricsDoc.harness_dirty)
+        mismatch(
+          `harness_dirty ${fmt(pr.harness_dirty)} vs metrics ${fmt(metricsDoc.harness_dirty)}`,
+        );
       const selected = Array.isArray(metricsDoc?.selected_cases) ? metricsDoc.selected_cases : null;
       const verdictOf = new Map(per.map((e) => [e.id, e.result.verdict]));
       const reqs = Array.isArray(pr.requirements) ? pr.requirements : [];
@@ -506,7 +530,14 @@ function check(root, bad, gap) {
             mismatch(`${r.id}: ${c.case} reported ${fmt(c.verdict)}, the files say ${actual}`);
         }
         const allPass = cases.every((c) => verdictOf.get(c.case) === 'PASS');
-        const want = !real ? 'HARNESS_ONLY' : allPass ? 'COVERED' : 'NOT_COVERED';
+        const clean = metricsDoc?.harness_dirty === false;
+        const want = !real
+          ? 'HARNESS_ONLY'
+          : !allPass
+            ? 'NOT_COVERED'
+            : clean
+              ? 'COVERED'
+              : 'HARNESS_MODIFIED';
         if (want === 'COVERED') covered += 1;
         if (r.status !== want)
           mismatch(`${r.id}: report says ${fmt(r.status)}, the files say ${want}`);

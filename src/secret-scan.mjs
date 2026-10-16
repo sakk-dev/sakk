@@ -136,16 +136,17 @@ export function scanText(text, path = '(inline)') {
       fingerprint: fingerprint(h.secret),
     });
   for (const h of rawFindings(text)) {
-    spans.push([h.index, h.end]);
     if (isExempt(h.secret)) {
       exempted += 1; // counted, never silent
       continue;
     }
+    spans.push([h.index, h.end]);
     add(h);
   }
-  // A real key glued to a fiction token (TOKENsk_live_…) hides from `\b`;
-  // with the tokens blanked it stands alone. Only hits the first pass did
-  // not already cover are new.
+  // A real key glued to a fiction token (TOKENsk_live_…) hides from `\b`,
+  // and a greedy exempt match can swallow a real one (F-63); with the tokens
+  // blanked both stand alone. Only an exempt match's span is open to the
+  // second pass — a reported finding is never counted twice.
   if (EXEMPTIONS.some((t) => text.includes(t)))
     for (const h of rawFindings(blankTokens(text)))
       if (!spans.some(([a, b]) => h.index < b && h.end > a)) add(h);

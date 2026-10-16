@@ -74,18 +74,21 @@ without it first; only then run it.
 
        shasum -a 256 -c MANIFEST.sha256     # or: sha256sum -c MANIFEST.sha256
 
-4. Optional, and only meaningful if commit \`${meta.verifierCommit}\` is in
-   the public sakk repository: verify.mjs must be byte-identical to the
-   verifier at that commit (sha256 \`${verifierSha}\`):
+4. Run the CURRENT verifier from your own up-to-date clone of sakk
+   against this directory. This is the check that counts: verify.mjs here
+   is the one at commit \`${meta.verifierCommit}\` (sha256
+   \`${verifierSha}\`), and a bundle can ship any OLDER verifier — still
+   byte-identical to a real commit — that misses checks added since.
 
-       git show ${meta.verifierCommit}:eval/lib/bundle-verify.mjs | shasum -a 256
+       node <your-sakk-clone>/eval/lib/bundle-verify.mjs .   # exit 0 PASS · 1 FAIL · 3 INCOMPLETE
 
-   Optionally compare cases/ the same way against the harness commit:
+   Optionally compare cases/ against the harness commit:
    \`git show ${meta.harnessCommit}:eval/cases/<id>.json\`.
 
-5. Now run it (Node 20 or newer, nothing else):
+5. The shipped copy (Node 20 or newer, nothing else) is a convenience for
+   a reader without a clone; it must agree with step 4:
 
-       node verify.mjs      # exit 0 PASS · 1 FAIL · 3 INCOMPLETE
+       node verify.mjs
 
 ## What verify.mjs checks
 
@@ -93,13 +96,20 @@ without it first; only then run it.
   only regular files (a symlink, device or fifo is a failure).
 - One run, one harness commit, one executor mode — the mode is
   cross-checked against every trace's model provider and model id and
-  against the mode labels in metrics.json and bundle.json.
+  against the mode labels in metrics.json and bundle.json. A REAL run must
+  name its model in metrics.json; a missing name is a failure, not a
+  skipped check.
+- Every run states whether its harness tree matched the commit it names. A
+  REAL run on a tree that differed, or could not be compared, is
+  INCOMPLETE, and its pack requirements read HARNESS_MODIFIED, never
+  COVERED.
 - The case list in bundle.json equals the case directories in run/ and the
   cases the run selected.
 - Each verdict agrees with its violations (rule names well-formed). Each
   per-case ledger obeys sakk's ledger rules, belongs to this run, carries
-  the case's own budget as its cap, settled no more than that cap, and its
-  settled spend equals the trace's cost.
+  the case's own budget as its cap, and its settled spend equals the
+  trace's cost. Spend past the cap is a failure — unless sakk itself
+  flagged the overrun, which makes the outcome INCOMPLETE (below).
 - Completeness: a ledger with unsettled or unreconciled spend, a trace with
   unknown or estimated cost, an overrun past a case cap that sakk flagged, a
   stopped batch, or selected cases that never ran make the outcome
@@ -264,10 +274,22 @@ export function buildBundle({ source, to, now = new Date() }) {
       'BUNDLE_SOURCE_INVALID',
       'metrics.json names no executor mode (FAKE|REAL)',
     );
-  if (!Array.isArray(metrics.selected_cases) || !('stopped' in metrics))
+  if (
+    !Array.isArray(metrics.selected_cases) ||
+    !('stopped' in metrics) ||
+    !('harness_dirty' in metrics)
+  )
     throw new BundleError(
       'BUNDLE_SOURCE_INVALID',
-      'metrics.json does not record selected_cases and stopped — re-run with this version of the runner',
+      'metrics.json does not record selected_cases, stopped and harness_dirty — re-run with this version of the runner',
+    );
+  if (
+    executorMode === 'REAL' &&
+    !(typeof metrics.model_id === 'string' && metrics.model_id.trim() !== '')
+  )
+    throw new BundleError(
+      'BUNDLE_SOURCE_INVALID',
+      'a REAL run whose metrics.json names no model — evidence must say which model ran (F-65)',
     );
 
   // The case definitions the run actually used are the ones at its commit,

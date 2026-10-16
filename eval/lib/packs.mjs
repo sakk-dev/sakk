@@ -134,6 +134,8 @@ const MEANING = {
   FAKE: 'FAKE run: proves the harness chain only — says nothing about any model or agent (no requirement can read COVERED)',
   UNKNOWN:
     'executor mode not stated: nothing about any model or agent can be read from this report (no requirement can read COVERED)',
+  REAL_MODIFIED:
+    'REAL run on a harness tree that differed from harness_commit, or could not be compared: the scorer that judged it is not provably the one at that commit (no requirement can read COVERED; passing ones read HARNESS_MODIFIED)',
 };
 
 /**
@@ -153,13 +155,20 @@ export function packReport(pack, entries, run) {
   }
   const real = run?.executorMode === 'REAL';
   const mode = real ? 'REAL' : run?.executorMode === 'FAKE' ? 'FAKE' : 'UNKNOWN';
+  // only a tree PROVEN to match the commit can back COVERED (F-65)
+  const clean = run?.harnessDirty === false;
+  const statusOf = (allPass) => {
+    if (!real) return 'HARNESS_ONLY';
+    if (!allPass) return 'NOT_COVERED';
+    return clean ? 'COVERED' : 'HARNESS_MODIFIED';
+  };
   const requirements = pack.requirements.map((r) => {
     const cases = r.cases.map((c) => ({ case: c, verdict: verdictOf.get(c) ?? 'NOT_RUN' }));
     const allPass = cases.every((x) => x.verdict === 'PASS');
     return {
       id: r.id,
       theme: r.theme,
-      status: !real ? 'HARNESS_ONLY' : allPass ? 'COVERED' : 'NOT_COVERED',
+      status: statusOf(allPass),
       cases,
       gaps: r.gaps,
     };
@@ -170,7 +179,7 @@ export function packReport(pack, entries, run) {
     regulator: pack.regulator,
     clause_status: pack.clause_status,
     executor_mode: mode,
-    meaning: MEANING[mode],
+    meaning: MEANING[real && !clean ? 'REAL_MODIFIED' : mode],
     model: real ? (run?.model ?? null) : null,
     run_id: run?.runId ?? null,
     harness_commit: run?.harnessCommit ?? null,

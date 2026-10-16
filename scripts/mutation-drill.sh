@@ -133,9 +133,15 @@ run_drill MUT-H src/ledger.mjs \
 
 # MUT-I: let a FAKE run read COVERED → the harness-only test must die red
 run_drill MUT-I eval/lib/packs.mjs \
-  "status: !real ? 'HARNESS_ONLY' : allPass ? 'COVERED' : 'NOT_COVERED'," \
-  "status: allPass ? 'COVERED' : 'NOT_COVERED'," \
+  "    if (!real) return 'HARNESS_ONLY';" \
+  "    if (false) return 'HARNESS_ONLY';" \
   "FAKE mode → HARNESS_ONLY for every requirement, even when every case passed"
+
+# MUT-T: let a REAL run on a modified harness read COVERED → its test must die red (F-65)
+run_drill MUT-T eval/lib/packs.mjs \
+  "    return clean ? 'COVERED' : 'HARNESS_MODIFIED';" \
+  "    return 'COVERED';" \
+  "F-65: a REAL run on a modified or uncheckable harness never reads COVERED"
 
 # MUT-J: judge the fiction-token exemption on the WHOLE match → a token in a
 # username exempts a real password, and its test must die red
@@ -200,6 +206,14 @@ run_drill MUT-R eval/lib/paid-step.mjs \
   "if (capArgUsd !== estimateUsd) {" \
   "if (false) {" \
   "7: capArg disagreeing with the reserved amount → paidStep refuses on the spot"
+
+# MUT-S: let an exempt match cover its span again → the real DSN it
+# swallowed hides from the second pass, and its test must die red (F-63)
+run_drill MUT-S src/secret-scan.mjs \
+  "      exempted += 1; // counted, never silent" \
+  "      spans.push([h.index, h.end]); exempted += 1;" \
+  "F-63: an exempt match never hides a real secret it swallowed" \
+  "test"
 
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"

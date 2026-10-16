@@ -598,4 +598,19 @@ describe('verify pass round 3', () => {
     const glued = [FICTIONAL_EXEMPTION_TOKEN, 'sk', '_live_', '7Kd'.repeat(10)].join('');
     assert.equal(scanText(glued).findings.length, 1);
   });
+  test('F-63: an exempt match never hides a real secret it swallowed', () => {
+    // the greedy DSN capture runs to the first '@', swallowing a second DSN;
+    // the outer match is exempt, the inner one is a real recognized secret
+    const T = FICTIONAL_EXEMPTION_TOKEN;
+    const ENC = ['p', '%40', 'ss'].join('');
+    for (const text of [
+      `${SCHEME}u:${T}${SCHEME}x:${FAKE_PW}@h`,
+      `urls=${SCHEME}u:${T},${SCHEME}x:${FAKE_PW}@h`,
+      `https://u:${T}https://x:${ENC}@h`,
+    ])
+      assert.equal(scanText(text).findings.length, 1, text);
+    // control: a lone declared fiction is still exempt
+    const lone = scanText(`${SCHEME}stub:${T}@127.0.0.1:5499/db`);
+    assert.deepEqual([lone.findings.length, lone.exempted], [0, 1]);
+  });
 });
