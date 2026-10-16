@@ -16,6 +16,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPORT="${1:-$ROOT/mutation-drill-report.txt}"
 : > "$REPORT"
 FAILED=0
+TOTAL=0
 
 log() { printf '%s\n' "$*" | tee -a "$REPORT"; }
 
@@ -32,6 +33,7 @@ copy_repo() {
 # run_drill <id> <file> <anchor> <replacement> <named-test-substring> [npm-test-script]
 run_drill() {
   id="$1"; file="$2"; anchor="$3"; replacement="$4"; named="$5"; ts="${6:-test:eval}"
+  TOTAL=$((TOTAL + 1))
   dir="$(copy_repo)"
   target="$dir/$file"
   before_hash="$(shasum -a 256 "$target" | cut -d' ' -f1)"
@@ -120,6 +122,85 @@ run_drill MUT-G src/ledger.mjs \
   "50 retries after the halt" \
   "test"
 
+# ── Plan items 1–4: one anchor per fail-closed guard (testing standard T0) ──
+
+# MUT-H: switch off the PER-AGENT halt → the per-agent refusal test must die red
+run_drill MUT-H src/ledger.mjs \
+  "    if (agentHalt) {" \
+  "    if (false) {" \
+  "halted agent refuses AGENT_HALTED; other agents and anonymous callers proceed" \
+  "test"
+
+# MUT-I: let a FAKE run read COVERED → the harness-only test must die red
+run_drill MUT-I eval/lib/packs.mjs \
+  "status: !real ? 'HARNESS_ONLY' : allPass ? 'COVERED' : 'NOT_COVERED'," \
+  "status: allPass ? 'COVERED' : 'NOT_COVERED'," \
+  "FAKE mode → HARNESS_ONLY for every requirement, even when every case passed"
+
+# MUT-J: judge the fiction-token exemption on the WHOLE match → a token in a
+# username exempts a real password, and its test must die red
+run_drill MUT-J src/secret-scan.mjs \
+  "const secret = rule.group ? m[rule.group] : m[0];" \
+  "const secret = m[0];" \
+  "a token in the USERNAME does not exempt a real password" \
+  "test"
+
+# MUT-K: stop scanning staged TYPE changes → the symlink→file test must die red
+run_drill MUT-K src/secret-scan.mjs \
+  "'--diff-filter=AMT'," \
+  "'--diff-filter=AM'," \
+  "a TYPE change (symlink → file holding a secret) is scanned" \
+  "test"
+
+# MUT-L: ignore unsettled reservations in a bundle → the unresolved-spend test must die red
+run_drill MUT-L eval/lib/bundle-verify.mjs \
+  "if (ledger.entries.some((e) => e.status !== 'SETTLED'))" \
+  "if (false)" \
+  "a RESERVED entry left open is unresolved spend too" \
+  "test"
+
+# MUT-M: stop recomputing metrics in a bundle → the inflated-metrics test must die red
+run_drill MUT-M eval/lib/bundle-verify.mjs \
+  "if (!same(m[k], v))" \
+  "if (false)" \
+  "inflated pass rate in metrics.json → METRIC_MISMATCH" \
+  "test"
+
+# MUT-N: treat falsy JSON as a skip again → the B1 regression must die red
+run_drill MUT-N eval/lib/bundle-verify.mjs \
+  "    if (!isObj(v)) {" \
+  "    if (false) {" \
+  "→ CASE_FILE_INVALID + METRICS_UNVERIFIABLE" \
+  "test"
+
+# ── Core files outside plan 1–4 that had no anchor (core-specs detector) ──
+
+# MUT-O: let a denied MCP call reserve anyway → the denied-retries test must die red
+run_drill MUT-O src/mcp.mjs \
+  "if (decision.verdict !== 'allow')" \
+  "if (false)" \
+  "allow reserves; THREE denied retries = three refusals, three log lines, ZERO entries" \
+  "test"
+
+# MUT-P: ship a bundle its own verifier rejects → the self-check test must die red
+run_drill MUT-P scripts/evidence-bundle.mjs \
+  "if (check.status === 'FAIL')" \
+  "if (false)" \
+  "a source the verifier rejects is never shipped → BUNDLE_SELF_CHECK_FAILED" \
+  "test"
+
+# MUT-Q: drop the path-segment boundary (lib/a.mjs would match lib/a.mjs.evil)
+run_drill MUT-Q src/match.mjs \
+  'return p === x || p.startsWith(`${x}/`);' \
+  'return p === x || p.startsWith(x);' \
+  "traversal/absolute/empty/dot-segment/double-slash match NO rule"
+
+# MUT-R: let a paid step spawn with a cap that differs from its reservation
+run_drill MUT-R eval/lib/paid-step.mjs \
+  "if (capArgUsd !== estimateUsd) {" \
+  "if (false) {" \
+  "7: capArg disagreeing with the reserved amount → paidStep refuses on the spot"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"
@@ -133,7 +214,7 @@ fi
 rm -rf "$dir"
 
 if [ "$FAILED" -eq 0 ]; then
-  log "== DRILL PASS: 7/7 mutants killed by their named tests; control green. Report: $REPORT =="
+  log "== DRILL PASS: $TOTAL/$TOTAL mutants killed by their named tests; control green. Report: $REPORT =="
   exit 0
 else
   log "== DRILL FAIL: see $REPORT =="

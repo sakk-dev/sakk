@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (testing-standard audit)
+
+- `npm run audit`: one command for every layer of the AI-agent testing
+  standard that applies to Sakk — T0 suites, format, secret self-scan,
+  mutation drill, ledger and policy fuzz; T2 `npm run golden-k` (k = 3,
+  pass@1 with Wilson interval, pass^k; FAKE executor = harness only);
+  T3 `npm run attack-asr` (attack list over the kill switch, secret
+  scanning, case packs and evidence bundles, ≥ 5 variants per payload,
+  CLAIMED ASR must be 0, documented non-coverage reported); §14 ledger gate
+  and `npm run findings-report`. Exit codes taken directly; logs in
+  `audit-logs/`. Layer map: `docs/testing-profile.md`.
+- Mutation drill: 18 anchors (was 7) — one per core guard, including the
+  per-agent halt, the HARNESS_ONLY rule, the secret-scan exemption and
+  staged type changes, the bundle verifier's spend, metrics and parsing
+  checks, the MCP policy gate, the path matcher, the paid-step cap and the
+  bundle self-check. The certificate now expects 18.
+- `specs/case-packs`, `specs/secret-scan`, `specs/evidence-bundle`: the
+  three-tables files these L1 changes lacked; `test/core-specs.test.mjs`
+  keeps every core file specified and drilled.
+
 ### Changed (kill switch — behaviour of existing APIs)
 
 - `reserve()` now refuses an `agentId` that is not a non-empty string

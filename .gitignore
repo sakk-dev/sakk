@@ -4,3 +4,4 @@ node_modules/
 *.tmp-*
 mutation-drill-report.txt
 CERTIFICATE.md
+audit-logs/
