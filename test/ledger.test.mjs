@@ -514,3 +514,35 @@ describe('AR round-2: breaker-mutex lock protocol', () => {
     assert.equal(existsSync(`${ledgerPath}.lock`), true, 'the foreign lock survives');
   });
 });
+
+describe('campaign C-1: sakk-ledger.v1 is a CLOSED schema', () => {
+  test('unknown top-level keys refuse — including a smuggled own __proto__ key', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'c1-'));
+    const ledgerPath = join(dir, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    const good = readFileSync(ledgerPath, 'utf8');
+    for (const body of [
+      JSON.stringify({ ...JSON.parse(good), extra_field: 1 }),
+      good.replace('{', '{"__proto__":{"reconciliationRequired":false},'),
+    ]) {
+      writeFileSync(ledgerPath, body);
+      assert.throws(
+        () => readLedger({ ledgerPath }),
+        (e) => e.code === 'LEDGER_SCHEMA_INVALID',
+        body.slice(0, 60),
+      );
+      assert.throws(
+        () => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }),
+        (e) => e.code === 'LEDGER_SCHEMA_INVALID',
+      );
+    }
+  });
+  test('a freshly initialized ledger still reads (the closed set matches what we write)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'c1b-'));
+    const ledgerPath = join(dir, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    reserve({ ledgerPath, callId: 'a', estimatedMaxUsd: 1 });
+    settle({ ledgerPath, callId: 'a', actualUsd: 0.5 });
+    assert.equal(readLedger({ ledgerPath }).entries.length, 1);
+  });
+});

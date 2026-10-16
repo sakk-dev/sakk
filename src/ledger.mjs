@@ -54,6 +54,16 @@ import { dirname, join } from 'node:path';
  */
 
 export const LEDGER_SCHEMA = 'sakk-ledger.v1';
+
+const LEDGER_TOP_KEYS = [
+  'schema',
+  'initializedAt',
+  'initializedBy',
+  'capUsd',
+  'flags',
+  'entries',
+  'updatedAt',
+];
 /** Freshness bound: older than this is refused (every write refreshes updatedAt). */
 export const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const LOCK_WAIT_MS = 5;
@@ -281,6 +291,17 @@ export function readLedger({
   const updatedAtMs = Date.parse(doc.updatedAt);
   if (!Number.isFinite(updatedAtMs))
     throw new LedgerError('LEDGER_SCHEMA_INVALID', 'updatedAt is not a timestamp', { ledgerPath });
+  // Campaign finding C-1 (fault injection, 2026-10-16): v1 is a CLOSED
+  // schema — a hashed, audited document has exactly one shape, and unknown
+  // top-level keys (including an own '__proto__' key smuggled through
+  // JSON.parse) are refused, not carried. Future fields mean a schema
+  // version bump, never silent extras.
+  for (const k of Object.keys(doc))
+    if (!LEDGER_TOP_KEYS.includes(k))
+      throw new LedgerError('LEDGER_SCHEMA_INVALID', `unknown top-level key "${k}"`, {
+        ledgerPath,
+        key: k,
+      });
   if (now - updatedAtMs > maxAgeMs)
     throw new LedgerError(
       'LEDGER_STALE',
