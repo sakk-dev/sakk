@@ -129,7 +129,9 @@ without it first; only then run it.
 - **Authenticity.** Someone who rebuilds the whole bundle — editing
   verdicts, dropping a failing case, relabelling every file of a FAKE run
   as REAL, recomputing metrics and manifest — also gets a PASS. Only step 2
-  catches that.
+  catches that. The same holds for facts only the runner observed — the
+  model id it requested, whether the harness tree matched its commit:
+  their presence is checked, their truth is the issuer's word.
 - **Case definitions.** cases/ is checked for ids and budgets, not against
   the harness commit — the optional comparison in step 4 does that.
 - **Re-scoring.** Verdicts are checked against their recorded violations,

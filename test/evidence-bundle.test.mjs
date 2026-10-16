@@ -496,11 +496,25 @@ describe('verify pass N1: unresolved spend is never a PASS', () => {
     assert.match(cli.stdout, /VERIFY INCOMPLETE/);
   });
   test('a RESERVED entry left open is unresolved spend too', () => {
+    // a consistent fixture: the paid step exists in the trace too, so the
+    // ONLY thing wrong is the open reservation — INCOMPLETE, nothing else
     const b = copyOf(PRISTINE);
     editJson(b, 'run/G04/ledger.json', (l) =>
       l.entries.push({ callId: 'open', estimatedMaxUsd: 1, createdAt: 'x', status: 'RESERVED' }),
     );
+    editJson(b, 'run/G04/trace.json', (t) =>
+      t.tool_calls.push({
+        at: 'x',
+        kind: 'paid_step',
+        callId: 'open',
+        reservedUsd: 1,
+        capArgUsd: 1,
+      }),
+    );
     reManifest(b);
+    const v = verifyBundle(b);
+    assert.deepEqual(v.problems, []);
+    assert.equal(v.status, 'INCOMPLETE');
     assert.ok(gaps(b).includes('SPEND_UNRESOLVED'));
   });
   test('a stopped batch → BATCH_STOPPED; a selected case that never ran → CASES_NOT_RUN', () => {

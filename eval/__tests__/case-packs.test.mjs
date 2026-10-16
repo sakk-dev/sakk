@@ -227,6 +227,14 @@ describe('C-3: honesty fields are mandatory', () => {
     delete b.requirements[0].gaps;
     expectCode(() => validatePack(b, 'p.json', CASES), 'PACK_INVALID');
   });
+  test('review S4: an EMPTY gaps or not_covered list is invalid — every pack has limits', () => {
+    const a = goodPack();
+    a.not_covered = [];
+    expectCode(() => validatePack(a, 'p.json', CASES), 'PACK_INVALID');
+    const b = goodPack();
+    b.requirements[0].gaps = [];
+    expectCode(() => validatePack(b, 'p.json', CASES), 'PACK_INVALID');
+  });
 });
 
 describe('malformed packs refuse with a name', () => {

@@ -98,6 +98,10 @@ const DESCRIBED = {
     'pass off a rebuilt bundle as the issued one',
     'verify.mjs reads PASS (only the out-of-band fingerprint catches it)',
   ],
+  'flip a runner-recorded fact the files cannot contradict (harness_dirty)': [
+    'present a run from a modified harness as a clean one',
+    'verifyBundle().status === "PASS" after harness_dirty true → false (only the out-of-band fingerprint catches it)',
+  ],
 };
 const describeRow = (payload) =>
   DESCRIBED[payload] ??
@@ -426,7 +430,72 @@ row('E4 evidence bundle', 'forge a PASS (files edited, manifest regenerated)', '
   ],
   ['symlink planted', forged((b) => symlinkSync('/etc/hosts', join(b, 'run', 'planted.log')))],
   ['empty case directory', forged((b) => mkdirSync(join(b, 'run', 'G13')))],
+  // F-65: a coherent REAL relabel — every trace, label and metric agrees —
+  // with the one key that names the model deleted
+  [
+    'coherent REAL relabel with the model id deleted',
+    forged((b, j) => {
+      for (const id of readdirSync(join(b, 'run')).filter((x) => /^G\d+$/.test(x)))
+        j(`run/${id}/trace.json`, (t) => {
+          t.model_provider = 'anthropic';
+          t.model_id = 'claude-production';
+        });
+      j('run/metrics.json', (m) => {
+        m.mode = 'REAL';
+        delete m.model_id;
+        m.harness_dirty = false;
+        Object.assign(m.metrics, {
+          executor_mode: 'REAL',
+          fake_executor_case_pass_rate: null,
+          real_model_case_pass_rate: 1,
+          real_model_case_status: 'RUN',
+          real_model_called: true,
+        });
+      });
+      j('bundle.json', (x) => {
+        x.executorMode = 'REAL';
+        x.mode = 'REAL';
+      });
+    }),
+  ],
+  [
+    'harness_dirty deleted from metrics.json',
+    forged((b, j) => j('run/metrics.json', (m) => delete m.harness_dirty)),
+  ],
 ]);
+row(
+  'E4 evidence bundle',
+  'flip a runner-recorded fact the files cannot contradict (harness_dirty)',
+  'KNOWN',
+  [
+    [
+      'harness_dirty true → false on a REAL relabel',
+      forged((b, j) => {
+        for (const id of readdirSync(join(b, 'run')).filter((x) => /^G\d+$/.test(x)))
+          j(`run/${id}/trace.json`, (t) => {
+            t.model_provider = 'anthropic';
+            t.model_id = 'claude-x';
+          });
+        j('run/metrics.json', (m) => {
+          m.mode = 'REAL';
+          m.model_id = 'claude-x';
+          m.harness_dirty = false; // was true: the forger flips it
+          Object.assign(m.metrics, {
+            executor_mode: 'REAL',
+            fake_executor_case_pass_rate: null,
+            real_model_case_pass_rate: 1,
+            real_model_case_status: 'RUN',
+            real_model_called: true,
+          });
+        });
+        j('bundle.json', (x) => {
+          x.executorMode = 'REAL';
+          x.mode = 'REAL';
+        });
+      }),
+    ],
+  ],
+);
 row('E4 evidence bundle', 'full rebuild of every file (authenticity)', 'KNOWN', [
   [
     'drop a case and recompute everything',

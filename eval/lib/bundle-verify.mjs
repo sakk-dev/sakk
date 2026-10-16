@@ -428,7 +428,12 @@ function check(root, bad, gap) {
       trace.cost_is_estimate === true ||
       (realExec && !isNum(realExec.cost_usd))
     )
-      gap('SPEND_UNRESOLVED', `${id}: the cost recorded is an estimate, not a reported cost`);
+      gap(
+        'SPEND_UNRESOLVED',
+        realExec && typeof realExec.refused === 'string'
+          ? `${id}: the case was refused before it ran (${fmt(realExec.refused)}) — no reported cost`
+          : `${id}: the cost recorded is an estimate, not a reported cost`,
+      );
     if (settled > ledger.capUsd + 1e-6)
       // a truthful ledger flags its own overrun: evidence of the worst spend
       // event must still be issuable, labelled — an unflagged one is a forgery

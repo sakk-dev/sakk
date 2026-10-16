@@ -2032,6 +2032,81 @@
       "sweep": "Proposed: add a benign corpus (i18n JSON, Ansible, .env.example templates) to T3 as a precision row, then tune password_assignment against both lists. Not changed in this round: a precision change moves the recall line and needs the attack list re-measured.",
       "sweep_status": "not_done",
       "status": "open"
+    },
+    {
+      "id": "F-76",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Scorer evidence of which files changed comes from an agent-writable .git",
+      "symptom": "In a case workdir, `git add -A && git commit` by the agent empties actualChanges (diff against HEAD); a '*' in .git/info/exclude hides new files such as LEAK.txt; a user-level excludesFile hides files from the operator side.",
+      "evidence": "Fable 5 review of plan item ① (2026-10-16), S1",
+      "direct_cause": "scorer.actualChanges diffs against HEAD with --exclude-standard; the baseline sha from prepCase is never recorded.",
+      "why": [
+        "The fixtures assumed a cooperative agent that does not touch .git.",
+        "FAKE agents never rewrite git, so no run showed it.",
+        "The trust boundary between agent and scorer runs through the same .git."
+      ],
+      "root_cause": "A trust boundary left undefended.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-05"],
+      "es": ["ES-03"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Disclosed now: every pack requirement backed by a git-fact case (G01–G03, G05, G07, G10, G11) carries the gap. Fix needs a decision: record the baseline sha and a filesystem snapshot at prepCase and diff against those instead of the workdir .git — a scorer change, i.e. a change to the frozen ruler (principle 8), so it ships with a gold-set version bump.",
+      "sweep_status": "not_done",
+      "status": "open"
+    },
+    {
+      "id": "F-77",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Pack texts and pack validation claimed more than the cases show",
+      "symptom": "DORA scoped-changes said assertions are never weakened (G03 only checks markers); G06's approval gate is sakk's own stub but no gap said so; `gaps: []` and `not_covered: []` validated; the eval README implied the non-overridden binary is verified; the spec cited a dirty-tree test as the binary guard.",
+      "evidence": "Fable 5 review of plan item ① (2026-10-16), S2, S3, S4, S6, N3, N4",
+      "direct_cause": "Evidence sentences were written from the case's intent, not from what its scoring checks.",
+      "why": [
+        "F-27 made gaps mandatory but not non-empty.",
+        "Gold scoring.json was not read when writing pack evidence.",
+        "Docs were updated per feature, not re-read as a whole."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: G03 sentence states what is checked; G06 and git-fact gaps added; gaps/not_covered must be non-empty; README and spec corrected",
+      "class_fix": null,
+      "guard": "eval/__tests__/case-packs.test.mjs::review S4: an EMPTY gaps or not_covered list is invalid",
+      "sweep": "Every pack evidence sentence re-read against its cases' scoring.json. Not changed: the `regulator` field holds the instrument name (N2) — renaming is a pack-schema change; regulator names must be verified before citation (clause_status already says so). not_covered lists are thin (N1) and marked non-exhaustive.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-78",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Evidence tooling nits: a guard that proved the wrong thing, wrong refusal wording, an attack list blind to absence",
+      "symptom": "The MUT-L guard fixture also made the ledger invalid, so it proved a gap was emitted, not that the status was INCOMPLETE; a budget-refused REAL case was described as an estimated cost; attack-asr had no deleted-key or runner-fact variants.",
+      "evidence": "Fable 5 review of plan item ④ (2026-10-16), nits",
+      "direct_cause": "Fixtures and attack variants were built for value forgeries only.",
+      "why": [
+        "The guard asserted presence of a code, not the outcome.",
+        "The refused path shares the estimate branch.",
+        "Absence was not an attack class in the list."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: consistent MUT-L fixture asserting INCOMPLETE with no problems; refused cases named as refused; E4 gains the F-65 attacks (CLAIMED, 0/10 through) and a KNOWN row for a flipped harness_dirty, stated in the README, spec and auditor guide",
+      "class_fix": null,
+      "guard": "test/evidence-bundle.test.mjs::a RESERVED entry left open is unresolved spend too",
+      "sweep": "Other guards asserting only a code: SPEND_OVER_CAP and BATCH_STOPPED tests already assert status.",
+      "sweep_status": "done",
+      "status": "fixed"
     }
   ]
 }

@@ -137,8 +137,9 @@ results and costs as provisional. Such a bundle is still issued, labelled.
 
 It does NOT show who made the bundle: a full rebuild — verdicts edited, a
 failing case dropped, a FAKE run relabelled REAL in every file, metrics and
-manifest recomputed — passes verify.mjs. Only the out-of-band fingerprint
-catches that. Nor does it re-judge verdicts against the agent's workspace
+manifest recomputed — passes verify.mjs. So does editing a fact only the
+runner observed (`harness_dirty`, the requested model id). Only the
+out-of-band fingerprint catches that. Nor does it re-judge verdicts against the agent's workspace
 (see the boundary below). `run/` holds raw logs that can contain whatever
 the agent printed, secrets included — review before forwarding. Issuers
 build bundles with `node scripts/evidence-bundle.mjs <out-dir> --to

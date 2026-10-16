@@ -24,7 +24,7 @@ that holds it; `test/core-specs.test.mjs` checks the names resolve.
 
 - Building: `BUNDLE_SOURCE_INVALID`, `BUNDLE_TARGET_EXISTS`, `BUNDLE_TARGET_INVALID`, `BUNDLE_VERIFIER_DIRTY`, `BUNDLE_VERIFIER_UNPINNED`, `BUNDLE_SELF_CHECK_FAILED`, `BUNDLE_WRITE_FAILED` — exit 2, nothing at the target.
 - Verifying: PASS (0) · INCOMPLETE (3) · FAIL (1), each problem named. INCOMPLETE items: `SPEND_UNRESOLVED`, `SPEND_OVER_CAP`, `BATCH_STOPPED`, `CASES_NOT_RUN`, `HARNESS_MODIFIED`.
-- Not covered by design: a full rebuild of every file passes `verify.mjs`; only the out-of-band fingerprint catches it (AUDITOR_REPLAY §6) — measured as a KNOWN row in `scripts/attack-asr.mjs`.
+- Not covered by design: a full rebuild of every file passes `verify.mjs`, and so does an edit of a fact only the runner observed (`harness_dirty`, the requested model id) with the manifest regenerated; only the out-of-band fingerprint catches either (AUDITOR_REPLAY §6) — both measured as KNOWN rows in `scripts/attack-asr.mjs`.
 
 ## Table 3 — audit questions
 
