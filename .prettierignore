@@ -3,3 +3,5 @@ eval/gold/
 eval/fixtures/
 LICENSE
 mutation-drill-report.txt
+# byte-identical copy of the shared taxonomy (hash-checked by test/findings-ledger.test.mjs)
+findings/taxonomy.lock.yaml
