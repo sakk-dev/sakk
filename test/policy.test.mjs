@@ -510,12 +510,13 @@ describe('adversarial-review round: load-side attacks (F4/F7/F10/F11)', () => {
       match: { agent: `agent-${i}` },
       verdict: 'deny',
     }));
-    const t0 = Date.now();
-    expectCode(
+    // the bound is the work counter, not a stopwatch (F-62): the refusal must
+    // come from the shadow-scan budget, and that budget is pinned
+    const e = expectCode(
       () => loadPolicy({ policyPath: writePolicy(base({ rules })) }),
       'POLICY_TOO_COMPLEX',
     );
-    assert.ok(Date.now() - t0 < 10000, 'bounded by refusal means FAST refusal');
+    assert.equal(e.details.budget, 200_000_000, 'refused by the pinned work budget');
   });
   test('N1 boundary: the benign 10k distinct-agent policy still loads', () => {
     const rules = Array.from({ length: 10_000 }, (_, i) => ({
@@ -556,12 +557,11 @@ describe('adversarial-review round: load-side attacks (F4/F7/F10/F11)', () => {
       match: { action: 'model_call', scope: [...common, `own/${i}/`] },
       verdict: 'deny',
     }));
-    const t0 = Date.now();
-    expectCode(
+    const e = expectCode(
       () => loadPolicy({ policyPath: writePolicy(base({ rules })) }),
       'POLICY_TOO_COMPLEX',
     );
-    assert.ok(Date.now() - t0 < 15000, 'the refusal itself must be fast');
+    assert.equal(e.details.budget, 200_000_000, 'refused by the pinned work budget (F-62)');
   });
 });
 

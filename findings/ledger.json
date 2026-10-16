@@ -115,6 +115,10 @@
         {
           "kind": "rule_text",
           "ref": "docs/RULES.md::R-21"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock"
         }
       ]
     }
@@ -1649,6 +1653,31 @@
       "class_fix": null,
       "guard": "test/gold-set-frozen.test.mjs::the gold set declares a version and a freeze date",
       "sweep": "Other loader-owned directories: eval/packs (only .json packs), eval/gold (manifest-pinned).",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-62",
+      "date": "2026-10-16",
+      "title": "Stopwatch assertions failed the audit under load",
+      "symptom": "The audit on 8f672f4 went red at the mutation drill's pristine control: the N1 policy test took 17.6 s against a 10 s bound (1.3 s idle) while four review agents loaded the machine.",
+      "evidence": "audit-logs/2026-10-16T19-08-19/06.log",
+      "found_by": "T0",
+      "introduced_in": "unknown",
+      "direct_cause": "Eight checks asserted speed with a wall clock 3x–300x the idle time; load slowed the drill 14x.",
+      "why": [
+        "The guarantee (bounded work) was proved with a stopwatch, an indirect signal.",
+        "The code already has a deterministic work counter, but the test did not assert it.",
+        "Bounds were sized on an idle machine and never run under load."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-02"],
+      "instance_fix": "this commit: policy refusal tests assert the pinned work budget (details.budget) instead of a clock; remaining wall clocks are pathology lines ≥ 30 s; the 300 s test timeout catches hangs",
+      "class_fix": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
+      "guard": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
+      "sweep": "All Date.now() comparisons in test/, eval/__tests__/, scripts/: 8 upper bounds fixed; kill-switch '>= 2900' is a lower bound (load only lengthens it); the fake binary's busy-wait is a wait, not a bound.",
       "sweep_status": "done",
       "status": "fixed"
     }

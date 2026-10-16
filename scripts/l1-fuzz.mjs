@@ -136,7 +136,8 @@ for (let trial = 0; trial < TRIALS; trial += 1) {
   lines[at] = `${lines[at]}${pre}${secret}${post}`;
   const t0 = Date.now();
   const r = scanText(lines.join('\n'));
-  if (Date.now() - t0 > 1000) fail('scan', trial, 'slow');
+  // pathology line, not a speed check (F-62): ~1 ms idle
+  if (Date.now() - t0 > 30_000) fail('scan', trial, 'pathologically slow');
   if (!r.findings.some((f) => f.line === at + 1))
     fail(
       'scan',

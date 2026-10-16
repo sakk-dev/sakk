@@ -31,6 +31,11 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, '..', 'bin', 'sakk.mjs');
 const SCHEME = ['postgresql', ':', '//'].join('');
+// A wall clock only catches pathology (catastrophic backtracking, quadratic
+// line numbering, one process per blob) — never speed. These run in ~3 ms,
+// ~85 ms and a few seconds idle; the audit's mutation drill ran a test 14x
+// slower than idle (F-62), so any tighter line reports load, not code.
+const PATHOLOGY_MS = 30_000;
 const FAKE_PW = ['zz', 'fake', 'pw', '12345'].join('');
 const FAKE_DSN = `${SCHEME}user:${FAKE_PW}@db.internal.example/app`;
 const tdir = () => mkdtempSync(join(tmpdir(), 'sakk-scan-'));
@@ -182,7 +187,7 @@ describe('performance: hostile lines cost linear time (review S-4)', () => {
     ];
     const t0 = Date.now();
     for (const h of hostile) scanText(h);
-    assert.ok(Date.now() - t0 < 1000, `took ${Date.now() - t0}ms`);
+    assert.ok(Date.now() - t0 < PATHOLOGY_MS, `took ${Date.now() - t0}ms`);
   });
   test('many findings in a big file do not go quadratic on line numbers', () => {
     const text = Array.from(
@@ -193,7 +198,7 @@ describe('performance: hostile lines cost linear time (review S-4)', () => {
     const r = scanText(text);
     assert.equal(r.findings.length, 50_000);
     assert.equal(r.findings.at(-1).line, 50_000);
-    assert.ok(Date.now() - t0 < 3000, `took ${Date.now() - t0}ms`);
+    assert.ok(Date.now() - t0 < PATHOLOGY_MS, `took ${Date.now() - t0}ms`);
   });
 });
 
@@ -348,7 +353,7 @@ describe('verify pass B1: no staged blob can go unscanned', () => {
     git(d, 'add', '-A');
     const t0 = Date.now();
     assert.equal(scanStaged(d).scanned, 2000);
-    assert.ok(Date.now() - t0 < 15_000, `took ${Date.now() - t0}ms`);
+    assert.ok(Date.now() - t0 < PATHOLOGY_MS, `took ${Date.now() - t0}ms`);
   });
 });
 

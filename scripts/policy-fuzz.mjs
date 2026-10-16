@@ -156,13 +156,16 @@ const bigRules = Array.from({ length: 10_000 }, (_, i) => ({
   verdict: VERDICTS[i % 3],
   ...(VERDICTS[i % 3] === 'require_approval' ? { approvers_min: 1 } : {}),
 }));
+// wall clock = pathology line only (F-62): ~1.4 s idle, 14x slower under the
+// audit's load; the adversarial bound itself is the pinned work budget
+const PATHOLOGY_MS = 120_000;
 const t0 = Date.now();
 const bigLoaded = loadPolicy({
   policyPath: write({ schema: 'sakk-policy.v1', default_verdict: 'deny', rules: bigRules }),
 });
 decide({ ...bigLoaded, context: { agent: 'agent-9999', estimatedUsd: 0.5, callId: 'big' } });
 const bigMs = Date.now() - t0;
-if (bigMs > 30_000) die(`I5 benign 10k-rule policy took ${bigMs}ms`);
+if (bigMs > PATHOLOGY_MS) die(`I5 benign 10k-rule policy took ${bigMs}ms`);
 // (b) adversarial shape (the review PoC): shared action, 30-entry scope
 // lists, nothing provably shadowed — must REFUSE fast, not hang
 const common = Array.from({ length: 29 }, (_, k) => `shared/${k}/`);
@@ -180,9 +183,11 @@ try {
 } catch (e) {
   if (!(e instanceof PolicyError)) die(`I5 adversarial probe threw ${e.constructor.name}`);
   evilOutcome = e.code;
+  if (e.code === 'POLICY_TOO_COMPLEX' && e.details?.budget !== 200_000_000)
+    die(`I5 refusal did not come from the pinned work budget: ${JSON.stringify(e.details)}`);
 }
 const evilMs = Date.now() - t1;
-if (evilMs > 15_000)
+if (evilMs > PATHOLOGY_MS)
   die(`I5 adversarial probe took ${evilMs}ms — bounded means fast success OR fast refusal`);
 if (evilOutcome !== 'POLICY_TOO_COMPLEX' && evilOutcome !== 'loaded')
   die(`I5 adversarial probe unexpected refusal ${evilOutcome}`);

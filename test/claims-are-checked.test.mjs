@@ -111,3 +111,52 @@ describe('nothing hangs instead of failing (findings F-15)', () => {
     }
   });
 });
+
+describe('a stopwatch never stands in for a work bound (findings F-62)', () => {
+  // Upper wall-clock bounds (`elapsed < N`, `elapsed > N → fail`) must be
+  // pathology lines ≥ 30 s: the audit's mutation drill ran a test 14x slower
+  // than idle, so anything tighter reports machine load, not code. Speed
+  // guarantees belong to a deterministic counter (e.g. the shadow-scan
+  // budget). Lower bounds (`elapsed >= N`, "it really waited") are fine.
+  const MIN_MS = 30_000;
+  const UPPER = [
+    /Date\.now\(\)\s*-\s*\w+\s*[<>](?!=)\s*([\w]+)/g,
+    /\b\w+Ms\s*[<>](?!=)\s*([\w]+)/g,
+  ];
+  const offenders = (src) => {
+    const bad = [];
+    let checked = 0;
+    for (const re of UPPER)
+      for (const m of src.matchAll(re)) {
+        // `while (Date.now() - t < N) {}` is a deliberate wait, not a bound
+        if (/while\s*\(\s*$/.test(src.slice(Math.max(0, m.index - 12), m.index))) continue;
+        checked += 1;
+        let v = m[1];
+        if (!/^[\d_]+$/.test(v)) {
+          const def = src.match(new RegExp(`const ${v} = ([\\d_]+);`));
+          v = def ? def[1] : 'NaN';
+        }
+        if (!(Number(v.replaceAll('_', '')) >= MIN_MS)) bad.push(m[0]);
+      }
+    return { bad, checked };
+  };
+  test('the detector flags a tight bound and passes a pathology line', () => {
+    assert.equal(offenders('assert.ok(Date.now() - t0 < 1000);').bad.length, 1);
+    assert.equal(offenders('if (evilMs > 15_000) die();').bad.length, 1);
+    assert.equal(offenders('const P = 30_000; ok(Date.now() - t0 < P);').bad.length, 0);
+    assert.equal(offenders('assert.ok(Date.now() - t0 >= 2900);').bad.length, 0);
+    assert.equal(offenders('while (Date.now() - t < 5000) {}').bad.length, 0);
+  });
+  test('no test or check script asserts speed with a tight wall clock', () => {
+    let checked = 0;
+    const bad = [];
+    for (const f of [...walk('test'), ...walk('eval/__tests__'), ...walk('scripts')]) {
+      if (!f.endsWith('.mjs') || f.endsWith('claims-are-checked.test.mjs')) continue;
+      const r = offenders(read(f));
+      checked += r.checked;
+      bad.push(...r.bad.map((b) => `${f}: ${b}`));
+    }
+    assert.deepEqual(bad, []);
+    assert.ok(checked >= 6, `detector saw only ${checked} wall-clock bounds — pattern drifted?`);
+  });
+});
