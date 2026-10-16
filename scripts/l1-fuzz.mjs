@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { packReport } from '../eval/lib/packs.mjs';
-import { scanText } from '../src/secret-scan.mjs';
+import { FICTIONAL_EXEMPTION_TOKEN, scanText } from '../src/secret-scan.mjs';
 import { verifyBundle } from '../eval/lib/bundle-verify.mjs';
 import { buildBundle } from './evidence-bundle.mjs';
 
@@ -139,7 +139,10 @@ for (let trial = 0; trial < TRIALS; trial += 1) {
   const at = int(0, lines.length - 1);
   // a real separator on both sides: a key glued to a word (fooAKIA…) is
   // outside the recognized formats by design (README "Secret scanning")
-  const pre = pick([' ', '"', "'", '(', '= ', ', ', '\t', ': ']);
+  // F-63 class: a declared fiction right before the secret (an exempt match
+  // that may swallow it) must never hide it
+  const FICTION = ['postgresql', '://u:', FICTIONAL_EXEMPTION_TOKEN].join('');
+  const pre = pick([' ', '"', "'", '(', '= ', ', ', '\t', ': ', ` ${FICTION}`, ` ${FICTION},`]);
   const post = pick([' ', '"', "'", ')', ',', ';', '']);
   lines[at] = `${lines[at]}${pre}${secret}${post}`;
   const t0 = Date.now();

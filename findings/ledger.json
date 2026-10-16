@@ -13,6 +13,10 @@
         {
           "kind": "detector",
           "ref": "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed"
         }
       ]
     },
@@ -119,6 +123,19 @@
         {
           "kind": "detector",
           "ref": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock"
+        }
+      ]
+    },
+    "RC-03": {
+      "landed_in": "this commit",
+      "refs": [
+        {
+          "kind": "detector",
+          "ref": "test/secret-scan.test.mjs::RC-03 class: a fiction token beside any real secret, in any position, never hides it"
+        },
+        {
+          "kind": "detector",
+          "ref": "scripts/l1-fuzz.mjs::F-63 class: a declared fiction right before the secret"
         }
       ]
     }
@@ -371,7 +388,7 @@
       "es": ["ES-04"],
       "instance_fix": "9799390 bounded quantifiers, binary-search line index",
       "class_fix": null,
-      "guard": "test/secret-scan.test.mjs::200KB adversarial lines for every rule scan in well under a second",
+      "guard": "test/secret-scan.test.mjs::200KB adversarial lines for every rule scan without catastrophic backtracking",
       "sweep": "Other regexes on caller input: policy scope matcher has POLICY_TOO_COMPLEX budget (earlier F4); match.mjs is glob, not regex.",
       "sweep_status": "done",
       "status": "fixed"
@@ -1678,6 +1695,82 @@
       "class_fix": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
       "guard": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
       "sweep": "All Date.now() comparisons in test/, eval/__tests__/, scripts/: 8 upper bounds fixed; kill-switch '>= 2900' is a lower bound (load only lengthens it); the fake binary's busy-wait is a wait, not a bound.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-63",
+      "date": "2026-10-16",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "title": "An exempt fiction-token match hid a real secret it swallowed",
+      "symptom": "`postgresql://u:<TOKEN>postgresql://x:<pw>@h` (also comma lists, URL-encoded) scanned clean with exempted:1 — a recognized-format DSN was literally present.",
+      "evidence": "Fable 5 review of plan item ② (2026-10-16), blocker B1",
+      "direct_cause": "The first pass recorded every match's span before deciding exemption, so the second (token-blanked) pass skipped the real DSN overlapping the exempt one.",
+      "why": [
+        "The greedy DSN capture runs to the first '@' and swallows a second DSN.",
+        "Exemption re-scans only the capture, without the surrounding text.",
+        "Span suppression was meant for reported findings but applied to exempt ones too."
+      ],
+      "root_cause": "A rule judged on the literal capture without the context around it.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-03"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: only reported findings close their span to the second pass",
+      "class_fix": "test/secret-scan.test.mjs::RC-03 class: a fiction token beside any real secret, in any position, never hides it",
+      "guard": "test/secret-scan.test.mjs::F-63: an exempt match never hides a real secret it swallowed",
+      "sweep": "Other exemption paths: display() redaction uses the same isExempt on the whole name (fails toward redaction); the glued-token pass (N8) still finds keys after a token.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-64",
+      "date": "2026-10-16",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "title": "A copy of sakk inside another repository recorded that repository's commit",
+      "symptom": "Extracted into any git repo, a pack run wrote harness_commit = the parent's HEAD and harness_dirty:false while sakk's eval/ and src/ were modified; README promised HARNESS_GIT_REQUIRED for downloads.",
+      "evidence": "Fable 5 review of plan item ① (2026-10-16), blocker B1",
+      "direct_cause": "gitRoot() asked `git rev-parse HEAD` from eval/ and harnessDirty() used `:/` pathspecs, both answered by the enclosing repository.",
+      "why": [
+        "Provenance assumed sakk is the top of its own repository.",
+        "Stranger tests covered 'no .git' but not 'someone else's .git'.",
+        "The dirty flag returned false (clean) instead of unknown when it looked at the wrong tree."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-02"],
+      "instance_fix": "this commit: runs refuse with HARNESS_GIT_REQUIRED unless git's top is sakk's root; harnessDirty returns null (unknown) there",
+      "class_fix": null,
+      "guard": "eval/__tests__/stranger-regressions.test.mjs::an execution mode refuses with HARNESS_GIT_REQUIRED instead of naming the parent commit",
+      "sweep": "Bundle builder in a nested checkout: `git show <commit>:eval/cases/…` resolves from the enclosing top and refuses (BUNDLE_SOURCE_INVALID) — fail-closed; verifierCommit there would name the parent's HEAD, but the auditor procedure no longer trusts it (F-65).",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-65",
+      "date": "2026-10-16",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "pattern": "fail-open-absence",
+      "title": "Deleting one key skipped the REAL model check and hid a modified harness",
+      "symptom": "A REAL bundle with metrics.model_id deleted verified PASS even after every trace was relabelled to another model; a run from a modified harness carried harness_dirty only in pack-report.json, which nothing checked; an older genuine verifier shipped in a bundle passed forgeries later versions catch.",
+      "evidence": "Fable 5 review of plan item ④ (2026-10-16): blocker + 2 should-fix; plan item ① S5",
+      "direct_cause": "The verifier read model_id as 'if present'; metrics.json never recorded harness_dirty; packReport read COVERED for any REAL run; the auditor procedure trusted the shipped verifier.",
+      "why": [
+        "Each check was written for the forged value, not for the missing one.",
+        "Optional-by-default reads (`'k' in x`, `?? null`) turned absence into agreement.",
+        "No test deleted keys; forgeries in the suite only changed values."
+      ],
+      "root_cause": "An assumption about the environment was never verified (pattern fail-open-absence, 12th instance).",
+      "dt": ["DT-FN"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: REAL requires model_id (verifier + builder); every run records harness_dirty; REAL on a modified/unknown tree is INCOMPLETE and reads HARNESS_MODIFIED; pack report and bundle.json are closed; the auditor runs the current verifier from a clone",
+      "class_fix": "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
+      "guard": "test/evidence-bundle.test.mjs::a REAL run whose metrics name no model → METRICS_UNVERIFIABLE, even with traces relabelled",
+      "sweep": "Exhaustive key deletion over a real pack bundle (every document, every key): 46 keys still pass, each declared with its reason (descriptive case fields, scorer evidence, ledger fields sakk itself does not require). Drill MUT-U/MUT-V hold the checks.",
       "sweep_status": "done",
       "status": "fixed"
     }

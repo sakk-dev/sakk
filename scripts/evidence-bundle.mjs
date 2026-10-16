@@ -130,11 +130,14 @@ without it first; only then run it.
   verdicts, dropping a failing case, relabelling every file of a FAKE run
   as REAL, recomputing metrics and manifest — also gets a PASS. Only step 2
   catches that.
-- **Case definitions.** cases/ is checked for shape, ids and budgets, not
-  against the harness commit — step 4 does that.
+- **Case definitions.** cases/ is checked for ids and budgets, not against
+  the harness commit — the optional comparison in step 4 does that.
 - **Re-scoring.** Verdicts are checked against their recorded violations,
   not re-judged against the agent's workspace (that needs the harness at
-  the commit above; see AUDITOR_REPLAY).
+  the commit above; see AUDITOR_REPLAY). The evidence the scorer read —
+  commands, test results, final claims, timestamps in each trace — is
+  carried for you to read, not checked: deleting it does not fail
+  verification.
 - **trace_completeness_rate** is range-checked only (re-deriving it needs
   the trace schema, which the bundle does not carry).
 - **A FAKE-executor bundle** proves the harness chain only — nothing about

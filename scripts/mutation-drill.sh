@@ -143,6 +143,22 @@ run_drill MUT-T eval/lib/packs.mjs \
   "    return 'COVERED';" \
   "F-65: a REAL run on a modified or uncheckable harness never reads COVERED"
 
+# MUT-U: make a REAL run's model optional again → a forger deletes one key
+# and the model cross-check is skipped; its test must die red (F-65)
+run_drill MUT-U eval/lib/bundle-verify.mjs \
+  "    if (real && !(typeof metricsDoc.model_id === 'string' && metricsDoc.model_id.trim() !== ''))" \
+  "    if (false)" \
+  "a REAL run whose metrics name no model" \
+  "test"
+
+# MUT-V: stop requiring pack-report keys → a deleted key reads PASS, and the
+# fail-open-absence class detector must die red (F-65 class fix)
+run_drill MUT-V eval/lib/bundle-verify.mjs \
+  "      if (missing.length > 0) bad('PACK_REPORT_INVALID', \`missing \${missing.join(', ')}\`);" \
+  "      if (false) bad('PACK_REPORT_INVALID', '');" \
+  "every silently deletable key is declared, and every declaration is still needed" \
+  "test"
+
 # MUT-J: judge the fiction-token exemption on the WHOLE match → a token in a
 # username exempts a real password, and its test must die red
 run_drill MUT-J src/secret-scan.mjs \

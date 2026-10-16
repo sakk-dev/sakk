@@ -177,7 +177,7 @@ describe('walking the tree safely', () => {
 });
 
 describe('performance: hostile lines cost linear time (review S-4)', () => {
-  test('200KB adversarial lines for every rule scan in well under a second', () => {
+  test('200KB adversarial lines for every rule scan without catastrophic backtracking', () => {
     const hostile = [
       `://${'a:%41'.repeat(40_000)}`,
       `${SCHEME}${'a:'.repeat(100_000)}`,
@@ -597,6 +597,35 @@ describe('verify pass round 3', () => {
   test('N8: a key glued right after the fiction token is found', () => {
     const glued = [FICTIONAL_EXEMPTION_TOKEN, 'sk', '_live_', '7Kd'.repeat(10)].join('');
     assert.equal(scanText(glued).findings.length, 1);
+  });
+  test('RC-03 class: a fiction token beside any real secret, in any position, never hides it', () => {
+    // judged in context, not on the literal capture: every recognized shape
+    // × every way a declared fiction can sit next to it (F-11, F-63)
+    const T = FICTIONAL_EXEMPTION_TOKEN;
+    const F = `${SCHEME}u:${T}`;
+    const shapes = [
+      `${SCHEME}app:${FAKE_PW}@db.internal/app`,
+      ['AKIA', 'Q7RT2VW4MN8KZX9P'].join(''),
+      ['ghp', '_', 'Zx9pQ7rT2vW4mN8kL3s'.repeat(2)].join(''),
+      ['sk', '_live_', 'Zx9pQ7rT2vW4mN8kL3sJ'].join(''),
+      ['password', ' = "', 'Zx9pQ7rT2vW4', '"'].join(''),
+    ];
+    const contexts = [
+      (x) => `${F}${x}`,
+      (x) => `${F},${x}`,
+      (x) => `${F} ${x}`,
+      (x) => `${T}${x}`,
+      (x) => `${x}${T}`,
+      (x) => `${x} ${F}@h`,
+      (x) => `${F}@h ${x}`,
+      (x) => x.replace('app:', `${T}:`), // the fiction as the real DSN's own user (F-11)
+    ];
+    const missed = [];
+    for (const x of shapes)
+      contexts.forEach((c, i) => {
+        if (scanText(c(x)).findings.length === 0) missed.push(`context ${i}: ${x.slice(0, 12)}…`);
+      });
+    assert.deepEqual(missed, []);
   });
   test('F-63: an exempt match never hides a real secret it swallowed', () => {
     // the greedy DSN capture runs to the first '@', swallowing a second DSN;

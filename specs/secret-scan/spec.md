@@ -7,15 +7,16 @@ it; `test/core-specs.test.mjs` checks the names resolve.
 
 ## Table 1 — danger surface
 
-| Surface     | Danger                                                                          | Guard (mechanism + test)                                                                                                                              |
-| ----------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Exemption   | A real secret passes because a fiction token sits somewhere in the match        | exemption judged on the secret capture only · `test/secret-scan.test.mjs::a token in the USERNAME does not exempt a real password` (drill MUT-J)      |
-| Staged scan | A blob the commit records goes unscanned (type change, odd names, subdirectory) | blob ids from one `git diff --raw` record · `test/secret-scan.test.mjs::a TYPE change (symlink → file holding a secret) is scanned` (drill MUT-K)     |
-| Staged scan | Two names that decode alike hide a secret blob                                  | no name join · `test/secret-scan.test.mjs::two names that decode alike cannot hide a secret blob from the installed hook`                             |
-| Hook        | The hook runs something other than this installation, or is silently ignored    | absolute path, `wx`, chmod past umask · `test/secret-scan.test.mjs::installed under umask 177 the hook is still executable and still refuses secrets` |
-| Inputs      | A scan of nothing reads clean                                                   | missing/unreadable/special ⇒ exit 2 · `test/secret-scan.test.mjs::a mistyped path exits 2 SCAN_PATH_MISSING`                                          |
-| Output      | The scanner itself prints a secret (value, path, reversible hash)               | keyed fingerprints, redacted names · `test/secret-scan.test.mjs::a secret in a FILE NAME is redacted in output and counted as a finding`              |
-| Patterns    | A hostile line costs super-linear time                                          | bounded quantifiers · `test/secret-scan.test.mjs::200KB adversarial lines for every rule scan in well under a second`                                 |
+| Surface     | Danger                                                                          | Guard (mechanism + test)                                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Exemption   | A real secret passes because a fiction token sits somewhere in the match        | exemption judged on the secret capture only · `test/secret-scan.test.mjs::a token in the USERNAME does not exempt a real password` (drill MUT-J)                 |
+| Exemption   | An exempt match swallows a real secret beside it (F-63)                         | only reported findings close a span to the second pass · `test/secret-scan.test.mjs::F-63: an exempt match never hides a real secret it swallowed` (drill MUT-S) |
+| Staged scan | A blob the commit records goes unscanned (type change, odd names, subdirectory) | blob ids from one `git diff --raw` record · `test/secret-scan.test.mjs::a TYPE change (symlink → file holding a secret) is scanned` (drill MUT-K)                |
+| Staged scan | Two names that decode alike hide a secret blob                                  | no name join · `test/secret-scan.test.mjs::two names that decode alike cannot hide a secret blob from the installed hook`                                        |
+| Hook        | The hook runs something other than this installation, or is silently ignored    | absolute path, `wx`, chmod past umask · `test/secret-scan.test.mjs::installed under umask 177 the hook is still executable and still refuses secrets`            |
+| Inputs      | A scan of nothing reads clean                                                   | missing/unreadable/special ⇒ exit 2 · `test/secret-scan.test.mjs::a mistyped path exits 2 SCAN_PATH_MISSING`                                                     |
+| Output      | The scanner itself prints a secret (value, path, reversible hash)               | keyed fingerprints, redacted names · `test/secret-scan.test.mjs::a secret in a FILE NAME is redacted in output and counted as a finding`                         |
+| Patterns    | A hostile line costs super-linear time                                          | bounded quantifiers · `test/secret-scan.test.mjs::200KB adversarial lines for every rule scan without catastrophic backtracking`                                 |
 
 ## Table 2 — failure modes
 
