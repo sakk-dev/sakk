@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -65,5 +65,32 @@ describe('symlinked-path stranger: the CLI must execute, never silently no-op', 
     // A silent no-op exits 0 with no output; a running CLI refuses loudly.
     assert.equal(r.status, 2, `exit=${r.status} stdout=${r.stdout} stderr=${r.stderr}`);
     assert.match(r.stderr, /CASE_SELECTOR_UNKNOWN/);
+  });
+});
+
+describe('relative --out stranger: the out path means the same thing to every process', () => {
+  // A relative --out reached executors and verification commands that run in
+  // other working directories: every case scored FAIL (G01 "claimed [] !=
+  // actual", G05 "got FAIL") while the same run with an absolute path passed.
+  test('`--out run1` from some directory scores exactly like an absolute --out', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'sakk-rel-'));
+    const r = spawnSync(
+      process.execPath,
+      [
+        join(REPO, 'eval', 'bin', 'gold-runner.mjs'),
+        '--fake-executor',
+        '--case',
+        'G01,G05',
+        '--out',
+        'run1',
+      ],
+      { cwd, encoding: 'utf8', timeout: 300_000 },
+    );
+    rmSync(cwd, { recursive: true, force: true });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^G01: PASS/m);
+    assert.match(r.stdout, /^G05: PASS/m);
+    const summary = JSON.parse(r.stdout.split('\n').find((l) => l.startsWith('{"runId"')));
+    assert.ok(isAbsolute(summary.outDir) && summary.outDir.endsWith('/run1'), summary.outDir);
   });
 });

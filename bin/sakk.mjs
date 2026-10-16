@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
-import { readFileSync } from 'node:fs';
+import { chmodSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -9,10 +10,13 @@ import {
   totalsOf,
   clearReconciliation,
   forceUnlock,
+  halt,
+  resume,
   LedgerError,
 } from '../src/ledger.mjs';
 import { loadPolicy } from '../src/policy.mjs';
 import { startMcpServer } from '../src/mcp.mjs';
+import { scanPaths, scanStaged, ScanError } from '../src/secret-scan.mjs';
 
 /**
  * sakk CLI — the smallest useful surface over the ledger.
@@ -20,13 +24,16 @@ import { startMcpServer } from '../src/mcp.mjs';
  *   sakk init --cap <usd> [--ledger <path>] [--by <name>]
  *   sakk status [--ledger <path>] [--json]
  *   sakk reconcile --by <name> [--ledger <path>]
+ *   sakk halt|resume --by <name> [--agent <id>] [--ledger <path>]
  *
  * Path resolution: --ledger flag > SAKK_LEDGER_PATH > ./sakk-ledger.json
  * (the CLI's one explicit convenience default — always printed, never
  * guessed silently; the library itself keeps no default at all).
  *
  * Exit codes: 0 ok · 1 ledger error (every refusal code on stderr) ·
- * 2 usage error · 3 status: reconciliation required (gate your CI on it).
+ * 2 usage error · 3 status: reconciliation required (gate your CI on it) ·
+ * 4 status: globally halted. 4 wins over 3 when both hold; the text and
+ * --json output show both conditions.
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -59,10 +66,13 @@ Usage:
   sakk status [--ledger <path>] [--json]                  totals, entries, reconciliation state
   sakk reconcile --by <name> [--ledger <path>]            clear the reconciliation flag (signed)
   sakk unlock --by <name> [--ledger <path>]               break a stuck lock by hand (signed)
+  sakk halt --by <name> [--reason <t>] [--agent <id>]     kill switch: refuse all new spending (signed)
+  sakk resume --by <name> [--agent <id>]                  lift a halt (signed)
   sakk mcp --ledger <path> [--policy <path>]              MCP stdio server: reserve/settle/status as tools
+  sakk scan <paths...> | --staged | --install-hook        find secrets (fingerprints only; exit 1 on findings)
 
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
-Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status)
+Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status) · 4 halted (status; wins over 3, both shown)
 max_reservable_usd of 0 means nothing fits under the cap (reserve requires a positive amount)
 `;
 
@@ -74,6 +84,42 @@ function fail(e) {
     console.error(String(e?.message ?? e));
   }
   process.exit(1);
+}
+
+// Every flag each command accepts. Anything else refuses (exit 2) instead of
+// being ignored: `sakk resume --by op --agent=bot` used to lift the GLOBAL
+// halt because the `=` form was not recognised (verify pass S1).
+const COMMANDS = {
+  init: { values: ['cap', 'ledger', 'by'], bools: [] },
+  status: { values: ['ledger'], bools: ['json'] },
+  reconcile: { values: ['by', 'ledger'], bools: [] },
+  unlock: { values: ['by', 'ledger'], bools: [] },
+  halt: { values: ['by', 'reason', 'agent', 'ledger'], bools: [] },
+  resume: { values: ['by', 'agent', 'ledger'], bools: [] },
+  mcp: { values: ['ledger', 'policy'], bools: [] },
+  scan: { values: [], bools: ['staged', 'install-hook'], positional: true },
+};
+if (Object.hasOwn(COMMANDS, cmd)) {
+  const spec = COMMANDS[cmd];
+  const seen = new Set();
+  const usage = (code, msg) => {
+    console.error(`${code}: ${msg} — see sakk --help`);
+    process.exit(2);
+  };
+  for (let i = 1; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (/^--[^=]+=/.test(a)) usage('USAGE_EQUALS_FORM', `write "${a.replace('=', ' ')}"`);
+    if (!a.startsWith('--')) {
+      if (!spec.positional) usage('USAGE_UNKNOWN_ARGUMENT', `"${a}" is not an argument of ${cmd}`);
+      continue;
+    }
+    const name = a.slice(2);
+    if (!spec.values.includes(name) && !spec.bools.includes(name))
+      usage('USAGE_UNKNOWN_ARGUMENT', `${a} is not a flag of ${cmd}`);
+    if (seen.has(name)) usage('USAGE_REPEATED_FLAG', `${a} given more than once`);
+    seen.add(name);
+    if (spec.values.includes(name)) i += 1; // val() refuses a missing value
+  }
 }
 
 if (cmd === 'init') {
@@ -117,6 +163,8 @@ if (cmd === 'init') {
     entries: byStatus,
     reconciliation_required: reco,
     reconciliation_reason: doc.flags?.reason ?? null,
+    halted: doc.halt?.global ?? null,
+    halted_agents: doc.halt?.agents ?? {},
     updated_at: doc.updatedAt,
   };
   if (flag('json')) {
@@ -140,9 +188,15 @@ if (cmd === 'init') {
       `entries     ${doc.entries.length} (reserved ${byStatus.RESERVED}, settled ${byStatus.SETTLED}, reconciliation ${byStatus.RECONCILIATION_REQUIRED})`,
     );
     console.log(`updated     ${doc.updatedAt}`);
+    if (out.halted)
+      console.log(
+        `⛔ HALTED by ${out.halted.by} at ${out.halted.at}${out.halted.reason ? ` — ${out.halted.reason}` : ''} (all new spending refused)`,
+      );
+    for (const [id, r] of Object.entries(out.halted_agents))
+      console.log(`⛔ agent ${id} halted by ${r.by} at ${r.at}${r.reason ? ` — ${r.reason}` : ''}`);
     if (reco) console.log(`⚠ RECONCILIATION REQUIRED: ${out.reconciliation_reason}`);
   }
-  process.exit(reco ? 3 : 0);
+  process.exit(out.halted ? 4 : reco ? 3 : 0);
 } else if (cmd === 'reconcile') {
   const by = val('by');
   if (typeof by !== 'string' || by === '') {
@@ -168,6 +222,48 @@ if (cmd === 'init') {
     fail(e);
   }
   console.log(`reconciliation cleared by ${by}: ${p}`);
+} else if (cmd === 'halt' || cmd === 'resume') {
+  const by = val('by');
+  if (typeof by !== 'string' || by === '') {
+    console.error(`${cmd} requires --by <name> — stopping and restarting spend takes a signature`);
+    process.exit(2);
+  }
+  const p = ledgerPath();
+  const agentId = val('agent');
+  if (agentId === '') {
+    // An empty id must not silently widen to "all spending" in either direction.
+    console.error(`AGENT_ID_INVALID: --agent needs a non-empty id (exact, case-sensitive)`);
+    process.exit(2);
+  }
+  // A runaway storm is exactly when the lock is contended: retry rather
+  // than let a kill switch lose a race (specs/kill-switch row 5).
+  let r;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      r =
+        cmd === 'halt'
+          ? halt({ ledgerPath: p, by, reason: val('reason') ?? '', agentId })
+          : resume({ ledgerPath: p, by, agentId });
+      break;
+    } catch (e) {
+      if (e instanceof LedgerError && e.code === 'LEDGER_LOCK_UNAVAILABLE' && attempt < 15)
+        continue;
+      fail(e);
+    }
+  }
+  const scope = agentId !== undefined ? `agent ${JSON.stringify(agentId)}` : 'all spending';
+  if (cmd === 'halt')
+    console.log(
+      r.alreadyHalted
+        ? `already halted (${scope}) by ${r.halt.by} at ${r.halt.at} — original record kept`
+        : `HALTED ${scope} by ${by}: every new reservation now refuses. Refusals are logged to sakk-alerts.jsonl beside the ledger.`,
+    );
+  else
+    console.log(
+      r.wasHalted
+        ? `resumed ${scope} by ${by} (was halted by ${r.lifted.by})`
+        : `nothing halted (${scope})`,
+    );
 } else if (cmd === 'unlock') {
   const by = val('by');
   if (typeof by !== 'string' || by === '') {
@@ -214,6 +310,101 @@ if (cmd === 'init') {
     output: process.stdout,
     version: pkg.version,
   });
+} else if (cmd === 'scan') {
+  // process.exitCode, never process.exit: an early exit truncates piped
+  // output (the summary line could be lost behind a slow reader).
+  const report = (r) => {
+    for (const f of r.findings) console.log(`${f.path}:${f.line}  ${f.rule}  fp=${f.fingerprint}`);
+    const skips = Object.entries(r.skipped ?? {})
+      .filter(([, n]) => n > 0)
+      .map(([k, n]) => `${n} ${k}`)
+      .join(', ');
+    console.log(
+      `scanned ${r.scanned} file(s): ${r.findings.length} finding(s), ${r.exempted} exempted (TEST_ONLY_FAKE_SECRET_DO_NOT_USE marker)${skips ? `; skipped ${skips}` : ''}`,
+    );
+    if (r.unreadable.length > 0) {
+      // A scan that could not look everywhere it was told to is not clean.
+      console.error(
+        `SCAN_UNREADABLE: ${r.unreadable.length} path(s) could not be read: ${r.unreadable.slice(0, 5).join(', ')}`,
+      );
+      process.exitCode = 2;
+    } else process.exitCode = r.findings.length === 0 ? 0 : 1;
+  };
+  const usage = (msg) => {
+    console.error(`SCAN_USAGE: ${msg}`);
+    process.exitCode = 2;
+  };
+  const paths = argv.slice(1).filter((a) => !a.startsWith('--'));
+  if (flag('install-hook') && (paths.length > 0 || flag('staged'))) {
+    usage('--install-hook takes no paths and no --staged');
+  } else if (flag('install-hook')) {
+    let hooksDir;
+    try {
+      hooksDir = execFileSync('git', ['rev-parse', '--git-path', 'hooks'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    } catch (e) {
+      console.error(
+        e.code === 'ENOENT'
+          ? 'SCAN_GIT_MISSING: git is not on PATH'
+          : 'SCAN_NOT_A_REPO: run --install-hook inside a git repository',
+      );
+      process.exit(2);
+    }
+    const hook = join(hooksDir, 'pre-commit');
+    // Review S-1: never `npx sakk` at commit time — the hook runs THIS
+    // installation by absolute path. An installation inside the npx cache
+    // is temporary: once the cache is cleaned every commit would fail.
+    const self = realpathSync(fileURLToPath(import.meta.url));
+    // npm exec / npx, bunx and pnpm dlx unpack into caches that get cleaned
+    if (
+      /[\\/]_npx[\\/][0-9a-f]{6,}[\\/]node_modules[\\/]|[\\/]bunx-\d+-|[\\/]pnpm[\\/]dlx[\\/]/.test(
+        self,
+      )
+    ) {
+      console.error(
+        'SCAN_HOOK_EPHEMERAL: this sakk runs from the temporary npx cache — install it first (npm install --save-dev sakk, or npm install -g sakk), then run the installed `sakk scan --install-hook`',
+      );
+      process.exit(2);
+    }
+    const q = (x) => `'${x.replace(/'/g, `'\\''`)}'`;
+    const line = `${q(process.execPath)} ${q(self)} scan --staged || exit 1`;
+    const body = `#!/bin/sh\n# installed by sakk scan --install-hook (re-run it if sakk moves)\n${line}\n`;
+    try {
+      // 'wx' = O_EXCL: refuses ANY existing entry, a dangling symlink
+      // included, so an existing hook is never overwritten or written through.
+      writeFileSync(hook, body, { flag: 'wx', mode: 0o755 });
+      chmodSync(hook, 0o755); // the create mode is masked by umask; git ignores a non-executable hook
+    } catch (e) {
+      if (e.code === 'EEXIST') {
+        console.error(
+          `SCAN_HOOK_EXISTS: ${hook} already exists — add this line to it instead:\n  ${line}`,
+        );
+        process.exit(2);
+      }
+      if (e.code === 'ENOENT') {
+        console.error(`SCAN_HOOK_DIR_MISSING: ${hooksDir} does not exist (check core.hooksPath)`);
+        process.exit(2);
+      }
+      console.error(`SCAN_HOOK_UNWRITABLE: ${hook} could not be written (${e.code ?? e.message})`);
+      process.exit(2);
+    }
+    console.log(
+      `pre-commit hook installed: ${hook} — commits containing recognized secrets will be refused`,
+    );
+  } else if (flag('staged') && paths.length > 0) {
+    usage('--staged scans the index and takes no paths — run the two scans separately');
+  } else if (!flag('staged') && paths.length === 0) {
+    usage('scan requires paths, --staged, or --install-hook');
+  } else {
+    try {
+      report(flag('staged') ? scanStaged() : scanPaths(paths));
+    } catch (e) {
+      console.error(e instanceof ScanError ? e.message : `SCAN_FAILED: ${e.code ?? e.message}`);
+      process.exitCode = 2;
+    }
+  }
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);
 } else {

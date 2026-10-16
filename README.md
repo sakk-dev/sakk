@@ -144,6 +144,77 @@ three-tier profile. The kernel never imports the ledger and never performs
 actions; an enforcer composes the two: `decide()` → on `allow` only →
 `reserve()`.
 
+## Kill switch
+
+```bash
+npx sakk halt --by alice --reason "runaway agent"   # every new reservation refuses
+npx sakk halt --by alice --agent bot-7              # stop one agent only
+npx sakk resume --by alice                          # lift it (signed)
+```
+
+While halted, `reserve()` refuses `LEDGER_HALTED` (or `AGENT_HALTED`),
+every reservation the halt refuses is logged to `sakk-alerts.jsonl`
+(attempts refused earlier for another reason — an invalid agent id, a stale
+ledger — carry their own code and are not halt alerts), and `sakk status`
+shows who stopped it and exits 4 — so CI stops too. In-flight calls can
+still settle their real cost. The halt cannot be lifted by any money
+operation, only by `resume`; agents cannot resume themselves over MCP. A
+stale ledger or one in reconciliation can still be halted. Per-agent halts
+match the agent id exactly (case-sensitive, code point for code point — no
+Unicode normalisation, so `café` typed two ways is two ids) and rely on the
+id the caller
+declares when it reserves — an agent that switches ids escapes a per-agent
+halt; the global halt is the hard stop. The first halt upgrades the ledger
+file to schema `sakk-ledger.v2`, which earlier sakk versions refuse to read:
+an old binary can never spend through a stop it does not understand.
+
+## Secret scanning
+
+```bash
+npm install --save-dev sakk     # the hook runs THIS installed copy — not npx
+npx sakk scan src config        # scan paths; exit 1 if anything is found
+npx sakk scan --install-hook    # refuse commits that contain secrets
+```
+
+It recognizes eight formats: database URLs with a password (`postgres`,
+`postgresql`, `mysql`, `mariadb`, `mongodb`, `mongodb+srv`, `redis`, `rediss`,
+`amqp`, `amqps`, `mssql`, `sqlserver`), URL-encoded passwords in any URL,
+AWS access keys, API keys shaped `sk_live_…`/`sk_test_…`/`rk_live_…`/`rk_test_…`, or `sk-…`/`sk_…` with a digit or at least 40 characters (so identifiers like `sk_set_flags` don't match), GitHub
+tokens (classic and fine-grained), private-key blocks, bearer tokens, and
+quoted `password = "…"` assignments. It does NOT catch secrets in any other
+shape — an unquoted `.env` line such as `PASSWORD=hunter2hunter2`, other URL
+schemes, a bare random string, personal data. A reference to a secret in
+the secret's place (`${REDIS_PASSWORD}`, `$PW`, `%(pw)s`, `{{ pw }}`) is not
+reported. A clean scan means "none of these formats", not "no secrets".
+
+Findings print the rule, path, line and a 12-character keyed fingerprint —
+never the secret. The key is random per run; set `SAKK_SCAN_KEY` (and keep
+it private) when you need to compare fingerprints across runs. A file name
+that itself contains a secret is printed redacted and counted as a finding;
+control characters in names are printed escaped. The only exemption is a
+secret that declares itself fake by containing
+`TEST_ONLY_FAKE_SECRET_DO_NOT_USE` with nothing secret-shaped beside it;
+there is no localhost exception.
+
+Exit codes: 0 clean, 1 findings, 2 the scan could not do its job — a path
+that does not exist (`SCAN_PATH_MISSING`), a file it could not read, a fifo
+or device, or anything over 256 MB (`SCAN_UNREADABLE`), not a git repository,
+git missing, an existing or unwritable hook, `--staged` combined with paths
+(`SCAN_USAGE`). Paths you name are always scanned (even `dist/`, even
+through a symlink); inside them, `node_modules`, `.git`, `.next`, `dist`,
+symlinks and binary files are skipped and the skips are counted in the
+summary. UTF-16 and UTF-32 files (with a byte-order mark) are scanned as
+text.
+
+`--staged` scans exactly what the commit would record — every added,
+modified or type-changed blob in the index, wherever you run it from;
+a staged symlink's target counts as content. `--install-hook` writes a
+pre-commit hook that runs the installed sakk by absolute path. It refuses
+if any pre-commit hook already exists (even a dangling symlink), and it
+refuses to install from a temporary `npx`, `bunx` or `pnpm dlx` cache
+(`SCAN_HOOK_EPHEMERAL`) — that copy disappears when the cache is cleaned. Re-run it if you move or
+reinstall sakk.
+
 ## MCP: put the gate in front of any agent
 
 `sakk mcp` speaks the Model Context Protocol over stdio — the same three
@@ -184,7 +255,7 @@ byte-identical books, and the test suite proves it.
 - [x] Policy kernel (`sakk/policy`): declarative `sakk-policy.v1`, pure `decide()`, hash-pinned decision log
 - [x] MCP server enforcer (`sakk mcp`): reserve/settle/status as tools, policy-gated
 - [ ] `sakk settle` CLI command (late settlement without writing code)
-- [ ] Evidence packs: replayable, manifest-hashed run records for third-party audit (what [docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) verifies today, made portable)
+- [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6)
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
 - [ ] Named-approver identity, SSO — enterprise
 

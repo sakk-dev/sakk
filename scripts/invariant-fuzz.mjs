@@ -7,7 +7,7 @@
  * rerun with SAKK_FUZZ_SEED=<seed> to replay a failing sequence.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -15,6 +15,8 @@ import {
   reserve,
   settle,
   clearReconciliation,
+  halt,
+  resume,
   readLedger,
   totalsOf,
 } from '../src/ledger.mjs';
@@ -32,6 +34,7 @@ initLedger({ ledgerPath, capUsd: CAP });
 let nextId = 0;
 const ids = [];
 let overrunSeen = false;
+let killProbes = 0; // reserve attempts made while a halt covered the caller
 let fail = 0;
 const check = (cond, msg, step) => {
   if (!cond) {
@@ -45,6 +48,9 @@ for (let step = 0; step < 250; step += 1) {
   const halted =
     doc0.flags.reconciliationRequired === true ||
     doc0.entries.some((e) => e.status === 'RECONCILIATION_REQUIRED');
+  // kill switch (specs/kill-switch): global halt, and per-agent halts
+  const killed = Boolean(doc0.halt?.global);
+  const killedAgents = new Set(Object.keys(doc0.halt?.agents ?? {}));
   const op = pick([
     'reserve',
     'reserve',
@@ -54,13 +60,26 @@ for (let step = 0; step < 250; step += 1) {
     'settleUnknown',
     'dupReserve',
     'clear',
+    'halt',
+    'haltAgent',
+    'resume',
+    'resumeAgent',
   ]);
+  // Prototype names are in the pool on purpose (review B1): as object keys
+  // they read as "halted" off the prototype, or vanish on write.
+  const agent = pick(['a1', 'a2', '__proto__', 'constructor', 'toString']);
   try {
     if (op === 'reserve') {
+      // anonymous callers too: a global halt must stop them (verify N1)
+      const who = rnd() < 0.25 ? pick([undefined, null]) : agent;
+      const agentHalted = typeof who === 'string' && killedAgents.has(who);
+      if (killed || agentHalted) killProbes += 1;
       const id = `c${nextId++}`;
-      reserve({ ledgerPath, callId: id, estimatedMaxUsd: 1 + rnd() * 5 });
+      reserve({ ledgerPath, callId: id, estimatedMaxUsd: 1 + rnd() * 5, agentId: who });
       ids.push(id);
       check(!halted, 'reserve succeeded while halted', step);
+      check(!killed, `reserve succeeded while the kill switch was on (agent ${who})`, step);
+      check(!agentHalted, `reserve succeeded for halted agent ${who}`, step);
     } else if (op === 'dupReserve' && ids.length) {
       reserve({ ledgerPath, callId: pick(ids), estimatedMaxUsd: 1 });
       check(false, 'duplicate callId was accepted', step);
@@ -77,13 +96,35 @@ for (let step = 0; step < 250; step += 1) {
       }
     } else if (op === 'clear') {
       clearReconciliation({ ledgerPath, by: 'fuzz' });
-    }
+    } else if (op === 'halt') halt({ ledgerPath, by: 'fuzz' });
+    else if (op === 'haltAgent') halt({ ledgerPath, by: 'fuzz', agentId: agent });
+    else if (op === 'resume') resume({ ledgerPath, by: 'fuzz' });
+    else if (op === 'resumeAgent') resume({ ledgerPath, by: 'fuzz', agentId: agent });
   } catch {
     /* refusals are legal outcomes; invariants are checked below */
   }
   const doc = readLedger({ ledgerPath, maxAgeMs: Infinity }); // always readable
   check(typeof doc.flags.reconciliationRequired === 'boolean', 'flags lost', step);
   check(doc.entries.length >= doc0.entries.length, 'entries vanished', step);
+  // only resume may lift a halt — no money path may (specs/kill-switch row 3)
+  if (killed && op !== 'resume')
+    check(Boolean(doc.halt?.global), `global halt lost by ${op}`, step);
+  for (const a of killedAgents)
+    if (!(op === 'resumeAgent' && a === agent))
+      check(
+        doc.halt != null && Object.hasOwn(doc.halt.agents, a),
+        `agent halt ${a} lost by ${op}`,
+        step,
+      );
+  if (op === 'haltAgent') {
+    // the halt must be ON DISK as an own key, not just in memory
+    const raw = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+    check(Object.hasOwn(raw.halt?.agents ?? {}, agent), `haltAgent ${agent} not on disk`, step);
+  }
+  // a halted ledger is v2 and never drops back to v1 (review B2)
+  if (doc0.schema === 'sakk-ledger.v2')
+    check(doc.schema === 'sakk-ledger.v2', `schema downgraded by ${op}`, step);
+  check((doc.schema === 'sakk-ledger.v2') === 'halt' in doc, 'halt record vs schema', step);
   const t = totalsOf(doc);
   if (!overrunSeen)
     check(
@@ -112,7 +153,16 @@ const booked = readLedger({ ledgerPath: lp2, maxAgeMs: Infinity }).entries.lengt
 check(granted === booked, `concurrency: granted ${granted} != booked ${booked}`, 'conc');
 
 if (fail === 0) {
-  console.log(`invariant-fuzz: 250 steps + concurrency leg, all invariants held (seed=${seed})`);
+  // R-16: a probe that never meets the attack proves nothing
+  if (killProbes === 0) {
+    console.error(
+      `invariant-fuzz: kill switch never probed under this seed (seed=${seed}) — vacuous run`,
+    );
+    process.exit(1);
+  }
+  console.log(
+    `invariant-fuzz: 250 steps + concurrency leg, all invariants held · ${killProbes} reserve attempts under a halt, all refused (seed=${seed})`,
+  );
   process.exit(0);
 }
 console.error(`invariant-fuzz: ${fail} violations (seed=${seed})`);

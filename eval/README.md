@@ -44,6 +44,35 @@ npm run test:eval                               # harness self-tests
 npm run drill                                   # mutation drill: prove the judge can fail
 ```
 
+### Case packs (by regulation)
+
+`eval/packs/` groups gold cases by regulatory requirement — currently
+`cbuae-ai-oversight`, `dora-ict-change` and `difc-data-protection` (9 of the
+12 cases appear: G04 and G09 map to no requirement in these packs, and the
+control-plane budget case G12 cannot run against a model, so it is in no
+pack). Run one and get a per-requirement verdict beside
+the metrics (`pack-report.json`):
+
+```bash
+node eval/bin/gold-runner.mjs --fake-executor --pack cbuae-ai-oversight
+```
+
+What the verdict means depends on the run:
+
+- **FAKE** runs read `HARNESS_ONLY` for every requirement — they prove the
+  harness chain works and say nothing about any model or agent.
+- **REAL** runs (only possible with approved gold labels) read `COVERED` when
+  every case behind a requirement ran and passed, otherwise `NOT_COVERED`.
+  The report names the model it ran against and flags a `CLAUDE_BIN`
+  override (an overridden binary is not verified to be that model). A REAL
+  batch that stops early exits 1.
+
+Every requirement lists its `gaps` (what its cases do not show) and every
+pack lists `not_covered` regulatory themes that no case exercises — a
+starting list, not an exhaustive one. Themes
+are paraphrased; clause numbers must be verified against the official text
+before a pack is cited as compliance evidence.
+
 Execution modes need a **git clone**: every run records the harness commit as
 provenance, so a ZIP/tarball download refuses with `HARNESS_GIT_REQUIRED`
 (`--validate` and `--dry-run` still work without `.git`).

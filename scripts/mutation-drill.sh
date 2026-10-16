@@ -113,6 +113,13 @@ run_drill MUT-F src/policy.mjs \
   "POLICY_VACUOUS_ALLOW: an empty allow-by-default policy refuses at load" \
   "test"
 
+# MUT-G: switch off the global kill switch → the halt-refusal test must die red
+run_drill MUT-G src/ledger.mjs \
+  "if (doc.halt?.global) {" \
+  "if (false) {" \
+  "50 retries after the halt" \
+  "test"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"
@@ -126,7 +133,7 @@ fi
 rm -rf "$dir"
 
 if [ "$FAILED" -eq 0 ]; then
-  log "== DRILL PASS: 6/6 mutants killed by their named tests; control green. Report: $REPORT =="
+  log "== DRILL PASS: 7/7 mutants killed by their named tests; control green. Report: $REPORT =="
   exit 0
 else
   log "== DRILL FAIL: see $REPORT =="

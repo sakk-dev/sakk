@@ -91,11 +91,65 @@ case is normal, not missing evidence:
 The ledger file is plain JSON; `npx sakk status --ledger <file>` summarizes
 it and exits 3 if the run ended in an unresolved reconciliation.
 
+## 6. If you were handed an evidence bundle (.tgz)
+
+No clone needed. The bundle ships its own verifier (`verify.mjs`), which
+is exactly why you check the bundle WITHOUT it first — a forged bundle can
+ship a verifier that prints PASS. In this order:
+
+```bash
+tar -tzf bundle.tgz                         # one top-level sakk-evidence-<run>/ dir, no absolute or ../ paths
+mkdir fresh && tar -xzf bundle.tgz -C fresh && cd fresh/sakk-evidence-*
+shasum -a 256 MANIFEST.sha256               # = the fingerprint the issuer gave you SEPARATELY? if not: stop
+shasum -a 256 -c MANIFEST.sha256            # every file, verify.mjs included, matches
+node verify.mjs                             # only now: exit 0 PASS · 1 FAIL · 3 INCOMPLETE
+```
+
+(`sha256sum` works the same on Linux.) If `bundle.json`'s `verifierCommit`
+is in the public repository, `git show <verifierCommit>:eval/lib/bundle-verify.mjs
+| shasum -a 256` must equal `shasum -a 256 verify.mjs`; `cases/` can be
+compared the same way against `harnessCommit`. The builder refuses to ship
+a verifier with uncommitted changes, so that commit always exists in the
+issuer's clone.
+
+verify.mjs **PASS** means: only regular files, all matching the manifest,
+no empty directories; one run, one harness commit, one executor mode
+(cross-checked against every trace's provider and model id and against the
+mode labels); the case list equals the case directories and the cases the
+run selected; verdicts agree with violations; each per-case ledger obeys
+sakk's ledger rules, belongs to this run, has the case's own budget as its
+cap, and settled exactly the trace's cost; metrics.json recomputes (all
+metrics except `trace_completeness_rate`, which is range-checked); the pack
+report recomputes, including the verdicts it quotes (a FAKE run can only
+read HARNESS_ONLY). Anything unreadable, ill-typed or with a duplicated
+JSON key is a named failure, never a skipped check.
+
+**INCOMPLETE** (exit 3, like `sakk status` for a ledger awaiting
+reconciliation) means the files are intact and consistent, but the run is
+not final: some spend is unsettled or unreconciled, a trace's cost is
+unknown or estimated, a case overspent its cap (sakk flagged it), the batch
+stopped early, or selected cases never ran. Treat its
+results and costs as provisional. Such a bundle is still issued, labelled.
+
+It does NOT show who made the bundle: a full rebuild — verdicts edited, a
+failing case dropped, a FAKE run relabelled REAL in every file, metrics and
+manifest recomputed — passes verify.mjs. Only the out-of-band fingerprint
+catches that. Nor does it re-judge verdicts against the agent's workspace
+(see the boundary below). `run/` holds raw logs that can contain whatever
+the agent printed, secrets included — review before forwarding. Issuers
+build bundles with `node scripts/evidence-bundle.mjs <out-dir> --to
+<file.tgz>`, which refuses to write a bundle whose archive fails its own
+verifier, and refuses runs recorded by a runner too old to say what it
+selected and whether it stopped.
+
 ## Honest boundary (today)
 
-Re-scoring a **specific historical run** from a portable evidence pack is on
-the roadmap ("evidence packs"), not shipped: scoring consumes the live git
-workdir, which is not yet bundled. What ships today and is fully
-third-party-verifiable: gold-set integrity (§2), deterministic verdict
-reproduction (§3), and the judge's own falsifiability (§4). Claims beyond
-that should not be accepted — by design, you don't have to.
+Re-scoring a **specific historical run** — re-running the judge on that
+run's workdir — still needs the harness at the recorded commit; a bundle
+carries the judgements and their evidence, not the agent's workspace.
+Authenticity of a bundle rests on the separately communicated fingerprint
+until the hash-chained, externally anchored ledger ships. Fully
+third-party-verifiable today: gold-set integrity (§2), deterministic verdict
+reproduction (§3), the judge's falsifiability (§4), and a bundle's integrity
+and internal consistency (§6). Claims beyond that should not be accepted —
+by design, you don't have to.

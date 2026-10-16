@@ -7,6 +7,174 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (kill switch — behaviour of existing APIs)
+
+- `reserve()` now refuses an `agentId` that is not a non-empty string
+  (`AGENT_ID_INVALID`); before, `agentId: 7` or `""` was accepted and
+  recorded. `null`/absent stays anonymous. Reason: a numeric id could never
+  match a per-agent halt.
+- The `sakk` CLI refuses unknown flags, the `--flag=value` form and repeated
+  flags with exit 2 (`USAGE_UNKNOWN_ARGUMENT`, `USAGE_EQUALS_FORM`,
+  `USAGE_REPEATED_FLAG`); before, they were ignored — `sakk resume --by op
+--agent=bot` lifted the GLOBAL halt.
+
+### Added (kill switch)
+
+- `halt()` / `resume()` and `sakk halt|resume --by <name> [--agent <id>]`:
+  stop all new spending (or one agent's) with a signed record stored in a
+  top-level ledger key `halt` — deliberately outside `flags`, which four
+  money paths rewrite wholesale. **Schema `sakk-ledger.v2`**: the first
+  halt upgrades the file to v2, which REQUIRES `halt` (deleting it refuses
+  rather than reading as "not halted"); v1 forbids it; resume keeps v2
+  with an emptied record. Genesis ledgers stay v1. New public codes:
+  `LEDGER_HALTED`, `AGENT_HALTED`, `HALT_BY_REQUIRED`,
+  `RESUME_BY_REQUIRED`, `AGENT_ID_INVALID` (reserve/halt/resume now refuse
+  a non-string or empty agent id — a numeric id could never match a halt;
+  `null` stays anonymous); `sakk status` exits **4** while globally halted
+  (4 wins over 3; both conditions are printed). Agent ids are matched
+  exactly as own keys, so ids like `__proto__` or `constructor` halt and
+  resume like any other.
+  Halting works on stale ledgers and during reconciliation; the CLI
+  retries lock contention; settle stays open for in-flight calls; first
+  halt wins; alerts `HALT_SET` / `HALT_REFUSED` / `HALT_CLEARED`. MCP
+  status shows halts, and no MCP tool can halt or resume. Older versions
+  refuse a v2 ledger by schema name — they can never ignore a stop. Drill gains MUT-G (7 mutants); invariant fuzz gains halt ops and
+  refuses vacuous seeds that never probe a halt.
+
+### Added (secret scanning)
+
+- `sakk scan <paths> | --staged | --install-hook` and `src/secret-scan.mjs`
+  (ported from the predecessor system, English-ized and hardened): eight
+  rules (DSNs with passwords, URL-encoded passwords, AWS keys, `sk-`/`rk-`
+  keys, GitHub tokens, private-key blocks, bearer tokens, password
+  assignments); fingerprint-only findings; a single declared-fiction
+  exemption token, judged on the secret part of a match only (a token in a
+  username exempts nothing). New over the predecessor: staged-blob scanning
+  for pre-commit (read by blob id, so type changes and names like `0:foo`
+  are scanned; submodule pointers skipped and counted), a hook that runs the
+  installed copy by absolute path and is written with `wx` (never overwrites,
+  never writes through a symlink), symlinks skipped (no loops, no escaping
+  the tree), NUL-sniffed binary skipping with UTF-16 decoded as text,
+  keyed fingerprints (random per run, `SAKK_SCAN_KEY` to compare), redacted
+  secret-bearing paths, length-bounded patterns (a 200KB hostile line scans
+  in linear time). Exit 0 clean / 1 findings / 2 the scan could not do its
+  job (`SCAN_PATH_MISSING`, `SCAN_UNREADABLE`, `SCAN_NOT_A_REPO`,
+  `SCAN_HOOK_EXISTS`, `SCAN_HOOK_DIR_MISSING`, `SCAN_FAILED`). Recognized
+  formats only — unquoted `.env` passwords are not detected.
+  Verify-pass round: `--staged` reads each blob id from one `git diff
+--cached --raw` record (two names that decode alike, or a run from a
+  subdirectory, can no longer hide a blob) and batches blob reads; staged
+  symlink targets are scanned; explicit roots are followed, a fifo/device
+  or a >256 MB input is `SCAN_UNREADABLE`; `--staged` with paths is
+  `SCAN_USAGE`; git missing is `SCAN_GIT_MISSING`; hook write failures are
+  `SCAN_HOOK_UNWRITABLE`, installing from the npx cache is
+  `SCAN_HOOK_EPHEMERAL`; the hook line is shell-quoted and chmod'ed past the
+  umask. Patterns: `sk`/`rk` keys need a digit (identifiers no longer
+  match), `mariadb`/`rediss`/`amqps`/`mssql`/`sqlserver` and empty-user URLs
+  added, aligned `password    = "…"` found, a fiction token glued to a real
+  key exempts nothing. UTF-32 and odd-length UTF-16 decoded; names with
+  control characters printed escaped; exit codes set without truncating
+  piped output.
+  Verify round 3: key shapes the digit rule had dropped are back
+  (`sk_live_`/`rk_test_`-prefixed keys need no digit; `sk_<hex>` and `sk-`
+  keys of 40+ chars match); `--no-relative` so `diff.relative=true` cannot
+  hide files from a subdirectory scan; values on the next line
+  (`password:` + newline, wrapped `Bearer`) found; placeholders such as
+  `${REDIS_PASSWORD}` in the secret position are not secrets; a key glued
+  right after the fiction token is found; C1 controls and U+2028/2029 in
+  names escaped; a missing staged object is named as missing;
+  `--install-hook` with paths is `SCAN_USAGE`, without git
+  `SCAN_GIT_MISSING`; ephemeral-cache detection covers npx hash dirs, bunx
+  and pnpm dlx without refusing ordinary paths that contain `_npx`.
+
+### Added (case packs)
+
+- `eval/packs/`: gold cases grouped by regulatory requirement —
+  `cbuae-ai-oversight` (4), `dora-ict-change` (3), `difc-data-protection` (3)
+  requirements over 9 of the 12 cases (G04 and G09 map to no requirement in
+  these packs; control-plane G12 cannot run against a model, and packs admit
+  only `execution_mode: "model"` cases). `gold-runner --pack <id>` runs a
+  pack's cases and writes `pack-report.json` with its provenance (mode, run
+  id, harness commit, stop info). FAKE runs read `HARNESS_ONLY`; only REAL
+  runs can read `COVERED`. Every requirement carries `gaps`, every pack
+  `not_covered` — mandatory fields, so the honest boundary travels with the
+  claim. Refusals: `PACK_UNKNOWN`, `PACK_INVALID`, `SELECTOR_CONFLICT`,
+  `USAGE_EQUALS_FORM`, `USAGE_UNKNOWN_ARGUMENT`, `USAGE_REPEATED_FLAG`,
+  `USAGE_MISSING_VALUE`, `USAGE_MODE_CONFLICT` — the runner now refuses any
+  argument it does not know (a misspelled `--packs x` used to run ALL
+  cases). A REAL pack report names the model (`model`: provider, model id,
+  executor binary, whether `CLAUDE_BIN` overrode it) and whether the harness
+  tree was dirty; `not_covered` is marked non-exhaustive. **Exit code:** a
+  REAL batch that stops early now exits 1 even if every case that ran passed.
+  Verify round 3: `harness_dirty` is computed from the repository top (it
+  could never be true before) and excludes the run's own out dir;
+  `model.executor_binary_resolved` records the file PATH actually ran, and
+  the REAL meaning says the binary is recorded, not verified; empty values
+  and flags the chosen mode never reads refuse (`USAGE_FLAG_NOT_FOR_MODE`).
+  `--validate` checks all packs and reports `packs_ok`.
+
+### Added (evidence bundles)
+
+- `scripts/evidence-bundle.mjs <out-dir> --to <file.tgz>` (`npm run
+evidence`): packs a run into one self-contained bundle — the out-dir, the
+  case definitions read from the run's own harness commit (`git show`),
+  `bundle.json` (schema `sakk-evidence-bundle.v1`), `MANIFEST.sha256`, a
+  README and `verify.mjs`, a zero-dependency verifier that runs with Node
+  alone. The auditor checks the bundle WITHOUT running its code first:
+  fingerprint = `shasum -a 256 MANIFEST.sha256` against a value received
+  out of band, then `shasum -a 256 -c MANIFEST.sha256` (AUDITOR_REPLAY §6).
+  verify.mjs then checks integrity (regular files only — links are
+  failures, never followed) and internal consistency: one run, one commit,
+  one executor mode cross-checked against every trace's provider; case list
+  vs case directories; verdict vs violations; per-case cost vs its own
+  ledger; every metric except trace_completeness_rate recomputed (pass
+  rates, first-pass yield, counts, costs, p50/p95); pack report recomputed
+  (a FAKE run can only read HARNESS_ONLY). Unreadable, falsy or ill-typed
+  files are named failures (`CASE_FILE_INVALID`, `METRICS_UNVERIFIABLE`,
+  `BUNDLE_META_INVALID`, `NOT_A_REGULAR_FILE`, `MODE_MISMATCH`,
+  `CASE_SET_MISMATCH`, …), never skipped checks. Building refuses
+  (`BUNDLE_SOURCE_INVALID` incl. symlinks and commits the clone lacks,
+  `BUNDLE_TARGET_EXISTS`, `BUNDLE_SELF_CHECK_FAILED`, `BUNDLE_WRITE_FAILED`),
+  verifies the archive itself after unpacking it fresh, and places it with
+  an exclusive link — no partial file is ever left at the target.
+  Authenticity is out of scope until the anchored ledger ships: a full
+  rebuild passes verify.mjs; only the out-of-band fingerprint catches it.
+  Verify-pass round: a third outcome, **INCOMPLETE** (exit 3, like `sakk
+status`), for a genuine run with unsettled/unreconciled spend, unknown
+  cost, a stopped batch, or selected cases that never ran — such a run used
+  to read PASS while its spend was understated; it now ships labelled and
+  never reads PASS. The runner records `selected_cases` and `stopped` in
+  `metrics.json` (bundles refuse older run dirs). Per-case ledgers are
+  checked against sakk's ledger rules, this run's id and the case's budget
+  (`LEDGER_INVALID`); mode labels and trace model ids join the mode check;
+  pack reports recompute their quoted verdicts, commit, total and stop
+  record; lowercase rule names, duplicate JSON keys (`DUPLICATE_JSON_KEY`),
+  negative durations and empty directories (`EMPTY_DIRECTORY`) fail;
+  `verifyBundle` never throws. The shipped verifier must be committed
+  (`BUNDLE_VERIFIER_DIRTY`) and its commit is recorded (`verifierCommit`);
+  targets must be `.tgz`/`.tar.gz` (`BUNDLE_TARGET_INVALID`), a dangling
+  symlink counts as existing, files over 1 GiB are refused. A SIGINT or
+  SIGTERM during a build lets it finish or fail as a whole — it does not
+  cancel it — and temp files are always removed (SIGKILL excepted).
+  Verify round 3: a truthful overrun past a case cap (sakk flagged it) is
+  INCOMPLETE (`SPEND_OVER_CAP`) and ships, labelled — it used to be
+  unbundleable; an unflagged one is a forgery. Ledgers are checked as
+  closed documents (unknown keys, missing updatedAt, duplicate callIds, an
+  overrun without the flag sakk sets); every paid step in a trace must have
+  a ledger entry and vice versa; estimated costs (`cost_is_estimate`,
+  `real-exec.json` without a cost) are INCOMPLETE; pack reports may only
+  quote selected cases and must name the run's model; stop records compare
+  regardless of key order; hidden-dotfile targets are refused.
+
+### Fixed (gold runner)
+
+- A relative `--out` (e.g. `--out run1`) reached executors and verification
+  commands that run in other working directories, so every case scored
+  FAIL while the same run with an absolute path passed. The out path is now
+  resolved to an absolute path once, at parse time; the printed `outDir` is
+  absolute. Fails safe before and after (no false PASS), but a real-model
+  run with a relative path would have spent budget on wrong verdicts.
+
 ### Fixed (hardening campaign, 2026-10-16)
 
 - **C-4 (disk-full could install broken books)**: `writeSync`'s return was

@@ -3,7 +3,9 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  accessSync,
   appendFileSync,
+  constants as fsConstants,
   cpSync,
   existsSync,
   mkdirSync,
@@ -11,14 +13,16 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateAgainst } from '../lib/validate.mjs';
 import { createTrace, readTrace, writeTrace } from '../lib/trace.mjs';
 import { scoreCase, aggregateMetrics, actualChanges } from '../lib/scorer.mjs';
+import { loadAllPacks, loadPack, packCaseIds, packReport } from '../lib/packs.mjs';
 import { paidCallCount } from '../lib/paid-step.mjs';
 import { childEnv } from '../lib/exec-env.mjs';
 import {
@@ -660,6 +664,118 @@ export function runRealCase({
   return { entry, stopBatch: !costKnown, costKnown };
 }
 
+/**
+ * Exit code of a REAL batch: 0 only when every selected case ran and
+ * passed. A batch that stopped early (unknown cost, budget refusal) is
+ * never a success, even if every case that did run passed.
+ */
+export function realExitCode({ entries, selected, stopped }) {
+  if (stopped || entries.length < selected) return 1;
+  return entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1;
+}
+
+const VALUE_FLAGS = ['case', 'pack', 'out', 'authorization'];
+const MODE_FLAGS = ['validate', 'dry-run', 'fake-executor', 'real'];
+/**
+ * Strict argv: an unknown flag, a stray word, a repeated flag or two modes
+ * refuse with exit 2. Before this, `--packs x`, `--Pack x` or a bare pack
+ * name were ignored and the run fell back to ALL cases (review N-4).
+ */
+export function checkArgv(args) {
+  const seen = new Set();
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (/^--[^=]+=/.test(a))
+      throw new Error(
+        `USAGE_EQUALS_FORM: write "${a.replace('=', ' ')}" — --flag=value is not accepted`,
+      );
+    const name = a.startsWith('--') ? a.slice(2) : null;
+    if (name === null || !(VALUE_FLAGS.includes(name) || MODE_FLAGS.includes(name)))
+      throw new Error(
+        `USAGE_UNKNOWN_ARGUMENT: "${a}" — known flags: ${[...MODE_FLAGS, ...VALUE_FLAGS].map((f) => `--${f}`).join(' ')}`,
+      );
+    if (seen.has(name)) throw new Error(`USAGE_REPEATED_FLAG: --${name} given more than once`);
+    seen.add(name);
+    if (VALUE_FLAGS.includes(name)) {
+      const v = args[i + 1];
+      if (v === undefined || v === '' || v.startsWith('--'))
+        throw new Error(
+          `USAGE_MISSING_VALUE: --${name} requires a value (non-empty, not starting with --)`,
+        );
+      i += 1;
+    }
+  }
+  const modes = MODE_FLAGS.filter((m) => seen.has(m));
+  if (modes.length > 1)
+    throw new Error(`USAGE_MODE_CONFLICT: ${modes.map((m) => `--${m}`).join(' and ')} — pick one`);
+  // A flag the chosen mode never reads is refused, not ignored.
+  const allowed =
+    {
+      validate: ['case', 'pack'],
+      'dry-run': ['case', 'pack'],
+      'fake-executor': ['case', 'pack', 'out'],
+      real: ['case', 'pack', 'out', 'authorization'],
+    }[modes[0]] ?? VALUE_FLAGS;
+  for (const name of seen)
+    if (VALUE_FLAGS.includes(name) && !allowed.includes(name))
+      throw new Error(`USAGE_FLAG_NOT_FOR_MODE: --${name} has no effect with --${modes[0]}`);
+}
+
+/**
+ * True when eval/, src/ or package.json differ from the recorded harness
+ * commit (tracked or untracked). Pathspecs are anchored at the repository
+ * top (`:/`) — ROOT is eval/, and relative pathspecs from there matched
+ * nothing, so the flag could never be true (verify round 3). The run's own
+ * out dir is excluded when it sits inside the repository.
+ */
+export function harnessDirty(outDir) {
+  const real = (p) => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return resolve(p);
+    }
+  };
+  const repo = real(join(ROOT, '..'));
+  const spec = [':/eval', ':/src', ':/package.json'];
+  // realpaths on both sides: /var vs /private/var (macOS) must not turn the
+  // run's own out dir into a "harness change"
+  const rel = outDir ? relative(repo, real(outDir)) : '';
+  if (rel && !rel.startsWith('..') && !isAbsolute(rel)) spec.push(`:(top,exclude)${rel}`);
+  try {
+    return (
+      execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', ...spec], {
+        cwd: repo,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim() !== ''
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** The file a bare command name resolves to on PATH (what actually runs), or the name if none. */
+export function resolveBinary(bin) {
+  if (bin.includes('/')) {
+    try {
+      return realpathSync(bin);
+    } catch {
+      return bin;
+    }
+  }
+  for (const dir of (process.env.PATH ?? '').split(':').filter(Boolean)) {
+    const p = join(dir, bin);
+    try {
+      accessSync(p, fsConstants.X_OK);
+      if (statSync(p).isFile()) return realpathSync(p);
+    } catch {
+      /* not here */
+    }
+  }
+  return bin;
+}
+
 // ── CLI ─────────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
 const flag = (n) => argv.includes(`--${n}`);
@@ -691,14 +807,66 @@ const isMain =
     }
   })();
 if (isMain) {
-  const only = val('case');
-  let cases;
   try {
-    cases = loadCases(only);
+    checkArgv(argv);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(2);
+  }
+  const only = val('case');
+  const packId = val('pack');
+  let cases;
+  let pack = null;
+  const caseMap = () => new Map(loadCases().map((c) => [c.id, c]));
+  try {
+    if (only !== undefined && packId !== undefined)
+      throw new Error('SELECTOR_CONFLICT: use --case OR --pack, not both');
+    if (packId !== undefined) {
+      pack = loadPack(packId, caseMap());
+      cases = loadCases(packCaseIds(pack).join(','));
+    } else cases = loadCases(only);
   } catch (e) {
     console.error(String(e.message));
     process.exit(2);
   }
+  // A pack run ends with a per-requirement verdict, written beside the
+  // metrics so the evidence and its regulatory reading travel together.
+  const emitPackReport = (
+    entries,
+    outDir,
+    { executorMode, runId, stopped = null, model = null },
+  ) => {
+    if (!pack) return;
+    const report = packReport(pack, entries, {
+      executorMode,
+      runId,
+      harnessCommit: entries[0]?.trace?.git_commit ?? null,
+      harnessDirty: harnessDirty(outDir),
+      model,
+      stopped,
+    });
+    writeFileSync(join(outDir, 'pack-report.json'), `${JSON.stringify(report, null, 1)}\n`);
+    console.log(`\npack ${report.pack} — ${report.title}`);
+    console.log(`  mode ${report.executor_mode}: ${report.meaning}`);
+    if (report.model)
+      console.log(
+        `  model ${report.model.provider}/${report.model.model_id} requested via ${report.model.executor_binary_resolved ?? report.model.executor_binary}${report.model.binary_overridden ? ' (CLAUDE_BIN override)' : ''} — the binary is recorded, not verified to be that model`,
+      );
+    if (report.harness_dirty)
+      console.log(
+        '  harness tree differs from the recorded commit (uncommitted eval/ or src/ changes)',
+      );
+    if (stopped) console.log(`  BATCH STOPPED at ${stopped.at}: ${stopped.why}`);
+    for (const r of report.requirements)
+      console.log(
+        `  ${r.status.padEnd(12)} ${r.id}  (${r.cases.map((c) => `${c.case}:${c.verdict}`).join(' ')})`,
+      );
+    console.log(
+      `  ${report.covered}/${report.total} requirements covered · ${report.clause_status.split(' — ')[0]}`,
+    );
+    for (const g of report.not_covered)
+      console.log(`  not covered by any case (list is not exhaustive): ${g}`);
+  };
   if (flag('validate')) {
     let bad = 0;
     for (const c of cases) {
@@ -714,12 +882,25 @@ if (isMain) {
         bad += 1;
       }
     }
+    let packsOk = true;
+    try {
+      const packs = loadAllPacks(caseMap());
+      console.log(`packs: OK (${packs.map((p) => p.id).join(', ')})`);
+    } catch (e) {
+      console.log(`packs: ${e.message}`);
+      packsOk = false;
+    }
     const gm = goldManifestStatus();
     console.log(`gold-manifest: ${gm.ok ? 'OK' : gm.why}`);
     console.log(
-      JSON.stringify({ cases: cases.length, schema_failures: bad, gold_manifest_ok: gm.ok }),
+      JSON.stringify({
+        cases: cases.length,
+        schema_failures: bad,
+        gold_manifest_ok: gm.ok,
+        packs_ok: packsOk,
+      }),
     );
-    process.exit(bad === 0 && gm.ok ? 0 : 1);
+    process.exit(bad === 0 && gm.ok && packsOk ? 0 : 1);
   } else if (flag('dry-run')) {
     for (const c of cases)
       console.log(
@@ -730,7 +911,10 @@ if (isMain) {
   } else if (flag('fake-executor')) {
     const runId = `gold-fake-${Date.now().toString(36)}`;
     const workRoot = mkdtempSync(join(tmpdir(), 'gold-run-'));
-    const outDir = val('out') ?? mkdtempSync(join(tmpdir(), 'gold-out-'));
+    // Absolute from here on: executors and verification commands run with
+    // other working directories, and a relative --out silently pointed them
+    // at the wrong place (every case scored FAIL).
+    const outDir = resolve(val('out') ?? mkdtempSync(join(tmpdir(), 'gold-out-')));
     mkdirSync(outDir, { recursive: true });
     if (readdirSync(outDir).some((e) => e === 'metrics.json' || /^G\d+$/.test(e))) {
       // Review finding F2: reusing --out crashed mid-batch with a raw stack
@@ -756,7 +940,13 @@ if (isMain) {
     writeFileSync(
       join(outDir, 'metrics.json'),
       `${JSON.stringify(
-        { runId, mode: 'FAKE_EXECUTOR (harness validation, not a model baseline)', metrics },
+        {
+          runId,
+          mode: 'FAKE_EXECUTOR (harness validation, not a model baseline)',
+          selected_cases: cases.map((c) => c.id),
+          stopped: null,
+          metrics,
+        },
         null,
         1,
       )}\n`,
@@ -770,6 +960,7 @@ if (isMain) {
       }),
     );
     console.log(JSON.stringify(metrics));
+    emitPackReport(entries, outDir, { executorMode: 'FAKE', runId });
     process.exit(entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1);
   } else if (flag('real')) {
     const workRoot = mkdtempSync(join(tmpdir(), 'gold-real-'));
@@ -791,7 +982,10 @@ if (isMain) {
     // Authorized path: one adapter run per case; an unknown cost or a budget
     // refusal halts the batch.
     const runId = `gold-real-${Date.now().toString(36)}`;
-    const outDir = val('out') ?? mkdtempSync(join(tmpdir(), 'gold-real-out-'));
+    // Absolute from here on: executors and verification commands run with
+    // other working directories, and a relative --out silently pointed them
+    // at the wrong place (every case scored FAIL).
+    const outDir = resolve(val('out') ?? mkdtempSync(join(tmpdir(), 'gold-real-out-')));
     mkdirSync(outDir, { recursive: true });
     if (readdirSync(outDir).some((e) => e === 'metrics.json' || /^G\d+$/.test(e))) {
       // Review finding F2: reusing --out crashed mid-batch with a raw stack
@@ -807,6 +1001,7 @@ if (isMain) {
     }
     const claudeBin = process.env.CLAUDE_BIN ?? 'claude';
     const entries = [];
+    let stoppedInfo = null;
     for (const c of cases) {
       const { entry, stopBatch, refused } = runRealCase({
         caseDef: c,
@@ -822,26 +1017,46 @@ if (isMain) {
         `${c.id}: ${entry.result.verdict} claim_source=${entry.trace.claim_source ?? 'n/a'}`,
       );
       if (stopBatch) {
-        console.error(
-          JSON.stringify({
-            stopped: true,
-            at: c.id,
-            why: refused ?? 'COST_UNKNOWN_RECONCILIATION_REQUIRED',
-          }),
-        );
+        stoppedInfo = { at: c.id, why: refused ?? 'COST_UNKNOWN_RECONCILIATION_REQUIRED' };
+        console.error(JSON.stringify({ stopped: true, ...stoppedInfo }));
         break;
       }
     }
     const metrics = aggregateMetrics(entries, { executorMode: 'REAL' });
     writeFileSync(
       join(outDir, 'metrics.json'),
-      `${JSON.stringify({ runId, mode: 'REAL', model_id: gate.auth.model_id, metrics }, null, 1)}\n`,
+      `${JSON.stringify(
+        {
+          runId,
+          mode: 'REAL',
+          model_id: gate.auth.model_id,
+          // A bundle must be able to tell a stopped or partial batch from a
+          // complete one: what was selected, and whether it stopped.
+          selected_cases: cases.map((c) => c.id),
+          stopped: stoppedInfo,
+          metrics,
+        },
+        null,
+        1,
+      )}\n`,
     );
     console.log(JSON.stringify({ runId, outDir, total: entries.length }));
-    process.exit(entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1);
+    emitPackReport(entries, outDir, {
+      executorMode: 'REAL',
+      runId,
+      stopped: stoppedInfo,
+      model: {
+        provider: gate.auth.model_provider,
+        model_id: gate.auth.model_id,
+        executor_binary: claudeBin,
+        executor_binary_resolved: resolveBinary(claudeBin),
+        binary_overridden: process.env.CLAUDE_BIN !== undefined,
+      },
+    });
+    process.exit(realExitCode({ entries, selected: cases.length, stopped: stoppedInfo }));
   } else {
     console.log(
-      'Usage: gold-runner.mjs --validate | --dry-run | --fake-executor [--case Gxx] [--out dir] | --real --authorization <path>',
+      'Usage: gold-runner.mjs --validate | --dry-run | --fake-executor [--case Gxx | --pack <id>] [--out dir] | --real --authorization <path> [--pack <id>]',
     );
     process.exit(2);
   }
