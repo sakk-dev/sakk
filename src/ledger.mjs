@@ -377,7 +377,12 @@ function writeLedger(ledgerPath, doc) {
     }
     renameSync(tmp, ledgerPath);
   } catch (e) {
-    rmSync(tmp, { force: true }); // never leave a half-written tmp behind
+    try {
+      rmSync(tmp, { force: true }); // never leave a half-written tmp behind
+    } catch {
+      // best-effort by design (review L-1): a dying disk must not let the
+      // cleanup REPLACE the original, typed error with an untyped one
+    }
     if (e instanceof LedgerError) throw e;
     throw new LedgerError('LEDGER_WRITE_FAILED', `ledger write failed: ${e.code ?? e.message}`, {
       ledgerPath,

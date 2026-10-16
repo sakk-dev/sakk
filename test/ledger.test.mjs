@@ -546,3 +546,41 @@ describe('campaign C-1: sakk-ledger.v1 is a CLOSED schema', () => {
     assert.equal(readLedger({ ledgerPath }).entries.length, 1);
   });
 });
+
+describe('C-4 guardian (in-CI, review M-1): a file-size wall cannot install broken books', () => {
+  test('writes past the wall refuse LEDGER_WRITE_FAILED and the ledger stays readable', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'c4-'));
+    const ledgerPath = join(dir, 'l.json');
+    const childScript = join(dir, 'child.mjs');
+    writeFileSync(
+      childScript,
+      [
+        "process.on('SIGXFSZ', () => {});",
+        `const m = await import(${JSON.stringify(new URL('../src/ledger.mjs', import.meta.url).href)});`,
+        `m.initLedger({ ledgerPath: ${JSON.stringify(ledgerPath)}, capUsd: 1e6 });`,
+        'try {',
+        '  for (let i = 0; i < 10000; i++)',
+        `    m.reserve({ ledgerPath: ${JSON.stringify(ledgerPath)}, callId: 'fill-' + i + '-' + 'x'.repeat(100), estimatedMaxUsd: 0.001 });`,
+        "  console.log('NO_WALL_HIT');",
+        '} catch (e) {',
+        "  console.log('CODE:' + (e.code ?? e.constructor.name));",
+        '}',
+      ].join('\n'),
+    );
+    // ulimit -f is in 512-byte blocks: 2 blocks ≈ 1KB — the init fits, the
+    // growing ledger hits the wall within a few reserves. Ignoring SIGXFSZ
+    // turns the kill into an EFBIG write error, the same shape as ENOSPC.
+    const r = spawnSync('bash', ['-c', `ulimit -f 2 && exec node ${JSON.stringify(childScript)}`], {
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+    assert.match(
+      r.stdout,
+      /CODE:LEDGER_WRITE_FAILED/,
+      `the wall must surface as the typed refusal, got: ${r.stdout} ${r.stderr.slice(0, 200)}`,
+    );
+    // The one thing C-4 exists to guarantee: the BOOKS SURVIVE the wall.
+    const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
+    assert.ok(doc.entries.length >= 1, 'the entries that fit are intact');
+  });
+});
