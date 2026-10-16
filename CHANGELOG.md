@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (evidence bundles)
+
+- `scripts/evidence-bundle.mjs <out-dir> --to <file.tgz>` (`npm run
+evidence`): packs a run into one self-contained bundle — the untouched
+  out-dir, the case definitions, `bundle.json`, `MANIFEST.sha256`, a README
+  and `verify.mjs`, a zero-dependency verifier that runs with Node alone.
+  Verify checks integrity (manifest) and internal consistency: verdict vs
+  violations, per-case cost vs per-case ledger, one run id and one harness
+  commit across traces, metrics.json and pack-report.json recomputed from
+  the per-case files — so a forger who also rewrites the manifest is still
+  caught. Building refuses (`BUNDLE_SOURCE_INVALID`, `BUNDLE_TARGET_EXISTS`,
+  `BUNDLE_SELF_CHECK_FAILED`) rather than ship an unverifiable bundle.
+  Authenticity is explicitly out of scope until the anchored ledger ships:
+  the fingerprint must reach the auditor separately.
+
 ### Fixed (hardening campaign, 2026-10-16)
 
 - **C-4 (disk-full could install broken books)**: `writeSync`'s return was

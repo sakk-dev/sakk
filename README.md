@@ -184,7 +184,7 @@ byte-identical books, and the test suite proves it.
 - [x] Policy kernel (`sakk/policy`): declarative `sakk-policy.v1`, pure `decide()`, hash-pinned decision log
 - [x] MCP server enforcer (`sakk mcp`): reserve/settle/status as tools, policy-gated
 - [ ] `sakk settle` CLI command (late settlement without writing code)
-- [ ] Evidence packs: replayable, manifest-hashed run records for third-party audit (what [docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) verifies today, made portable)
+- [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6)
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
 - [ ] Named-approver identity, SSO — enterprise
 

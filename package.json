@@ -20,7 +20,8 @@
     "format:check": "npx -y prettier@3.9.10 --check .",
     "fuzz": "node scripts/invariant-fuzz.mjs",
     "fuzz:policy": "node scripts/policy-fuzz.mjs",
-    "certificate": "node scripts/gate-certificate.mjs"
+    "certificate": "node scripts/gate-certificate.mjs",
+    "evidence": "node scripts/evidence-bundle.mjs"
   },
   "engines": {
     "node": ">=20"

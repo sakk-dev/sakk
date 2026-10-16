@@ -91,11 +91,30 @@ case is normal, not missing evidence:
 The ledger file is plain JSON; `npx sakk status --ledger <file>` summarizes
 it and exits 3 if the run ended in an unresolved reconciliation.
 
+## 6. If you were handed an evidence bundle (.tgz)
+
+No clone needed. Unpack it anywhere and run its own verifier:
+
+```bash
+tar -xzf sakk-evidence-*.tgz && cd sakk-evidence-* && node verify.mjs
+```
+
+PASS means every file matches the manifest and the files agree with each
+other (verdicts vs violations, per-case cost vs per-case ledger, one run,
+one harness commit, metrics and pack report recomputed). It does NOT prove
+who made the bundle: compare the printed fingerprint with the one the
+issuer gave you separately. Issuers build bundles with
+`node scripts/evidence-bundle.mjs <out-dir> --to <file.tgz>`, which refuses
+to write a bundle that fails its own verifier.
+
 ## Honest boundary (today)
 
-Re-scoring a **specific historical run** from a portable evidence pack is on
-the roadmap ("evidence packs"), not shipped: scoring consumes the live git
-workdir, which is not yet bundled. What ships today and is fully
-third-party-verifiable: gold-set integrity (§2), deterministic verdict
-reproduction (§3), and the judge's own falsifiability (§4). Claims beyond
-that should not be accepted — by design, you don't have to.
+Re-scoring a **specific historical run** — re-running the judge on that
+run's workdir — still needs the harness at the recorded commit; a bundle
+carries the judgements and their evidence, not the agent's workspace.
+Authenticity of a bundle rests on the separately communicated fingerprint
+until the hash-chained, externally anchored ledger ships. Fully
+third-party-verifiable today: gold-set integrity (§2), deterministic verdict
+reproduction (§3), the judge's falsifiability (§4), and a bundle's integrity
+and internal consistency (§6). Claims beyond that should not be accepted —
+by design, you don't have to.
