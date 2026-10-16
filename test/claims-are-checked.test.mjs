@@ -90,6 +90,17 @@ describe('nothing hangs instead of failing (findings F-15)', () => {
     for (const [name, cmd] of Object.entries(scripts))
       if (cmd.includes('node --test')) assert.match(cmd, /--test-timeout=\d+/, name);
   });
+  test('the commit gate passes exit codes straight through', () => {
+    const gate = read('scripts/gate.sh');
+    assert.match(gate, /set -euo pipefail/);
+    assert.doesNotMatch(
+      gate,
+      /\|\s*(tail|grep|head)\b/,
+      'no pipe may sit between a check and its exit code',
+    );
+    for (const step of ['lint', 'format:check', 'test', 'test:eval'])
+      assert.match(gate, new RegExp(`npm run --silent ${step}\\b`), step);
+  });
   test('every CI job has timeout-minutes', () => {
     const ci = read('.github/workflows/ci.yml');
     const jobs = [...ci.matchAll(/^ {2}([a-z][\w-]*):\n/gm)].map((m) => m[1]);

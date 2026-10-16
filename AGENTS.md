@@ -12,7 +12,10 @@ non-negotiables live in CONSTITUTION.md; the full rulebook in docs/RULES.md.
 - Mutation drill (run when touching scorer/runner/any fail-closed path):
   `npm run drill`
 - Ledger invariant fuzz (run when touching src/ledger.mjs): `npm run fuzz`
-- Format: `npm run format:check` (prettier 3.9.10, pinned)
+- Format: `npm run format:check` (prettier 3.9.10, pinned) · lint: `npm run lint`
+  (ESLint 10.13.0, pinned, core rules only)
+- Commit gate (exit codes passed straight through, never via tail/grep):
+  `npm run gate && git commit`
 - Full audit against the testing standard (T0/T2/T3/§14, one command):
   `npm run audit` — see docs/testing-profile.md
 

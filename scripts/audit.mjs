@@ -20,12 +20,14 @@ const node = process.execPath;
 const STEPS = [
   ['T0 unit + CLI suite', 'npm', ['run', '--silent', 'test']],
   ['T0 eval harness suite', 'npm', ['run', '--silent', 'test:eval']],
+  ['T0 lint', 'npm', ['run', '--silent', 'lint']],
   ['T0 format', 'npm', ['run', '--silent', 'format:check']],
   ['T0 secret self-scan', node, ['bin/sakk.mjs', 'scan', '.']],
   ['T0 mutation drill', 'sh', ['scripts/mutation-drill.sh']],
   ['T0 ledger invariant fuzz', node, ['scripts/invariant-fuzz.mjs']],
   ['T0 policy invariant fuzz', node, ['scripts/policy-fuzz.mjs']],
-  ['T2 gold k=3 (FAKE executor — harness only)', node, ['scripts/golden-k.mjs', '--k', '3']],
+  ['L1 invariant fuzz (packs, scan, bundle)', node, ['scripts/l1-fuzz.mjs']],
+  ['T2 gold k=3, key cases k=5 (FAKE executor — harness only)', node, ['scripts/golden-k.mjs']],
   ['T3 attack list + ASR', node, ['scripts/attack-asr.mjs']],
   [
     '§14 findings ledger gate',

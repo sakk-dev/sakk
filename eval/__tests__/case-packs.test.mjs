@@ -17,7 +17,6 @@ import {
   loadCases,
   authorizeRealRun,
   checkArgv,
-  harnessDirty,
   realExitCode,
   resolveBinary,
   SUPPORTED_PROVIDERS,

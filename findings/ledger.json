@@ -60,6 +60,10 @@
         {
           "kind": "detector",
           "ref": "test/core-specs.test.mjs::every source file is classified core or not core"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through"
         }
       ]
     },
@@ -107,6 +111,10 @@
         {
           "kind": "rule_text",
           "ref": "docs/RULES.md::R-20"
+        },
+        {
+          "kind": "rule_text",
+          "ref": "docs/RULES.md::R-21"
         }
       ]
     }
@@ -1493,6 +1501,156 @@
       "sweep": "Layer map in docs/testing-profile.md: T1/T4 not applicable, T5 not started, T6 partial — each with its reason.",
       "sweep_status": "done",
       "status": "class_closed"
+    },
+    {
+      "id": "F-56",
+      "date": "2026-10-16",
+      "title": "T0 had no lint; the first ESLint run found six defects",
+      "symptom": "The standard requires lint on every commit; Sakk ran a formatter only. ESLint (core rules) found unused imports in four files and a loose != in the invariant fuzz.",
+      "evidence": "second pass against the standard page, T0",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "No lint step existed in package.json, CI or the audit.",
+      "why": [
+        "The zero-dependency rule was read as 'no linter'.",
+        "The formatter was taken as a lint.",
+        "Nothing compared the audit's steps against the standard's T0 MUST list."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: eslint.config.mjs (core rules), npm run lint (pinned via npx, 0 warnings), CI and audit steps; six defects fixed",
+      "class_fix": "test/core-specs.test.mjs",
+      "guard": "test/core-specs.test.mjs::the audit runs every applicable layer of the standard",
+      "sweep": "Whole repository linted; CI format job runs lint.",
+      "sweep_status": "done",
+      "status": "class_closed"
+    },
+    {
+      "id": "F-57",
+      "date": "2026-10-16",
+      "title": "No commit gate passed test exit codes straight through",
+      "symptom": "Standard §12.3 requires a pre-commit gate with pipefail; Sakk relied on CI only. In this session the author twice read a pipeline's tail exit code as the command's.",
+      "evidence": "second pass against the standard page, §12.3; session transcript",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "No scripts/gate.sh; interactive checks piped output through tail before echoing $?.",
+      "why": [
+        "Commits were gated by CI after the fact.",
+        "Local checks were typed by hand.",
+        "A pipe hides the left side's exit code unless pipefail is set."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: scripts/gate.sh (set -euo pipefail), npm run gate, AGENTS.md: npm run gate && git commit",
+      "class_fix": "test/claims-are-checked.test.mjs",
+      "guard": "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through",
+      "sweep": "audit.mjs and the certificate take exit codes from spawnSync directly; mutation-drill.sh greps output only to name the killer, its status comes from $?.",
+      "sweep_status": "done",
+      "status": "class_closed"
+    },
+    {
+      "id": "F-58",
+      "date": "2026-10-16",
+      "title": "Three L1 modules had no invariant fuzz",
+      "symptom": "Standard §5 requires invariant fuzz for L1 changes; case packs, secret scanning and the bundle verifier had example tests only.",
+      "evidence": "second pass against the standard page, §5",
+      "found_by": "review",
+      "introduced_in": "4769e33",
+      "direct_cause": "Fuzzers existed for the ledger and policy kernel only.",
+      "why": [
+        "Fuzz was added where it was first needed.",
+        "New L1 modules came with example tests.",
+        "No check tied L1 modules to a fuzzer."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: scripts/l1-fuzz.mjs (200 seeded trials per module, PASS controls), npm run fuzz:l1 in CI and the audit",
+      "class_fix": "test/core-specs.test.mjs",
+      "guard": "test/core-specs.test.mjs::the audit runs every applicable layer of the standard",
+      "sweep": "Every CORE file is covered by a fuzzer or by the drill; the three fuzzers break on seeded mutants (packs 434, scan 27, bundle 1 violations).",
+      "sweep_status": "done",
+      "status": "class_closed"
+    },
+    {
+      "id": "F-59",
+      "date": "2026-10-16",
+      "title": "Independent reviews used the author's own model",
+      "symptom": "Three review rounds on PRs #5–#8 ran on the same model that wrote the code; principle 6 requires a different judge, or a measured and published bias.",
+      "evidence": "second pass against the standard page, principle 6",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Review agents inherited the session model.",
+      "why": [
+        "The review harness defaulted to the author's model.",
+        "Independence was taken to mean a separate context.",
+        "Self-preference bias was never measured."
+      ],
+      "root_cause": "Checks and fields shipped without a test proving they can take both values, so a vacuous check reads green.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: L1 reviews re-run on Claude Fable 5 from a fresh clone; the profile states which model reviews",
+      "class_fix": "docs/RULES.md::R-21",
+      "guard": "docs/RULES.md::R-21",
+      "sweep": "All four plan 1–4 modules re-reviewed on the other model.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-60",
+      "date": "2026-10-16",
+      "title": "Thresholds, attack list and gold-set version were not files",
+      "symptom": "Standard §6/T1 want thresholds in a file, an attack list naming target and success signature, and a gold set with version and freeze date; all three lived in code or nowhere.",
+      "evidence": "second pass against the standard page, §6",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Thresholds were literals in scripts; attack rows had no target text; eval/cases had no version.",
+      "why": [
+        "The executors were written before the dataset rules were read.",
+        "Code-only thresholds cannot be reviewed apart from code.",
+        "Nothing refused an undocumented attack row or an unfrozen case."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: eval/thresholds.json, attack rows with target + success signature (attack-asr refuses undescribed rows, --list prints them), eval/cases-version.json + cases-frozen.sha256",
+      "class_fix": "test/gold-set-frozen.test.mjs",
+      "guard": "test/gold-set-frozen.test.mjs::every frozen case is unchanged, and every case file is frozen",
+      "sweep": "golden-k, attack-asr and l1-fuzz read eval/thresholds.json.",
+      "sweep_status": "done",
+      "status": "class_closed"
+    },
+    {
+      "id": "F-61",
+      "date": "2026-10-16",
+      "title": "A version file in eval/cases broke --validate",
+      "symptom": "Adding eval/cases/VERSION.json made the case loader read it as a case; --validate crashed before the change was committed.",
+      "evidence": "this session, gold-runner --validate",
+      "found_by": "T0",
+      "introduced_in": "unknown",
+      "direct_cause": "loadCases reads every .json in eval/cases.",
+      "why": [
+        "The directory is a loader input, not a free folder.",
+        "The convention was implicit in the loader.",
+        "The full gate caught it — the guard worked."
+      ],
+      "root_cause": "An assumption about the environment a test runs in was never measured.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: version and manifest live beside the directory (eval/cases-version.json, eval/cases-frozen.sha256)",
+      "class_fix": null,
+      "guard": "test/gold-set-frozen.test.mjs::the gold set declares a version and a freeze date",
+      "sweep": "Other loader-owned directories: eval/packs (only .json packs), eval/gold (manifest-pinned).",
+      "sweep_status": "done",
+      "status": "fixed"
     }
   ]
 }

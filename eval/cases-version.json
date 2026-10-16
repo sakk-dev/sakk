@@ -1,0 +1,7 @@
+{
+  "set": "sakk-gold-cases",
+  "version": "1",
+  "frozen_at": "2026-10-15",
+  "rule": "Append-only (testing standard §6, principle 8): an existing case never changes. A changed case is a new case id, or a new version with a new cases-frozen.sha256 and a CHANGELOG entry.",
+  "manifest": "cases-frozen.sha256"
+}

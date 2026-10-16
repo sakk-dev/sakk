@@ -14,11 +14,10 @@
 //   node scripts/campaign/fault-injection.mjs            # all local legs
 // Exit: 0 all faults answered with typed codes · 1 any crash/silent-success.
 
-import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initLedger, reserve, settle, readLedger, LedgerError } from '../../src/ledger.mjs';
+import { initLedger, reserve, readLedger, LedgerError } from '../../src/ledger.mjs';
 
 const dir = () => mkdtempSync(join(tmpdir(), 'sakk-fault-'));
 let failures = 0;
