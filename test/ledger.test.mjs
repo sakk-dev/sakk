@@ -514,3 +514,73 @@ describe('AR round-2: breaker-mutex lock protocol', () => {
     assert.equal(existsSync(`${ledgerPath}.lock`), true, 'the foreign lock survives');
   });
 });
+
+describe('campaign C-1: sakk-ledger.v1 is a CLOSED schema', () => {
+  test('unknown top-level keys refuse — including a smuggled own __proto__ key', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'c1-'));
+    const ledgerPath = join(dir, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    const good = readFileSync(ledgerPath, 'utf8');
+    for (const body of [
+      JSON.stringify({ ...JSON.parse(good), extra_field: 1 }),
+      good.replace('{', '{"__proto__":{"reconciliationRequired":false},'),
+    ]) {
+      writeFileSync(ledgerPath, body);
+      assert.throws(
+        () => readLedger({ ledgerPath }),
+        (e) => e.code === 'LEDGER_SCHEMA_INVALID',
+        body.slice(0, 60),
+      );
+      assert.throws(
+        () => reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 }),
+        (e) => e.code === 'LEDGER_SCHEMA_INVALID',
+      );
+    }
+  });
+  test('a freshly initialized ledger still reads (the closed set matches what we write)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'c1b-'));
+    const ledgerPath = join(dir, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    reserve({ ledgerPath, callId: 'a', estimatedMaxUsd: 1 });
+    settle({ ledgerPath, callId: 'a', actualUsd: 0.5 });
+    assert.equal(readLedger({ ledgerPath }).entries.length, 1);
+  });
+});
+
+describe('C-4 guardian (in-CI, review M-1): a file-size wall cannot install broken books', () => {
+  test('writes past the wall refuse LEDGER_WRITE_FAILED and the ledger stays readable', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'c4-'));
+    const ledgerPath = join(dir, 'l.json');
+    const childScript = join(dir, 'child.mjs');
+    writeFileSync(
+      childScript,
+      [
+        "process.on('SIGXFSZ', () => {});",
+        `const m = await import(${JSON.stringify(new URL('../src/ledger.mjs', import.meta.url).href)});`,
+        `m.initLedger({ ledgerPath: ${JSON.stringify(ledgerPath)}, capUsd: 1e6 });`,
+        'try {',
+        '  for (let i = 0; i < 10000; i++)',
+        `    m.reserve({ ledgerPath: ${JSON.stringify(ledgerPath)}, callId: 'fill-' + i + '-' + 'x'.repeat(100), estimatedMaxUsd: 0.001 });`,
+        "  console.log('NO_WALL_HIT');",
+        '} catch (e) {',
+        "  console.log('CODE:' + (e.code ?? e.constructor.name));",
+        '}',
+      ].join('\n'),
+    );
+    // ulimit -f is in 512-byte blocks: 2 blocks ≈ 1KB — the init fits, the
+    // growing ledger hits the wall within a few reserves. Ignoring SIGXFSZ
+    // turns the kill into an EFBIG write error, the same shape as ENOSPC.
+    const r = spawnSync('bash', ['-c', `ulimit -f 2 && exec node ${JSON.stringify(childScript)}`], {
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+    assert.match(
+      r.stdout,
+      /CODE:LEDGER_WRITE_FAILED/,
+      `the wall must surface as the typed refusal, got: ${r.stdout} ${r.stderr.slice(0, 200)}`,
+    );
+    // The one thing C-4 exists to guarantee: the BOOKS SURVIVE the wall.
+    const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
+    assert.ok(doc.entries.length >= 1, 'the entries that fit are intact');
+  });
+});

@@ -54,6 +54,16 @@ import { dirname, join } from 'node:path';
  */
 
 export const LEDGER_SCHEMA = 'sakk-ledger.v1';
+
+const LEDGER_TOP_KEYS = [
+  'schema',
+  'initializedAt',
+  'initializedBy',
+  'capUsd',
+  'flags',
+  'entries',
+  'updatedAt',
+];
 /** Freshness bound: older than this is refused (every write refreshes updatedAt). */
 export const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const LOCK_WAIT_MS = 5;
@@ -281,6 +291,17 @@ export function readLedger({
   const updatedAtMs = Date.parse(doc.updatedAt);
   if (!Number.isFinite(updatedAtMs))
     throw new LedgerError('LEDGER_SCHEMA_INVALID', 'updatedAt is not a timestamp', { ledgerPath });
+  // Campaign finding C-1 (fault injection, 2026-10-16): v1 is a CLOSED
+  // schema — a hashed, audited document has exactly one shape, and unknown
+  // top-level keys (including an own '__proto__' key smuggled through
+  // JSON.parse) are refused, not carried. Future fields mean a schema
+  // version bump, never silent extras.
+  for (const k of Object.keys(doc))
+    if (!LEDGER_TOP_KEYS.includes(k))
+      throw new LedgerError('LEDGER_SCHEMA_INVALID', `unknown top-level key "${k}"`, {
+        ledgerPath,
+        key: k,
+      });
   if (now - updatedAtMs > maxAgeMs)
     throw new LedgerError(
       'LEDGER_STALE',
@@ -330,18 +351,43 @@ function writeLedger(ledgerPath, doc) {
   // fsync before rename: the gate's decision must survive power loss — a
   // reservation that vanishes after the paid call launched is the one
   // corruption this module cannot tolerate.
-  const fd = openSync(tmp, 'wx');
+  // Campaign finding C-4 (ENOSPC probe): writeSync can SHORT-WRITE without
+  // throwing, and an unchecked return meant a truncated temp file could be
+  // fsynced and renamed into place — atomically installing broken books.
+  // Every byte is now accounted for; zero forward progress refuses typed;
+  // any failure cleans the temp and surfaces as LEDGER_WRITE_FAILED.
   try {
-    writeSync(fd, `${JSON.stringify(doc, null, 1)}\n`);
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  try {
+    const fd = openSync(tmp, 'wx');
+    try {
+      const buf = Buffer.from(`${JSON.stringify(doc, null, 1)}\n`);
+      let written = 0;
+      while (written < buf.length) {
+        const w = writeSync(fd, buf, written, buf.length - written);
+        if (!(w > 0))
+          throw new LedgerError(
+            'LEDGER_WRITE_FAILED',
+            'write made no progress — refusing to install partial books',
+            { ledgerPath, written, total: buf.length },
+          );
+        written += w;
+      }
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
     renameSync(tmp, ledgerPath);
   } catch (e) {
-    rmSync(tmp, { force: true }); // never leave a half-written tmp behind
-    throw e;
+    try {
+      rmSync(tmp, { force: true }); // never leave a half-written tmp behind
+    } catch {
+      // best-effort by design (review L-1): a dying disk must not let the
+      // cleanup REPLACE the original, typed error with an untyped one
+    }
+    if (e instanceof LedgerError) throw e;
+    throw new LedgerError('LEDGER_WRITE_FAILED', `ledger write failed: ${e.code ?? e.message}`, {
+      ledgerPath,
+      cause: e.code ?? String(e.message).slice(0, 80),
+    });
   }
   try {
     // Directory fsync makes the rename itself durable (best effort — not
