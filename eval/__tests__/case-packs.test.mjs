@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,9 @@ import {
   loadCases,
   authorizeRealRun,
   checkArgv,
+  harnessDirty,
   realExitCode,
+  resolveBinary,
   SUPPORTED_PROVIDERS,
 } from '../bin/gold-runner.mjs';
 
@@ -123,7 +125,7 @@ describe('C-1: a fake run can never read COVERED', () => {
     };
     const real = packReport(pack, [entry('G05', 'PASS')], { executorMode: 'REAL', model });
     assert.deepEqual(real.model, model);
-    assert.match(real.meaning, /model named in `model`/);
+    assert.match(real.meaning, /executor recorded in `model`.*not verified/);
     const fake = packReport(pack, [entry('G05', 'PASS')], { executorMode: 'FAKE', model });
     assert.equal(fake.model, null);
     assert.equal(fake.not_covered_is_exhaustive, false);
@@ -310,6 +312,10 @@ describe('review N-4: the runner refuses arguments it does not know', () => {
       [['--dry-run', '--case', '--pack', 'x'], 'USAGE_MISSING_VALUE'],
       [['--fake-executor', '--real'], 'USAGE_MODE_CONFLICT'],
       [['--dry-run', '--pack=x'], 'USAGE_EQUALS_FORM'],
+      [['--fake-executor', '--out', ''], 'USAGE_MISSING_VALUE'],
+      [['--dry-run', '--out', 'x'], 'USAGE_FLAG_NOT_FOR_MODE'],
+      [['--validate', '--authorization', 'x'], 'USAGE_FLAG_NOT_FOR_MODE'],
+      [['--fake-executor', '--authorization', 'x'], 'USAGE_FLAG_NOT_FOR_MODE'],
     ])
       assert.throws(
         () => checkArgv(args),
@@ -335,7 +341,59 @@ describe('review N-5: documented pack coverage matches the packs', () => {
     assert.equal(Number(m[1]), union.size);
     assert.equal(Number(m[2]), CASES.size);
     const absent = [...CASES.keys()].filter((id) => !union.has(id));
+    const sentence = readme.slice(m.index, readme.indexOf(')', m.index) + 1);
     for (const id of absent)
-      assert.match(readme, new RegExp(`\\b${id}\\b`), `${id} named as absent`);
+      assert.match(
+        sentence,
+        new RegExp(`\\b${id}\\b`),
+        `${id} named as absent in the count sentence`,
+      );
+  });
+});
+
+describe('verify round 3: provenance fields are true', () => {
+  const repoCopy = () => {
+    const repo = join(tdir(), 'r');
+    for (const part of ['eval', 'src', 'package.json'])
+      cpSync(join(HERE, '..', '..', part), join(repo, part), { recursive: true });
+    const g = (...a) => execFileSync('git', a, { cwd: repo, stdio: 'ignore' });
+    g('init', '-q');
+    g('add', '-A');
+    g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'x');
+    return repo;
+  };
+  const dirtyIn = (repo, outDir) =>
+    execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { harnessDirty } from ${JSON.stringify(join(repo, 'eval', 'bin', 'gold-runner.mjs'))}; console.log(harnessDirty(${JSON.stringify(outDir)}))`,
+      ],
+      { encoding: 'utf8' },
+    ).trim();
+  test('harness_dirty: false on a clean tree, true after an eval/ or src/ change, the out dir inside the repo excluded', () => {
+    const repo = repoCopy();
+    assert.equal(dirtyIn(repo, tdir()), 'false');
+    mkdirSync(join(repo, 'eval', 'out-inside'));
+    writeFileSync(join(repo, 'eval', 'out-inside', 'metrics.json'), '{}');
+    assert.equal(
+      dirtyIn(repo, join(repo, 'eval', 'out-inside')),
+      'false',
+      'the run output is not a harness change',
+    );
+    writeFileSync(join(repo, 'src', 'extra.mjs'), '// untracked\n');
+    assert.equal(dirtyIn(repo, tdir()), 'true');
+  });
+  test('the executor binary is recorded as what PATH resolves, not just a name', () => {
+    const bin = tdir();
+    writeFileSync(join(bin, 'claude'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    const saved = process.env.PATH;
+    process.env.PATH = `${bin}:${saved}`;
+    try {
+      assert.equal(resolveBinary('claude'), realpathSync(join(bin, 'claude')));
+    } finally {
+      process.env.PATH = saved;
+    }
   });
 });

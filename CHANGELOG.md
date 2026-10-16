@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   executor binary, whether `CLAUDE_BIN` overrode it) and whether the harness
   tree was dirty; `not_covered` is marked non-exhaustive. **Exit code:** a
   REAL batch that stops early now exits 1 even if every case that ran passed.
+  Verify round 3: `harness_dirty` is computed from the repository top (it
+  could never be true before) and excludes the run's own out dir;
+  `model.executor_binary_resolved` records the file PATH actually ran, and
+  the REAL meaning says the binary is recorded, not verified; empty values
+  and flags the chosen mode never reads refuse (`USAGE_FLAG_NOT_FOR_MODE`).
   `--validate` checks all packs and reports `packs_ok`.
 
 ### Fixed (hardening campaign, 2026-10-16)

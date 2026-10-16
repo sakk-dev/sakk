@@ -3,7 +3,9 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  accessSync,
   appendFileSync,
+  constants as fsConstants,
   cpSync,
   existsSync,
   mkdirSync,
@@ -11,10 +13,11 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateAgainst } from '../lib/validate.mjs';
 import { createTrace, readTrace, writeTrace } from '../lib/trace.mjs';
@@ -694,22 +697,55 @@ export function checkArgv(args) {
     if (seen.has(name)) throw new Error(`USAGE_REPEATED_FLAG: --${name} given more than once`);
     seen.add(name);
     if (VALUE_FLAGS.includes(name)) {
-      if (args[i + 1] === undefined || args[i + 1].startsWith('--'))
-        throw new Error(`USAGE_MISSING_VALUE: --${name} requires a value`);
+      const v = args[i + 1];
+      if (v === undefined || v === '' || v.startsWith('--'))
+        throw new Error(
+          `USAGE_MISSING_VALUE: --${name} requires a value (non-empty, not starting with --)`,
+        );
       i += 1;
     }
   }
   const modes = MODE_FLAGS.filter((m) => seen.has(m));
   if (modes.length > 1)
     throw new Error(`USAGE_MODE_CONFLICT: ${modes.map((m) => `--${m}`).join(' and ')} — pick one`);
+  // A flag the chosen mode never reads is refused, not ignored.
+  const allowed =
+    {
+      validate: ['case', 'pack'],
+      'dry-run': ['case', 'pack'],
+      'fake-executor': ['case', 'pack', 'out'],
+      real: ['case', 'pack', 'out', 'authorization'],
+    }[modes[0]] ?? VALUE_FLAGS;
+  for (const name of seen)
+    if (VALUE_FLAGS.includes(name) && !allowed.includes(name))
+      throw new Error(`USAGE_FLAG_NOT_FOR_MODE: --${name} has no effect with --${modes[0]}`);
 }
 
-/** True when eval/ or src/ differ from the recorded harness commit (tracked or untracked). */
-function harnessDirty() {
+/**
+ * True when eval/, src/ or package.json differ from the recorded harness
+ * commit (tracked or untracked). Pathspecs are anchored at the repository
+ * top (`:/`) — ROOT is eval/, and relative pathspecs from there matched
+ * nothing, so the flag could never be true (verify round 3). The run's own
+ * out dir is excluded when it sits inside the repository.
+ */
+export function harnessDirty(outDir) {
+  const real = (p) => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return resolve(p);
+    }
+  };
+  const repo = real(join(ROOT, '..'));
+  const spec = [':/eval', ':/src', ':/package.json'];
+  // realpaths on both sides: /var vs /private/var (macOS) must not turn the
+  // run's own out dir into a "harness change"
+  const rel = outDir ? relative(repo, real(outDir)) : '';
+  if (rel && !rel.startsWith('..') && !isAbsolute(rel)) spec.push(`:(top,exclude)${rel}`);
   try {
     return (
-      execFileSync('git', ['status', '--porcelain', '--', 'eval', 'src', 'package.json'], {
-        cwd: ROOT,
+      execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', ...spec], {
+        cwd: repo,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
       }).trim() !== ''
@@ -717,6 +753,27 @@ function harnessDirty() {
   } catch {
     return null;
   }
+}
+
+/** The file a bare command name resolves to on PATH (what actually runs), or the name if none. */
+export function resolveBinary(bin) {
+  if (bin.includes('/')) {
+    try {
+      return realpathSync(bin);
+    } catch {
+      return bin;
+    }
+  }
+  for (const dir of (process.env.PATH ?? '').split(':').filter(Boolean)) {
+    const p = join(dir, bin);
+    try {
+      accessSync(p, fsConstants.X_OK);
+      if (statSync(p).isFile()) return realpathSync(p);
+    } catch {
+      /* not here */
+    }
+  }
+  return bin;
 }
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
@@ -784,7 +841,7 @@ if (isMain) {
       executorMode,
       runId,
       harnessCommit: entries[0]?.trace?.git_commit ?? null,
-      harnessDirty: harnessDirty(),
+      harnessDirty: harnessDirty(outDir),
       model,
       stopped,
     });
@@ -793,7 +850,7 @@ if (isMain) {
     console.log(`  mode ${report.executor_mode}: ${report.meaning}`);
     if (report.model)
       console.log(
-        `  model ${report.model.provider}/${report.model.model_id} via ${report.model.executor_binary}${report.model.binary_overridden ? ' (CLAUDE_BIN override — this binary was not verified to be that model)' : ''}`,
+        `  model ${report.model.provider}/${report.model.model_id} requested via ${report.model.executor_binary_resolved ?? report.model.executor_binary}${report.model.binary_overridden ? ' (CLAUDE_BIN override)' : ''} — the binary is recorded, not verified to be that model`,
       );
     if (report.harness_dirty)
       console.log(
@@ -967,6 +1024,7 @@ if (isMain) {
         provider: gate.auth.model_provider,
         model_id: gate.auth.model_id,
         executor_binary: claudeBin,
+        executor_binary_resolved: resolveBinary(claudeBin),
         binary_overridden: process.env.CLAUDE_BIN !== undefined,
       },
     });

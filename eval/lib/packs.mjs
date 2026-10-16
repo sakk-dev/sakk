@@ -130,7 +130,7 @@ export function loadPack(id, knownCases, dir = PACKS_DIR) {
 export const packCaseIds = (pack) => [...new Set(pack.requirements.flatMap((r) => r.cases))].sort();
 
 const MEANING = {
-  REAL: 'REAL run: COVERED means every backing case ran against the model named in `model` and passed',
+  REAL: 'REAL run: COVERED means every backing case ran through the executor recorded in `model` (model id as requested; the binary is recorded, not verified) and passed',
   FAKE: 'FAKE run: proves the harness chain only — says nothing about any model or agent (no requirement can read COVERED)',
   UNKNOWN:
     'executor mode not stated: nothing about any model or agent can be read from this report (no requirement can read COVERED)',
