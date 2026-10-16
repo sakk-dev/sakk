@@ -144,6 +144,19 @@ three-tier profile. The kernel never imports the ledger and never performs
 actions; an enforcer composes the two: `decide()` → on `allow` only →
 `reserve()`.
 
+## Secret scanning
+
+```bash
+npx sakk scan src config        # scan paths; exit 1 if anything is found
+npx sakk scan --install-hook    # refuse commits that contain secrets
+```
+
+Findings print the rule, path, line and a 12-character fingerprint — never
+the secret itself. The only exemption is a value that declares itself fake
+by containing `TEST_ONLY_FAKE_SECRET_DO_NOT_USE`; there is no localhost
+exception. The hook checks the STAGED content (what the commit would
+record), and `--install-hook` never overwrites an existing pre-commit hook.
+
 ## MCP: put the gate in front of any agent
 
 `sakk mcp` speaks the Model Context Protocol over stdio — the same three

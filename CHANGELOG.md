@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (secret scanning)
+
+- `sakk scan <paths> | --staged | --install-hook` and `src/secret-scan.mjs`
+  (ported from the predecessor system, English-ized and hardened): eight
+  rules (DSNs with passwords, URL-encoded passwords, AWS keys, `sk-`/`rk-`
+  keys, GitHub tokens, private-key blocks, bearer tokens, password
+  assignments); fingerprint-only findings; a single declared-fiction
+  exemption token. New over the predecessor: staged-blob scanning for
+  pre-commit, a hook installer that never overwrites, symlinks skipped (no
+  loops, no escaping the tree), NUL-sniffed binary skipping. Exit 0 clean /
+  1 findings / 2 usage (`SCAN_NOT_A_REPO`, `SCAN_HOOK_EXISTS`).
+
 ### Fixed (hardening campaign, 2026-10-16)
 
 - **C-4 (disk-full could install broken books)**: `writeSync`'s return was

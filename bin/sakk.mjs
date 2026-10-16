@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
-import { readFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -13,6 +14,7 @@ import {
 } from '../src/ledger.mjs';
 import { loadPolicy } from '../src/policy.mjs';
 import { startMcpServer } from '../src/mcp.mjs';
+import { scanPaths, scanStaged } from '../src/secret-scan.mjs';
 
 /**
  * sakk CLI — the smallest useful surface over the ledger.
@@ -60,6 +62,7 @@ Usage:
   sakk reconcile --by <name> [--ledger <path>]            clear the reconciliation flag (signed)
   sakk unlock --by <name> [--ledger <path>]               break a stuck lock by hand (signed)
   sakk mcp --ledger <path> [--policy <path>]              MCP stdio server: reserve/settle/status as tools
+  sakk scan <paths...> | --staged | --install-hook        find secrets (fingerprints only; exit 1 on findings)
 
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status)
@@ -214,6 +217,55 @@ if (cmd === 'init') {
     output: process.stdout,
     version: pkg.version,
   });
+} else if (cmd === 'scan') {
+  const report = (r) => {
+    for (const f of r.findings) console.log(`${f.path}:${f.line}  ${f.rule}  fp=${f.fingerprint}`);
+    console.log(
+      `scanned ${r.scanned} file(s): ${r.findings.length} finding(s), ${r.exempted} exempted (${'TEST_ONLY_FAKE_SECRET_DO_NOT_USE'} marker)`,
+    );
+    process.exit(r.findings.length === 0 ? 0 : 1);
+  };
+  if (flag('install-hook')) {
+    // Never overwrite an existing hook — a team's own pre-commit logic is
+    // not ours to replace; print the one line to add instead.
+    let hooksDir;
+    try {
+      hooksDir = execFileSync('git', ['rev-parse', '--git-path', 'hooks'], {
+        encoding: 'utf8',
+      }).trim();
+    } catch {
+      console.error('SCAN_NOT_A_REPO: run --install-hook inside a git repository');
+      process.exit(2);
+    }
+    const hook = join(hooksDir, 'pre-commit');
+    if (existsSync(hook)) {
+      console.error(
+        `SCAN_HOOK_EXISTS: ${hook} already exists — add this line to it instead:\n  npx sakk scan --staged || exit 1`,
+      );
+      process.exit(2);
+    }
+    writeFileSync(
+      hook,
+      '#!/bin/sh\n# installed by sakk scan --install-hook\nnpx sakk scan --staged || exit 1\n',
+    );
+    chmodSync(hook, 0o755);
+    console.log(`pre-commit hook installed: ${hook} — commits containing secrets will be refused`);
+    process.exit(0);
+  }
+  if (flag('staged')) {
+    try {
+      report(scanStaged());
+    } catch {
+      console.error('SCAN_NOT_A_REPO: --staged must run inside a git repository');
+      process.exit(2);
+    }
+  }
+  const paths = argv.slice(1).filter((a) => !a.startsWith('--'));
+  if (paths.length === 0) {
+    console.error('scan requires paths, --staged, or --install-hook');
+    process.exit(2);
+  }
+  report(scanPaths(paths));
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);
 } else {
