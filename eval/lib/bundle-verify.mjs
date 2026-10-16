@@ -10,15 +10,19 @@
 // against a fingerprint received out of band, then `shasum -a 256 -c
 // MANIFEST.sha256` (docs/AUDITOR_REPLAY.md §6). After that it checks:
 //   - integrity: every file matches MANIFEST.sha256, nothing added/removed,
-//     only regular files (no symlinks, devices or fifos)
+//     only regular files, no empty directories
 //   - internal consistency: one run, one harness commit, one executor mode
-//     (cross-checked against every trace's model_provider); the case list
-//     equals the case directories; verdicts agree with violations; each
-//     case's cost agrees with its own ledger; metrics.json recomputes from
-//     the per-case files; pack-report.json (if present) recomputes too
+//     (cross-checked against every trace's provider, model id and the mode
+//     labels); the case list equals the case directories; verdicts agree
+//     with violations; each per-case ledger obeys sakk's ledger rules, is
+//     this run's, has the case's cap, and its settled spend equals the
+//     trace's cost; metrics.json recomputes; pack-report.json (if present)
+//     recomputes
+//   - completeness: unresolved spend (reconciliation flag, unsettled
+//     entries, unknown cost), a stopped batch, or selected cases that never
+//     ran make the outcome INCOMPLETE (exit 3), never PASS
 // Anything it cannot read or parse is a named problem, never a skipped
-// check. What it does NOT show (authenticity, re-scoring) is in the bundle
-// README.
+// check, and verifyBundle never throws.
 
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
@@ -27,14 +31,61 @@ import { fileURLToPath } from 'node:url';
 
 export const BUNDLE_SCHEMA = 'sakk-evidence-bundle.v1';
 const CASE_ID = /^G\d+$/;
+const RULE_NAME = /^[A-Z][A-Z0-9_]*$/;
+const LEDGER_SCHEMAS = ['sakk-ledger.v1', 'sakk-ledger.v2'];
+const ENTRY_STATUS = ['RESERVED', 'SETTLED', 'RECONCILIATION_REQUIRED'];
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
+const fmt = (x) => {
+  try {
+    return JSON.stringify(x) ?? String(x);
+  } catch {
+    return '(unprintable)';
+  }
+};
+
+/** First key that appears twice in one object of valid JSON text, else null. */
+function duplicateKey(text) {
+  const stack = [];
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      const raw = text.slice(i, j + 1);
+      i = j;
+      let k = j + 1;
+      while (k < text.length && ' \t\r\n'.includes(text[k])) k += 1;
+      const top = stack[stack.length - 1];
+      if (text[k] === ':' && top instanceof Set) {
+        const key = JSON.parse(raw);
+        if (top.has(key)) return key;
+        top.add(key);
+      }
+    } else if (c === '{') stack.push(new Set());
+    else if (c === '[') stack.push(null);
+    else if (c === '}' || c === ']') stack.pop();
+  }
+  return null;
+}
 
 export function verifyBundle(root) {
   const problems = [];
+  const incomplete = [];
   const bad = (code, detail) => problems.push({ code, detail });
+  const gap = (code, detail) => incomplete.push({ code, detail });
+  let fingerprint = null;
+  try {
+    fingerprint = check(root, bad, gap);
+  } catch (e) {
+    bad('VERIFIER_ERROR', String(e?.message ?? e));
+  }
+  const status = problems.length > 0 ? 'FAIL' : incomplete.length > 0 ? 'INCOMPLETE' : 'PASS';
+  return { ok: status === 'PASS', status, problems, incomplete, fingerprint };
+}
 
+function check(root, bad, gap) {
   // 0. inventory: regular files and directories only, never followed links
   const onDisk = new Set();
   const walk = (dir, rel) => {
@@ -45,6 +96,7 @@ export function verifyBundle(root) {
       bad('FILE_UNREADABLE', rel || '.');
       return;
     }
+    if (names.length === 0 && rel) bad('EMPTY_DIRECTORY', rel);
     for (const name of names) {
       const r = rel ? `${rel}/${name}` : name;
       let st;
@@ -60,14 +112,22 @@ export function verifyBundle(root) {
     }
   };
   walk(root, '');
-  const read = (rel) => readFileSync(join(root, rel));
+  const read = (rel) => {
+    try {
+      return readFileSync(join(root, rel));
+    } catch {
+      bad('FILE_UNREADABLE', rel);
+      return null;
+    }
+  };
 
   // 1. integrity
   if (!onDisk.has('MANIFEST.sha256')) {
     bad('MANIFEST_MISSING', 'MANIFEST.sha256');
-    return { ok: false, problems, fingerprint: null };
+    return null;
   }
   const manifestBuf = read('MANIFEST.sha256');
+  if (manifestBuf === null) return null;
   const listed = new Map();
   for (const line of manifestBuf.toString('utf8').split('\n')) {
     if (line === '') continue;
@@ -83,20 +143,26 @@ export function verifyBundle(root) {
   for (const f of onDisk) {
     if (f === 'MANIFEST.sha256') continue;
     if (!listed.has(f)) bad('FILE_NOT_IN_MANIFEST', f);
-    else if (sha(read(f)) !== listed.get(f)) bad('FILE_MODIFIED', f);
+    else {
+      const buf = read(f);
+      if (buf !== null && sha(buf) !== listed.get(f)) bad('FILE_MODIFIED', f);
+    }
   }
   for (const f of listed.keys()) if (!onDisk.has(f)) bad('FILE_MISSING', f);
   const fingerprint = sha(manifestBuf);
 
-  /** A JSON object or a named problem — falsy or non-object JSON is not a skip. */
+  /** A JSON object or a named problem — falsy, non-object or duplicate-key JSON is not a skip. */
   const obj = (rel, code) => {
     if (!onDisk.has(rel)) {
       bad(code, `${rel}: missing`);
       return null;
     }
+    const buf = read(rel);
+    if (buf === null) return null;
+    const text = buf.toString('utf8');
     let v;
     try {
-      v = JSON.parse(read(rel).toString('utf8'));
+      v = JSON.parse(text);
     } catch {
       bad(code, `${rel}: not valid JSON`);
       return null;
@@ -105,10 +171,18 @@ export function verifyBundle(root) {
       bad(code, `${rel}: not a JSON object`);
       return null;
     }
+    const dup = duplicateKey(text);
+    if (dup !== null) {
+      bad(
+        'DUPLICATE_JSON_KEY',
+        `${rel}: key ${fmt(dup)} appears twice — readers disagree on which wins`,
+      );
+      return null;
+    }
     return v;
   };
 
-  // 2. bundle metadata and the case set
+  // 2. bundle metadata, the case set, the run's own record
   const meta = obj('bundle.json', 'BUNDLE_META_INVALID') ?? {};
   if (meta.schema !== BUNDLE_SCHEMA) bad('BUNDLE_META_INVALID', `schema must be ${BUNDLE_SCHEMA}`);
   if (typeof meta.runId !== 'string' || meta.runId === '') bad('BUNDLE_META_INVALID', 'runId');
@@ -116,13 +190,14 @@ export function verifyBundle(root) {
     bad('BUNDLE_META_INVALID', 'harnessCommit must be a full commit id');
   if (meta.executorMode !== 'FAKE' && meta.executorMode !== 'REAL')
     bad('BUNDLE_META_INVALID', 'executorMode must be FAKE or REAL');
+  const real = meta.executorMode === 'REAL';
   const caseIds = [];
   if (!Array.isArray(meta.cases) || meta.cases.length === 0)
     bad('BUNDLE_META_INVALID', 'bundle.json lists no cases');
   else
     for (const id of meta.cases)
       if (typeof id === 'string' && CASE_ID.test(id) && !caseIds.includes(id)) caseIds.push(id);
-      else bad('BUNDLE_META_INVALID', `case id ${JSON.stringify(id)}`);
+      else bad('BUNDLE_META_INVALID', `case id ${fmt(id)}`);
   caseIds.sort();
   const caseDirs = new Set(
     [...onDisk]
@@ -135,8 +210,38 @@ export function verifyBundle(root) {
   for (const id of caseIds)
     if (!caseDirs.has(id)) bad('CASE_SET_MISMATCH', `${id} is listed but run/${id} is absent`);
 
+  const metricsDoc = obj('run/metrics.json', 'METRICS_UNVERIFIABLE');
+  if (metricsDoc) {
+    if (metricsDoc.runId !== meta.runId)
+      bad('RUN_ID_MISMATCH', `metrics.json names ${fmt(metricsDoc.runId)}`);
+    // labels a person reads must agree with the mode the checks use
+    const label = metricsDoc.mode;
+    const labelOk = real
+      ? label === 'REAL'
+      : typeof label === 'string' && label.startsWith('FAKE_EXECUTOR');
+    if (!labelOk || meta.mode !== label)
+      bad(
+        'MODE_MISMATCH',
+        `mode label ${fmt(label)} / bundle.json ${fmt(meta.mode)} in a ${meta.executorMode} bundle`,
+      );
+    const sel = metricsDoc.selected_cases;
+    if (!Array.isArray(sel) || !sel.every((x) => typeof x === 'string' && CASE_ID.test(x)))
+      bad('METRICS_UNVERIFIABLE', 'metrics.json has no selected_cases (made by an older runner?)');
+    else {
+      for (const id of sel)
+        if (!caseIds.includes(id)) gap('CASES_NOT_RUN', `${id} was selected but never ran`);
+      for (const id of caseIds)
+        if (!sel.includes(id)) bad('CASE_SET_MISMATCH', `${id} ran but was not selected`);
+    }
+    if (!('stopped' in metricsDoc))
+      bad('METRICS_UNVERIFIABLE', 'metrics.json does not say whether the batch stopped');
+    else if (metricsDoc.stopped !== null)
+      gap('BATCH_STOPPED', `the batch stopped: ${fmt(metricsDoc.stopped)}`);
+  }
+
   // 3. per case
   const per = [];
+  const modelIds = new Set();
   for (const id of caseIds) {
     const result = obj(`run/${id}/result.json`, 'CASE_FILE_INVALID');
     const trace = obj(`run/${id}/trace.json`, 'CASE_FILE_INVALID');
@@ -147,22 +252,45 @@ export function verifyBundle(root) {
       (!['PASS', 'FAIL'].includes(result.verdict) && 'result.verdict') ||
       (!(
         Array.isArray(result.violations) &&
-        result.violations.every((v) => isObj(v) && typeof v.rule === 'string')
+        result.violations.every(
+          (v) => isObj(v) && typeof v.rule === 'string' && RULE_NAME.test(v.rule),
+        )
       ) &&
         'result.violations') ||
       (!(isNum(trace.actual_cost_usd) && trace.actual_cost_usd >= 0) && 'trace.actual_cost_usd') ||
-      (!isNum(trace.duration_ms) && 'trace.duration_ms') ||
+      (!(isNum(trace.duration_ms) && trace.duration_ms >= 0) && 'trace.duration_ms') ||
       (!(Array.isArray(trace.state_transitions) && trace.state_transitions.every(isObj)) &&
         'trace.state_transitions') ||
-      (!isNum(ledger.capUsd) && 'ledger.capUsd') ||
-      (!(
-        Array.isArray(ledger.entries) &&
-        ledger.entries.every((e) => isObj(e) && (e.status !== 'SETTLED' || isNum(e.actualUsd)))
-      ) &&
-        'ledger.entries') ||
-      (caseDef.id !== id && 'cases id');
+      (caseDef.id !== id && 'cases id') ||
+      (!(isNum(caseDef.max_budget_usd) && caseDef.max_budget_usd > 0) && 'cases max_budget_usd');
     if (shapeErr) {
       bad('CASE_FILE_INVALID', `${id}: ${shapeErr} missing or ill-typed`);
+      continue;
+    }
+    // sakk's own ledger rules, plus: this run's ledger, with this case's cap
+    const ledgerErr =
+      (!LEDGER_SCHEMAS.includes(ledger.schema) && 'schema') ||
+      (ledger.initializedBy !== `gold-runner:${meta.runId}` && 'initializedBy is another run') ||
+      (!(isNum(ledger.capUsd) && ledger.capUsd > 0) && 'capUsd') ||
+      (ledger.capUsd !== caseDef.max_budget_usd &&
+        `capUsd ${ledger.capUsd} ≠ case limit ${caseDef.max_budget_usd}`) ||
+      (!(isObj(ledger.flags) && typeof ledger.flags.reconciliationRequired === 'boolean') &&
+        'flags') ||
+      (!(
+        Array.isArray(ledger.entries) &&
+        ledger.entries.every(
+          (e) =>
+            isObj(e) &&
+            typeof e.callId === 'string' &&
+            ENTRY_STATUS.includes(e.status) &&
+            isNum(e.estimatedMaxUsd) &&
+            e.estimatedMaxUsd >= 0 &&
+            (e.status !== 'SETTLED' || (isNum(e.actualUsd) && e.actualUsd >= 0)),
+        )
+      ) &&
+        'entries');
+    if (ledgerErr) {
+      bad('LEDGER_INVALID', `${id}: ${ledgerErr}`);
       continue;
     }
     if ((result.verdict === 'PASS') !== (result.violations.length === 0))
@@ -178,10 +306,28 @@ export function verifyBundle(root) {
         'COMMIT_MISMATCH',
         `${id}: trace commit ${String(trace.git_commit).slice(0, 12)} ≠ bundle ${String(meta.harnessCommit).slice(0, 12)}`,
       );
-    if ((trace.model_provider === 'FAKE_EXECUTOR') !== (meta.executorMode === 'FAKE'))
+    if ((trace.model_provider === 'FAKE_EXECUTOR') !== !real)
       bad(
         'MODE_MISMATCH',
-        `${id}: provider ${trace.model_provider} in a ${meta.executorMode} bundle`,
+        `${id}: provider ${fmt(trace.model_provider)} in a ${meta.executorMode} bundle`,
+      );
+    modelIds.add(trace.model_id);
+    if (
+      (real && trace.model_id !== metricsDoc?.model_id) ||
+      (!real && !String(trace.model_id).startsWith('fake-'))
+    )
+      bad(
+        'MODE_MISMATCH',
+        `${id}: model id ${fmt(trace.model_id)} in a ${meta.executorMode} bundle`,
+      );
+    if (
+      ledger.flags.reconciliationRequired ||
+      ledger.entries.some((e) => e.status !== 'SETTLED') ||
+      trace.cost_known === false
+    )
+      gap(
+        'SPEND_UNRESOLVED',
+        `${id}: the ledger has unsettled or unreconciled spend — its true cost is not known`,
       );
     const settled = ledger.entries
       .filter((e) => e.status === 'SETTLED')
@@ -192,14 +338,12 @@ export function verifyBundle(root) {
       bad('COST_MISMATCH', `${id}: trace says ${trace.actual_cost_usd}, ledger settled ${settled}`);
     per.push({ id, result, trace, caseDef });
   }
+  if (modelIds.size > 1) bad('MODE_MISMATCH', `traces name ${modelIds.size} different model ids`);
 
   // 4. metrics recompute — mirrors eval/lib/scorer.mjs aggregateMetrics.
   //    trace_completeness_rate needs the trace JSON schema, which a bundle
   //    does not carry; it is range-checked only (stated in the README).
-  const metricsDoc = obj('run/metrics.json', 'METRICS_UNVERIFIABLE');
   if (metricsDoc) {
-    if (metricsDoc.runId !== meta.runId)
-      bad('RUN_ID_MISMATCH', `metrics.json names ${metricsDoc.runId}`);
     const m = metricsDoc.metrics;
     if (!isObj(m)) bad('METRICS_UNVERIFIABLE', 'metrics.json has no metrics object');
     else if (caseIds.length === 0 || per.length !== caseIds.length)
@@ -209,7 +353,6 @@ export function verifyBundle(root) {
       );
     else {
       const n = per.length;
-      const real = meta.executorMode === 'REAL';
       const passOf = (xs) => xs.filter((e) => e.result.verdict === 'PASS').length;
       const rate = (xs) => (xs.length === 0 ? null : passOf(xs) / xs.length);
       const count = (rule) =>
@@ -251,46 +394,54 @@ export function verifyBundle(root) {
         typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-9 : a === b;
       for (const [k, v] of Object.entries(expect))
         if (!same(m[k], v))
-          bad('METRIC_MISMATCH', `${k}: metrics.json says ${m[k]}, files say ${v}`);
+          bad('METRIC_MISMATCH', `${k}: metrics.json says ${fmt(m[k])}, files say ${fmt(v)}`);
       const tc = m.trace_completeness_rate;
       if (!(isNum(tc) && tc >= 0 && tc <= 1))
-        bad('METRIC_MISMATCH', `trace_completeness_rate ${tc}`);
+        bad('METRIC_MISMATCH', `trace_completeness_rate ${fmt(tc)}`);
     }
   }
 
-  // 5. pack report (optional) — same rule as eval/lib/packs.mjs packReport
+  // 5. pack report (optional) — the same rule as eval/lib/packs.mjs packReport
   if (onDisk.has('run/pack-report.json')) {
     const pr = obj('run/pack-report.json', 'PACK_REPORT_INVALID');
     if (pr) {
+      const mismatch = (detail) => bad('PACK_STATUS_MISMATCH', detail);
       if (pr.executor_mode !== meta.executorMode)
-        bad(
-          'PACK_STATUS_MISMATCH',
-          `report mode ${pr.executor_mode} in a ${meta.executorMode} bundle`,
-        );
-      if (pr.run_id !== meta.runId) bad('RUN_ID_MISMATCH', `pack-report.json names ${pr.run_id}`);
+        mismatch(`report mode ${fmt(pr.executor_mode)} in a ${meta.executorMode} bundle`);
+      if (pr.run_id !== meta.runId)
+        bad('RUN_ID_MISMATCH', `pack-report.json names ${fmt(pr.run_id)}`);
+      if (pr.harness_commit !== meta.harnessCommit)
+        mismatch(`harness_commit ${fmt(pr.harness_commit)}`);
+      if (metricsDoc && fmt(pr.batch_stopped ?? null) !== fmt(metricsDoc.stopped ?? null))
+        mismatch(`batch_stopped ${fmt(pr.batch_stopped)} vs metrics ${fmt(metricsDoc.stopped)}`);
       const verdictOf = new Map(per.map((e) => [e.id, e.result.verdict]));
       const reqs = Array.isArray(pr.requirements) ? pr.requirements : [];
       if (reqs.length === 0) bad('PACK_REPORT_INVALID', 'no requirements');
+      if (pr.total !== reqs.length)
+        mismatch(`total ${fmt(pr.total)} for ${reqs.length} requirement(s)`);
       let covered = 0;
       for (const r of reqs) {
         const cases = isObj(r) && Array.isArray(r.cases) ? r.cases : [];
         if (cases.length === 0 || !cases.every((c) => isObj(c) && typeof c.case === 'string')) {
-          bad('PACK_REPORT_INVALID', `requirement ${r?.id ?? '?'}: cases`);
+          bad('PACK_REPORT_INVALID', `requirement ${fmt(r?.id)}: cases`);
           continue;
         }
+        for (const c of cases) {
+          const actual = verdictOf.get(c.case) ?? 'NOT_RUN';
+          if (c.verdict !== actual)
+            mismatch(`${r.id}: ${c.case} reported ${fmt(c.verdict)}, the files say ${actual}`);
+        }
         const allPass = cases.every((c) => verdictOf.get(c.case) === 'PASS');
-        const want =
-          meta.executorMode !== 'REAL' ? 'HARNESS_ONLY' : allPass ? 'COVERED' : 'NOT_COVERED';
+        const want = !real ? 'HARNESS_ONLY' : allPass ? 'COVERED' : 'NOT_COVERED';
         if (want === 'COVERED') covered += 1;
         if (r.status !== want)
-          bad('PACK_STATUS_MISMATCH', `${r.id}: report says ${r.status}, the files say ${want}`);
+          mismatch(`${r.id}: report says ${fmt(r.status)}, the files say ${want}`);
       }
       if (pr.covered !== covered)
-        bad('PACK_STATUS_MISMATCH', `covered: report says ${pr.covered}, the files say ${covered}`);
+        mismatch(`covered: report says ${fmt(pr.covered)}, the files say ${covered}`);
     }
   }
-
-  return { ok: problems.length === 0, problems, fingerprint };
+  return fingerprint;
 }
 
 const here = fileURLToPath(import.meta.url);
@@ -302,27 +453,21 @@ const invokedDirectly = (() => {
   }
 })();
 if (invokedDirectly) {
-  const root = process.argv[2] ?? dirname(here);
-  let r;
-  try {
-    r = verifyBundle(root);
-  } catch (e) {
-    r = {
-      ok: false,
-      fingerprint: null,
-      problems: [{ code: 'VERIFIER_ERROR', detail: String(e?.message ?? e) }],
-    };
-  }
+  const r = verifyBundle(process.argv[2] ?? dirname(here));
   console.log(`bundle fingerprint: ${r.fingerprint ?? '(none)'}`);
   console.log('  = sha256 of MANIFEST.sha256. This program is part of the bundle: the check that');
   console.log(
     '    counts is `shasum -a 256 MANIFEST.sha256` against the value the issuer gave you',
   );
   console.log('    separately, plus `shasum -a 256 -c MANIFEST.sha256`, done BEFORE running this.');
-  if (r.ok) console.log('VERIFY PASS — integrity and internal consistency hold');
-  else {
-    for (const p of r.problems) console.log(`✗ ${p.code}  ${p.detail}`);
-    console.log(`VERIFY FAIL — ${r.problems.length} problem(s)`);
-  }
-  process.exit(r.ok ? 0 : 1);
+  for (const p of r.problems) console.log(`✗ ${p.code}  ${p.detail}`);
+  for (const p of r.incomplete) console.log(`△ ${p.code}  ${p.detail}`);
+  if (r.status === 'PASS')
+    console.log('VERIFY PASS — integrity, consistency and completeness hold');
+  else if (r.status === 'INCOMPLETE')
+    console.log(
+      `VERIFY INCOMPLETE — the files are intact and consistent, but ${r.incomplete.length} item(s) mean the run's results or spend are not final`,
+    );
+  else console.log(`VERIFY FAIL — ${r.problems.length} problem(s)`);
+  process.exitCode = r.status === 'PASS' ? 0 : r.status === 'INCOMPLETE' ? 3 : 1;
 }

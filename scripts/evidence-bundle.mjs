@@ -43,11 +43,11 @@ export class BundleError extends Error {
   }
 }
 
-const README = (meta, verifierSha) => `# Sakk evidence bundle
+const README = (meta, verifierSha, status) => `# Sakk evidence bundle
 
 Run \`${meta.runId}\` · harness commit \`${meta.harnessCommit}\` · executor ${meta.executorMode}
 · ${meta.cases.length} case(s) · created ${meta.createdAt} · sakk ${meta.sakkVersion}
-
+${status === 'INCOMPLETE' ? '\n**INCOMPLETE run**: spend was left unresolved, the batch stopped, or selected cases never ran. `node verify.mjs` exits 3 and lists why; treat results and costs as not final.\n' : ''}
 This README travels inside the bundle, so it is only as trustworthy as the
 bundle. The authoritative copy of these steps is §6 of docs/AUDITOR_REPLAY.md
 in the public sakk repository.
@@ -74,36 +74,52 @@ without it first; only then run it.
 
        shasum -a 256 -c MANIFEST.sha256     # or: sha256sum -c MANIFEST.sha256
 
-4. Optional: verify.mjs should be byte-identical to
-   \`eval/lib/bundle-verify.mjs\` of sakk ${meta.sakkVersion} (sha256
-   \`${verifierSha}\`).
+4. Optional, and only meaningful if commit \`${meta.verifierCommit}\` is in
+   the public sakk repository: verify.mjs must be byte-identical to the
+   verifier at that commit (sha256 \`${verifierSha}\`):
+
+       git show ${meta.verifierCommit}:eval/lib/bundle-verify.mjs | shasum -a 256
+
+   Optionally compare cases/ the same way against the harness commit:
+   \`git show ${meta.harnessCommit}:eval/cases/<id>.json\`.
 
 5. Now run it (Node 20 or newer, nothing else):
 
-       node verify.mjs
+       node verify.mjs      # exit 0 PASS · 1 FAIL · 3 INCOMPLETE
 
 ## What verify.mjs checks
 
 - Integrity: every file matches MANIFEST.sha256; nothing added or removed;
   only regular files (a symlink, device or fifo is a failure).
 - One run, one harness commit, one executor mode — the mode is
-  cross-checked against every trace's model provider.
-- The case list in bundle.json equals the case directories in run/.
-- Each verdict agrees with its violations; each case's cost equals what its
-  own ledger settled, and no ledger settled more than its cap.
+  cross-checked against every trace's model provider and model id and
+  against the mode labels in metrics.json and bundle.json.
+- The case list in bundle.json equals the case directories in run/ and the
+  cases the run selected.
+- Each verdict agrees with its violations (rule names well-formed). Each
+  per-case ledger obeys sakk's ledger rules, belongs to this run, carries
+  the case's own budget as its cap, settled no more than that cap, and its
+  settled spend equals the trace's cost.
+- Completeness: a ledger with unsettled or unreconciled spend, a trace with
+  unknown cost, a stopped batch, or selected cases that never ran make the
+  outcome INCOMPLETE (exit 3), never PASS.
 - metrics.json recomputes from the per-case files: pass rates (overall,
   fake/real split, recovery, escalation), first-pass yield, violation
   counts, case counts, total and per-case cost, p50/p95 duration.
-- pack-report.json (if present) recomputes from the verdicts; a FAKE run
-  can only read HARNESS_ONLY.
-- Any file it cannot read or parse is a named failure, never a skipped
-  check.
+- pack-report.json (if present) recomputes: each case verdict it quotes,
+  each requirement status (a FAKE run can only read HARNESS_ONLY), the
+  counts, the commit and the stop record.
+- Any file it cannot read or parse, or JSON with a duplicated key, is a
+  named failure, never a skipped check.
 
 ## What a PASS does not show
 
 - **Authenticity.** Someone who rebuilds the whole bundle — editing
-  verdicts, dropping a failing case, recomputing metrics and manifest —
-  also gets a PASS. Only step 2 catches that.
+  verdicts, dropping a failing case, relabelling every file of a FAKE run
+  as REAL, recomputing metrics and manifest — also gets a PASS. Only step 2
+  catches that.
+- **Case definitions.** cases/ is checked for shape, ids and budgets, not
+  against the harness commit — step 4 does that.
 - **Re-scoring.** Verdicts are checked against their recorded violations,
   not re-judged against the agent's workspace (that needs the harness at
   the commit above; see AUDITOR_REPLAY).
@@ -154,17 +170,54 @@ const parseJson = (path, what) => {
   }
 };
 
+const MAX_FILE_BYTES = 1024 * 1024 * 1024;
+
+/** The verifier that ships must be a committed file: its commit is how an auditor checks it. */
+function verifierProvenance() {
+  const git = (args) =>
+    execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  let dirty;
+  let commit;
+  try {
+    dirty = git(['status', '--porcelain', '--', 'eval/lib/bundle-verify.mjs']).trim() !== '';
+    commit = git(['rev-parse', 'HEAD']).trim();
+  } catch {
+    throw new BundleError('BUNDLE_VERIFIER_UNPINNED', 'build bundles from a git clone of sakk');
+  }
+  if (dirty)
+    throw new BundleError(
+      'BUNDLE_VERIFIER_DIRTY',
+      'eval/lib/bundle-verify.mjs has uncommitted changes — an auditor could not check the verifier you ship',
+    );
+  return commit;
+}
+
 export function buildBundle({ source, to, now = new Date() }) {
   const src = resolve(source);
   const target = resolve(to);
+  if (to.endsWith('/') || !/\.(tgz|tar\.gz)$/.test(target))
+    throw new BundleError(
+      'BUNDLE_TARGET_INVALID',
+      `${to}: the target must be a .tgz or .tar.gz file path`,
+    );
+  let exists = true;
+  try {
+    lstatSync(target); // a dangling symlink counts as existing
+  } catch {
+    exists = false;
+  }
+  if (exists)
+    throw new BundleError('BUNDLE_TARGET_EXISTS', `${to} already exists — pick a fresh path`);
   if (!existsSync(join(src, 'metrics.json')))
     throw new BundleError(
       'BUNDLE_SOURCE_INVALID',
       `${source} has no metrics.json — not a completed run`,
     );
-  if (existsSync(target))
-    throw new BundleError('BUNDLE_TARGET_EXISTS', `${to} already exists — pick a fresh path`);
+  const verifierCommit = verifierProvenance();
   const files = inventory(src);
+  for (const f of files)
+    if (lstatSync(join(src, f)).size > MAX_FILE_BYTES)
+      throw new BundleError('BUNDLE_SOURCE_INVALID', `${f} is larger than 1 GiB`);
   const caseIds = [
     ...new Set(
       files
@@ -209,6 +262,11 @@ export function buildBundle({ source, to, now = new Date() }) {
       'BUNDLE_SOURCE_INVALID',
       'metrics.json names no executor mode (FAKE|REAL)',
     );
+  if (!Array.isArray(metrics.selected_cases) || !('stopped' in metrics))
+    throw new BundleError(
+      'BUNDLE_SOURCE_INVALID',
+      'metrics.json does not record selected_cases and stopped — re-run with this version of the runner',
+    );
 
   // The case definitions the run actually used are the ones at its commit,
   // not whatever this checkout holds now.
@@ -238,6 +296,7 @@ export function buildBundle({ source, to, now = new Date() }) {
     executorMode,
     mode: metrics.mode ?? executorMode,
     cases: caseIds,
+    verifierCommit,
     createdAt: now.toISOString(),
     sakkVersion: JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version,
   };
@@ -255,12 +314,23 @@ export function buildBundle({ source, to, now = new Date() }) {
     for (const [id, buf] of caseDefs) writeFileSync(join(b, 'cases', `${id}.json`), buf);
     writeFileSync(join(b, 'verify.mjs'), verifierBuf);
     writeFileSync(join(b, 'bundle.json'), `${JSON.stringify(meta, null, 1)}\n`);
-    writeFileSync(join(b, 'README.md'), README(meta, sha256(verifierBuf)));
-    const manifest = inventory(b).map((f) => `${sha256(readFileSync(join(b, f)))}  ${f}`);
-    writeFileSync(join(b, 'MANIFEST.sha256'), `${manifest.join('\n')}\n`);
+    // The README states the outcome, so verify once without it to learn it.
+    const manifestOf = () =>
+      writeFileSync(
+        join(b, 'MANIFEST.sha256'),
+        `${inventory(b)
+          .filter((f) => f !== 'MANIFEST.sha256')
+          .map((f) => `${sha256(readFileSync(join(b, f)))}  ${f}`)
+          .join('\n')}\n`,
+      );
+    manifestOf();
+    const pre = verifyBundle(b);
+    writeFileSync(join(b, 'README.md'), README(meta, sha256(verifierBuf), pre.status));
+    manifestOf();
 
+    // An INCOMPLETE run is still evidence and ships, labelled; a FAIL never does.
     const check = verifyBundle(b);
-    if (!check.ok)
+    if (check.status === 'FAIL')
       throw new BundleError(
         'BUNDLE_SELF_CHECK_FAILED',
         `the bundle fails its own verifier — not shipping it: ${check.problems.map((p) => `${p.code} ${p.detail}`).join('; ')}`,
@@ -281,7 +351,7 @@ export function buildBundle({ source, to, now = new Date() }) {
     execFileSync('tar', ['-xzf', partial, '-C', unpacked], { stdio: ['ignore', 'pipe', 'pipe'] });
     const shipped = verifyBundle(join(unpacked, name));
     if (
-      !shipped.ok ||
+      shipped.status !== check.status ||
       shipped.fingerprint !== check.fingerprint ||
       readdirSync(unpacked).length !== 1
     )
@@ -304,6 +374,8 @@ export function buildBundle({ source, to, now = new Date() }) {
     }
     return {
       to: target,
+      status: check.status,
+      incomplete: check.incomplete,
       fingerprint: check.fingerprint,
       verifierSha256: sha256(verifierBuf),
       meta,
@@ -329,9 +401,16 @@ if (isMain) {
     console.error('usage: node scripts/evidence-bundle.mjs <run-out-dir> --to <bundle.tgz>');
     process.exit(2);
   }
+  // A signal waits for the synchronous build, so the finally block always
+  // removes the temp archive and staging copy (SIGKILL excepted).
+  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(130));
   try {
     const r = buildBundle({ source, to });
     console.log(`bundle written: ${r.to}`);
+    if (r.status === 'INCOMPLETE') {
+      console.log('status:         INCOMPLETE — the auditor will see verify.mjs exit 3:');
+      for (const p of r.incomplete) console.log(`  △ ${p.code}  ${p.detail}`);
+    }
     console.log(`fingerprint:    ${r.fingerprint}   (= shasum -a 256 MANIFEST.sha256)`);
     console.log(`verifier:       ${r.verifierSha256}   (sha256 of verify.mjs)`);
     console.log(

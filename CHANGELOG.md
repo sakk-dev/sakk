@@ -33,6 +33,22 @@ evidence`): packs a run into one self-contained bundle — the out-dir, the
   an exclusive link — no partial file is ever left at the target.
   Authenticity is out of scope until the anchored ledger ships: a full
   rebuild passes verify.mjs; only the out-of-band fingerprint catches it.
+  Verify-pass round: a third outcome, **INCOMPLETE** (exit 3, like `sakk
+status`), for a genuine run with unsettled/unreconciled spend, unknown
+  cost, a stopped batch, or selected cases that never ran — such a run used
+  to read PASS while its spend was understated; it now ships labelled and
+  never reads PASS. The runner records `selected_cases` and `stopped` in
+  `metrics.json` (bundles refuse older run dirs). Per-case ledgers are
+  checked against sakk's ledger rules, this run's id and the case's budget
+  (`LEDGER_INVALID`); mode labels and trace model ids join the mode check;
+  pack reports recompute their quoted verdicts, commit, total and stop
+  record; lowercase rule names, duplicate JSON keys (`DUPLICATE_JSON_KEY`),
+  negative durations and empty directories (`EMPTY_DIRECTORY`) fail;
+  `verifyBundle` never throws. The shipped verifier must be committed
+  (`BUNDLE_VERIFIER_DIRTY`) and its commit is recorded (`verifierCommit`);
+  targets must be `.tgz`/`.tar.gz` (`BUNDLE_TARGET_INVALID`), a dangling
+  symlink counts as existing, files over 1 GiB are refused, and SIGINT /
+  SIGTERM no longer leave temp files (SIGKILL can).
 
 ### Fixed (hardening campaign, 2026-10-16)
 

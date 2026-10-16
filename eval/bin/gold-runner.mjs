@@ -756,7 +756,13 @@ if (isMain) {
     writeFileSync(
       join(outDir, 'metrics.json'),
       `${JSON.stringify(
-        { runId, mode: 'FAKE_EXECUTOR (harness validation, not a model baseline)', metrics },
+        {
+          runId,
+          mode: 'FAKE_EXECUTOR (harness validation, not a model baseline)',
+          selected_cases: cases.map((c) => c.id),
+          stopped: null,
+          metrics,
+        },
         null,
         1,
       )}\n`,
@@ -807,6 +813,7 @@ if (isMain) {
     }
     const claudeBin = process.env.CLAUDE_BIN ?? 'claude';
     const entries = [];
+    let stoppedInfo = null;
     for (const c of cases) {
       const { entry, stopBatch, refused } = runRealCase({
         caseDef: c,
@@ -822,20 +829,28 @@ if (isMain) {
         `${c.id}: ${entry.result.verdict} claim_source=${entry.trace.claim_source ?? 'n/a'}`,
       );
       if (stopBatch) {
-        console.error(
-          JSON.stringify({
-            stopped: true,
-            at: c.id,
-            why: refused ?? 'COST_UNKNOWN_RECONCILIATION_REQUIRED',
-          }),
-        );
+        stoppedInfo = { at: c.id, why: refused ?? 'COST_UNKNOWN_RECONCILIATION_REQUIRED' };
+        console.error(JSON.stringify({ stopped: true, ...stoppedInfo }));
         break;
       }
     }
     const metrics = aggregateMetrics(entries, { executorMode: 'REAL' });
     writeFileSync(
       join(outDir, 'metrics.json'),
-      `${JSON.stringify({ runId, mode: 'REAL', model_id: gate.auth.model_id, metrics }, null, 1)}\n`,
+      `${JSON.stringify(
+        {
+          runId,
+          mode: 'REAL',
+          model_id: gate.auth.model_id,
+          // A bundle must be able to tell a stopped or partial batch from a
+          // complete one: what was selected, and whether it stopped.
+          selected_cases: cases.map((c) => c.id),
+          stopped: stoppedInfo,
+          metrics,
+        },
+        null,
+        1,
+      )}\n`,
     );
     console.log(JSON.stringify({ runId, outDir, total: entries.length }));
     process.exit(entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1);

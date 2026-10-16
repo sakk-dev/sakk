@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  chmodSync,
   cpSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -62,6 +64,8 @@ const editJson = (b, rel, fn) => {
   writeFileSync(p, JSON.stringify(j));
 };
 const codes = (b) => verifyBundle(b).problems.map((p) => p.code);
+const gaps = (b) => verifyBundle(b).incomplete.map((p) => p.code);
+const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
 const forge = (b, rel, fn) => {
   editJson(b, rel, fn);
   reManifest(b);
@@ -235,7 +239,9 @@ describe('review B1: falsy or non-object JSON is a failure, never a skipped chec
       ['run/G03/ledger.json', (l) => (l.entries = [{ status: 'SETTLED' }])],
     ]) {
       const b = copyOf(PRISTINE);
-      assert.ok(forge(b, rel, fn).includes('CASE_FILE_INVALID'), rel);
+      const c = forge(b, rel, fn);
+      const want = rel.endsWith('ledger.json') ? 'LEDGER_INVALID' : 'CASE_FILE_INVALID';
+      assert.ok(c.includes(want), `${rel}: ${c.join()}`);
     }
   });
   test('a case without its ledger.json → CASE_FILE_INVALID (cost cannot be checked)', () => {
@@ -331,7 +337,7 @@ describe('review B4: the claims in the README are the checks in the code', () =>
         forge(b, 'run/metrics.json', (m) => (m.metrics[field] = value)).includes('METRIC_MISMATCH'),
       );
     });
-  test('a FAKE run relabelled REAL with a real-model pass rate → MODE_MISMATCH', () => {
+  test('metrics and bundle.json relabelled REAL while the traces still say FAKE → MODE_MISMATCH', () => {
     const b = copyOf(PRISTINE);
     editJson(b, 'run/metrics.json', (m) => {
       m.metrics.executor_mode = 'REAL';
@@ -419,5 +425,252 @@ describe("building: case definitions come from the run's own commit", () => {
       () => buildBundle({ source: src, to: join(tdir(), 'r.tgz') }),
       (e) => e.code === 'BUNDLE_SOURCE_INVALID',
     );
+  });
+});
+
+describe('verify pass N1: unresolved spend is never a PASS', () => {
+  const unresolved = (b) => {
+    editJson(b, 'run/G03/ledger.json', (l) => {
+      l.flags = {
+        reconciliationRequired: true,
+        reason: 'call x failed with unknowable actual cost',
+      };
+      l.entries.push({
+        callId: 'x',
+        runId: null,
+        taskId: null,
+        agentId: null,
+        estimatedMaxUsd: 1.9,
+        createdAt: new Date().toISOString(),
+        status: 'RECONCILIATION_REQUIRED',
+      });
+    });
+    editJson(b, 'run/G03/trace.json', (t) => (t.cost_known = false));
+    reManifest(b);
+  };
+  test('a reconciliation flag / unknown cost → INCOMPLETE with SPEND_UNRESOLVED, CLI exit 3', () => {
+    const b = copyOf(PRISTINE);
+    unresolved(b);
+    const r = verifyBundle(b);
+    assert.equal(r.status, 'INCOMPLETE');
+    assert.equal(r.ok, false);
+    assert.deepEqual(r.problems, []);
+    assert.ok(r.incomplete.some((p) => p.code === 'SPEND_UNRESOLVED'));
+    const cli = spawnSync(process.execPath, ['verify.mjs'], { cwd: b, encoding: 'utf8' });
+    assert.equal(cli.status, 3, cli.stdout);
+    assert.match(cli.stdout, /VERIFY INCOMPLETE/);
+  });
+  test('a RESERVED entry left open is unresolved spend too', () => {
+    const b = copyOf(PRISTINE);
+    editJson(b, 'run/G04/ledger.json', (l) =>
+      l.entries.push({ callId: 'open', estimatedMaxUsd: 1, createdAt: 'x', status: 'RESERVED' }),
+    );
+    reManifest(b);
+    assert.ok(gaps(b).includes('SPEND_UNRESOLVED'));
+  });
+  test('a stopped batch → BATCH_STOPPED; a selected case that never ran → CASES_NOT_RUN', () => {
+    const b = copyOf(PRISTINE);
+    editJson(b, 'run/metrics.json', (m) => {
+      m.stopped = { at: 'G12', why: 'COST_UNKNOWN_RECONCILIATION_REQUIRED' };
+      m.selected_cases.push('G13');
+    });
+    reManifest(b);
+    const g = gaps(b);
+    assert.ok(g.includes('BATCH_STOPPED') && g.includes('CASES_NOT_RUN'), g.join());
+  });
+  test('an INCOMPLETE run still builds — labelled, never PASS', () => {
+    const src = join(tdir(), 'run');
+    cpSync(RUN, src, { recursive: true });
+    const m = JSON.parse(readFileSync(join(src, 'metrics.json'), 'utf8'));
+    m.stopped = { at: 'G12', why: 'BUDGET' };
+    writeFileSync(join(src, 'metrics.json'), JSON.stringify(m));
+    const r = buildBundle({ source: src, to: join(tdir(), 'i.tgz') });
+    assert.equal(r.status, 'INCOMPLETE');
+    const b = unpack(r.to);
+    assert.match(readFileSync(join(b, 'README.md'), 'utf8'), /INCOMPLETE run/);
+    assert.equal(verifyBundle(b).status, 'INCOMPLETE');
+  });
+  test('a run dir from an older runner (no selected_cases/stopped) is refused at build', () => {
+    const src = join(tdir(), 'run');
+    cpSync(RUN, src, { recursive: true });
+    const m = JSON.parse(readFileSync(join(src, 'metrics.json'), 'utf8'));
+    delete m.selected_cases;
+    writeFileSync(join(src, 'metrics.json'), JSON.stringify(m));
+    assert.throws(
+      () => buildBundle({ source: src, to: join(tdir(), 'o.tgz') }),
+      (e) => e.code === 'BUNDLE_SOURCE_INVALID' && /selected_cases/.test(e.message),
+    );
+  });
+});
+
+describe('verify pass N2: ledgers obey sakk ledger rules and belong to this run', () => {
+  for (const [label, fn] of [
+    [
+      'a negative "refund" entry',
+      (l) => {
+        l.entries = [
+          { callId: 'a', estimatedMaxUsd: 5, status: 'SETTLED', actualUsd: 5 },
+          { callId: 'b', estimatedMaxUsd: 0, status: 'SETTLED', actualUsd: -4.6 },
+        ];
+      },
+    ],
+    ['a lowercase status', (l) => (l.entries[0].status = 'settled')],
+    ['another schema', (l) => (l.schema = 'something-else')],
+    ['another run', (l) => (l.initializedBy = 'gold-runner:gold-fake-other')],
+    ['a raised cap', (l) => (l.capUsd = 1000)],
+  ])
+    test(`G12 ledger with ${label} → LEDGER_INVALID`, () => {
+      const b = copyOf(PRISTINE);
+      assert.ok(forge(b, 'run/G12/ledger.json', fn).includes('LEDGER_INVALID'), label);
+    });
+  test('a case budget raised in cases/ no longer matches its ledger → LEDGER_INVALID', () => {
+    const b = copyOf(PRISTINE);
+    assert.ok(
+      forge(b, 'cases/G12.json', (c) => (c.max_budget_usd = 1000)).includes('LEDGER_INVALID'),
+    );
+  });
+});
+
+describe('verify pass N3: the shipped verifier is pinned to a commit', () => {
+  test('bundle.json and the README name the verifier commit', () => {
+    const meta = JSON.parse(readFileSync(join(PRISTINE, 'bundle.json'), 'utf8'));
+    assert.match(meta.verifierCommit, /^[0-9a-f]{40}$/);
+    assert.match(
+      readFileSync(join(PRISTINE, 'README.md'), 'utf8'),
+      new RegExp(`git show ${meta.verifierCommit}:eval/lib/bundle-verify.mjs`),
+    );
+  });
+  test('a checkout with an uncommitted verifier refuses to build (BUNDLE_VERIFIER_DIRTY)', () => {
+    const repo = join(tdir(), 'r');
+    for (const part of ['eval', 'scripts', 'src', 'package.json'])
+      cpSync(join(HERE, '..', part), join(repo, part), { recursive: true });
+    const g = (...a) => execFileSync('git', a, { cwd: repo, stdio: 'ignore' });
+    g('init', '-q');
+    g('add', '-A');
+    g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'x');
+    writeFileSync(
+      join(repo, 'eval/lib/bundle-verify.mjs'),
+      `${readFileSync(join(repo, 'eval/lib/bundle-verify.mjs'), 'utf8')}\n// patched\n`,
+    );
+    const r = spawnSync(
+      process.execPath,
+      [join(repo, 'scripts/evidence-bundle.mjs'), RUN, '--to', join(tdir(), 'd.tgz')],
+      { encoding: 'utf8' },
+    );
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /BUNDLE_VERIFIER_DIRTY/);
+  });
+});
+
+describe('verify pass N4/N6/N8: labels, pack reports, rule names, duplicate keys', () => {
+  test('a FAKE bundle whose mode label claims a real baseline → MODE_MISMATCH', () => {
+    const b = copyOf(PRISTINE);
+    editJson(b, 'run/metrics.json', (m) => (m.mode = 'REAL model baseline (production)'));
+    const c = forge(b, 'bundle.json', (x) => (x.mode = 'REAL model baseline (production)'));
+    assert.ok(c.includes('MODE_MISMATCH'), c.join());
+  });
+  test('a FAKE bundle whose traces name a production model → MODE_MISMATCH', () => {
+    const b = copyOf(PRISTINE);
+    assert.ok(
+      forge(b, 'run/G01/trace.json', (t) => (t.model_id = 'claude-opus-4')).includes(
+        'MODE_MISMATCH',
+      ),
+    );
+  });
+  test('a pack report quoting wrong verdicts, absent cases, another commit or a wrong total → PACK_STATUS_MISMATCH', () => {
+    const b = copyOf(PRISTINE);
+    const meta = JSON.parse(readFileSync(join(b, 'bundle.json'), 'utf8'));
+    writeFileSync(
+      join(b, 'run/pack-report.json'),
+      JSON.stringify({
+        executor_mode: 'FAKE',
+        run_id: meta.runId,
+        harness_commit: 'f'.repeat(40),
+        batch_stopped: null,
+        covered: 0,
+        total: 7,
+        requirements: [
+          {
+            id: 'r',
+            status: 'HARNESS_ONLY',
+            cases: [
+              { case: 'G05', verdict: 'FAIL' },
+              { case: 'G99', verdict: 'PASS' },
+            ],
+          },
+        ],
+      }),
+    );
+    reManifest(b);
+    const details = verifyBundle(b)
+      .problems.filter((p) => p.code === 'PACK_STATUS_MISMATCH')
+      .map((p) => p.detail)
+      .join(' | ');
+    for (const needle of ['G05 reported', 'G99 reported', 'harness_commit', 'total'])
+      assert.ok(details.includes(needle), `${needle} in ${details}`);
+  });
+  test('a lowercase violation rule (escapes its counter) → CASE_FILE_INVALID', () => {
+    const b = copyOf(PRISTINE);
+    const c = forge(b, 'run/G07/result.json', (r) => {
+      r.verdict = 'FAIL';
+      r.violations = [{ rule: 'secret_leak', detail: 'x' }];
+    });
+    assert.ok(c.includes('CASE_FILE_INVALID'), c.join());
+  });
+  test('duplicate JSON keys (readers disagree on the winner) → DUPLICATE_JSON_KEY', () => {
+    const b = copyOf(PRISTINE);
+    const p = join(b, 'run/G07/result.json');
+    const r = JSON.parse(readFileSync(p, 'utf8'));
+    writeFileSync(
+      p,
+      `{"case_id":"${r.case_id}","run_id":"${r.run_id}","verdict":"FAIL","violations":[{"rule":"SECRET_LEAK","detail":"x"}],"verdict":"PASS","violations":[]}`,
+    );
+    reManifest(b);
+    assert.ok(codes(b).includes('DUPLICATE_JSON_KEY'));
+  });
+  test('a negative duration → CASE_FILE_INVALID; an empty run/G13 → EMPTY_DIRECTORY', () => {
+    const b = copyOf(PRISTINE);
+    assert.ok(
+      forge(b, 'run/G02/trace.json', (t) => (t.duration_ms = -1e9)).includes('CASE_FILE_INVALID'),
+    );
+    const c = copyOf(PRISTINE);
+    mkdirSync(join(c, 'run', 'G13'));
+    assert.ok(codes(c).includes('EMPTY_DIRECTORY'));
+  });
+});
+
+describe('verify pass N7/N10: never throws, targets are checked', () => {
+  test('an unreadable listed file is a named problem, not an exception', { skip: isRoot }, () => {
+    const b = copyOf(PRISTINE);
+    chmodSync(join(b, 'run/G01/result.json'), 0o000);
+    try {
+      assert.ok(codes(b).includes('FILE_UNREADABLE'));
+    } finally {
+      chmodSync(join(b, 'run/G01/result.json'), 0o644);
+    }
+  });
+  test('a metric holding an object with toString/valueOf does not crash the verifier', () => {
+    const b = copyOf(PRISTINE);
+    const c = forge(
+      b,
+      'run/metrics.json',
+      (m) => (m.metrics.case_pass_rate = { toString: 1, valueOf: 1 }),
+    );
+    assert.ok(c.includes('METRIC_MISMATCH'));
+  });
+  test('target "dir/", a non-.tgz name, or a dangling symlink → refused, nothing written', () => {
+    const d = tdir();
+    for (const to of [join(d, 'dir') + '/', join(d, 'bundle.zip')])
+      assert.throws(
+        () => buildBundle({ source: RUN, to }),
+        (e) => e.code === 'BUNDLE_TARGET_INVALID',
+        to,
+      );
+    symlinkSync(join(d, 'nowhere'), join(d, 'dangling.tgz'));
+    assert.throws(
+      () => buildBundle({ source: RUN, to: join(d, 'dangling.tgz') }),
+      (e) => e.code === 'BUNDLE_TARGET_EXISTS' && !/appeared/.test(e.message),
+    );
+    assert.deepEqual(readdirSync(d).sort(), ['dangling.tgz']);
   });
 });
