@@ -5,25 +5,30 @@
 //
 // 1. ONE exemption, and it is a declared fiction: a SECRET (the part of a
 //    match that carries the credential) is exempt only if it contains
-//    TEST_ONLY_FAKE_SECRET_DO_NOT_USE. No localhost pass, never a list of
-//    real fragments — the predecessor leaked through exactly such a list.
+//    TEST_ONLY_FAKE_SECRET_DO_NOT_USE and nothing secret-shaped remains once
+//    the token is removed. No localhost pass, never a list of real
+//    fragments — the predecessor leaked through exactly such a list.
 // 2. Output never contains a secret: rule, path, line and a keyed 12-hex
 //    fingerprint. The key is random per process (set SAKK_SCAN_KEY to make
 //    fingerprints comparable across runs — and keep that key private), so a
-//    public CI log cannot be dictionary-reversed. A path that itself
-//    contains a secret is printed redacted and counted as a finding.
+//    public CI log cannot be dictionary-reversed. A name that itself
+//    contains a secret is printed redacted and counted as a finding; control
+//    characters in names are escaped so a file name cannot forge output.
 // 3. A scan that could not look everywhere it was told to does not report
-//    "clean": missing or unreadable inputs are errors, skips are counted.
+//    "clean": missing, unreadable, special or oversize inputs are errors,
+//    skips are counted.
 // 4. Every pattern is length-bounded: a hostile line costs linear time.
 
 import { execFileSync } from 'node:child_process';
 import { createHmac, randomBytes } from 'node:crypto';
-import { lstatSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
 export const FICTIONAL_EXEMPTION_TOKEN = 'TEST_ONLY_FAKE_SECRET_DO_NOT_USE';
 /** The entire exemption list. A test pins it to exactly this one entry. */
 export const EXEMPTIONS = Object.freeze([FICTIONAL_EXEMPTION_TOKEN]);
+/** Larger blobs/files are reported unreadable (exit 2), never silently passed. */
+export const MAX_SCAN_BYTES = 256 * 1024 * 1024;
 
 export class ScanError extends Error {
   constructor(code, message) {
@@ -38,31 +43,55 @@ export class ScanError extends Error {
 export const RULES = Object.freeze([
   {
     name: 'dsn_with_password',
-    re: /(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^\s"'@/:]{1,256}:([^\s"'@]{1,256})@/gi,
+    re: /(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|rediss?|amqps?|mssql|sqlserver):\/\/[^\s"'@/:]{0,256}:([^\s"'@]{1,256})@/gi,
     group: 1,
   },
   {
     name: 'url_encoded_password',
-    re: /:\/\/[^\s"'@/:]{1,256}:((?=[^\s"'@]{0,256}%[0-9a-fA-F]{2})[^\s"'@]{1,256})@/g,
+    re: /:\/\/[^\s"'@/:]{0,256}:((?=[^\s"'@]{0,256}%[0-9a-fA-F]{2})[^\s"'@]{1,256})@/g,
     group: 1,
   },
   { name: 'aws_access_key', re: /\bAKIA[0-9A-Z]{16}\b/g },
-  { name: 'generic_api_key', re: /\b(?:sk|rk)[-_](?:live_|test_)?[A-Za-z0-9_-]{20,200}/g },
+  {
+    // `sk-…` (OpenAI/Anthropic style) or Stripe-style `sk_live_`/`rk_test_`;
+    // a digit is required so identifiers like sk_set_flags never match.
+    name: 'generic_api_key',
+    re: /\b(?:sk-(?=[A-Za-z0-9_-]{0,200}\d)[A-Za-z0-9_-]{20,200}|[sr]k_(?:live|test)_(?=[A-Za-z0-9]{0,200}\d)[A-Za-z0-9]{20,200})/g,
+  },
   {
     name: 'github_token',
     re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{22,255})/g,
   },
   { name: 'private_key_block', re: /-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----/g },
-  { name: 'bearer_token', re: /\bBearer\s{1,5}[A-Za-z0-9._-]{25,500}/g },
+  { name: 'bearer_token', re: /\bBearer[ \t]{1,5}[A-Za-z0-9._-]{25,500}/g },
   {
     name: 'password_assignment',
-    re: /(?:password|passwd|pwd)["']?\s{0,10}[:=]\s{0,10}["']([^"'\n]{8,256})["']/gi,
+    re: /(?:password|passwd|pwd)["']?[ \t]{0,40}[:=][ \t]{0,40}["']([^"'\n]{8,256})["']/gi,
     group: 1,
   },
 ]);
 
 const KEY = process.env.SAKK_SCAN_KEY ? Buffer.from(process.env.SAKK_SCAN_KEY) : randomBytes(32);
 const fingerprint = (value) => createHmac('sha256', KEY).update(value).digest('hex').slice(0, 12);
+
+function rawFindings(text) {
+  const out = [];
+  for (const rule of RULES) {
+    const re = new RegExp(rule.re.source, rule.re.flags);
+    let m;
+    while ((m = re.exec(text)) !== null)
+      out.push({ rule, index: m.index, secret: rule.group ? m[rule.group] : m[0] });
+  }
+  return out;
+}
+
+/** Exempt only a declared fiction with nothing secret-shaped left beside the token. */
+function isExempt(secret) {
+  if (!EXEMPTIONS.some((t) => secret.includes(t))) return false;
+  let rest = secret;
+  for (const t of EXEMPTIONS) rest = rest.split(t).join(' ');
+  return rawFindings(rest).length === 0;
+}
 
 /** Scan one text. Returns { findings: [{rule,path,line,fingerprint}], exempted }. */
 export function scanText(text, path = '(inline)') {
@@ -83,44 +112,68 @@ export function scanText(text, path = '(inline)') {
     }
     return lo + 1;
   };
-  for (const rule of RULES) {
-    const re = new RegExp(rule.re.source, rule.re.flags);
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      const secret = rule.group ? m[rule.group] : m[0];
-      if (EXEMPTIONS.some((t) => secret.includes(t))) {
-        exempted += 1; // counted, never silent
-        continue;
-      }
-      findings.push({
-        rule: rule.name,
-        path,
-        line: lineOf(m.index),
-        fingerprint: fingerprint(secret),
-      });
+  for (const h of rawFindings(text)) {
+    if (isExempt(h.secret)) {
+      exempted += 1; // counted, never silent
+      continue;
     }
+    findings.push({
+      rule: h.rule.name,
+      path,
+      line: lineOf(h.index),
+      fingerprint: fingerprint(h.secret),
+    });
   }
   return { findings, exempted };
 }
 
-/** Paths are output too: a path containing a secret is redacted AND reported. */
-function displayPath(p, findings) {
-  const hits = scanText(p, '(path)').findings;
-  if (hits.length === 0) return p;
-  const shown = `[redacted path ${hits[0].fingerprint}]`;
-  for (const h of hits) findings.push({ ...h, path: shown, line: 0 });
-  return shown;
+/** Names are output too: escape control characters, redact anything secret-shaped. */
+function display(p) {
+  const hits = rawFindings(p).filter((h) => !isExempt(h.secret));
+  if (hits.length > 0) return `[redacted path ${fingerprint(hits[0].secret)}]`;
+  // eslint-disable-next-line no-control-regex
+  return p.replace(
+    /[\x00-\x1f\x7f]/g,
+    (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`,
+  );
+}
+
+/** A secret in a name is a finding — counted once, at the entry that carries it. */
+function nameFindings(name, shown, findings) {
+  for (const h of rawFindings(name))
+    if (!isExempt(h.secret))
+      findings.push({
+        rule: h.rule.name,
+        path: shown,
+        line: 0,
+        fingerprint: fingerprint(h.secret),
+      });
 }
 
 const SKIP_DIR = new Set(['node_modules', '.git', '.next', 'dist']);
 const SKIP_EXT = /\.(png|jpe?g|gif|zip|gz|tgz|woff2?|ico|mp4|bundle)$/i;
 
-/** Decode for scanning; UTF-16 (BOM) is text, a NUL in UTF-8 is binary. */
+function utf32(buf, le) {
+  let s = '';
+  for (let i = 0; i + 3 < buf.length; i += 4) {
+    const cp = le ? buf.readUInt32LE(i) : buf.readUInt32BE(i);
+    if (cp > 0x10ffff) return null;
+    s += String.fromCodePoint(cp);
+  }
+  return s;
+}
+
+/** Decode for scanning: UTF-32/UTF-16 by BOM are text; a NUL in UTF-8 is binary. */
 function asText(buf) {
+  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xfe && buf[2] === 0 && buf[3] === 0)
+    return utf32(buf.subarray(4), true);
+  if (buf.length >= 4 && buf[0] === 0 && buf[1] === 0 && buf[2] === 0xfe && buf[3] === 0xff)
+    return utf32(buf.subarray(4), false);
+  const even = (b) => b.subarray(0, b.length - (b.length % 2));
   if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe)
-    return buf.subarray(2).toString('utf16le');
+    return even(buf.subarray(2)).toString('utf16le');
   if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
-    const swapped = Buffer.from(buf.subarray(2));
+    const swapped = Buffer.from(even(buf.subarray(2)));
     swapped.swap16();
     return swapped.toString('utf16le');
   }
@@ -129,37 +182,58 @@ function asText(buf) {
 }
 
 /**
- * Scan files/directories. Explicit roots must exist (SCAN_PATH_MISSING)
- * and are scanned even if their name is in the skip list; only DISCOVERED
- * children are skipped. Symlinks are never followed. Unreadable entries are
- * collected — the caller must not call the result clean.
+ * Scan files/directories. Explicit roots must exist (SCAN_PATH_MISSING),
+ * are followed if they are links, and are scanned even if their name is in
+ * the skip list; a root that is not a file or directory (fifo, device) is
+ * unreadable. Only DISCOVERED children are skipped; links among them are
+ * never followed. Unreadable entries are collected — the caller must not
+ * call the result clean.
  */
 export function scanPaths(paths) {
   const findings = [];
   const unreadable = [];
-  const skipped = { symlink: 0, binary: 0, ignoredDir: 0, ignoredExt: 0 };
+  const skipped = { symlink: 0, binary: 0, ignoredDir: 0, ignoredExt: 0, special: 0 };
   let exempted = 0;
   let scanned = 0;
-  const present = (p) => {
+  for (const p of paths) {
     try {
       lstatSync(p);
-      return true;
     } catch {
-      return false;
-    }
-  };
-  for (const p of paths)
-    if (!present(p))
       throw new ScanError(
         'SCAN_PATH_MISSING',
-        `${displayPath(p, [])} does not exist — a scan of nothing is not a pass`,
+        `${display(p)} does not exist — a scan of nothing is not a pass`,
       );
+    }
+  }
+  const scanFile = (p, shown, size) => {
+    if (size > MAX_SCAN_BYTES) {
+      unreadable.push(`${shown} (larger than ${MAX_SCAN_BYTES} bytes)`);
+      return;
+    }
+    let text;
+    try {
+      text = asText(readFileSync(p));
+    } catch {
+      unreadable.push(shown);
+      return;
+    }
+    if (text === null) {
+      skipped.binary += 1;
+      return;
+    }
+    scanned += 1;
+    const r = scanText(text, shown);
+    findings.push(...r.findings);
+    exempted += r.exempted;
+  };
   const walk = (p, explicit) => {
+    const shown = display(p);
+    nameFindings(explicit ? p : basename(p), shown, findings);
     let st;
     try {
-      st = lstatSync(p);
+      st = explicit ? statSync(p) : lstatSync(p);
     } catch {
-      unreadable.push(displayPath(p, findings));
+      unreadable.push(shown);
       return;
     }
     if (st.isSymbolicLink()) {
@@ -167,7 +241,7 @@ export function scanPaths(paths) {
       return;
     }
     if (st.isDirectory()) {
-      if (!explicit && SKIP_DIR.has(p.split('/').pop())) {
+      if (!explicit && SKIP_DIR.has(basename(p))) {
         skipped.ignoredDir += 1;
         return;
       }
@@ -175,96 +249,138 @@ export function scanPaths(paths) {
       try {
         names = readdirSync(p);
       } catch {
-        unreadable.push(displayPath(p, findings));
+        unreadable.push(shown);
         return;
       }
       for (const name of names) walk(join(p, name), false);
       return;
     }
-    if (!st.isFile()) return;
-    const shown = displayPath(p, findings);
+    if (!st.isFile()) {
+      if (explicit) unreadable.push(`${shown} (not a regular file)`);
+      else skipped.special += 1;
+      return;
+    }
     if (!explicit && SKIP_EXT.test(p)) {
       skipped.ignoredExt += 1;
       return;
     }
-    let buf;
-    try {
-      buf = readFileSync(p);
-    } catch {
-      unreadable.push(shown);
-      return;
-    }
-    const text = asText(buf);
-    if (text === null) {
-      skipped.binary += 1;
-      return;
-    }
-    scanned += 1;
-    const r = scanText(text, shown);
-    findings.push(...r.findings);
-    exempted += r.exempted;
+    scanFile(p, shown, st.size);
   };
   for (const p of paths) walk(p, true);
   return { findings, exempted, scanned, skipped, unreadable };
 }
 
 /**
- * Scan exactly what `git commit` is about to record: the STAGED blob of
- * every added/copied/modified/renamed/TYPE-CHANGED path, read by blob id
- * (no `:path` parsing, so names like `0:foo` cannot be misread). Gitlinks
- * (submodules) carry no content here and are skipped, counted.
+ * Scan exactly what `git commit` is about to record. The blob id and mode of
+ * every added/modified/type-changed path come from ONE `git diff --cached
+ * --raw -z` record each — no join on decoded names (two names that decode
+ * alike, or cwd-relative vs root-relative paths, cannot hide a blob).
+ * Gitlinks carry no content here and are skipped, counted; a staged
+ * symlink's target string is committed content and is scanned.
  */
 export function scanStaged(cwd = process.cwd()) {
-  const git = (args, opts = {}) =>
-    execFileSync('git', args, {
-      cwd,
-      maxBuffer: 1 << 28,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      ...opts,
-    });
+  const git = (args, opts = {}) => {
+    try {
+      return execFileSync('git', args, {
+        cwd,
+        maxBuffer: Number.POSITIVE_INFINITY,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        ...opts,
+      });
+    } catch (e) {
+      if (e.code === 'ENOENT') throw new ScanError('SCAN_GIT_MISSING', 'git is not on PATH');
+      throw e;
+    }
+  };
   try {
     git(['rev-parse', '--git-dir']);
-  } catch {
+  } catch (e) {
+    if (e instanceof ScanError) throw e;
     throw new ScanError('SCAN_NOT_A_REPO', '--staged must run inside a git repository');
   }
-  const names = git(['diff', '--cached', '--name-only', '-z', '--diff-filter=ACMRT'], {
-    encoding: 'utf8',
-  })
-    .split('\0')
-    .filter(Boolean);
-  const index = new Map();
-  for (const rec of git(['ls-files', '-s', '-z'], { encoding: 'utf8' })
-    .split('\0')
-    .filter(Boolean)) {
-    const tab = rec.indexOf('\t');
-    const [mode, sha] = rec.slice(0, tab).split(' ');
-    index.set(rec.slice(tab + 1), { mode, sha });
+  const raw = git([
+    'diff',
+    '--cached',
+    '--raw',
+    '-z',
+    '--no-renames',
+    '--no-abbrev',
+    '--diff-filter=AMT',
+  ]);
+  const tokens = [];
+  for (let start = 0, i = raw.indexOf(0); i !== -1; start = i + 1, i = raw.indexOf(0, start))
+    tokens.push(raw.subarray(start, i));
+  const records = [];
+  for (let i = 0; i < tokens.length; i += 2) {
+    const m = tokens[i]
+      .toString('latin1')
+      .match(/^:\d{6} (\d{6}) [0-9a-f]{40,64} ([0-9a-f]{40,64}) ([AMT])$/);
+    if (!m || tokens[i + 1] === undefined)
+      throw new ScanError('SCAN_FAILED', 'unexpected `git diff --raw` output — refusing to guess');
+    records.push({ mode: m[1], sha: m[2], name: tokens[i + 1].toString('utf8') });
   }
   const findings = [];
-  const skipped = { gitlink: 0, binary: 0, symlink: 0 };
+  const unreadable = [];
+  const skipped = { gitlink: 0, binary: 0 };
   let exempted = 0;
   let scanned = 0;
-  for (const name of names) {
-    const shown = displayPath(name, findings);
-    const e = index.get(name);
-    if (!e) continue;
-    if (e.mode === '160000') {
+  const todo = [];
+  for (const r of records) {
+    const shown = display(r.name);
+    nameFindings(r.name, shown, findings);
+    if (r.mode === '160000') {
       skipped.gitlink += 1;
       continue;
     }
-    if (e.mode === '120000') {
-      skipped.symlink += 1; // the link target string, not file content
-      continue;
-    }
-    const text = asText(git(['cat-file', 'blob', e.sha]));
-    if (text === null) {
-      skipped.binary += 1;
-      continue;
-    }
-    scanned += 1;
-    const r = scanText(text, shown);
-    findings.push(...r.findings);
-    exempted += r.exempted;
+    todo.push({ ...r, shown });
   }
-  return { findings, exempted, scanned, skipped, unreadable: [] };
+  if (todo.length === 0) return { findings, exempted, scanned, skipped, unreadable };
+  const sizes = git(['cat-file', '--batch-check=%(objectsize)'], {
+    input: `${todo.map((t) => t.sha).join('\n')}\n`,
+    encoding: 'utf8',
+  })
+    .trim()
+    .split('\n')
+    .map(Number);
+  if (sizes.length !== todo.length)
+    throw new ScanError('SCAN_FAILED', 'git cat-file returned a different number of objects');
+  let batch = [];
+  let bytes = 0;
+  const flush = () => {
+    if (batch.length === 0) return;
+    const out = git(['cat-file', '--batch'], {
+      input: `${batch.map((t) => t.sha).join('\n')}\n`,
+    });
+    let off = 0;
+    for (const t of batch) {
+      const nl = out.indexOf(10, off);
+      const header = out.subarray(off, nl).toString('latin1').split(' ');
+      if (header[0] !== t.sha || header[1] !== 'blob')
+        throw new ScanError('SCAN_FAILED', `git cat-file did not return blob ${t.sha}`);
+      const size = Number(header[2]);
+      const text = asText(out.subarray(nl + 1, nl + 1 + size));
+      off = nl + 1 + size + 1;
+      if (text === null) {
+        skipped.binary += 1;
+        continue;
+      }
+      scanned += 1;
+      const r = scanText(text, t.shown);
+      findings.push(...r.findings);
+      exempted += r.exempted;
+    }
+    batch = [];
+    bytes = 0;
+  };
+  todo.forEach((t, i) => {
+    if (!(sizes[i] >= 0) || sizes[i] > MAX_SCAN_BYTES) {
+      unreadable.push(`${t.shown} (larger than ${MAX_SCAN_BYTES} bytes)`);
+      return;
+    }
+    if (bytes + sizes[i] > 64 * 1024 * 1024) flush();
+    batch.push(t);
+    bytes += sizes[i];
+  });
+  flush();
+  return { findings, exempted, scanned, skipped, unreadable };
 }

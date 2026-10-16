@@ -147,37 +147,49 @@ actions; an enforcer composes the two: `decide()` → on `allow` only →
 ## Secret scanning
 
 ```bash
+npm install --save-dev sakk     # the hook runs THIS installed copy — not npx
 npx sakk scan src config        # scan paths; exit 1 if anything is found
 npx sakk scan --install-hook    # refuse commits that contain secrets
 ```
 
-It recognizes eight formats: database URLs with a password, URL-encoded
-passwords, AWS access keys, `sk-`/`sk_live_`-style API keys, GitHub tokens
-(classic and fine-grained), private-key blocks, bearer tokens, and quoted
-`password = "…"` assignments. It does NOT catch secrets in any other shape
-— an unquoted `.env` line such as `PASSWORD=hunter2hunter2`, a bare random
-string, personal data. A clean scan means "none of these formats", not "no
-secrets".
+It recognizes eight formats: database URLs with a password (`postgres`,
+`postgresql`, `mysql`, `mariadb`, `mongodb`, `mongodb+srv`, `redis`, `rediss`,
+`amqp`, `amqps`, `mssql`, `sqlserver`), URL-encoded passwords in any URL,
+AWS access keys, `sk-…` and `sk_live_`/`sk_test_`/`rk_…` API keys (with at
+least one digit, so identifiers like `sk_set_flags` don't match), GitHub
+tokens (classic and fine-grained), private-key blocks, bearer tokens, and
+quoted `password = "…"` assignments. It does NOT catch secrets in any other
+shape — an unquoted `.env` line such as `PASSWORD=hunter2hunter2`, other URL
+schemes, a bare random string, personal data. A clean scan means "none of
+these formats", not "no secrets".
 
 Findings print the rule, path, line and a 12-character keyed fingerprint —
 never the secret. The key is random per run; set `SAKK_SCAN_KEY` (and keep
 it private) when you need to compare fingerprints across runs. A file name
-that itself contains a secret is printed redacted and counted as a finding.
-The only exemption is a secret that declares itself fake by containing
-`TEST_ONLY_FAKE_SECRET_DO_NOT_USE`; there is no localhost exception.
+that itself contains a secret is printed redacted and counted as a finding;
+control characters in names are printed escaped. The only exemption is a
+secret that declares itself fake by containing
+`TEST_ONLY_FAKE_SECRET_DO_NOT_USE` with nothing secret-shaped beside it;
+there is no localhost exception.
 
 Exit codes: 0 clean, 1 findings, 2 the scan could not do its job — a path
-that does not exist (`SCAN_PATH_MISSING`), a file it could not read
-(`SCAN_UNREADABLE`), not a git repository, an existing hook. Paths you name
-are always scanned (even `dist/`); inside them, `node_modules`, `.git`,
-`.next`, `dist`, symlinks and binary files are skipped and the skips are
-counted in the summary.
+that does not exist (`SCAN_PATH_MISSING`), a file it could not read, a fifo
+or device, or anything over 256 MB (`SCAN_UNREADABLE`), not a git repository,
+git missing, an existing or unwritable hook, `--staged` combined with paths
+(`SCAN_USAGE`). Paths you name are always scanned (even `dist/`, even
+through a symlink); inside them, `node_modules`, `.git`, `.next`, `dist`,
+symlinks and binary files are skipped and the skips are counted in the
+summary. UTF-16 and UTF-32 files (with a byte-order mark) are scanned as
+text.
 
-`--install-hook` writes a pre-commit hook that runs THIS installation by
-absolute path (no `npx` lookup at commit time) against the STAGED content —
-what the commit would record, including type changes. It refuses if any
-pre-commit hook already exists, even a dangling symlink; re-run it if you
-move or reinstall sakk.
+`--staged` scans exactly what the commit would record — every added,
+modified or type-changed blob in the index, wherever you run it from;
+a staged symlink's target counts as content. `--install-hook` writes a
+pre-commit hook that runs the installed sakk by absolute path. It refuses
+if any pre-commit hook already exists (even a dangling symlink), and it
+refuses to install from the temporary `npx` cache (`SCAN_HOOK_EPHEMERAL`) —
+that copy disappears when the cache is cleaned. Re-run it if you move or
+reinstall sakk.
 
 ## MCP: put the gate in front of any agent
 

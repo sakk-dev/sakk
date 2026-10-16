@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
-import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -218,6 +218,8 @@ if (cmd === 'init') {
     version: pkg.version,
   });
 } else if (cmd === 'scan') {
+  // process.exitCode, never process.exit: an early exit truncates piped
+  // output (the summary line could be lost behind a slow reader).
   const report = (r) => {
     for (const f of r.findings) console.log(`${f.path}:${f.line}  ${f.rule}  fp=${f.fingerprint}`);
     const skips = Object.entries(r.skipped ?? {})
@@ -232,34 +234,48 @@ if (cmd === 'init') {
       console.error(
         `SCAN_UNREADABLE: ${r.unreadable.length} path(s) could not be read: ${r.unreadable.slice(0, 5).join(', ')}`,
       );
-      process.exit(2);
-    }
-    process.exit(r.findings.length === 0 ? 0 : 1);
+      process.exitCode = 2;
+    } else process.exitCode = r.findings.length === 0 ? 0 : 1;
   };
+  const usage = (msg) => {
+    console.error(`SCAN_USAGE: ${msg}`);
+    process.exitCode = 2;
+  };
+  const paths = argv.slice(1).filter((a) => !a.startsWith('--'));
   if (flag('install-hook')) {
     let hooksDir;
     try {
       hooksDir = execFileSync('git', ['rev-parse', '--git-path', 'hooks'], {
         encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
       }).trim();
     } catch {
       console.error('SCAN_NOT_A_REPO: run --install-hook inside a git repository');
       process.exit(2);
     }
     const hook = join(hooksDir, 'pre-commit');
-    // Review S-1: never `npx sakk` — an unpublished name can be squatted,
-    // and npx auto-installs without a TTY (git hooks have none). The hook
-    // runs THIS installation by absolute path; reinstall after moving it.
+    // Review S-1: never `npx sakk` at commit time — the hook runs THIS
+    // installation by absolute path. An installation inside the npx cache
+    // is temporary: once the cache is cleaned every commit would fail.
     const self = realpathSync(fileURLToPath(import.meta.url));
-    const body = `#!/bin/sh\n# installed by sakk scan --install-hook (re-run it if sakk moves)\n"${process.execPath}" "${self}" scan --staged || exit 1\n`;
+    if (/[\\/]_npx[\\/]/.test(self)) {
+      console.error(
+        'SCAN_HOOK_EPHEMERAL: this sakk runs from the temporary npx cache — install it first (npm install --save-dev sakk, or npm install -g sakk), then run the installed `sakk scan --install-hook`',
+      );
+      process.exit(2);
+    }
+    const q = (x) => `'${x.replace(/'/g, `'\\''`)}'`;
+    const line = `${q(process.execPath)} ${q(self)} scan --staged || exit 1`;
+    const body = `#!/bin/sh\n# installed by sakk scan --install-hook (re-run it if sakk moves)\n${line}\n`;
     try {
       // 'wx' = O_EXCL: refuses ANY existing entry, a dangling symlink
       // included, so an existing hook is never overwritten or written through.
       writeFileSync(hook, body, { flag: 'wx', mode: 0o755 });
+      chmodSync(hook, 0o755); // the create mode is masked by umask; git ignores a non-executable hook
     } catch (e) {
       if (e.code === 'EEXIST') {
         console.error(
-          `SCAN_HOOK_EXISTS: ${hook} already exists — add this line to it instead:\n  "${process.execPath}" "${self}" scan --staged || exit 1`,
+          `SCAN_HOOK_EXISTS: ${hook} already exists — add this line to it instead:\n  ${line}`,
         );
         process.exit(2);
       }
@@ -267,28 +283,23 @@ if (cmd === 'init') {
         console.error(`SCAN_HOOK_DIR_MISSING: ${hooksDir} does not exist (check core.hooksPath)`);
         process.exit(2);
       }
-      throw e;
+      console.error(`SCAN_HOOK_UNWRITABLE: ${hook} could not be written (${e.code ?? e.message})`);
+      process.exit(2);
     }
     console.log(
       `pre-commit hook installed: ${hook} — commits containing recognized secrets will be refused`,
     );
-    process.exit(0);
-  }
-  try {
-    if (flag('staged')) report(scanStaged());
-    const paths = argv.slice(1).filter((a) => !a.startsWith('--'));
-    if (paths.length === 0) {
-      console.error('scan requires paths, --staged, or --install-hook');
-      process.exit(2);
+  } else if (flag('staged') && paths.length > 0) {
+    usage('--staged scans the index and takes no paths — run the two scans separately');
+  } else if (!flag('staged') && paths.length === 0) {
+    usage('scan requires paths, --staged, or --install-hook');
+  } else {
+    try {
+      report(flag('staged') ? scanStaged() : scanPaths(paths));
+    } catch (e) {
+      console.error(e instanceof ScanError ? e.message : `SCAN_FAILED: ${e.code ?? e.message}`);
+      process.exitCode = 2;
     }
-    report(scanPaths(paths));
-  } catch (e) {
-    if (e instanceof ScanError) {
-      console.error(e.message);
-      process.exit(2);
-    }
-    console.error(`SCAN_FAILED: ${e.code ?? e.message}`);
-    process.exit(2);
   }
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);

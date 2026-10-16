@@ -27,6 +27,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   job (`SCAN_PATH_MISSING`, `SCAN_UNREADABLE`, `SCAN_NOT_A_REPO`,
   `SCAN_HOOK_EXISTS`, `SCAN_HOOK_DIR_MISSING`, `SCAN_FAILED`). Recognized
   formats only — unquoted `.env` passwords are not detected.
+  Verify-pass round: `--staged` reads each blob id from one `git diff
+--cached --raw` record (two names that decode alike, or a run from a
+  subdirectory, can no longer hide a blob) and batches blob reads; staged
+  symlink targets are scanned; explicit roots are followed, a fifo/device
+  or a >256 MB input is `SCAN_UNREADABLE`; `--staged` with paths is
+  `SCAN_USAGE`; git missing is `SCAN_GIT_MISSING`; hook write failures are
+  `SCAN_HOOK_UNWRITABLE`, installing from the npx cache is
+  `SCAN_HOOK_EPHEMERAL`; the hook line is shell-quoted and chmod'ed past the
+  umask. Patterns: `sk`/`rk` keys need a digit (identifiers no longer
+  match), `mariadb`/`rediss`/`amqps`/`mssql`/`sqlserver` and empty-user URLs
+  added, aligned `password    = "…"` found, a fiction token glued to a real
+  key exempts nothing. UTF-32 and odd-length UTF-16 decoded; names with
+  control characters printed escaped; exit codes set without truncating
+  piped output.
 
 ### Fixed (hardening campaign, 2026-10-16)
 
