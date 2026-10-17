@@ -4,17 +4,20 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
   writeSync,
 } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { appendNoFollow } from './append.mjs';
 import { hostname } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 /**
  * Sakk ledger — the authoritative spend ledger for AI agent actions.
@@ -104,6 +107,38 @@ export function defaultLedgerPath() {
   );
 }
 
+/**
+ * One ledger, one path (F-85). The lock and temp names derive from the path
+ * string, and the atomic rename replaces whatever NAME it is given: through
+ * a symlinked directory two spellings got two locks; through a symlinked or
+ * hard-linked file the first write replaced the link with a new file and the
+ * books forked (two $6 reservations under a $10 cap). The directory is
+ * resolved; a ledger file that is a link refuses.
+ */
+function canonicalLedgerPath(ledgerPath) {
+  if (typeof ledgerPath !== 'string' || ledgerPath === '') return ledgerPath;
+  let dir;
+  try {
+    dir = realpathSync(dirname(ledgerPath));
+  } catch {
+    return ledgerPath; // a missing directory is reported by the operation itself
+  }
+  const p = join(dir, basename(ledgerPath));
+  let st;
+  try {
+    st = lstatSync(p);
+  } catch {
+    return p;
+  }
+  if (st.isSymbolicLink() || (st.isFile() && st.nlink > 1))
+    throw new LedgerError(
+      'LEDGER_PATH_NOT_CANONICAL',
+      `the ledger file is ${st.isSymbolicLink() ? 'a symbolic link' : 'hard-linked'} — use the one real path; a write would replace the link and fork the books`,
+      { ledgerPath },
+    );
+  return p;
+}
+
 function alertsPathFor(ledgerPath) {
   return join(dirname(ledgerPath), 'sakk-alerts.jsonl');
 }
@@ -112,10 +147,9 @@ function alertsPathFor(ledgerPath) {
 function emitAlert(ledgerPath, alert) {
   try {
     mkdirSync(dirname(ledgerPath), { recursive: true });
-    writeFileSync(
+    appendNoFollow(
       alertsPathFor(ledgerPath),
       `${JSON.stringify({ at: new Date().toISOString(), ...alert })}\n`,
-      { flag: 'a' },
     );
   } catch {
     /* an alert write failure must not cascade */
@@ -171,7 +205,8 @@ function breakIfStale(ledgerPath, lock) {
 
 /** Human override for a lock that automatic staleness detection will not touch. Requires a name; leaves an alert. */
 export function forceUnlock({ ledgerPath = defaultLedgerPath(), by }) {
-  if (typeof by !== 'string' || by === '')
+  ledgerPath = canonicalLedgerPath(ledgerPath);
+  if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('UNLOCK_BY_REQUIRED', 'Breaking a lock by hand requires a name');
   const lock = `${ledgerPath}.lock`;
   rmSync(`${lock}.breaklock`, { recursive: true, force: true }); // a crashed breaker parks here
@@ -250,6 +285,7 @@ export function readLedger({
   maxAgeMs = DEFAULT_MAX_AGE_MS,
   now = Date.now(),
 } = {}) {
+  ledgerPath = canonicalLedgerPath(ledgerPath);
   if (!existsSync(ledgerPath))
     throw new LedgerError(
       'LEDGER_MISSING',
@@ -258,6 +294,12 @@ export function readLedger({
     );
   let raw;
   try {
+    // a fifo at the ledger path blocked reserve forever with the lock held
+    // (ledger review N3): regular files only
+    if (!lstatSync(ledgerPath).isFile())
+      throw new LedgerError('LEDGER_UNREADABLE', 'the ledger path is not a regular file', {
+        ledgerPath,
+      });
     raw = readFileSync(ledgerPath, 'utf8');
   } catch (e) {
     throw new LedgerError('LEDGER_UNREADABLE', 'Ledger cannot be read — paid calls are refused', {
@@ -515,6 +557,7 @@ export function initLedger({
   capUsd,
   initializedBy = 'explicit-init',
 }) {
+  ledgerPath = canonicalLedgerPath(ledgerPath);
   if (!isFiniteNonNeg(capUsd) || capUsd <= 0)
     throw new LedgerError('LEDGER_INIT_INVALID', 'capUsd must be a positive number', { capUsd });
   const lock = acquireLock(ledgerPath);
@@ -555,6 +598,7 @@ export function reserve({
   estimatedMaxUsd,
   now = Date.now(),
 }) {
+  ledgerPath = canonicalLedgerPath(ledgerPath);
   if (typeof callId !== 'string' || callId === '')
     throw new LedgerError('CALL_ID_REQUIRED', 'Every potentially paid call needs a unique callId');
   if (!isFiniteNonNeg(estimatedMaxUsd) || estimatedMaxUsd <= 0)
@@ -656,7 +700,9 @@ export function settle({
   actualUsd,
   tokens = null,
   failedUnknownCost = false,
+  allowReconciling = true,
 }) {
+  ledgerPath = canonicalLedgerPath(ledgerPath);
   // the same id rule as reserve: a non-string id is refused, never searched
   // for and echoed back (F-82 — an echoed nested value crashed the MCP gate)
   if (typeof callId !== 'string' || callId === '')
@@ -688,6 +734,14 @@ export function settle({
       }
       return { ok: true, duplicate: true, callId };
     }
+    // An entry awaiting reconciliation is resolved by a person; over MCP the
+    // agent that caused it could otherwise settle it at $0 itself (MCP review N8)
+    if (e.status === 'RECONCILIATION_REQUIRED' && !allowReconciling)
+      throw new LedgerError(
+        'SETTLE_RECONCILIATION_HUMAN_ONLY',
+        'this entry awaits reconciliation by a person — it cannot be settled through this channel',
+        { callId },
+      );
     if (failedUnknownCost === true) {
       e.status = 'RECONCILIATION_REQUIRED';
       doc.flags = {
@@ -695,7 +749,7 @@ export function settle({
         reason: `call ${callId} failed with unknowable actual cost`,
       };
       emitAlert(ledgerPath, { kind: 'RECONCILIATION_REQUIRED', callId });
-      writeLedger(ledgerPath, doc);
+      writeLedger(ledgerPath, doc, { keepUpdatedAt: true });
       return { ok: true, reconciliationRequired: true, callId };
     }
     if (!isFiniteNonNeg(actualUsd))
@@ -728,7 +782,9 @@ export function settle({
         reason: `call ${callId} settled ${actualUsd} against a ${e.estimatedMaxUsd} reservation`,
       };
     }
-    writeLedger(ledgerPath, doc);
+    // a settle confirms nothing about the books: an agent settling an old
+    // reservation must not make a stale ledger fresh (review S1, F-67 class)
+    writeLedger(ledgerPath, doc, { keepUpdatedAt: true });
     return { ok: true, duplicate: false, callId };
   } finally {
     releaseLock(lock);
@@ -737,6 +793,7 @@ export function settle({
 
 /** For out-of-band accounting failures: completed work stands, but the flag + alert block all further paid calls. */
 export function markReconciliationRequired({ ledgerPath = defaultLedgerPath(), reason }) {
+  ledgerPath = canonicalLedgerPath(ledgerPath);
   const lock = acquireLock(ledgerPath);
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
@@ -758,6 +815,7 @@ export function markReconciliationRequired({ ledgerPath = defaultLedgerPath(), r
  * halt upgrades the ledger to v2 (see LEDGER_SCHEMA_V2).
  */
 export function halt({ ledgerPath = defaultLedgerPath(), by, reason = '', agentId }) {
+  ledgerPath = canonicalLedgerPath(ledgerPath);
   // blank names refused here, or the record would fail its own read check
   if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('HALT_BY_REQUIRED', 'Halting requires a name');
@@ -793,6 +851,7 @@ export function halt({ ledgerPath = defaultLedgerPath(), by, reason = '', agentI
  * when — in the books, not only in the best-effort alert log.
  */
 export function resume({ ledgerPath = defaultLedgerPath(), by, agentId }) {
+  ledgerPath = canonicalLedgerPath(ledgerPath);
   // blank names refused here, or the record would fail its own read check
   if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('RESUME_BY_REQUIRED', 'Resuming requires a name');
@@ -832,7 +891,8 @@ export function resume({ ledgerPath = defaultLedgerPath(), by, agentId }) {
 
 /** Explicit, signed clearance after a human squares the books. Entries are never deleted — history is evidence. */
 export function clearReconciliation({ ledgerPath = defaultLedgerPath(), by }) {
-  if (typeof by !== 'string' || by === '')
+  ledgerPath = canonicalLedgerPath(ledgerPath);
+  if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('RECONCILE_BY_REQUIRED', 'Clearing the flag requires a name');
   const lock = acquireLock(ledgerPath);
   try {

@@ -180,6 +180,14 @@ run_drill MUT-Y src/secret-scan.mjs \
   "keyed fingerprints: stable within a run, different across runs unless SAKK_SCAN_KEY is set" \
   "test"
 
+# MUT-Z: take away mutual exclusion → concurrent reservations lose updates and
+# overspend; the real race must die red (F-84: the old "race" was sequential)
+run_drill MUT-Z src/ledger.mjs \
+  "      mkdirSync(lock);" \
+  "      mkdirSync(lock, { recursive: true });" \
+  "8 concurrent processes cannot jointly overspend, and every grant is booked" \
+  "test"
+
 # MUT-J: judge the fiction-token exemption on the WHOLE match → a token in a
 # username exempts a real password, and its test must die red
 run_drill MUT-J src/secret-scan.mjs \

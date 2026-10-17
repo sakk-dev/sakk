@@ -63,7 +63,7 @@ Each red line names the drill anchors that prove its guard can fail
 | Red line                                           | Drill anchors       |
 | -------------------------------------------------- | ------------------- |
 | No spend after a halt                              | MUT-G, MUT-H, MUT-W |
-| No reservation past the cap                        | MUT-X               |
+| No reservation past the cap                        | MUT-X, MUT-Z        |
 | No PASS from a FAKE run read as model evidence     | MUT-I, MUT-T, MUT-U |
 | No secret printed in any output                    | MUT-Y               |
 | No bundle reads PASS while its spend is unresolved | MUT-L               |

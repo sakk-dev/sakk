@@ -10,7 +10,8 @@
 //  - Every refusal carries a stable machine code (public API).
 
 import { createHash } from 'node:crypto';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
+import { appendNoFollow } from './append.mjs';
 import { matchPath, matchesAny, prefixCovers, isCanonicalRelPath } from './match.mjs';
 
 export class PolicyError extends Error {
@@ -223,8 +224,14 @@ export function loadPolicy({ policyPath }) {
     bad('POLICY_UNREADABLE', 'policyPath is required — policies are never implicit', {});
   let raw;
   try {
+    // a fifo or device would block the read forever (review N1): files only
+    if (!statSync(policyPath).isFile())
+      bad('POLICY_UNREADABLE', `the policy path is not a regular file (${policyPath})`, {
+        policyPath,
+      });
     raw = readFileSync(policyPath);
   } catch (e) {
+    if (e instanceof PolicyError) throw e;
     bad('POLICY_UNREADABLE', `cannot read policy file: ${e.code ?? e.message}`, { policyPath });
   }
   let doc;
@@ -368,7 +375,7 @@ export function logDecision({ decisionLogPath, decision, by }) {
       policyHash: decision.policyHash,
       context: decision.context ?? null,
     })}\n`;
-    appendFileSync(decisionLogPath, line);
+    appendNoFollow(decisionLogPath, line); // never written through a planted symlink (review S4)
   } catch (e) {
     bad('DECISION_UNLOGGABLE', `decision log write failed: ${e.code ?? e.message}`, {
       decisionLogPath,

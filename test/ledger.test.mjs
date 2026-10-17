@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as fsExtra from 'node:fs';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
@@ -164,29 +164,50 @@ describe('initialization discipline', () => {
   });
 });
 
+// F-84: the old "two-process race" ran its processes one after the other
+// (spawnSync), so a ledger with no lock at all passed it. These workers
+// start together behind a barrier and overlap for real.
+const race = async ({ ledgerPath, dir, workers, each, usd, pre = () => {} }) => {
+  const go = join(dir, 'go');
+  const wf = join(dir, 'race-worker.mjs');
+  writeFileSync(
+    wf,
+    `import { existsSync } from 'node:fs';
+    import { reserve } from ${JSON.stringify(new URL('../src/ledger.mjs', import.meta.url).href)};
+    const [lp, go, me, each, usd] = process.argv.slice(2);
+    while (!existsSync(go)) await new Promise((r) => setTimeout(r, 1));
+    let ok = 0;
+    for (let i = 0; i < Number(each); i++)
+      try { reserve({ ledgerPath: lp, callId: me + '-' + i, estimatedMaxUsd: Number(usd) }); ok += 1; } catch {}
+    console.log('GRANTED ' + ok);`,
+  );
+  pre();
+  const kids = Array.from({ length: workers }, (_, k) =>
+    spawn(process.execPath, [wf, ledgerPath, go, `w${k}`, String(each), String(usd)], {
+      stdio: ['ignore', 'pipe', 'inherit'],
+    }),
+  );
+  const outs = kids.map(
+    (c) =>
+      new Promise((resolve) => {
+        let o = '';
+        c.stdout.on('data', (d) => (o += d));
+        c.on('close', () => resolve(Number(/GRANTED (\d+)/.exec(o)?.[1] ?? NaN)));
+      }),
+  );
+  await new Promise((r) => setTimeout(r, 300)); // every worker is spinning on the barrier
+  writeFileSync(go, '');
+  const granted = (await Promise.all(outs)).reduce((a, b) => a + b, 0);
+  return { granted, doc: readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY }) };
+};
+
 describe('concurrency and idempotency', () => {
-  test('two concurrent reservations cannot jointly overspend (real two-process race)', () => {
-    const { ledgerPath } = freshLedger(100);
-    const script = `
-      const m = await import(${JSON.stringify(new URL('../src/ledger.mjs', import.meta.url).href)});
-      try { m.reserve({ ledgerPath: process.env.LP, callId: process.env.CID, estimatedMaxUsd: 60 }); console.log('OK'); }
-      catch (e) { console.log('REFUSED:' + e.code); }
-    `;
-    const run = (cid) =>
-      spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-        encoding: 'utf8',
-        env: { ...process.env, LP: ledgerPath, CID: cid },
-      });
-    const a = run('conc-a');
-    const b = run('conc-b');
-    const oks = [a.stdout, b.stdout].filter((s) => s.includes('OK')).length;
-    const refused = [a.stdout, b.stdout].filter((s) =>
-      s.includes('REFUSED:BUDGET_EXCEEDED'),
-    ).length;
-    assert.equal(oks, 1, `exactly one must win; stdout: ${a.stdout}|${b.stdout}`);
-    assert.equal(refused, 1);
-    const t = totalsOf(readLedger({ ledgerPath }));
-    assert.ok(t.committedUsd < 100, 'total commitment must stay under the cap');
+  test('8 concurrent processes cannot jointly overspend, and every grant is booked (real race, F-84)', async () => {
+    const { ledgerPath, dir } = freshLedger(50);
+    const { granted, doc } = await race({ ledgerPath, dir, workers: 8, each: 20, usd: 1 });
+    assert.equal(doc.entries.length, granted, `granted ${granted}, booked ${doc.entries.length}`);
+    assert.ok(totalsOf(doc).committedUsd < 50, 'commitment stays under the cap');
+    assert.equal(granted, 49, 'the cap is reached exactly: 49 × $1 under a $50 wall');
   });
   test('lock held by someone else: reserve times out and refuses — never judges the budget lockless', () => {
     const { ledgerPath } = freshLedger(100);
@@ -395,35 +416,33 @@ describe('audit fix F15: tmp-file symlink attack', () => {
 });
 
 describe('v3 batch: D1 stampede, E1 overrun, E2 trust-field', () => {
-  test('D1: a stale-lock stampede never loses a reservation (oks === ledger entries)', () => {
-    // Two breakers both judging the same lock stale used to double-enter the
-    // critical section and clobber one write. Single-winner takeover makes
-    // the invariant hold under any interleaving.
-    const worker = `
-      import { reserve } from ${JSON.stringify(new URL('../src/ledger.mjs', import.meta.url).pathname)};
-      try { reserve({ ledgerPath: process.argv[2], callId: process.argv[3], estimatedMaxUsd: 1 }); console.log('OK'); }
-      catch { console.log('NO'); }`;
-    for (let round = 0; round < 8; round += 1) {
+  test('D1: a stale-lock stampede never loses a reservation (granted === booked, concurrent)', async () => {
+    // Several breakers judging the same dead-owner lock stale used to
+    // double-enter the critical section and clobber a write. The workers now
+    // start together (F-84: the old version spawned them one by one).
+    for (let round = 0; round < 4; round += 1) {
       const { ledgerPath, dir } = freshLedger(100);
       const dead = spawnSync(process.execPath, ['-e', '0']);
-      mkdirSync(`${ledgerPath}.lock`);
-      writeFileSync(
-        join(`${ledgerPath}.lock`, 'owner.json'),
-        JSON.stringify({ pid: dead.pid, host: hostname(), at: 'x' }),
-      );
-      const wf = join(dir, 'w.mjs');
-      writeFileSync(wf, worker);
-      const procs = Array.from({ length: 6 }, (_, k) =>
-        spawnSync(process.execPath, [wf, ledgerPath, `r${round}-p${k}`], { encoding: 'utf8' }),
-      );
-      const oks = procs.filter((p) => p.stdout.includes('OK')).length;
-      const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
+      const { granted, doc } = await race({
+        ledgerPath,
+        dir,
+        workers: 6,
+        each: 1,
+        usd: 1,
+        pre: () => {
+          mkdirSync(`${ledgerPath}.lock`);
+          writeFileSync(
+            join(`${ledgerPath}.lock`, 'owner.json'),
+            JSON.stringify({ pid: dead.pid, host: hostname(), at: 'x' }),
+          );
+        },
+      });
       assert.equal(
         doc.entries.length,
-        oks,
-        `round ${round}: granted ${oks}, booked ${doc.entries.length}`,
+        granted,
+        `round ${round}: granted ${granted}, booked ${doc.entries.length}`,
       );
-      assert.equal(oks, 6, `round ${round}: all six fit under a $100 cap`);
+      assert.equal(granted, 6, `round ${round}: all six fit under a $100 cap`);
     }
   });
   test('E1: settling far above the reservation records, alerts BUDGET_OVERRUN, and halts', () => {
@@ -583,4 +602,149 @@ describe('C-4 guardian (in-CI, review M-1): a file-size wall cannot install brok
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
     assert.ok(doc.entries.length >= 1, 'the entries that fit are intact');
   });
+});
+
+describe('2026-10-17 regression (independent review of the ledger core)', () => {
+  const codeOf = (fn) => {
+    try {
+      fn();
+      return null;
+    } catch (e) {
+      return e.code;
+    }
+  };
+  test('F-85: a ledger reached through a symlinked or hard-linked FILE refuses — the books never fork', () => {
+    for (const link of [fsExtra.symlinkSync, fsExtra.linkSync]) {
+      const { ledgerPath, dir } = freshLedger(10);
+      const alias = join(dir, 'alias.json');
+      link(ledgerPath, alias);
+      assert.equal(
+        codeOf(() => reserve({ ledgerPath: alias, callId: 'a', estimatedMaxUsd: 6 })),
+        'LEDGER_PATH_NOT_CANONICAL',
+        link.name,
+      );
+      if (link === fsExtra.symlinkSync)
+        assert.equal(readLedger({ ledgerPath }).entries.length, 0, 'the real file is untouched');
+      // a hard link makes BOTH names ambiguous: the original refuses too
+      else
+        assert.equal(
+          codeOf(() => readLedger({ ledgerPath })),
+          'LEDGER_PATH_NOT_CANONICAL',
+        );
+    }
+  });
+  test('F-85 control: two spellings through a symlinked DIRECTORY reach one book', () => {
+    const { ledgerPath, dir } = freshLedger(10);
+    const linkDir = join(tmp(), 'via');
+    fsExtra.symlinkSync(dir, linkDir);
+    reserve({ ledgerPath: join(linkDir, 'ledger.json'), callId: 'a', estimatedMaxUsd: 6 });
+    assert.equal(
+      codeOf(() => reserve({ ledgerPath, callId: 'b', estimatedMaxUsd: 6 })),
+      'BUDGET_EXCEEDED',
+      'the second $6 sees the first: one book',
+    );
+  });
+  test('review S1: settling an old reservation does not make a stale ledger fresh', () => {
+    const { ledgerPath } = freshLedger(100);
+    reserve({ ledgerPath, callId: 'old', estimatedMaxUsd: 1 });
+    const doc = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+    doc.updatedAt = new Date(Date.now() - 30 * 864e5).toISOString();
+    writeFileSync(ledgerPath, JSON.stringify(doc));
+    settle({ ledgerPath, callId: 'old', actualUsd: 0 });
+    assert.equal(
+      codeOf(() => reserve({ ledgerPath, callId: 'new', estimatedMaxUsd: 1 })),
+      'LEDGER_STALE',
+    );
+  });
+  test('MCP review N8: an entry awaiting reconciliation can be settled by a person, not through the agent channel', () => {
+    const { ledgerPath } = freshLedger(100);
+    reserve({ ledgerPath, callId: 'x', estimatedMaxUsd: 1 });
+    settle({ ledgerPath, callId: 'x', failedUnknownCost: true });
+    assert.equal(
+      codeOf(() => settle({ ledgerPath, callId: 'x', actualUsd: 0, allowReconciling: false })),
+      'SETTLE_RECONCILIATION_HUMAN_ONLY',
+    );
+    assert.equal(
+      codeOf(() => settle({ ledgerPath, callId: 'x', actualUsd: 0.4 })),
+      null,
+    );
+  });
+  test('review S4: the alert file is never written through a planted symlink', () => {
+    const { ledgerPath, dir } = freshLedger(1);
+    const victim = join(tmp(), 'victim.txt');
+    writeFileSync(victim, 'untouched\n');
+    fsExtra.symlinkSync(victim, join(dir, 'sakk-alerts.jsonl'));
+    assert.equal(
+      codeOf(() => reserve({ ledgerPath, callId: 'ATTACKER-TEXT', estimatedMaxUsd: 5 })),
+      'BUDGET_EXCEEDED',
+    );
+    assert.equal(readFileSync(victim, 'utf8'), 'untouched\n');
+  });
+  test('review N3: a fifo at the ledger path refuses instead of blocking with the lock held', () => {
+    const dir = tmp();
+    const fifo = join(dir, 'ledger.json');
+    spawnSync('mkfifo', [fifo]);
+    assert.equal(
+      codeOf(() => readLedger({ ledgerPath: fifo })),
+      'LEDGER_UNREADABLE',
+    );
+  });
+});
+
+describe('review S8: every fail-closed guard in the books has a test that fails without it', () => {
+  // Each of these guards survived a hand mutation (independent review,
+  // 2026-10-17): the suite stayed green with the guard removed.
+  const edited = (edit) => {
+    const { ledgerPath } = freshLedger(10);
+    const d = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+    edit(d);
+    writeFileSync(ledgerPath, JSON.stringify(d));
+    return ledgerPath;
+  };
+  const refusal = (ledgerPath) => {
+    try {
+      reserve({ ledgerPath, callId: 'z', estimatedMaxUsd: 1 });
+      return 'GRANTED';
+    } catch (e) {
+      return e.code;
+    }
+  };
+  for (const [name, edit, code] of [
+    [
+      'a RESERVED entry with a negative estimate (it would free cap)',
+      (d) =>
+        d.entries.push({ callId: 'n', estimatedMaxUsd: -1000, createdAt: 'x', status: 'RESERVED' }),
+      'LEDGER_COST_UNCOMPUTABLE',
+    ],
+    [
+      'a non-string callId in an entry',
+      (d) => d.entries.push({ callId: 7, estimatedMaxUsd: 1, createdAt: 'x', status: 'RESERVED' }),
+      'LEDGER_COST_UNCOMPUTABLE',
+    ],
+    [
+      'a cap written as a string ("Infinity")',
+      (d) => (d.capUsd = 'Infinity'),
+      'LEDGER_SCHEMA_INVALID',
+    ],
+    [
+      'an updatedAt that does not parse (it would never be stale)',
+      (d) => (d.updatedAt = 'last year sometime'),
+      'LEDGER_SCHEMA_INVALID',
+    ],
+  ])
+    test(`${name} → ${code}`, () => assert.equal(refusal(edited(edit)), code));
+  for (const [name, owner] of [
+    ['owned by a live process we may not signal (EPERM, pid 1)', { pid: 1, host: hostname() }],
+    ['owned by another host (its pid means nothing here)', { pid: 999999, host: 'another-host' }],
+  ])
+    test(`a lock ${name} is never broken`, () => {
+      const { ledgerPath } = freshLedger(10);
+      mkdirSync(`${ledgerPath}.lock`);
+      writeFileSync(
+        join(`${ledgerPath}.lock`, 'owner.json'),
+        JSON.stringify({ ...owner, at: 'x' }),
+      );
+      assert.equal(refusal(ledgerPath), 'LEDGER_LOCK_UNAVAILABLE');
+      assert.ok(existsSync(`${ledgerPath}.lock`), 'the lock was left alone');
+    });
 });

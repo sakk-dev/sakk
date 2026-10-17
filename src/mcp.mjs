@@ -139,6 +139,7 @@ function callTool({ name, args, ledgerPath, loaded, decisionLogPath }) {
         callId: args.callId,
         actualUsd: args.actualUsd,
         failedUnknownCost: args.failedUnknownCost,
+        allowReconciling: false, // a person resolves reconciliation, never the agent (N8)
       });
       return ok({
         settled: true,

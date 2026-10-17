@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -154,5 +154,63 @@ describe('review fix F3: flag parsing', () => {
     assert.equal(r.status, 2);
     assert.match(r.stderr, /--ledger requires a value/);
     assert.equal(existsSync('--json'), false);
+  });
+});
+
+describe('2026-10-17 regression: status and reconcile tell the truth about spending', () => {
+  const stale = (p) => {
+    const d = JSON.parse(readFileSync(p, 'utf8'));
+    d.updatedAt = new Date(Date.now() - 30 * 864e5).toISOString();
+    writeFileSync(p, JSON.stringify(d));
+  };
+  const fresh = () => {
+    const p = join(tdir(), 'l.json');
+    assert.equal(run(['init', '--cap', '25', '--ledger', p]).status, 0);
+    return p;
+  };
+  test('review S2: a stale ledger is shown as stale, exits 3, and reports nothing reservable', () => {
+    const p = fresh();
+    stale(p);
+    const r = run(['status', '--ledger', p]);
+    assert.equal(r.status, 3, r.stdout);
+    assert.match(r.stdout, /STALE/);
+    const j = JSON.parse(run(['status', '--json', '--ledger', p]).stdout);
+    assert.deepEqual([j.stale, j.max_reservable_usd], [true, 0]);
+  });
+  test('review S2: an entry awaiting reconciliation exits 3 even when the flag was cleared by hand', () => {
+    const p = fresh();
+    reserve({ ledgerPath: p, callId: 'x', estimatedMaxUsd: 1 });
+    settle({ ledgerPath: p, callId: 'x', failedUnknownCost: true });
+    const d = JSON.parse(readFileSync(p, 'utf8'));
+    d.flags = { reconciliationRequired: false, reason: null };
+    writeFileSync(p, JSON.stringify(d));
+    assert.equal(run(['status', '--ledger', p]).status, 3);
+  });
+  test('review S7: an agent-chosen callId in the reconciliation reason reaches the terminal escaped', () => {
+    const p = fresh();
+    reserve({ ledgerPath: p, callId: 'c\u001b[2J', estimatedMaxUsd: 1 });
+    settle({ ledgerPath: p, callId: 'c\u001b[2J', failedUnknownCost: true });
+    const r = run(['status', '--ledger', p]);
+    assert.ok(!r.stdout.includes('\u001b'), JSON.stringify(r.stdout));
+  });
+  test('review S3: a signed reconcile confirms a stale ledger, and spending resumes', () => {
+    const p = fresh();
+    stale(p);
+    const r = run(['reconcile', '--by', 'alice', '--ledger', p]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /stale books confirmed by alice/);
+    assert.equal(run(['status', '--ledger', p]).status, 0);
+    reserve({ ledgerPath: p, callId: 'after', estimatedMaxUsd: 1 });
+  });
+  test('review N1/N2/N12: blank signatures, an empty SAKK_LEDGER_PATH and a hex cap refuse', () => {
+    const p = fresh();
+    for (const args of [
+      ['reconcile', '--by', '   ', '--ledger', p],
+      ['unlock', '--by', ' ', '--ledger', p],
+      ['init', '--cap', '0x10', '--ledger', join(tdir(), 'h.json')],
+      ['init', '--cap', '5', '--by', '  ', '--ledger', join(tdir(), 'b.json')],
+      ['status'],
+    ])
+      assert.equal(run(args, { SAKK_LEDGER_PATH: '' }).status, 2, args.join(' '));
   });
 });

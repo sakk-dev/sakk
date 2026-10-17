@@ -15,7 +15,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => readFileSync(join(ROOT, f), 'utf8');
 
 const CORE = {
-  'src/ledger.mjs': 'specs/kill-switch/spec.md',
+  'src/ledger.mjs': ['specs/ledger/spec.md', 'specs/kill-switch/spec.md'],
   'src/policy.mjs': 'specs/policy-engine/spec.md',
   'src/match.mjs': 'specs/policy-engine/spec.md',
   'src/mcp.mjs': 'specs/mcp-server/spec.md',
@@ -28,6 +28,8 @@ const CORE = {
   'scripts/evidence-bundle.mjs': 'specs/evidence-bundle/spec.md',
 };
 const NOT_CORE = {
+  'src/append.mjs':
+    'append-only file writes that refuse to follow a symlink; driven by the ledger and policy tests',
   'eval/lib/trace.mjs': 'trace file I/O; every field it writes is re-checked by the scorer',
   'eval/lib/validate.mjs': 'JSON-schema helper; schema failures surface through --validate tests',
   'eval/lib/exec-env.mjs': 'child-process environment; covered by the runner tests',
@@ -51,7 +53,7 @@ describe('core files: classified, specified, drilled', () => {
   for (const [file, spec] of Object.entries(CORE))
     test(`${file}: has a spec and a mutation-drill anchor`, () => {
       assert.ok(existsSync(join(ROOT, file)), `${file} is listed but missing`);
-      assert.ok(existsSync(join(ROOT, spec)), `${spec} missing`);
+      for (const sp of [].concat(spec)) assert.ok(existsSync(join(ROOT, sp)), `${sp} missing`);
       assert.match(
         drill,
         new RegExp(`run_drill MUT-[A-Z] ${file.replace(/[.]/g, '\\.')} `),
@@ -60,7 +62,11 @@ describe('core files: classified, specified, drilled', () => {
     });
   test('every guard test a three-tables spec names exists', () => {
     const missing = [];
-    for (const spec of new Set(Object.values(CORE).filter((s) => s.startsWith('specs/'))))
+    for (const spec of new Set(
+      Object.values(CORE)
+        .flat()
+        .filter((s) => s.startsWith('specs/')),
+    ))
       for (const m of read(spec).matchAll(
         /`((?:test|eval\/__tests__)\/[\w.-]+\.test\.mjs)::([^`]+)`/g,
       ))

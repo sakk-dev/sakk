@@ -13,6 +13,7 @@ import {
   halt,
   resume,
   LedgerError,
+  DEFAULT_MAX_AGE_MS,
 } from '../src/ledger.mjs';
 import { loadPolicy } from '../src/policy.mjs';
 import { startMcpServer } from '../src/mcp.mjs';
@@ -56,8 +57,15 @@ const val = (n) => {
 };
 
 function ledgerPath() {
+  // set-but-empty is a mistake, not "use the current directory" (ledger review N2)
+  if (val('ledger') === undefined && process.env.SAKK_LEDGER_PATH === '') {
+    console.error('LEDGER_PATH_REQUIRED: SAKK_LEDGER_PATH is set but empty');
+    process.exit(2);
+  }
   return resolve(val('ledger') ?? process.env.SAKK_LEDGER_PATH ?? 'sakk-ledger.json');
 }
+/** A signature is a name, not whitespace (ledger review N1; F-70 class). */
+const signed = (by) => typeof by === 'string' && by.trim() !== '';
 
 const USAGE = `sakk ${pkg.version} — fail-closed spend ledger for AI agents
 
@@ -123,13 +131,19 @@ if (Object.hasOwn(COMMANDS, cmd)) {
 }
 
 if (cmd === 'init') {
-  const cap = Number(val('cap'));
+  const capArg = val('cap');
+  // plain decimals only: Number() also accepts 0x10, 1e3 and ' 5' (review N12)
+  const cap = /^\d+(\.\d+)?$/.test(capArg ?? '') ? Number(capArg) : NaN;
   if (!Number.isFinite(cap) || cap <= 0) {
     console.error('init requires --cap <usd> (a positive number)');
     process.exit(2);
   }
   const p = ledgerPath();
   try {
+    if (val('by') !== undefined && !signed(val('by'))) {
+      console.error('init --by needs a name');
+      process.exit(2);
+    }
     initLedger({ ledgerPath: p, capUsd: cap, initializedBy: val('by') ?? 'sakk-cli' });
   } catch (e) {
     fail(e);
@@ -148,7 +162,12 @@ if (cmd === 'init') {
   const t = totalsOf(doc);
   const byStatus = { RESERVED: 0, SETTLED: 0, RECONCILIATION_REQUIRED: 0 };
   for (const e of doc.entries) byStatus[e.status] += 1;
-  const reco = doc.flags?.reconciliationRequired === true;
+  // the same two sources reserve() refuses on (review S2: status read one)
+  const reco =
+    doc.flags?.reconciliationRequired === true ||
+    doc.entries.some((x) => x.status === 'RECONCILIATION_REQUIRED');
+  const stale = Date.now() - Date.parse(doc.updatedAt) > DEFAULT_MAX_AGE_MS;
+  const blocked = Boolean(doc.halt?.global) || reco || stale;
   const out = {
     ledger: p,
     cap_usd: t.capUsd,
@@ -159,13 +178,16 @@ if (cmd === 'init') {
     // Review finding E6: remaining is cap-committed, but the cap is a WALL —
     // reserving exactly remaining always refuses. This is the largest
     // amount a reserve() will actually accept.
-    max_reservable_usd: Math.max(0, t.capUsd - t.committedUsd - 1e-6),
+    // review S2: a figure that does not work when acted on is wrong — when
+    // every reserve refuses, nothing is reservable
+    max_reservable_usd: blocked ? 0 : Math.max(0, t.capUsd - t.committedUsd - 1e-6),
     entries: byStatus,
     reconciliation_required: reco,
     reconciliation_reason: doc.flags?.reason ?? null,
     halted: doc.halt?.global ?? null,
     halted_agents: doc.halt?.agents ?? {},
     updated_at: doc.updatedAt,
+    stale,
   };
   if (flag('json')) {
     console.log(JSON.stringify(out, null, 1));
@@ -198,25 +220,37 @@ if (cmd === 'init') {
       console.log(
         `⛔ agent ${display(id)} halted by ${display(r.by)} at ${r.at}${r.reason ? ` — ${display(r.reason)}` : ''}`,
       );
-    if (reco) console.log(`⚠ RECONCILIATION REQUIRED: ${out.reconciliation_reason}`);
+    // the reason embeds agent-chosen callIds: escaped like every other name (S7)
+    if (reco)
+      console.log(
+        `⚠ RECONCILIATION REQUIRED: ${display(String(out.reconciliation_reason ?? 'an entry awaits reconciliation'))}`,
+      );
+    if (stale)
+      console.log(
+        `⚠ STALE: the books were last confirmed ${doc.updatedAt} (more than 7 days ago) — every reserve refuses until a person checks them and runs \`sakk reconcile --by <name>\``,
+      );
   }
-  process.exit(out.halted ? 4 : reco ? 3 : 0);
+  // 3 = a person must act before spending resumes (reconciliation or stale)
+  process.exit(out.halted ? 4 : reco || stale ? 3 : 0);
 } else if (cmd === 'reconcile') {
   const by = val('by');
-  if (typeof by !== 'string' || by === '') {
+  if (!signed(by)) {
     console.error('reconcile requires --by <name> — clearing the books takes a signature');
     process.exit(2);
   }
   const p = ledgerPath();
   // Stranger-test finding: claiming "cleared" on a ledger that required no
   // clearing misreports an action that never happened. Say so instead.
+  // Read like the operation reads (review S3): a stale ledger is exactly
+  // what a signed reconcile is for.
   let doc;
   try {
-    doc = readLedger({ ledgerPath: p });
+    doc = readLedger({ ledgerPath: p, maxAgeMs: Number.POSITIVE_INFINITY });
   } catch (e) {
     fail(e);
   }
-  if (doc.flags?.reconciliationRequired !== true) {
+  const stale = Date.now() - Date.parse(doc.updatedAt) > DEFAULT_MAX_AGE_MS;
+  if (doc.flags?.reconciliationRequired !== true && !stale) {
     console.log(`nothing to clear: no reconciliation required on ${p}`);
     process.exit(0);
   }
@@ -225,7 +259,9 @@ if (cmd === 'init') {
   } catch (e) {
     fail(e);
   }
-  console.log(`reconciliation cleared by ${by}: ${p}`);
+  console.log(
+    `${stale && doc.flags?.reconciliationRequired !== true ? 'stale books confirmed' : 'reconciliation cleared'} by ${display(by)}: ${p}`,
+  );
 } else if (cmd === 'halt' || cmd === 'resume') {
   const by = val('by');
   if (typeof by !== 'string' || by === '') {
@@ -270,7 +306,7 @@ if (cmd === 'init') {
     );
 } else if (cmd === 'unlock') {
   const by = val('by');
-  if (typeof by !== 'string' || by === '') {
+  if (!signed(by)) {
     console.error('unlock requires --by <name> — breaking a lock takes a signature');
     process.exit(2);
   }
