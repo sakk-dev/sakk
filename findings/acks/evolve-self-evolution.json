@@ -60,6 +60,9 @@
     },
     "C-13.1": {
       "answer": "The answer-quality rules were measured on both sides: abusive inputs (todo, copies, short text) are refused by tests, and this branch's own real answers are the benign side — the range check failed on them once (F-119) and the rule was narrowed."
+    },
+    "C-12.1": {
+      "answer": "Matches are judged in context: the fiction-token exemption from PR #13 (carried by this branch relative to main) closes a span only for reported findings, and the context matrix tests every secret shape beside the token in every position."
     }
   }
 }

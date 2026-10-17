@@ -31,6 +31,16 @@ instead of "every write to a tracked file". Neither has a class detector:
   open question is whether a heuristic shell-write hook is worth its
   misfires. Recorded as open, not claimed.
 
+## §15.4 — RC-01: F-114, F-121
+
+F-121 (a test that overflowed only on Node 20/22) was caught by the CI
+matrix the same hour it was written, but nothing local could have caught
+it: the gate and the audit run one Node version. With F-114 (ledger edges
+left open) RC-01 has two escapes in a row without a class upgrade. Next
+upgrade: the commit gate runs the unit suite on the oldest supported Node
+(`npx node@20`) before a push, so the CI matrix stops being the first
+place a version difference shows.
+
 ## What the loop still cannot do
 
 - **Merge past a red CI** — main has no branch protection (F-116); until

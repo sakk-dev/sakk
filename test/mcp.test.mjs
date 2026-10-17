@@ -88,7 +88,10 @@ after(() => children.forEach((c) => c.kill()));
 describe('MCP enforcer: protocol surface', () => {
   // F-82: a nested caller value reached a template literal or JSON.stringify
   // and recursed until the stack overflowed — the gate process exited.
-  const deep = (n) => JSON.parse('['.repeat(n) + ']'.repeat(n));
+  // Frames are built as TEXT: building them with JSON.stringify overflowed
+  // the test's own stack on the Linux CI runner (F-121) — the deep value is
+  // the attack, so only the server may ever parse it.
+  const deep = (n) => `${'['.repeat(n)}${']'.repeat(n)}`;
   const alive = async (c) => {
     const p = await c.call('ping', {});
     assert.deepEqual(p.result, {}, 'the next request is answered');
@@ -100,31 +103,18 @@ describe('MCP enforcer: protocol surface', () => {
     initLedger({ ledgerPath, capUsd: 10 });
     const c = mk({ ledgerPath });
     for (const frame of [
-      { jsonrpc: '2.0', id: 'h1', method: deep(5000) },
-      { jsonrpc: '2.0', id: 'h2', method: 'tools/call', params: { name: deep(5000) } },
-      {
-        jsonrpc: '2.0',
-        id: 'h3',
-        method: 'tools/call',
-        params: { name: 'sakk_settle', arguments: { callId: deep(8000) } },
-      },
-      { jsonrpc: '2.0', id: deep(50), method: 'ping' },
+      `{"jsonrpc":"2.0","id":"h1","method":${deep(5000)}}`,
+      `{"jsonrpc":"2.0","id":"h2","method":"tools/call","params":{"name":${deep(5000)}}}`,
+      `{"jsonrpc":"2.0","id":"h3","method":"tools/call","params":{"name":"sakk_settle","arguments":{"callId":${deep(8000)}}}}`,
+      `{"jsonrpc":"2.0","id":${deep(50)},"method":"ping"}`,
     ])
-      c.writeRaw(`${JSON.stringify(frame)}\n`);
+      c.writeRaw(`${frame}\n`);
     await alive(c);
     const pd = join(d, 'p.json');
     writeFileSync(pd, JSON.stringify(POLICY));
     const cp = mk({ ledgerPath, policyPath: pd });
     cp.writeRaw(
-      `${JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'h4',
-        method: 'tools/call',
-        params: {
-          name: 'sakk_reserve',
-          arguments: { callId: 'q', estimatedMaxUsd: deep(8000), action: 'model_call' },
-        },
-      })}\n`,
+      `{"jsonrpc":"2.0","id":"h4","method":"tools/call","params":{"name":"sakk_reserve","arguments":{"callId":"q","estimatedMaxUsd":${deep(8000)},"action":"model_call"}}}\n`,
     );
     await alive(cp);
     assert.equal(readLedger({ ledgerPath }).entries.length, 0, 'nothing was booked');

@@ -3588,6 +3588,34 @@
       "mechanism_gap": "RC-04 detectors are secret-pattern tests; the edit hook enumerates tool names instead of the rule 'every write to a tracked file'.",
       "mechanism_upgrade": "none: open — commit-time and CI enforcement cover it; a shell-write hook would be heuristic",
       "class": "C-02"
+    },
+    {
+      "id": "F-121",
+      "date": "2026-10-17",
+      "introduced_in": "unknown",
+      "found_by": "T0",
+      "class": "C-09",
+      "title": "A test passed only on the newest Node: its deep frame overflowed JSON.stringify on Node 20 and 22",
+      "symptom": "CI (Node 20/22) failed the F-82 test with 'Maximum call stack size exceeded' while every local run (Node 25) passed; the test itself built the 8000-deep frame with JSON.stringify, which older V8 does recursively.",
+      "evidence": "CI run 39022150910, job test (22); reproduced with npx node@22",
+      "direct_cause": "The test constructed its hostile frame as a value and serialized it.",
+      "why": [
+        "The local gate and audit run one Node version.",
+        "Deep-value behaviour of JSON differs between V8 versions."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-02"],
+      "instance_fix": "this commit: the frames are built as text, only the server parses them; the MCP suite passes on Node 22",
+      "guard": "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving",
+      "class_fix": null,
+      "sweep": "Other tests and scripts that build deep values: attack-asr E7 and mcp-torture already build them as text.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["test/mcp.test.mjs"],
+      "mechanism_gap": "The environment detectors vary layouts and git configuration, not the Node version; the local gate runs one version while CI runs the supported ones.",
+      "mechanism_upgrade": "none: the CI matrix on Node 20 and 22 is the check that caught it; the local gate stays single-version"
     }
   ]
 }
