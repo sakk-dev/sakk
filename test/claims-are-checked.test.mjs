@@ -42,8 +42,10 @@ const TESTS = [...walk('test'), ...walk('eval/__tests__')]
   .filter((f) => f.endsWith('.mjs'))
   .map(read)
   .join('\n');
+// `rule:` too — scorer rules are refusals of a case, and eleven of them had no
+// test that could fail (gold review S6, F-89)
 const EMIT =
-  /(?:Error\(\s*|bad\(\s*|gap\(\s*|fail\(\s*|usage\(\s*|code:\s*)['`]([A-Z][A-Z0-9_]{3,}[A-Za-z0-9_]*)/g;
+  /(?:Error\(\s*|bad\(\s*|gap\(\s*|fail\(\s*|usage\(\s*|code:\s*|rule:\s*)['`]([A-Z][A-Z0-9_]{3,}[A-Za-z0-9_]*)/g;
 
 /**
  * Codes on purely defensive paths that no input can reach without a broken

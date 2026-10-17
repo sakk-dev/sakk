@@ -1,7 +1,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -125,5 +125,29 @@ describe('relative --out stranger: the out path means the same thing to every pr
     assert.match(r.stdout, /^G05: PASS/m);
     const summary = JSON.parse(r.stdout.split('\n').find((l) => l.startsWith('{"runId"')));
     assert.ok(isAbsolute(summary.outDir) && summary.outDir.endsWith('/run1'), summary.outDir);
+  });
+});
+
+describe('tampered answer key (gold review S4)', () => {
+  test('a gold file that differs from its manifest stops a fake-executor run too', () => {
+    const copy = mkdtempSync(join(tmpdir(), 'sakk-tamper-'));
+    execSync(
+      `tar -cf - --exclude .git --exclude node_modules --exclude mutation-drill-report.txt --exclude audit-logs .` +
+        ` | (cd '${copy}' && tar -xf -)`,
+      { cwd: REPO, stdio: 'ignore' },
+    );
+    execSync('git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm c', {
+      cwd: copy,
+      stdio: 'ignore',
+    });
+    writeFileSync(join(copy, 'eval', 'gold', 'G01', 'scoring.json'), '{"secret_canaries":[]}\n');
+    const r = spawnSync(
+      process.execPath,
+      [join(copy, 'eval', 'bin', 'gold-runner.mjs'), '--fake-executor', '--case', 'G01'],
+      { encoding: 'utf8', timeout: 120_000, cwd: copy },
+    );
+    rmSync(copy, { recursive: true, force: true });
+    assert.equal(r.status, 2, `exit=${r.status}\n${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /GOLD_MANIFEST_MISMATCH/);
   });
 });

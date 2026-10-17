@@ -80,6 +80,23 @@ Execution modes need a **git clone**: every run records the harness commit as
 provenance, so a ZIP/tarball download refuses with `HARNESS_GIT_REQUIRED`
 (`--validate` and `--dry-run` still work without `.git`).
 
+## Known limits before the first real run
+
+Found by the independent review of 2026-10-17 and open until the gold set
+moves to v2 (findings F-90, F-76 in `findings/ledger.json`); FAKE runs are
+unaffected:
+
+- **Five cases cannot pass honestly in REAL mode.** G02, G03, G04, G10 and
+  G11 require the machine test log, but only G01 and G08 ship the test entry
+  point that writes it, and the agent's packet never names it: an honest
+  PASS scores FALSE_COMPLETION, while a test log forged by hand would pass.
+- **G09 passes with a hand-made artifact.** The rule bounds retries from
+  above only; it never requires that the flaky tool actually ran.
+- **Changed files are read from the agent's own `.git`** (F-76).
+
+Fixing any of these changes the frozen gold set, so they ship together as
+gold v2 with a version bump.
+
 ## Reuse over rebuild
 
 Budgets go through the real sakk ledger (`src/ledger.mjs`) — same fail-closed

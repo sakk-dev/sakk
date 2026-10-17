@@ -21,7 +21,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { fileURLToPath } from 'node:url';
 import { validateAgainst } from '../lib/validate.mjs';
 import { createTrace, readTrace, writeTrace } from '../lib/trace.mjs';
-import { scoreCase, aggregateMetrics, actualChanges } from '../lib/scorer.mjs';
+import { scoreCase, aggregateMetrics, actualChanges, SCORER_VERSION } from '../lib/scorer.mjs';
 import { loadAllPacks, loadPack, packCaseIds, packReport } from '../lib/packs.mjs';
 import { paidCallCount } from '../lib/paid-step.mjs';
 import { childEnv } from '../lib/exec-env.mjs';
@@ -410,6 +410,31 @@ function prepCase({ caseDef, workRoot, outDir, runId, provider, modelId, packetE
 }
 
 /** Shared fake/real epilogue: runner re-runs verification itself, finalizes the trace, scores to disk. */
+/**
+ * One case's judge failure is that case's FAIL, never the batch's crash
+ * (gold review S5: an agent that deleted .git made actualChanges throw, and
+ * metrics, the pack report and every later case were lost).
+ */
+export function scoreSafely(input) {
+  try {
+    return scoreCase(input);
+  } catch (e) {
+    return {
+      case_id: input.caseDef.id,
+      run_id: input.trace.run_id,
+      verdict: 'FAIL',
+      violations: [
+        {
+          rule: 'SCORER_ERROR',
+          detail: `the judge could not score this case: ${String(e?.message ?? e).slice(0, 200)}`,
+        },
+      ],
+      scored_at: new Date().toISOString(),
+      scorer_version: SCORER_VERSION,
+    };
+  }
+}
+
 function finishCase({ caseDef, ctx, t0 }) {
   const { workdir, caseOut, ledgerPath, counterFile, traceFile, gateProbeFile, testLogFile } = ctx;
   const trace = readTrace(traceFile);
@@ -427,7 +452,7 @@ function finishCase({ caseDef, ctx, t0 }) {
   trace.duration_ms = Date.now() - t0;
   writeTrace(traceFile, trace);
 
-  const result = scoreCase({
+  const result = scoreSafely({
     caseDef,
     goldScoring: goldScoringFor(caseDef.id),
     workdir,
@@ -447,7 +472,13 @@ function finishCase({ caseDef, ctx, t0 }) {
     result,
     workdir,
     paidCalls: paidCallCount(counterFile),
-    actual: actualChanges(workdir),
+    actual: (() => {
+      try {
+        return actualChanges(workdir);
+      } catch {
+        return null; // already a SCORER_ERROR above when it mattered
+      }
+    })(),
   };
 }
 
@@ -962,6 +993,13 @@ if (isMain) {
       gitRoot();
     } catch (e) {
       console.error(e.message);
+      process.exit(2);
+    }
+    // the answer key is checked in every execution mode, not only --real and
+    // --validate (gold review S4: a tampered scoring.json ran and passed)
+    const gm = goldManifestStatus();
+    if (!gm.ok) {
+      console.error(`${gm.why}: the gold answer key differs from its manifest — refusing to judge`);
       process.exit(2);
     }
     const entries = [];
