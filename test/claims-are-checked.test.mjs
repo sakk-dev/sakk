@@ -84,6 +84,51 @@ describe('claims are checked', () => {
   });
 });
 
+describe('every file name the docs cite exists (F-83, RC-10 detector upgrade)', () => {
+  // claims-are-checked matched refusal CODES only; a backticked file name in
+  // the README (the decision log) was wrong for two releases of review.
+  test('each backticked file name in the docs appears in the code or the repository', () => {
+    const docs = [
+      'README.md',
+      'CHANGELOG.md',
+      'eval/README.md',
+      ...readdirSync(join(ROOT, 'docs'))
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => `docs/${f}`),
+    ];
+    const code = [
+      ...walk('src'),
+      ...walk('bin'),
+      ...walk('eval/lib'),
+      ...walk('eval/bin'),
+      ...walk('scripts'),
+    ]
+      .filter((f) => /\.(mjs|sh)$/.test(f))
+      .map(read)
+      .join('\n');
+    const all = (d) =>
+      readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory()
+          ? ['node_modules', '.git', 'audit-logs'].includes(e.name)
+            ? []
+            : all(join(d, e.name))
+          : [e.name],
+      );
+    const names = new Set(all('.'));
+    const missing = [];
+    let cited = 0;
+    for (const d of docs)
+      for (const [, t] of read(d).matchAll(
+        /`([A-Za-z0-9_.-]+\.(?:jsonl|json|mjs|md|sh|yml|yaml|tgz|sha256))`/g,
+      )) {
+        cited += 1;
+        if (!code.includes(t) && !names.has(t)) missing.push(`${d}: ${t}`);
+      }
+    assert.ok(cited >= 20, `only ${cited} file names cited — pattern drifted?`);
+    assert.deepEqual(missing, []);
+  });
+});
+
 describe('nothing hangs instead of failing (findings F-15)', () => {
   test('every node --test script carries --test-timeout', () => {
     const scripts = JSON.parse(read('package.json')).scripts;

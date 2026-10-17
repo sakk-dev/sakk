@@ -15,7 +15,7 @@
 //   node scripts/campaign/mcp-torture.mjs [--minutes 3] [--servers 3] [--seed N]
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,7 @@ import { createInterface } from 'node:readline';
 import { initLedger, readLedger, totalsOf } from '../../src/ledger.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(HERE, '..', '..');
 const CLI = join(HERE, '..', '..', 'bin', 'sakk.mjs');
 const CAP = 500;
 
@@ -39,33 +40,29 @@ let s = seed >>> 0 || 1;
 const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
 const pick = (a) => a[Math.floor(rnd() * a.length)];
 
-// The full public inventory, extracted from src/ (campaign finding: there
-// is no machine-readable code registry yet — worth exporting one).
-const KNOWN_CODES = new Set([
-  'BUDGET_EXCEEDED',
-  'CALL_ID_REQUIRED',
-  'DUPLICATE_CALL_ID',
-  'ESTIMATE_INVALID',
-  'LEDGER_ALREADY_EXISTS',
-  'LEDGER_COST_UNCOMPUTABLE',
-  'LEDGER_LOCK_UNAVAILABLE',
-  'LEDGER_MALFORMED',
-  'LEDGER_MISSING',
-  'LEDGER_PATH_REQUIRED',
-  'LEDGER_SCHEMA_INVALID',
-  'LEDGER_STALE',
-  'LEDGER_UNREADABLE',
-  'RECONCILIATION_ENTRIES_OPEN',
-  'RECONCILIATION_REQUIRED',
-  'SETTLE_INVALID',
-  'SETTLE_MISMATCH',
-  'SETTLE_UNKNOWN_CALL',
-  'CONTEXT_INVALID',
-  'DECISION_UNLOGGABLE',
-  'POLICY_DENIED',
-  'POLICY_APPROVAL_REQUIRED',
-  'MCP_ARG_TOO_LONG',
-]);
+// The public refusal inventory, EXTRACTED from src/ on every run: the hand
+// list it replaces missed four codes reachable over MCP (2026-10-17
+// regression; prevention: a hand-written list must not stand in for 'all').
+const SRC = join(ROOT, 'src');
+const codesIn = (text) => [
+  ...[...text.matchAll(/(?:Error\(\s*|bad\(\s*)['`]([A-Z][A-Z0-9_]{3,})/g)].map((m) => m[1]),
+  // every quoted code on a `code:` line, ternaries included
+  ...text
+    .split('\n')
+    .filter((l) => /\bcode:/.test(l))
+    .flatMap((l) => [...l.matchAll(/['`]([A-Z][A-Z0-9_]{3,})['`]/g)].map((m) => m[1])),
+];
+const KNOWN_CODES = new Set(
+  readdirSync(SRC)
+    .filter((f) => f.endsWith('.mjs'))
+    .flatMap((f) => codesIn(readFileSync(join(SRC, f), 'utf8'))),
+);
+if (KNOWN_CODES.size < 20) {
+  console.error(
+    `mcp-torture: only ${KNOWN_CODES.size} refusal codes extracted from src/ — extractor drifted`,
+  );
+  process.exit(1);
+}
 
 const POLICY = {
   schema: 'sakk-policy.v1',
@@ -184,6 +181,19 @@ function startClient(k) {
     () =>
       `${JSON.stringify({ jsonrpc: '2.0', id: nextId++, method: 'tools/call', params: { name: pick(['sakk_disable', 'rm', '']), arguments: {} } })}\n`,
     () => `${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`,
+    // F-82: non-string envelope members and deep nesting — the shapes that
+    // crashed the gate; the corpus only ever sent strings and flat values
+    () => {
+      const n = 2000 + Math.floor(rnd() * 8000);
+      const deep = `${'['.repeat(n)}${']'.repeat(n)}`;
+      return pick([
+        `{"jsonrpc":"2.0","id":${nextId++},"method":${deep}}\n`,
+        `{"jsonrpc":"2.0","id":${nextId++},"method":"tools/call","params":{"name":${deep}}}\n`,
+        `{"jsonrpc":"2.0","id":${nextId++},"method":"tools/call","params":{"name":"sakk_settle","arguments":{"callId":${deep}}}}\n`,
+        `{"jsonrpc":"2.0","id":${nextId++},"method":"tools/call","params":{"name":"sakk_reserve","arguments":{"callId":"d","estimatedMaxUsd":${deep},"action":"model_call"}}}\n`,
+        `{"jsonrpc":"2.0","id":${deep},"method":"ping"}\n`,
+      ]);
+    },
   ];
 
   const loop = setInterval(

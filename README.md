@@ -253,7 +253,7 @@ config (Cursor/Copilot analogous):
 The ledger path is REQUIRED (no cwd default — a server guessing where the
 books live is not a gate). `--policy` is optional; when set, every
 `sakk_reserve` is decided by the policy kernel first and every decision —
-allow and deny alike — lands hash-pinned in `sakk-decisions.jsonl` next to
+allow and deny alike — lands hash-pinned in `<ledger>.decisions.jsonl` next to
 the ledger. `require_approval` refuses over MCP by design (approval
 collection is an enterprise concern, not an agent tool). The server adds
 no semantics: replaying the same calls through the library yields

@@ -299,7 +299,7 @@ status`), for a genuine run with unsettled/unreconciled spend, unknown
   configured policy is loaded once, hash-pinned, and refuses startup on
   any `POLICY_*` code. Policy refusals surface as `POLICY_DENIED` /
   `POLICY_APPROVAL_REQUIRED` (public API) with the full decision attached;
-  every decision logs to `sakk-decisions.jsonl` beside the ledger. 1 MiB
+  every decision logs to `<ledger>.decisions.jsonl` beside the ledger. 1 MiB
   frame cap; contract tests drive the real binary over real frames,
   including a thinness proof (library replay yields identical books).
 

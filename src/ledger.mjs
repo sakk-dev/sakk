@@ -187,7 +187,16 @@ const HELD_LOCKS = new Set();
 
 function acquireLock(ledgerPath) {
   const lock = `${ledgerPath}.lock`;
-  mkdirSync(dirname(ledgerPath), { recursive: true });
+  try {
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+  } catch (e) {
+    // a typed refusal, not a raw fs error that crashes the caller (MCP review S1)
+    throw new LedgerError(
+      'LEDGER_WRITE_FAILED',
+      `the ledger directory cannot be created (${e.code ?? e.message})`,
+      { ledgerPath },
+    );
+  }
   for (let i = 0; i < LOCK_TRIES; i += 1) {
     try {
       mkdirSync(lock);
@@ -648,6 +657,10 @@ export function settle({
   tokens = null,
   failedUnknownCost = false,
 }) {
+  // the same id rule as reserve: a non-string id is refused, never searched
+  // for and echoed back (F-82 — an echoed nested value crashed the MCP gate)
+  if (typeof callId !== 'string' || callId === '')
+    throw new LedgerError('CALL_ID_REQUIRED', 'Settling needs the callId the reservation used');
   const lock = acquireLock(ledgerPath);
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });

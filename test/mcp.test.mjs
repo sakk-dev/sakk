@@ -86,6 +86,69 @@ const mk = (opts) => {
 after(() => children.forEach((c) => c.kill()));
 
 describe('MCP enforcer: protocol surface', () => {
+  // F-82: a nested caller value reached a template literal or JSON.stringify
+  // and recursed until the stack overflowed — the gate process exited.
+  const deep = (n) => JSON.parse('['.repeat(n) + ']'.repeat(n));
+  const alive = async (c) => {
+    const p = await c.call('ping', {});
+    assert.deepEqual(p.result, {}, 'the next request is answered');
+    assert.equal(c.child.exitCode, null, 'the server process is still running');
+  };
+  test('F-82: hostile frame shapes answer an error and the gate keeps serving', async () => {
+    const d = tdir();
+    const ledgerPath = join(d, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    const c = mk({ ledgerPath });
+    for (const frame of [
+      { jsonrpc: '2.0', id: 'h1', method: deep(5000) },
+      { jsonrpc: '2.0', id: 'h2', method: 'tools/call', params: { name: deep(5000) } },
+      {
+        jsonrpc: '2.0',
+        id: 'h3',
+        method: 'tools/call',
+        params: { name: 'sakk_settle', arguments: { callId: deep(8000) } },
+      },
+      { jsonrpc: '2.0', id: deep(50), method: 'ping' },
+    ])
+      c.writeRaw(`${JSON.stringify(frame)}\n`);
+    await alive(c);
+    const pd = join(d, 'p.json');
+    writeFileSync(pd, JSON.stringify(POLICY));
+    const cp = mk({ ledgerPath, policyPath: pd });
+    cp.writeRaw(
+      `${JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'h4',
+        method: 'tools/call',
+        params: {
+          name: 'sakk_reserve',
+          arguments: { callId: 'q', estimatedMaxUsd: deep(8000), action: 'model_call' },
+        },
+      })}\n`,
+    );
+    await alive(cp);
+    assert.equal(readLedger({ ledgerPath }).entries.length, 0, 'nothing was booked');
+  });
+  test('MCP S4: a notification tools/call never runs a tool and never spends', async () => {
+    const d = tdir();
+    const ledgerPath = join(d, 'l.json');
+    initLedger({ ledgerPath, capUsd: 10 });
+    const c = mk({ ledgerPath });
+    c.writeRaw(
+      `${JSON.stringify({ jsonrpc: '2.0', method: 'tools/call', params: { name: 'sakk_reserve', arguments: { callId: 'notif', estimatedMaxUsd: 1 } } })}\n`,
+    );
+    await alive(c);
+    assert.equal(readLedger({ ledgerPath }).entries.length, 0);
+  });
+  test('MCP S1: a ledger whose directory cannot be created is a typed refusal, not a crash', async () => {
+    const d = tdir();
+    writeFileSync(join(d, 'file'), 'x');
+    const c = mk({ ledgerPath: join(d, 'file', 'l.json') });
+    const r = await c.tool('sakk_reserve', { callId: 'a', estimatedMaxUsd: 1 });
+    assert.equal(r.isError, true);
+    assert.match(r.payload.code, /^LEDGER_/);
+    await alive(c);
+  });
   test('initialize → tools/list exposes exactly the three tools (the whole attack surface)', async () => {
     const d = tdir();
     const ledgerPath = join(d, 'l.json');

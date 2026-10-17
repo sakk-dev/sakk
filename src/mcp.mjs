@@ -53,6 +53,26 @@ const TOOLS = [
 ];
 
 const ok = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj) }] });
+
+// F-82: caller values crossed into template literals and JSON.stringify,
+// which recurse per nesting level — a 10 KB nested array overflowed the
+// stack and killed the gate. Echoed caller values are bounded strings;
+// structures are named, never serialized.
+const MAX_ECHO = 200;
+const kind = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
+const echo = (v) =>
+  typeof v === 'string' ? (v.length > MAX_ECHO ? `${v.slice(0, MAX_ECHO)}…` : v) : `<${kind(v)}>`;
+const safeDetails = (d, depth = 0) => {
+  if (typeof d === 'string') return echo(d);
+  if (d === null || typeof d !== 'object') return d;
+  if (depth >= 2) return `<${kind(d)}>`;
+  if (Array.isArray(d)) return d.slice(0, 20).map((x) => safeDetails(x, depth + 1));
+  return Object.fromEntries(
+    Object.entries(d)
+      .slice(0, 50)
+      .map(([k, x]) => [k, safeDetails(x, depth + 1)]),
+  );
+};
 const refusal = (obj) => ({
   content: [{ type: 'text', text: JSON.stringify(obj) }],
   isError: true,
@@ -152,7 +172,7 @@ function callTool({ name, args, ledgerPath, loaded, decisionLogPath }) {
     return null; // unknown tool → protocol error upstream
   } catch (e) {
     if (e instanceof LedgerError || e instanceof PolicyError)
-      return refusal({ code: e.code, message: e.message, details: e.details });
+      return refusal({ code: e.code, message: echo(e.message), details: safeDetails(e.details) });
     throw e;
   }
 }
@@ -176,6 +196,19 @@ export function startMcpServer({
   let buf = '';
   let dropping = false;
   const handleLine = (line) => {
+    let replyId = null;
+    try {
+      replyId = handleFrame(line, (id) => (replyId = id));
+    } catch {
+      // one frame's failure never takes the gate down (F-82, RC-09)
+      rpcError(
+        replyId,
+        -32603,
+        'internal error: this request was not handled; the server keeps serving',
+      );
+    }
+  };
+  const handleFrame = (line, setReplyId) => {
     if (line.trim() === '') return;
     let msg;
     try {
@@ -191,16 +224,29 @@ export function startMcpServer({
       return;
     }
     const { id, method, params } = msg;
-    if (id === undefined) return; // notification — nothing to answer
+    if (id === undefined) return; // notification — nothing to answer, nothing executed
+    // the envelope is checked before any value is used (F-82)
+    if (!(id === null || typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id))))
+      return rpcError(
+        null,
+        -32600,
+        'invalid request: id must be a string, a finite number or null',
+      );
+    setReplyId(id);
+    if (typeof method !== 'string')
+      return rpcError(id, -32600, 'invalid request: method must be a string');
     if (method === 'initialize')
       return reply(id, {
-        protocolVersion: params?.protocolVersion ?? '2024-11-05',
+        protocolVersion:
+          typeof params?.protocolVersion === 'string' ? echo(params.protocolVersion) : '2024-11-05',
         capabilities: { tools: {} },
         serverInfo: { name: 'sakk', version },
       });
     if (method === 'ping') return reply(id, {});
     if (method === 'tools/list') return reply(id, { tools: TOOLS });
     if (method === 'tools/call') {
+      if (typeof params?.name !== 'string')
+        return rpcError(id, -32602, 'invalid params: the tool name must be a string');
       const result = callTool({
         name: params?.name,
         args: params?.arguments ?? {},
@@ -208,10 +254,10 @@ export function startMcpServer({
         loaded,
         decisionLogPath,
       });
-      if (result === null) return rpcError(id, -32602, `unknown tool: ${params?.name}`);
+      if (result === null) return rpcError(id, -32602, `unknown tool: ${echo(params.name)}`);
       return reply(id, result);
     }
-    return rpcError(id, -32601, `unknown method: ${method}`);
+    return rpcError(id, -32601, `unknown method: ${echo(method)}`);
   };
 
   input.setEncoding('utf8');
