@@ -163,3 +163,100 @@ describe('findings ledger gate', () => {
         assert.ok(reviews.includes(key), `${key} occurs ${n} times: write the stop-line review`);
   });
 });
+
+/**
+ * Self-evolution gate (docs/SELF_EVOLUTION.md). The ledger only prevents
+ * what a developer can find before building (`areas` → `npm run brief`), and
+ * it only evolves if every escape past an existing class detector says why
+ * the detector missed it and what now catches that shape.
+ */
+const PREVENTION = JSON.parse(read('findings/prevention.json'));
+const num = (id) => Number(id.slice(2));
+/** The classes whose detector already existed when this finding was logged. */
+const escapedPast = (f, mechanisms = LEDGER.class_mechanisms ?? {}) =>
+  f.rc.filter((rc) =>
+    (mechanisms[rc]?.refs ?? []).some((r) => r.kind === 'detector' && num(r.since) < num(f.id)),
+  );
+
+describe('self-evolution gate', () => {
+  test('every finding names the code areas it is about, and they exist', () => {
+    for (const f of FINDINGS) {
+      assert.ok(Array.isArray(f.areas) && f.areas.length > 0, `${f.id}: areas`);
+      for (const a of f.areas)
+        assert.ok(existsSync(join(ROOT, a)), `${f.id}: area ${a} does not exist`);
+    }
+  });
+  test('every class-mechanism reference says since which finding it existed', () => {
+    for (const [rc, m] of Object.entries(LEDGER.class_mechanisms ?? {}))
+      for (const r of m.refs) {
+        assert.match(String(r.since), /^F-\d{2,}$/, `${rc}: ${r.ref} has no since`);
+        assert.ok(
+          num(r.since) <= Math.max(...FINDINGS.map((f) => num(f.id))),
+          `${rc}: since ${r.since}`,
+        );
+      }
+  });
+  test('control: the escape rule sees a known escape and a known first occurrence', () => {
+    const byId = Object.fromEntries(FINDINGS.map((f) => [f.id, f]));
+    assert.deepEqual(escapedPast(byId['F-65']), ['RC-01'], 'F-65 slipped past the RC-01 detectors');
+    assert.deepEqual(escapedPast(byId['F-11']), [], 'F-11 came before any RC-03 detector');
+  });
+  for (const f of FINDINGS)
+    test(`${f.id}: an escape past a class detector says why and what now catches it`, () => {
+      const esc = escapedPast(f);
+      if (esc.length === 0) {
+        assert.ok(!('mechanism_gap' in f), 'not an escape: remove mechanism_gap');
+        return;
+      }
+      assert.ok(f.mechanism_gap?.trim(), `escaped past ${esc.join(',')}: mechanism_gap required`);
+      assert.doesNotMatch(f.mechanism_gap, NOT_MECHANISM, 'the gap stops at a person (§14.3)');
+      const up = f.mechanism_upgrade ?? '';
+      assert.ok(
+        /^none: .{10,}/.test(up) || (up.includes('::') && resolves(up)),
+        `mechanism_upgrade must resolve, or be "none: <reason>" — got ${JSON.stringify(up)}`,
+      );
+    });
+  test('a class whose last two escapes upgraded nothing has a stop-line review naming both (§15.4)', () => {
+    const reviews = readdirSync(join(ROOT, 'findings/reviews'))
+      .map((f) => read(join('findings/reviews', f)))
+      .join('\n');
+    for (const rc of Object.keys(rcCounts())) {
+      const esc = FINDINGS.filter((f) => escapedPast(f).includes(rc)).sort(
+        (a, b) => num(a.id) - num(b.id),
+      );
+      const last = esc.slice(-2);
+      if (last.length === 2 && last.every((f) => String(f.mechanism_upgrade).startsWith('none:')))
+        for (const f of last)
+          assert.ok(
+            reviews.includes(rc) && reviews.includes(f.id),
+            `${rc}: escapes ${last.map((x) => x.id).join(', ')} upgraded no check — the stop-line review must name ${f.id}`,
+          );
+    }
+  });
+  test('every class and pattern in the ledger has a prevention question learned from it', () => {
+    const byId = Object.fromEntries(FINDINGS.map((f) => [f.id, f]));
+    const patterns = new Set(FINDINGS.map((f) => f.pattern).filter(Boolean));
+    for (const rc of Object.keys(rcCounts()))
+      assert.ok(
+        PREVENTION.classes?.[rc]?.length > 0,
+        `${rc}: no question in findings/prevention.json`,
+      );
+    for (const p of patterns)
+      assert.ok(
+        PREVENTION.patterns?.[p]?.length > 0,
+        `${p}: no question in findings/prevention.json`,
+      );
+    for (const [key, qs] of [
+      ...Object.entries(PREVENTION.classes ?? {}),
+      ...Object.entries(PREVENTION.patterns ?? {}),
+    ])
+      for (const q of qs) {
+        assert.ok(q.ask?.trim() && q.learned_from?.length > 0, `${key}: ask and learned_from`);
+        for (const id of q.learned_from) {
+          const f = byId[id];
+          assert.ok(f, `${key}: ${id} is not in the ledger`);
+          assert.ok(f.rc.includes(key) || f.pattern === key, `${key}: ${id} is not of this class`);
+        }
+      }
+  });
+});

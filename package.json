@@ -23,6 +23,7 @@
     "fuzz": "node scripts/invariant-fuzz.mjs",
     "fuzz:policy": "node scripts/policy-fuzz.mjs",
     "fuzz:l1": "node scripts/l1-fuzz.mjs",
+    "brief": "node scripts/findings-brief.mjs",
     "certificate": "node scripts/gate-certificate.mjs",
     "evidence": "node scripts/evidence-bundle.mjs",
     "audit": "node scripts/audit.mjs",

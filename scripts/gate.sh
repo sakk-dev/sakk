@@ -12,6 +12,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export CI=true
+# self-evolution step 1: what the ledger already learned about these changes
+npm run --silent brief
 npm run --silent lint
 npm run --silent format:check
 npm run --silent test

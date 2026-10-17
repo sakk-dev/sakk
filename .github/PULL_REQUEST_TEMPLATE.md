@@ -2,6 +2,11 @@
 
 <!-- One logical change. Link the issue: Fixes #NNN -->
 
+## Ledger brief (R-22)
+
+<!-- Paste the "Past findings here" and "Ask before you build" lines from
+`npm run brief` for this change, and say how the change answers each question. -->
+
 ## Checklist
 
 - [ ] `npm run test:all` green locally
@@ -12,6 +17,7 @@
 - [ ] Case/fixture/scoring/schema changes reviewed as executable code
 - [ ] Core-area change: three-tables + contract in `specs/` and converge check done (R-01/R-11)
 - [ ] Bugfix: attack-shaped regression included; self-report verified / partial / failed
+- [ ] Every problem found while building is in `findings/ledger.json` (areas, root cause, guard; escape fields if its class had a detector)
 - [ ] CLA signed (bot will prompt on first PR)
 
 ## Money semantics

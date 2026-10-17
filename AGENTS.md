@@ -3,6 +3,19 @@
 Instructions for any coding agent working in this repository. The
 non-negotiables live in CONSTITUTION.md; the full rulebook in docs/RULES.md.
 
+## Before you change anything (self-evolution, R-22)
+
+1. `npm run brief -- <paths you will touch>` — the past findings there, the
+   questions to answer before building, and the known blind spots of the
+   checks that will run. Answer the questions in your plan.
+2. While building, every problem you find goes into `findings/ledger.json`
+   (areas, root cause, guard). If its class already had a detector, also
+   `mechanism_gap` (why the check missed it) and `mechanism_upgrade` (the
+   check that now catches it, or `none: <reason>`).
+3. A lesson that should stop the next person goes into
+   `findings/prevention.json`. The ledger gate keeps all three honest.
+   Details: docs/SELF_EVOLUTION.md.
+
 ## Setup & checks (run these; they are the gate)
 
 - Install: nothing to install — plain Node ≥ 20, macOS/Linux, zero deps.

@@ -1,6 +1,6 @@
 # Testing profile: Sakk
 
-- **Standard:** internal AI-agent testing standard **v1.1** (layers T0–T6,
+- **Standard:** internal AI-agent testing standard **v1.2** (layers T0–T6,
   change levels L0–L2, §14 root-cause attribution). The standard's text is
   not copied here; this file records only what is specific to Sakk.
 - **Phase:** development → pre-release. Real-model runs are fail-closed
@@ -74,7 +74,17 @@ PASS while its spend is unresolved.
 Ledger `findings/ledger.json` · gate `test/findings-ledger.test.mjs` ·
 indicators `npm run findings-report` · stop-line reviews `findings/reviews/`.
 Class detectors: `cli-strictness`, `claims-are-checked`, `hostile-names`,
-`schema-pins`, `core-specs` (all under `test/`).
+`schema-pins`, `core-specs`, `bundle-absence` (all under `test/`), plus the
+secret-scan context matrix and the ledger-write classification.
+
+## Self-evolution (§15)
+
+Before a change: `npm run brief -- <paths>` (also printed by `npm run gate`).
+Every finding carries `areas`; every class-mechanism ref its `since`; an
+escape past an existing detector records `mechanism_gap` and
+`mechanism_upgrade`; `findings/prevention.json` holds the questions learned
+from each class. All four are enforced by the self-evolution gate in
+`test/findings-ledger.test.mjs`. Design: `docs/SELF_EVOLUTION.md`.
 
 ## Open items
 

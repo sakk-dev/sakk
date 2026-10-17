@@ -75,3 +75,22 @@ agent-writable `.git` as scorer evidence.
   bug when put back.
 - RC-08 (F-49, F-67): every `writeLedger` call is classified as confirming
   the books or not; an unclassified write fails.
+
+## §15.4 — two escapes in a row that upgraded nothing
+
+The self-evolution gate (standard v1.2 §15.4) treats a class whose last two
+escapes could only be fixed as instances as a third occurrence.
+
+- **RC-01 — F-74, F-79.** A hook that broke when node moved, and a test that
+  listed seven directories as "the whole repository". Both are environment
+  or enumeration shapes; the RC-01 detectors enumerate inputs (CLI
+  arguments, JSON keys) and never generate environments. Proposed upgrade:
+  a stranger-environment matrix (node moved, nested repository, subdirectory,
+  `core.hooksPath`, read-only home) run against every CLI entry point,
+  replacing hand-picked stranger tests.
+- **RC-05 — F-71, F-76.** Replace refs in the scanned repository, and the
+  scorer reading the agent's own `.git`. The RC-05 detectors cover ids that
+  callers pass in; neither shape is a caller argument — both are state that
+  someone else controls. Proposed upgrade: a trust-boundary inventory per
+  core module (every input source, who controls it, how it is checked),
+  with a test that fails when a module reads a source not in its inventory.

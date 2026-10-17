@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (self-evolution loop — docs/SELF_EVOLUTION.md)
+
+- `npm run brief -- <paths>`: before a change, the past findings for those
+  files, the questions to answer first (`findings/prevention.json`), the
+  known blind spots of the checks that will run, and those checks. The
+  commit gate prints it.
+- The ledger gate now requires `areas` on every finding, `since` on every
+  class-mechanism reference, and for every escape past an existing
+  detector a `mechanism_gap` and `mechanism_upgrade`; every class has a
+  prevention question; two escapes in a row that upgraded nothing need a
+  stop-line review. `findings-report` adds the past-detector escape rate
+  and the detector upgrade rate.
+- Rule R-22; AGENTS.md "Before you change anything"; PR template section.
+
 ### Fixed (independent review on a second model, findings F-62 … F-79)
 
 - Evidence bundles: a REAL run must name its model (verifier and

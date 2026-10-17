@@ -1,0 +1,84 @@
+{
+  "schema": "sakk-prevention.v1",
+  "notes": "Questions to answer BEFORE building, distilled from findings/ledger.json. Each one cites the findings that taught it. `npm run brief` shows the ones whose classes touch the files you are about to change. The ledger gate requires an entry for every class and pattern that appears in the ledger.",
+  "classes": {
+    "RC-01": [
+      {
+        "ask": "What happens when this input, key, file, flag or directory is ABSENT? Absence must refuse or be declared — never read as success.",
+        "learned_from": ["F-06", "F-09", "F-16", "F-23", "F-33", "F-65", "F-79"]
+      },
+      {
+        "ask": "Which environment does this assume — repository top, PATH node, idle machine, git version, which git operations run hooks? Test the other one.",
+        "learned_from": ["F-61", "F-64", "F-72", "F-74"]
+      },
+      {
+        "ask": "Does a hand-written list stand in for 'all' (directories, keys, codes, commands)? Enumerate from the source instead.",
+        "learned_from": ["F-65", "F-79"]
+      }
+    ],
+    "RC-03": [
+      {
+        "ask": "Is a match judged on the captured text alone? Judge it in context: what surrounds it, and what the capture swallowed.",
+        "learned_from": ["F-11", "F-63"]
+      }
+    ],
+    "RC-04": [
+      {
+        "ask": "Are you listing cases where a structural rule exists (prefix lists, name lists)? Prefer the rule; test the shapes the list misses.",
+        "learned_from": ["F-31", "F-43"]
+      }
+    ],
+    "RC-05": [
+      {
+        "ask": "Which inputs come from someone else — the agent under test, operator text, hand-edited files, repository state (.git, replace refs), a shipped verifier? Each crosses a trust boundary: validate, escape, or do not trust it.",
+        "learned_from": ["F-12", "F-17", "F-35", "F-70", "F-71", "F-76"]
+      },
+      {
+        "ask": "Can a caller-supplied id collide with an object key (__proto__, constructor)? Use own keys only.",
+        "learned_from": ["F-01", "F-13"]
+      }
+    ],
+    "RC-06": [
+      {
+        "ask": "Was this tried only on the canonical layout and friendly samples? Add the stranger's layout (relative paths, subdirectories, unusual git config) and a benign corpus.",
+        "learned_from": ["F-08", "F-20", "F-30", "F-44", "F-75"]
+      }
+    ],
+    "RC-07": [
+      {
+        "ask": "Is a required step enforced only by rule text? Make the gate or the audit run it, and make a test fail when it is missing.",
+        "learned_from": ["F-53", "F-54", "F-55", "F-57", "F-60"]
+      }
+    ],
+    "RC-08": [
+      {
+        "ask": "Does this write or value carry a meaning beyond its scope — a timestamp that means 'confirmed', a lock that a manual override bypasses? Classify every write.",
+        "learned_from": ["F-49", "F-67"]
+      }
+    ],
+    "RC-10": [
+      {
+        "ask": "Is every sentence you add to docs, specs or packs backed by a test that fails without it? Read it back against the code, not the intent.",
+        "learned_from": ["F-52", "F-68", "F-69", "F-73", "F-77"]
+      }
+    ],
+    "RC-12": [
+      {
+        "ask": "Does the check fail for the reason it names, and only that? Put the bug back and watch it go red; no stopwatch; a positive control.",
+        "learned_from": ["F-15", "F-24", "F-41", "F-62", "F-66", "F-78"]
+      },
+      {
+        "ask": "Was the judge different from the writer (another model, a fresh clone)?",
+        "learned_from": ["F-59"]
+      }
+    ]
+  },
+  "patterns": {
+    "fail-open-absence": [
+      {
+        "ask": "Delete it and run again: does the outcome still read PASS? If yes, the check is optional — make it required or declare why.",
+        "learned_from": ["F-06", "F-21", "F-33", "F-65", "F-79"]
+      }
+    ]
+  }
+}

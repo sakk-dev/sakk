@@ -68,5 +68,21 @@ console.log(
 console.log(
   `sweep completion      ↑ ${pct(swept, F.length)}   findings whose lateral sweep is done`,
 );
+// self-evolution (docs/SELF_EVOLUTION.md): findings in a class whose detector
+// already existed, and how many of those upgraded a check rather than only
+// fixing the instance
+const num = (id) => Number(id.slice(2));
+const escapedPast = F.filter((f) =>
+  f.rc.some((rc) =>
+    (mech[rc]?.refs ?? []).some((r) => r.kind === 'detector' && num(r.since) < num(f.id)),
+  ),
+);
+const upgraded = escapedPast.filter((f) => !String(f.mechanism_upgrade ?? '').startsWith('none:'));
+console.log(
+  `past-detector escapes ↓ ${pct(escapedPast.length, F.length)}   findings whose class already had a detector that missed them`,
+);
+console.log(
+  `detector upgrade rate ↑ ${pct(upgraded.length, escapedPast.length)}   of those, escapes that upgraded a check (not only the instance)`,
+);
 const open = F.filter((f) => f.status === 'open');
 if (open.length) console.log(`open: ${open.map((f) => `${f.id} ${f.title}`).join(' | ')}`);
