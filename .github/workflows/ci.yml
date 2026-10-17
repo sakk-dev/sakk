@@ -39,3 +39,4 @@ jobs:
       - run: npm run fuzz
       - run: npm run fuzz:policy
       - run: npm run fuzz:l1
+      - run: npm run campaigns

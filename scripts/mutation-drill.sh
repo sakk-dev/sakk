@@ -166,6 +166,20 @@ run_drill MUT-W src/ledger.mjs \
   "a scoped resume leaves the global halt in force" \
   "test"
 
+# MUT-X: drop the cap check → a reservation past the cap must be refused by its test (red line)
+run_drill MUT-X src/ledger.mjs \
+  "    if (t.committedUsd + estimatedMaxUsd >= doc.capUsd - CAP_EPSILON_USD) {" \
+  "    if (false) {" \
+  "exactly at the cap: refused (the cap is a wall, not a target)" \
+  "test"
+
+# MUT-Y: print the secret instead of its keyed fingerprint → its test must die red (red line)
+run_drill MUT-Y src/secret-scan.mjs \
+  "const fingerprint = (value) => createHmac('sha256', KEY).update(value).digest('hex').slice(0, 12);" \
+  "const fingerprint = (value) => value;" \
+  "keyed fingerprints: stable within a run, different across runs unless SAKK_SCAN_KEY is set" \
+  "test"
+
 # MUT-J: judge the fiction-token exemption on the WHOLE match → a token in a
 # username exempts a real password, and its test must die red
 run_drill MUT-J src/secret-scan.mjs \

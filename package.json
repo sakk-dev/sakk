@@ -24,6 +24,7 @@
     "fuzz:policy": "node scripts/policy-fuzz.mjs",
     "fuzz:l1": "node scripts/l1-fuzz.mjs",
     "brief": "node scripts/findings-brief.mjs",
+    "campaigns": "node scripts/campaign/fault-injection.mjs && node scripts/campaign/soak-ledger.mjs --minutes 0.2 --workers 4 && node scripts/campaign/mcp-torture.mjs --minutes 0.25 --servers 2",
     "certificate": "node scripts/gate-certificate.mjs",
     "evidence": "node scripts/evidence-bundle.mjs",
     "audit": "node scripts/audit.mjs",

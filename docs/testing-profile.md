@@ -57,9 +57,16 @@ test shown to fail on the old code; F-75 (scanner precision) and F-76
 
 ## Red lines
 
-No spend after a halt; no reservation past the cap; no PASS from a FAKE run
-read as model evidence; no secret printed in any output; no bundle reads
-PASS while its spend is unresolved.
+Each red line names the drill anchors that prove its guard can fail
+(`test/core-specs.test.mjs` requires at least one per line).
+
+| Red line                                           | Drill anchors       |
+| -------------------------------------------------- | ------------------- |
+| No spend after a halt                              | MUT-G, MUT-H, MUT-W |
+| No reservation past the cap                        | MUT-X               |
+| No PASS from a FAKE run read as model evidence     | MUT-I, MUT-T, MUT-U |
+| No secret printed in any output                    | MUT-Y               |
+| No bundle reads PASS while its spend is unresolved | MUT-L               |
 
 ## Governance mapping (standard §10, thematic)
 

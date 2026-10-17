@@ -82,3 +82,29 @@ describe('the audit runs every applicable layer of the standard', () => {
       assert.ok(existsSync(join(ROOT, m[1])), m[1]);
   });
 });
+
+describe('every red line is drilled (self-evolution upgrade of F-54)', () => {
+  // F-54's detector asked for one anchor per core FILE, so src/ledger.mjs
+  // passed on its halt anchors while the cap check — the first red line —
+  // had none. Now every red line in the profile names anchors that exist.
+  test('each red line in docs/testing-profile.md names a drill anchor that exists', () => {
+    const profile = read('docs/testing-profile.md');
+    const drill = read('scripts/mutation-drill.sh');
+    const section = profile.slice(
+      profile.indexOf('## Red lines'),
+      profile.indexOf('## Governance'),
+    );
+    const rows = [...section.matchAll(/^\| (No [^|]+?)\s*\| ([^|]+?)\s*\|$/gm)];
+    assert.ok(rows.length >= 5, `only ${rows.length} red-line rows found`);
+    for (const [, line, anchors] of rows) {
+      const ids = anchors.split(/,\s*/).filter((a) => /^MUT-[A-Z]$/.test(a));
+      assert.ok(ids.length > 0, `${line}: no drill anchor`);
+      for (const id of ids)
+        assert.match(
+          drill,
+          new RegExp(`^run_drill ${id} `, 'm'),
+          `${line}: ${id} is not in the drill`,
+        );
+    }
+  });
+});

@@ -27,6 +27,18 @@ const STEPS = [
   ['T0 ledger invariant fuzz', node, ['scripts/invariant-fuzz.mjs']],
   ['T0 policy invariant fuzz', node, ['scripts/policy-fuzz.mjs']],
   ['L1 invariant fuzz (packs, scan, bundle)', node, ['scripts/l1-fuzz.mjs']],
+  // campaigns ran nowhere until the 2026-10-17 regression (F-80): short legs here and in CI
+  ['T0 fault injection campaign', node, ['scripts/campaign/fault-injection.mjs']],
+  [
+    'T0 ledger soak with crash injection (12 s)',
+    node,
+    ['scripts/campaign/soak-ledger.mjs', '--minutes', '0.2', '--workers', '4'],
+  ],
+  [
+    'T3 MCP protocol torture (15 s)',
+    node,
+    ['scripts/campaign/mcp-torture.mjs', '--minutes', '0.25', '--servers', '2'],
+  ],
   ['T2 gold k=3, key cases k=5 (FAKE executor — harness only)', node, ['scripts/golden-k.mjs']],
   ['T3 attack list + ASR', node, ['scripts/attack-asr.mjs']],
   [
