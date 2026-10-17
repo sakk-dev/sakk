@@ -3616,6 +3616,34 @@
       "areas": ["test/mcp.test.mjs"],
       "mechanism_gap": "The environment detectors vary layouts and git configuration, not the Node version; the local gate runs one version while CI runs the supported ones.",
       "mechanism_upgrade": "none: the CI matrix on Node 20 and 22 is the check that caught it; the local gate stays single-version"
+    },
+    {
+      "id": "F-122",
+      "date": "2026-10-17",
+      "introduced_in": "86f0599",
+      "found_by": "human",
+      "class": "C-02",
+      "title": "One secret matched by two rules is reported twice, so the scan overstates its count",
+      "symptom": "`sakk scan` on a file holding one DSN password with a %-escape prints two findings with the same fingerprint (dsn_with_password and url_encoded_password) and its summary says '3 finding(s)' for two secrets.",
+      "evidence": "2026-10-17 status demo for the maintainer: a scratch file with one GitHub token and one postgres DSN; three lines, two fingerprints",
+      "direct_cause": "The first pass of scanText reports every rule match on its own; only the second pass (exempt spans, F-63) skips a span already reported.",
+      "why": [
+        "Overlap was handled where F-63 met it, in the second pass, not as the rule that one secret is one finding.",
+        "The tests count findings per rule and never put a secret two rules both match into one text."
+      ],
+      "root_cause": "A fix covered the instance it met instead of the rule the instances share.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Fix: in scanText drop a first-pass hit whose span overlaps a reported hit with the same fingerprint, plus a test that puts one secret under two rules. Check display() and nameFindings for the same overlap.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/secret-scan.mjs"],
+      "mechanism_gap": "The RC-04 scanner detectors test one pattern per sample, true and false positives; none puts one secret where two patterns overlap.",
+      "mechanism_upgrade": "none: open — a test that scans one secret matched by two rules and expects one finding"
     }
   ]
 }
