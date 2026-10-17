@@ -39,6 +39,8 @@ import {
   forceUnlock,
 } from '../src/ledger.mjs';
 import { scanPaths, scanStaged } from '../src/secret-scan.mjs';
+import { loadPolicy, decide } from '../src/policy.mjs';
+import { childEnv } from '../eval/lib/exec-env.mjs';
 import { packReport } from '../eval/lib/packs.mjs';
 import { verifyBundle } from '../eval/lib/bundle-verify.mjs';
 import { buildBundle } from './evidence-bundle.mjs';
@@ -97,6 +99,26 @@ const DESCRIBED = {
   'full rebuild of every file (authenticity)': [
     'pass off a rebuilt bundle as the issued one',
     'verify.mjs reads PASS (only the out-of-band fingerprint catches it)',
+  ],
+  'spend past the cap or outside the books': [
+    'spend more than the cap allows, or spend the books do not hold',
+    'reserve() is granted at or past the cap, from a pathological ledger or input, or a reservation lands in a forked copy',
+  ],
+  'get a refused request allowed (deny-default policy)': [
+    'make the policy kernel allow what the policy refuses',
+    'decide().verdict === "allow" for a request the deny-default policy does not allow',
+  ],
+  'dodge a deny under an allow-default policy': [
+    'slip past a deny that the policy author wrote',
+    'decide().verdict === "allow" by omitting the constrained field or using a case alias (documented in README)',
+  ],
+  'spend or lift a stop through the agent channel': [
+    'use the MCP tools to spend past the gate, settle what a person must, or kill the gate',
+    'a refused reservation is booked, a reconciliation entry settles, or the server exits',
+  ],
+  'turn a failing suite green from the operator environment': [
+    'make the judge read a failing verification as green',
+    'a child `node --test` of a failing suite, spawned with childEnv(), exits 0',
   ],
   'flip a runner-recorded fact the files cannot contradict (harness_dirty)': [
     'present a run from a modified harness as a clean one',
@@ -508,6 +530,311 @@ row('E4 evidence bundle', 'full rebuild of every file (authenticity)', 'KNOWN', 
     },
   ],
 ]);
+
+// ── E5–E8: the original modules (2026-10-17 regression: T3 covered only
+// the four plan items, so "0 attacks got through" said nothing about the
+// ledger core, the policy kernel, the MCP enforcer or the gold harness) ───
+const capped = (cap = 1) => {
+  const lp = join(tdir(), 'l.json');
+  initLedger({ ledgerPath: lp, capUsd: cap });
+  return lp;
+};
+const granted = (fn) => {
+  try {
+    fn();
+    return true;
+  } catch {
+    return false;
+  }
+};
+const editBooks = (lp, fn) => {
+  const d = JSON.parse(readFileSync(lp, 'utf8'));
+  fn(d);
+  writeFileSync(lp, JSON.stringify(d));
+};
+row('E5 ledger core', 'spend past the cap or outside the books', 'CLAIMED', [
+  [
+    'reserve exactly the cap',
+    () => granted(() => reserve({ ledgerPath: capped(1), callId: 'a', estimatedMaxUsd: 1 })),
+  ],
+  [
+    'ten 0.1 against a 1.0 cap (float drift)',
+    () => {
+      const lp = capped(1);
+      let ok = 0;
+      for (let i = 0; i < 10; i += 1)
+        if (granted(() => reserve({ ledgerPath: lp, callId: `c${i}`, estimatedMaxUsd: 0.1 })))
+          ok += 1;
+      return ok === 10;
+    },
+  ],
+  [
+    'negative estimate',
+    () => granted(() => reserve({ ledgerPath: capped(), callId: 'a', estimatedMaxUsd: -5 })),
+  ],
+  [
+    'estimate as a string',
+    () => granted(() => reserve({ ledgerPath: capped(), callId: 'a', estimatedMaxUsd: '0.5' })),
+  ],
+  [
+    'NaN estimate',
+    () => granted(() => reserve({ ledgerPath: capped(), callId: 'a', estimatedMaxUsd: NaN })),
+  ],
+  [
+    'same callId again after settling',
+    () => {
+      const lp = capped(10);
+      reserve({ ledgerPath: lp, callId: 'a', estimatedMaxUsd: 1 });
+      settle({ ledgerPath: lp, callId: 'a', actualUsd: 0.5 });
+      return granted(() => reserve({ ledgerPath: lp, callId: 'a', estimatedMaxUsd: 1 }));
+    },
+  ],
+  [
+    'a hand-edited negative entry frees cap',
+    () => {
+      const lp = capped(1);
+      editBooks(lp, (d) =>
+        d.entries.push({ callId: 'n', estimatedMaxUsd: -1000, createdAt: 'x', status: 'RESERVED' }),
+      );
+      return granted(() => reserve({ ledgerPath: lp, callId: 'b', estimatedMaxUsd: 0.5 }));
+    },
+  ],
+  [
+    'two reservations through a symlinked ledger file',
+    () => {
+      const lp = capped(10);
+      const alias = join(dirname(lp), 'alias.json');
+      symlinkSync(lp, alias);
+      const a = granted(() => reserve({ ledgerPath: alias, callId: 'a', estimatedMaxUsd: 6 }));
+      const b = granted(() => reserve({ ledgerPath: lp, callId: 'b', estimatedMaxUsd: 6 }));
+      return a && b;
+    },
+  ],
+  [
+    'spend from a stale ledger after settling an old reservation',
+    () => {
+      const lp = capped(10);
+      reserve({ ledgerPath: lp, callId: 'old', estimatedMaxUsd: 1 });
+      editBooks(lp, (d) => (d.updatedAt = new Date(Date.now() - 30 * 864e5).toISOString()));
+      try {
+        settle({ ledgerPath: lp, callId: 'old', actualUsd: 0 });
+      } catch {
+        /* a refusal is fine */
+      }
+      return granted(() => reserve({ ledgerPath: lp, callId: 'new', estimatedMaxUsd: 1 }));
+    },
+  ],
+]);
+
+const DENY_DEFAULT = {
+  schema: 'sakk-policy.v1',
+  default_verdict: 'deny',
+  rules: [
+    { id: 'no-prod', match: { scope: ['prod/'] }, verdict: 'deny' },
+    { id: 'small', match: { action: 'model_call', max_estimated_usd: 1 }, verdict: 'allow' },
+    { id: 'docs', match: { action: 'file_write', scope: ['docs/'] }, verdict: 'allow' },
+  ],
+};
+const policyFrom = (doc) => {
+  const p = join(tdir(), 'p.json');
+  writeFileSync(p, JSON.stringify(doc));
+  return loadPolicy({ policyPath: p });
+};
+const allows = (doc, context) => {
+  try {
+    const { policy, policyHash } = policyFrom(doc);
+    return (
+      decide({ policy, policyHash, context: { callId: 'c', estimatedUsd: 0.5, ...context } })
+        .verdict === 'allow'
+    );
+  } catch {
+    return false;
+  }
+};
+row(
+  'E6 policy kernel',
+  'get a refused request allowed (deny-default policy)',
+  'CLAIMED',
+  [
+    ['write prod through a traversal', { action: 'file_write', scope: 'docs/../prod/x' }],
+    ['write prod through a double slash', { action: 'file_write', scope: 'docs//../prod/x' }],
+    ['write prod through a leading ./', { action: 'file_write', scope: './docs/x' }],
+    ['model_call just over the limit', { action: 'model_call', estimatedUsd: 1.0000001 }],
+    ['model_call with a string amount', { action: 'model_call', estimatedUsd: '0.5' }],
+    ['action in another case', { action: 'Model_call' }],
+    ['empty action name', { action: '' }],
+    ['prototype-named action', { action: '__proto__' }],
+  ].map(([label, ctx]) => [label, () => allows(DENY_DEFAULT, ctx)]),
+);
+const ALLOW_DEFAULT = {
+  schema: 'sakk-policy.v1',
+  default_verdict: 'allow',
+  rules: [
+    { id: 'no-prod-deploys', match: { action: 'deploy', scope: ['prod/'] }, verdict: 'deny' },
+  ],
+};
+row('E6 policy kernel', 'dodge a deny under an allow-default policy', 'KNOWN', [
+  ['deploy with the scope omitted', () => allows(ALLOW_DEFAULT, { action: 'deploy' })],
+  [
+    'deploy to a case alias of prod/',
+    () => allows(ALLOW_DEFAULT, { action: 'deploy', scope: 'Prod/api' }),
+  ],
+]);
+
+const mcp = (lp, frames, { policy } = {}) => {
+  const args = [SAKK, 'mcp', '--ledger', lp];
+  if (policy) {
+    const pp = join(tdir(), 'p.json');
+    writeFileSync(pp, JSON.stringify(policy));
+    args.push('--policy', pp);
+  }
+  const r = spawnSync(process.execPath, args, {
+    input: `${frames.map((f) => (typeof f === 'string' ? f : JSON.stringify(f))).join('\n')}\n`,
+    encoding: 'utf8',
+    timeout: 30_000,
+    // the variables are REMOVED, not emptied: set-but-empty is a refusal, and
+    // a server that never started made every variant read "blocked" (F-93)
+    env: Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([k]) => k !== 'SAKK_LEDGER_PATH' && k !== 'SAKK_POLICY_PATH',
+      ),
+    ),
+  });
+  return {
+    status: r.status,
+    replies: r.stdout
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l)),
+  };
+};
+const call = (id, name, args) => ({
+  jsonrpc: '2.0',
+  id,
+  method: 'tools/call',
+  params: { name, arguments: args },
+});
+const entries = (lp) => readLedger({ ledgerPath: lp, maxAgeMs: Infinity }).entries;
+{
+  // control: the helper reaches a working gate — an allowed reserve is booked
+  const lp = capped(10);
+  const r = mcp(lp, [call(1, 'sakk_reserve', { callId: 'ok', estimatedMaxUsd: 0.5 })]);
+  if (r.status !== 0 || entries(lp).length !== 1) {
+    console.error(
+      `E7 control failed: the MCP helper did not reach a working gate (exit ${r.status})`,
+    );
+    process.exit(1);
+  }
+}
+row('E7 MCP enforcer', 'spend or lift a stop through the agent channel', 'CLAIMED', [
+  [
+    'reserve an action the policy denies',
+    () => {
+      const lp = capped(10);
+      mcp(
+        lp,
+        [
+          call(1, 'sakk_reserve', {
+            callId: 'd',
+            estimatedMaxUsd: 0.5,
+            action: 'deploy',
+            scope: 'prod/x',
+          }),
+        ],
+        {
+          policy: DENY_DEFAULT,
+        },
+      );
+      return entries(lp).length > 0;
+    },
+  ],
+  [
+    'reserve as a notification (no id)',
+    () => {
+      const lp = capped(10);
+      mcp(lp, [
+        {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { name: 'sakk_reserve', arguments: { callId: 'n', estimatedMaxUsd: 1 } },
+        },
+      ]);
+      return entries(lp).length > 0;
+    },
+  ],
+  [
+    'settle a reconciliation entry at $0',
+    () => {
+      const lp = capped(10);
+      reserve({ ledgerPath: lp, callId: 'r', estimatedMaxUsd: 1 });
+      settle({ ledgerPath: lp, callId: 'r', failedUnknownCost: true });
+      mcp(lp, [call(1, 'sakk_settle', { callId: 'r', actualUsd: 0 })]);
+      return entries(lp)[0].status === 'SETTLED';
+    },
+  ],
+  [
+    'lift a halt with an invented tool',
+    () => {
+      const lp = capped(10);
+      halt({ ledgerPath: lp, by: 'op' });
+      mcp(lp, [call(1, 'sakk_resume', { by: 'agent' }), call(2, 'sakk_unlock', { by: 'agent' })]);
+      return !readLedger({ ledgerPath: lp, maxAgeMs: Infinity }).halt?.global;
+    },
+  ],
+  [
+    'kill the gate with a deeply nested frame',
+    () => {
+      const lp = capped(10);
+      const deep = `${'['.repeat(8000)}${']'.repeat(8000)}`;
+      const r = mcp(lp, [
+        `{"jsonrpc":"2.0","id":1,"method":${deep}}`,
+        { jsonrpc: '2.0', id: 2, method: 'ping' },
+      ]);
+      return !r.replies.some((m) => m.id === 2);
+    },
+  ],
+]);
+
+const failingSuite = (() => {
+  const f = join(tdir(), 'f.test.mjs');
+  writeFileSync(
+    f,
+    "import {test} from 'node:test';import assert from 'node:assert';test('t',()=>assert.equal(1,2));\n",
+  );
+  return f;
+})();
+row(
+  'E8 gold harness',
+  'turn a failing suite green from the operator environment',
+  'CLAIMED',
+  [
+    { NODE_OPTIONS: '--test-only' },
+    { NODE_OPTIONS: '--test-skip-pattern=.' },
+    { NODE_OPTIONS: '--test-name-pattern=no-such-test' },
+    { NODE_TEST_CONTEXT: 'child' },
+    { NODE_TEST_CONTEXT: 'child-v8' },
+  ].map((vars) => [
+    Object.entries(vars)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(' '),
+    () => {
+      const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+      Object.assign(process.env, vars);
+      try {
+        return (
+          spawnSync(process.execPath, ['--test', failingSuite], {
+            env: childEnv(),
+            encoding: 'utf8',
+          }).status === 0
+        );
+      } finally {
+        for (const [k, v] of Object.entries(saved))
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+      }
+    },
+  ]),
+);
 
 // ── report ──────────────────────────────────────────────────────────────────
 const undescribed = rows.filter((r) => !describeRow(r.payload)).map((r) => r.payload);
