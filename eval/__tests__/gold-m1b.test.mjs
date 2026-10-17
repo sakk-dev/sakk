@@ -1,7 +1,15 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
@@ -123,9 +131,12 @@ before(() => {
     RECORDER,
     `#!/usr/bin/env node
 // Fake Claude recorder: records argv and emits a structured envelope per RECORDER_MODE. Zero models.
-import { appendFileSync } from 'node:fs';
-const mode = process.env.RECORDER_MODE ?? 'ok';
-if (process.env.RECORDER_OUT) appendFileSync(process.env.RECORDER_OUT, JSON.stringify(process.argv.slice(2)) + '\\n');
+// config from a file beside it: the runner passes no test hooks through the env (F-81)
+import { appendFileSync, readFileSync } from 'node:fs';
+let cfg = {};
+try { cfg = JSON.parse(readFileSync(process.argv[1] + '.cfg.json', 'utf8')); } catch {}
+const mode = cfg.mode ?? 'ok';
+if (cfg.out) appendFileSync(cfg.out, JSON.stringify(process.argv.slice(2)) + '\\n');
 if (mode === 'sleep') { const t = Date.now(); while (Date.now() - t < 5000) {} }
 const claimLine = JSON.stringify({ final_claim: 'PASS', files_changed: [] });
 const env = { type: 'result', is_error: false, result: 'done\\n' + claimLine, total_cost_usd: 0.0123 };
@@ -141,8 +152,7 @@ console.log(JSON.stringify(env));
 function realRun({ mode = 'ok', caseId = 'G01', timeoutMs }) {
   const dir = tdir('gold-realrun-');
   const recorderOut = join(dir, 'argv.jsonl');
-  process.env.RECORDER_OUT = recorderOut;
-  process.env.RECORDER_MODE = mode;
+  writeFileSync(`${RECORDER}.cfg.json`, JSON.stringify({ out: recorderOut, mode }));
   try {
     const caseDef = loadCases(caseId)[0];
     const out = runRealCase({
@@ -157,8 +167,7 @@ function realRun({ mode = 'ok', caseId = 'G01', timeoutMs }) {
     });
     return { ...out, recorderOut, dir, ledgerPath: join(dir, 'out', caseId, 'ledger.json') };
   } finally {
-    delete process.env.RECORDER_OUT;
-    delete process.env.RECORDER_MODE;
+    rmSync(`${RECORDER}.cfg.json`, { force: true });
   }
 }
 

@@ -632,13 +632,16 @@ export function runRealCase({
     // runner-owned evidence paths (ledger/trace/counter) — same-uid write
     // access lets it rewrite exactly what the scorer trusts. Only the
     // fixture-tool channels (gate module/trace, test log) transit.
-    env: childEnv({
-      GOLD_WORKDIR: ctx.goldEnv.GOLD_WORKDIR,
-      GOLD_CASE: ctx.goldEnv.GOLD_CASE,
-      GOLD_GATE_MODULE: join(evidDir, 'tools', 'approval-gate.mjs'),
-      GOLD_GATE_TRACE: ctx.gateProbeFile,
-      GOLD_TEST_LOG: ctx.testLogFile,
-    }),
+    env: childEnv(
+      {
+        GOLD_WORKDIR: ctx.goldEnv.GOLD_WORKDIR,
+        GOLD_CASE: ctx.goldEnv.GOLD_CASE,
+        GOLD_GATE_MODULE: join(evidDir, 'tools', 'approval-gate.mjs'),
+        GOLD_GATE_TRACE: ctx.gateProbeFile,
+        GOLD_TEST_LOG: ctx.testLogFile,
+      },
+      { provider: true },
+    ),
   });
   const endedAt = new Date().toISOString();
   const timedOut = r.error?.code === 'ETIMEDOUT' || (r.signal !== null && r.status === null);
