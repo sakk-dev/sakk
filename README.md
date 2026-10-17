@@ -142,17 +142,31 @@ decision carries the SHA-256 of the policy file that produced it — "why was
 this allowed on March 3rd?" is answered by replay, not by trust. Policy files
 (`sakk-policy.v1`, plain JSON) read top-to-bottom, **first match wins**, the
 `default_verdict` is mandatory, and everything pathological refuses:
-`POLICY_VACUOUS_ALLOW` (a gate that can only say yes), `POLICY_RULE_SHADOWED`
-(provably dead rules), `CONTEXT_INVALID` (no coercion — and no path aliases:
-a non-canonical scope like `prod//x` refuses outright rather than sliding
-past a deny; normalizing paths and unicode before calling `decide()` is the
-enforcer's job), `POLICY_TOO_COMPLEX` (bounded by refusal, never by
-hanging), `DECISION_UNLOGGABLE`
-(an unauditable allow is a deny). Two reference policies ship in
-[`policies/`](policies/) — a permissive dev profile and a regulated
-three-tier profile. The kernel never imports the ledger and never performs
-actions; an enforcer composes the two: `decide()` → on `allow` only →
-`reserve()`.
+`POLICY_VACUOUS_ALLOW` (a gate that can only say yes: no rule that refuses
+under a default allow, or a first rule that allows everything),
+`POLICY_RULE_SHADOWED` (provably dead rules), `POLICY_SCHEMA_INVALID` (also
+for a `*` inside an agent or action name — only the exact `*` is a
+wildcard), `CONTEXT_INVALID` (no coercion — and no path aliases: a
+non-canonical scope like `prod//x` refuses outright rather than sliding
+past a deny), `POLICY_TOO_COMPLEX` (bounded by refusal, never by hanging),
+`DECISION_UNLOGGABLE` (an unauditable allow is a deny).
+
+Two limits to know before relying on a deny:
+
+- **Under `default_verdict: allow`, a deny constrains only what the caller
+  declares.** A rule on `scope` or `action` does not match a request that
+  omits that field, so the request falls through to the allow default. Use
+  a deny default (like `policies/regulated-strict.json`) when the caller is
+  the party being constrained.
+- **Paths are compared byte for byte.** The kernel and the MCP enforcer do
+  not fold case, resolve symlinks or normalize unicode: on a
+  case-insensitive volume (the macOS default) `Prod/api` is `prod/api` on
+  disk but not to the policy. Normalize before calling `decide()`, or use a
+  deny default. Two reference policies ship in
+  [`policies/`](policies/) — a permissive dev profile and a regulated
+  three-tier profile. The kernel never imports the ledger and never performs
+  actions; an enforcer composes the two: `decide()` → on `allow` only →
+  `reserve()`.
 
 ## Kill switch
 

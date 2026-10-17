@@ -110,8 +110,8 @@ run_drill MUT-E src/policy.mjs \
 
 # MUT-F: let an empty allow-by-default policy load → the vacuous-gate test must die red
 run_drill MUT-F src/policy.mjs \
-  "if (doc.rules.length === 0 && doc.default_verdict === 'allow')" \
-  "if (false)" \
+  "    (doc.default_verdict === 'allow' && doc.rules.every((r) => r.verdict === 'allow')) ||" \
+  "    false ||" \
   "POLICY_VACUOUS_ALLOW: an empty allow-by-default policy refuses at load" \
   "test"
 
