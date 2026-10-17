@@ -64,6 +64,7 @@
     "bin",
     "policies",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ]
 }

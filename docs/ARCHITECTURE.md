@@ -6,19 +6,35 @@ have mutation drills — `npm run drill`).
 
 ```
 sakk/
-├── src/ledger.mjs          # trust root 1: fail-closed spend ledger
-├── test/                   # ledger suite (incl. a real 2-process race)
+├── src/
+│   ├── ledger.mjs          # trust root 1: fail-closed spend ledger + kill switch (halt/resume)
+│   ├── policy.mjs          #   policy kernel: decide() before reserve(); never imports the ledger
+│   ├── match.mjs           #   the one path matcher (policy kernel and scorer share it)
+│   ├── mcp.mjs             #   MCP stdio enforcer: decide → log → reserve, three tools only
+│   ├── secret-scan.mjs     #   secret scanner (paths, --staged, commit hooks)
+│   └── append.mjs          #   append-only writes that never follow a symlink
+├── bin/sakk.mjs            # CLI: init/status/reconcile/halt/resume/unlock/scan/mcp
+├── policies/               # reference policies (permissive-dev, regulated-strict)
 ├── eval/                   # trust root 2: gold eval harness
-│   ├── bin/gold-runner.mjs #   orchestrates: validate / dry-run / fake / real
-│   ├── lib/                #   scorer, trace, paid-step gate, env scrub, schema validator
+│   ├── bin/gold-runner.mjs #   orchestrates: validate / dry-run / fake / real (+ --pack)
+│   ├── lib/                #   scorer, trace, paid-step gate, child env, schema validator,
+│   │                       #   case packs, evidence-bundle verifier
 │   ├── cases/              #   12 case definitions (what the agent is asked)
 │   ├── fixtures/           #   what the agent SEES (one micro-repo per case)
 │   ├── gold/               #   how the agent is JUDGED (never enters fixtures;
-│   │                       #   SHA-256 manifest verified at startup)
+│   │                       #   SHA-256 manifest verified in every execution mode)
+│   ├── packs/              #   regulatory case packs (requirement themes → cases, with gaps)
 │   ├── fake/agents/        #   scripted well-behaved agents (harness validation)
 │   ├── examples/           #   injectable reference modules (approval gate)
 │   └── schemas/            #   case / trace / metrics JSON Schemas
-└── scripts/mutation-drill.sh  # proves the judge can fail
+├── scripts/
+│   ├── evidence-bundle.mjs #   builds a self-verifying evidence bundle (.tgz) from a run
+│   ├── mutation-drill.sh   #   proves the judge can fail (one anchor per red line)
+│   ├── audit.mjs           #   one-command audit against the testing standard
+│   └── campaign/           #   fault injection, crash-injection soak, MCP torture
+├── specs/                  # three-tables specs per core area
+├── findings/               # findings ledger, prevention questions, stop-line reviews
+└── test/                   # unit, CLI and class-detector suites (incl. a real 8-process race)
 ```
 
 ## Trust root 1: the ledger
@@ -42,6 +58,23 @@ budget binding → authoritative ledger → reviewer labels → manifest → wri
 closure attestation → isolated work root); in a fresh checkout it is
 structurally unreachable, by design.
 
+## Around the trust roots
+
+Each has a three-tables spec in `specs/`:
+
+- **Kill switch** — a signed halt record inside the ledger itself; only
+  `resume` lifts it, and who lifted it stays in the books
+  (`specs/kill-switch`).
+- **Policy kernel and MCP enforcer** — `decide()` before `reserve()`, every
+  decision logged hash-pinned before acting; over MCP an agent can reserve,
+  settle and read status, nothing else (`specs/policy-engine`,
+  `specs/mcp-server`).
+- **Secret scanning** — paths and the staged index, with pre-commit and
+  pre-merge-commit hooks (`specs/secret-scan`).
+- **Case packs and evidence bundles** — regulatory themes mapped to gold
+  cases, and a self-verifying archive of a run an auditor checks with the
+  current verifier (`specs/case-packs`, `specs/evidence-bundle`).
+
 ## The seams (how the two first versions coexist)
 
 The same core must serve **v1-open** (this repo, shipping today) and
@@ -57,7 +90,7 @@ closed capability plugs in later instead of patching the core:
 | Ledger location | `SAKK_LEDGER_PATH` / explicit `ledgerPath` — never implicit | local file                          | VPC-mounted, access-controlled store        |
 | Scoring policy  | `gold/<case>/scoring.json` overlays on case defaults        | shipped cases                       | regulated-scenario policy packs             |
 | Executor        | `CLAUDE_BIN` (binary path)                                  | any CLI with `--output-format json` | pinned, audited executor builds             |
-| Evidence        | runner-owned out-dir (traces, logs, results, metrics)       | replay by hand                      | report generator, auditor portal            |
+| Evidence        | runner-owned out-dir (traces, logs, results, metrics)       | evidence bundle (.tgz) + verifier   | report generator, auditor portal            |
 
 Rules for keeping the seams honest:
 

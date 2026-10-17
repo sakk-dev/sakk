@@ -18,6 +18,7 @@ on:
 jobs:
   adversarial-review:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: write
@@ -66,7 +67,13 @@ jobs:
             cat /tmp/review.txt
           } > /tmp/comment.md
       - name: Post review
-        if: hashFiles('/tmp/comment.md') != ''
+        # hashFiles() sees only the workspace, so the old `if:` on /tmp never
+        # matched and every review was computed, paid for and dropped (F-91)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file /tmp/comment.md || echo "::notice::could not post comment"
+        run: |
+          if [ ! -s /tmp/comment.md ]; then
+            echo "::notice::no review to post (skipped, failed or empty — see the step above)"
+            exit 0
+          fi
+          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file /tmp/comment.md || echo "::warning::could not post the review comment"

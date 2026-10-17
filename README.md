@@ -125,7 +125,7 @@ verify on your own clean machine in under 30 minutes, without trusting us.
 
 ## API
 
-`initLedger · reserve · settle · markReconciliationRequired · clearReconciliation · forceUnlock · readLedger · totalsOf · LedgerError (every refusal carries .code and .details)`
+`initLedger · reserve · settle · halt · resume · markReconciliationRequired · clearReconciliation · forceUnlock · readLedger · totalsOf · LedgerError (every refusal carries .code and .details)`
 
 Accounting rule: `settled actuals + outstanding reservations (at estimated max) + this estimate >= cap ⇒ refuse`.
 
@@ -275,7 +275,8 @@ config (Cursor/Copilot analogous):
 ```
 
 The ledger path is REQUIRED (no cwd default — a server guessing where the
-books live is not a gate). `--policy` is optional; when set, every
+books live is not a gate). `--policy` (or `SAKK_POLICY_PATH`; set-but-empty
+refuses) is optional; when set, every
 `sakk_reserve` is decided by the policy kernel first and every decision —
 allow and deny alike — lands hash-pinned in `<ledger>.decisions.jsonl` next to
 the ledger. `require_approval` refuses over MCP by design (approval

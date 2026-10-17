@@ -149,13 +149,21 @@ describe('nothing hangs instead of failing (findings F-15)', () => {
       assert.match(gate, new RegExp(`npm run --silent ${step}\\b`), step);
   });
   test('every CI job has timeout-minutes', () => {
-    const ci = read('.github/workflows/ci.yml');
-    const jobs = [...ci.matchAll(/^ {2}([a-z][\w-]*):\n/gm)].map((m) => m[1]);
-    assert.ok(jobs.length >= 3, jobs.join());
-    for (const job of jobs) {
-      const body = ci.slice(ci.indexOf(`  ${job}:\n`)).split(/\n {2}[a-z][\w-]*:\n/)[0];
-      assert.match(body, /timeout-minutes:\s*\d+/, job);
+    // every workflow file, not one named file: the review workflow had no
+    // timeout while this test said "every CI job" (F-91, F-79 class)
+    const files = readdirSync(join(ROOT, '.github', 'workflows')).filter((f) => /\.ya?ml$/.test(f));
+    assert.ok(files.length >= 2, files.join());
+    let jobs = 0;
+    for (const f of files) {
+      const wf = read(join('.github', 'workflows', f));
+      const body = wf.slice(wf.indexOf('\njobs:\n'));
+      for (const [, job] of body.matchAll(/^ {2}([a-z][\w-]*):\n/gm)) {
+        jobs += 1;
+        const jb = body.slice(body.indexOf(`  ${job}:\n`)).split(/\n {2}[a-z][\w-]*:\n/)[0];
+        assert.match(jb, /timeout-minutes:\s*\d+/, `${f}: ${job}`);
+      }
     }
+    assert.ok(jobs >= 4, `only ${jobs} jobs found`);
   });
 });
 

@@ -18,7 +18,7 @@
 - [ ] Core-area change: three-tables + contract in `specs/` and converge check done (R-01/R-11)
 - [ ] Bugfix: attack-shaped regression included; self-report verified / partial / failed
 - [ ] Every problem found while building is in `findings/ledger.json` (areas, root cause, guard; escape fields if its class had a detector)
-- [ ] CLA signed (bot will prompt on first PR)
+- [ ] CLA signed (collected by the maintainer before your first merge)
 
 ## Money semantics
 
