@@ -3700,6 +3700,34 @@
       "areas": ["scripts/findings-lib.mjs"],
       "mechanism_gap": "The C-01 detectors feed absent inputs to the product code; the gate's own empty-ledger case was never fed.",
       "mechanism_upgrade": "none: open — a test that an empty ledger still requires the starter questions, once the starter set is decided"
+    },
+    {
+      "id": "F-125",
+      "date": "2026-10-17",
+      "introduced_in": "9ca2795",
+      "found_by": "human",
+      "class": "C-07",
+      "title": "The ledger books whatever cost the caller states; over MCP the agent reports its own spend",
+      "symptom": "reserve takes estimatedMaxUsd and settle takes actualUsd from the caller; Sakk has no model field and no price table. Over MCP both numbers come from the agent being gated, so an agent that under-reports keeps spending past the real cap, and one project using several models cannot be priced or broken down per model.",
+      "evidence": "the maintainer's question 2026-10-17 ('real per-model token prices, or our prediction?'); src/ledger.mjs settle, src/mcp.mjs sakk_reserve/sakk_settle schemas; the REAL gold runner alone takes cost from the vendor CLI's total_cost_usd",
+      "direct_cause": "The ledger was designed as an amounts book; pricing was left to the caller (README: estimatedMaxUsd is the worst case the provider can bill).",
+      "why": [
+        "The first callers were trusted scripts that know their own prices.",
+        "The MCP channel handed the same amount fields to the agent the gate exists to constrain."
+      ],
+      "root_cause": "Input controlled by the gated party crosses into the books unchecked.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-05"],
+      "es": ["ES-07"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Design proposed to the maintainer: a versioned price table per provider/model (unknown model refuses), reserve from model + max tokens, settle from the provider-reported usage, entries carry model, tokens and price version, status breaks spend down per model; later a proxy that reads usage itself and a reconciliation against the provider usage/cost export.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/ledger.mjs", "src/mcp.mjs", "README.md"],
+      "mechanism_gap": "The RC-05 detectors check the SHAPE of caller values (prototype names, control characters, paths); none asks whether an amount is the caller's word or a measured figure.",
+      "mechanism_upgrade": "none: open — the attack row \"under-report actualUsd over MCP\" lands with the price table, as a KNOWN row until then"
     }
   ]
 }
