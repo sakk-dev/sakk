@@ -14,6 +14,10 @@
       {
         "ask": "Does a hand-written list stand in for 'all' (directories, keys, codes, commands)? Enumerate from the source instead.",
         "learned_from": ["F-65", "F-79"]
+      },
+      {
+        "ask": "Can the same thing be reached by two names (symlink, hard link, relative path, case alias)? One name must be the only one.",
+        "learned_from": ["F-85", "F-106"]
       }
     ],
     "RC-03": [
@@ -36,6 +40,10 @@
       {
         "ask": "Can a caller-supplied id collide with an object key (__proto__, constructor)? Use own keys only.",
         "learned_from": ["F-01", "F-13"]
+      },
+      {
+        "ask": "Can the party this gate constrains perform the step that clears it (settle its own reconciliation, normalize its own path)? A person must.",
+        "learned_from": ["F-110"]
       }
     ],
     "RC-06": [
@@ -70,6 +78,16 @@
       {
         "ask": "Was the judge different from the writer (another model, a fresh clone)?",
         "learned_from": ["F-59"]
+      },
+      {
+        "ask": "Can this test actually observe what its name claims — does the race overlap, does the attack reach a live target? Add the control that proves it.",
+        "learned_from": ["F-84", "F-93"]
+      }
+    ],
+    "RC-09": [
+      {
+        "ask": "If this one unit (a frame, a case, a file) fails, does the whole run fail with it? Isolate it: the unit gets a named failure, the rest carries on.",
+        "learned_from": ["F-82", "F-95"]
       }
     ]
   },

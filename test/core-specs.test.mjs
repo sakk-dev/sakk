@@ -114,3 +114,17 @@ describe('every red line is drilled (self-evolution upgrade of F-54)', () => {
     }
   });
 });
+
+describe('every campaign runs somewhere (F-98)', () => {
+  // fault injection, the soak and the MCP torture existed for days and ran
+  // in neither the audit nor CI — a check nobody runs is not a check
+  test('each script in scripts/campaign/ is a step of the audit', () => {
+    const audit = read('scripts/audit.mjs');
+    const campaigns = readdirSync(join(ROOT, 'scripts', 'campaign')).filter((f) =>
+      f.endsWith('.mjs'),
+    );
+    assert.ok(campaigns.length >= 3, campaigns.join());
+    for (const c of campaigns)
+      assert.ok(audit.includes(`scripts/campaign/${c}`), `${c} is not run by the audit`);
+  });
+});
