@@ -140,6 +140,25 @@ describe('MCP enforcer: protocol surface', () => {
     await alive(c);
     assert.equal(readLedger({ ledgerPath }).entries.length, 0);
   });
+  test('MCP N4/N5: a relative --ledger is resolved at startup, and a last line without a newline is answered', () => {
+    const d = tdir();
+    initLedger({ ledgerPath: join(d, 'l.json'), capUsd: 10 });
+    const frame = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'tools/call',
+      params: { name: 'sakk_status', arguments: {} },
+    });
+    const r = spawnSync(process.execPath, [CLI, 'mcp', '--ledger', 'l.json'], {
+      cwd: d,
+      input: frame, // no trailing newline, then EOF
+      encoding: 'utf8',
+      env: { ...process.env, SAKK_LEDGER_PATH: undefined, SAKK_POLICY_PATH: undefined },
+    });
+    const reply = JSON.parse(r.stdout.trim().split('\n').at(-1));
+    assert.equal(reply.id, 7);
+    assert.equal(reply.result.isError, undefined, r.stdout);
+  });
   test('MCP S1: a ledger whose directory cannot be created is a typed refusal, not a crash', async () => {
     const d = tdir();
     writeFileSync(join(d, 'file'), 'x');

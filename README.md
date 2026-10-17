@@ -280,8 +280,11 @@ books live is not a gate). `--policy` is optional; when set, every
 allow and deny alike — lands hash-pinned in `<ledger>.decisions.jsonl` next to
 the ledger. `require_approval` refuses over MCP by design (approval
 collection is an enterprise concern, not an agent tool). The server adds
-no semantics: replaying the same calls through the library yields
-byte-identical books, and the test suite proves it.
+no semantics: replaying the same calls through the library yields the same
+entries (callId, status, amounts — timestamps differ by construction), and
+the test suite proves it. A policy `allow` is a decision, not a
+reservation: the ledger can still refuse it (a zero estimate, for one), so
+count reservations from the books, not allows from the decision log.
 
 ## Roadmap — honest edition
 

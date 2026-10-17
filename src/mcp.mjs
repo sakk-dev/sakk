@@ -262,6 +262,11 @@ export function startMcpServer({
   };
 
   input.setEncoding('utf8');
+  // a final line without a newline is still a request (MCP review N5)
+  input.on('end', () => {
+    if (!dropping && buf.trim() !== '') handleLine(buf);
+    buf = '';
+  });
   input.on('data', (chunk) => {
     buf += chunk;
     let i;

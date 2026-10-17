@@ -322,7 +322,10 @@ if (cmd === 'init') {
   // The MCP gate takes NO default ledger path: an MCP server's cwd is
   // whatever the agent host chose, and a gate quietly booking into a
   // guessed file is not a gate (specs/mcp-server/ fail-closed table).
-  const p = val('ledger') ?? (process.env.SAKK_LEDGER_PATH || undefined);
+  const raw = val('ledger') ?? (process.env.SAKK_LEDGER_PATH || undefined);
+  // resolved once, here: the host's cwd must not decide where the books are
+  // on every call (MCP review N4)
+  const p = typeof raw === 'string' && raw !== '' ? resolve(raw) : raw;
   if (typeof p !== 'string' || p === '') {
     console.error(
       'MCP_LEDGER_PATH_REQUIRED: the MCP gate needs an explicit ledger (--ledger or SAKK_LEDGER_PATH)',

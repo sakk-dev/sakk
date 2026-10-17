@@ -29,8 +29,10 @@ same books — that is the test of thinness.
 | `sakk_status`  | —                                                              | `readLedger`+`totalsOf` summary incl. `reconciliation_required`, `max_reservable_usd`, policy hash when configured                                                                   |
 
 Tool results are MCP `content` text carrying ONE JSON object; refusals set
-`isError: true` with `{ code, message, details }` — the library's codes,
-never new ones (two exceptions below).
+`isError: true` with `{ code, message, details }` — or `{ code, message,
+decision }` for the two policy refusals — using the library's codes, never
+new ones (two exceptions below). Echoed caller values are bounded strings;
+structures are named, never serialized (F-82).
 
 ## Fail-closed clauses
 
