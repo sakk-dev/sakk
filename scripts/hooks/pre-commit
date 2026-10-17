@@ -1,0 +1,15 @@
+#!/bin/sh
+# Self-evolution gate (docs/SELF_EVOLUTION.md), installed for every clone by
+# `npm install` (prepare → core.hooksPath=scripts/hooks). CI re-checks the
+# same rules over the whole branch, so --no-verify does not get past them.
+set -e
+node scripts/findings-check.mjs --staged
+node --test --test-timeout=120000 test/findings-ledger.test.mjs >/dev/null 2>&1 || {
+  echo 'self-evolution: the findings ledger gate is red — run: node --test test/findings-ledger.test.mjs' >&2
+  exit 1
+}
+# the secret scan keeps working: core.hooksPath replaces .git/hooks
+node bin/sakk.mjs scan --staged >/dev/null || {
+  echo 'secret scan: staged content holds a recognized secret — run: node bin/sakk.mjs scan --staged' >&2
+  exit 1
+}

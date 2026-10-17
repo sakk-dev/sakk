@@ -1,6 +1,6 @@
 # Testing profile: Sakk
 
-- **Standard:** internal AI-agent testing standard **v1.2** (layers T0–T6,
+- **Standard:** internal AI-agent testing standard **v1.3** (layers T0–T6,
   change levels L0–L2, §14 root-cause attribution). The standard's text is
   not copied here; this file records only what is specific to Sakk.
 - **Phase:** development → pre-release. Real-model runs are fail-closed
@@ -90,12 +90,16 @@ secret-scan context matrix and the ledger-write classification.
 
 ## Self-evolution (§15)
 
-Before a change: `npm run brief -- <paths>` (also printed by `npm run gate`).
-Every finding carries `areas`; every class-mechanism ref its `since`; an
-escape past an existing detector records `mechanism_gap` and
-`mechanism_upgrade`; `findings/prevention.json` holds the questions learned
-from each class. All four are enforced by the self-evolution gate in
-`test/findings-ledger.test.mjs`. Design: `docs/SELF_EVOLUTION.md`.
+Enforced at three points (standard §15.6): the Claude Code edit hook
+blocks an edit until `findings/acks/<branch>.json` answers the questions
+for that file; the git pre-commit and commit-msg hooks (installed by
+`npm install`) refuse unanswered changes, an untriaged inbox and fix
+commits that name no finding; the CI `self-evolution` job re-checks the
+whole branch. Every finding belongs to one class in `findings/classes.json`
+(§15.7). Design: `docs/SELF_EVOLUTION.md`.
+
+**CI is advisory until `main` has branch protection** (F-116): a red check
+does not stop a merge today.
 
 ## Open items
 

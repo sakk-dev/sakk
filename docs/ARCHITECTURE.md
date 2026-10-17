@@ -33,7 +33,7 @@ sakk/
 │   ├── audit.mjs           #   one-command audit against the testing standard
 │   └── campaign/           #   fault injection, crash-injection soak, MCP torture
 ├── specs/                  # three-tables specs per core area
-├── findings/               # findings ledger, prevention questions, stop-line reviews
+├── findings/               # findings ledger, problem classes (questions, detectors), answers, reviews
 └── test/                   # unit, CLI and class-detector suites (incl. a real 8-process race)
 ```
 

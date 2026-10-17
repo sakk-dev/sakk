@@ -170,7 +170,7 @@ describe('findings ledger gate', () => {
  * it only evolves if every escape past an existing class detector says why
  * the detector missed it and what now catches that shape.
  */
-const PREVENTION = JSON.parse(read('findings/prevention.json'));
+const REGISTRY = JSON.parse(read('findings/classes.json'));
 const num = (id) => Number(id.slice(2));
 /** The classes whose detector already existed when this finding was logged. */
 const escapedPast = (f, mechanisms = LEDGER.class_mechanisms ?? {}) =>
@@ -233,30 +233,108 @@ describe('self-evolution gate', () => {
           );
     }
   });
-  test('every class and pattern in the ledger has a prevention question learned from it', () => {
-    const byId = Object.fromEntries(FINDINGS.map((f) => [f.id, f]));
-    const patterns = new Set(FINDINGS.map((f) => f.pattern).filter(Boolean));
-    for (const rc of Object.keys(rcCounts()))
+});
+
+/**
+ * Problem classes (docs/SELF_EVOLUTION.md). A finding is an instance of one
+ * class; a new instance of a known problem is an occurrence of its class —
+ * never a renamed new entry. Text similarity cannot tell instances apart
+ * (measured 2026-10-17: for 76 of 115 findings the nearest text neighbour is
+ * in another class), so the rules are structural: a class is registered
+ * with its definition, questions and detectors; a new class must say why it
+ * is none of the existing ones and carry an approval; a new finding next to
+ * an open one of the same class must say whether it is the same problem.
+ */
+const BASELINE_LAST = 115; // findings up to here were classified in one pass, together
+describe('problem classes', () => {
+  const classes = REGISTRY.classes ?? [];
+  const byClass = Object.fromEntries(classes.map((c) => [c.id, c]));
+  const baseline = new Set(REGISTRY.baseline ?? []);
+  test('every finding belongs to exactly one registered class', () => {
+    for (const f of FINDINGS)
+      assert.ok(byClass[f.class], `${f.id}: class ${f.class} is not in findings/classes.json`);
+  });
+  test('every class has a definition, a root-cause axis and questions learned from its own findings', () => {
+    const qids = new Set();
+    for (const c of classes) {
+      assert.match(c.id, /^C-\d{2,}$/);
       assert.ok(
-        PREVENTION.classes?.[rc]?.length > 0,
-        `${rc}: no question in findings/prevention.json`,
+        c.name?.trim() && c.definition?.trim().length >= 40,
+        `${c.id}: name and definition`,
       );
-    for (const p of patterns)
-      assert.ok(
-        PREVENTION.patterns?.[p]?.length > 0,
-        `${p}: no question in findings/prevention.json`,
-      );
-    for (const [key, qs] of [
-      ...Object.entries(PREVENTION.classes ?? {}),
-      ...Object.entries(PREVENTION.patterns ?? {}),
-    ])
-      for (const q of qs) {
-        assert.ok(q.ask?.trim() && q.learned_from?.length > 0, `${key}: ask and learned_from`);
-        for (const id of q.learned_from) {
-          const f = byId[id];
-          assert.ok(f, `${key}: ${id} is not in the ledger`);
-          assert.ok(f.rc.includes(key) || f.pattern === key, `${key}: ${id} is not of this class`);
-        }
+      assert.ok(CODES.has(c.rc), `${c.id}: rc ${c.rc}`);
+      assert.ok(c.questions?.length > 0, `${c.id}: no question to ask before a change`);
+      for (const q of c.questions) {
+        assert.match(q.id, new RegExp(`^${c.id}\\.\\d+$`), `${c.id}: question id ${q.id}`);
+        assert.ok(!qids.has(q.id), `duplicate question id ${q.id}`);
+        qids.add(q.id);
+        assert.ok(q.ask?.trim().length >= 20, `${q.id}: ask`);
+        for (const id of q.learned_from ?? [])
+          assert.equal(
+            FINDINGS.find((f) => f.id === id)?.class,
+            c.id,
+            `${q.id}: ${id} is not of ${c.id}`,
+          );
       }
+    }
+  });
+  test('a class with two closed findings has a detector the suite runs', () => {
+    for (const c of classes) {
+      const closed = FINDINGS.filter((f) => f.class === c.id && f.status !== 'open').length;
+      if (closed < 2) continue;
+      assert.ok(
+        (c.detectors ?? []).some((r) => TEST_FILE.test(r.split('::')[0]) && resolves(r)),
+        `${c.id} has ${closed} closed findings and no detector that runs`,
+      );
+    }
+    for (const c of classes)
+      for (const r of c.detectors ?? []) assert.ok(resolves(r), `${c.id}: ${r}`);
+  });
+  test('a class added after the baseline says why it is none of the others, and was approved', () => {
+    for (const c of classes) {
+      if (baseline.has(c.id)) continue;
+      for (const o of classes)
+        if (o.id !== c.id)
+          assert.ok(
+            (c.distinct_from?.[o.id] ?? '').trim().length >= 30,
+            `${c.id}: say why it is not ${o.id} (${o.name}) — or log the finding under ${o.id}`,
+          );
+      assert.ok(
+        c.approved?.by && c.approved?.on && c.approved?.record,
+        `${c.id}: approval {by, on, record}`,
+      );
+      assert.equal(FINDINGS.find((f) => f.id === c.created_by)?.class, c.id, `${c.id}: created_by`);
+    }
+  });
+  test('a new finding next to an open one of the same class says whether it is the same problem', () => {
+    for (const f of FINDINGS) {
+      if (num(f.id) <= BASELINE_LAST) continue;
+      for (const g of FINDINGS) {
+        if (g.id === f.id || g.status !== 'open' || g.class !== f.class) continue;
+        if (
+          !(g.areas ?? []).some((a) =>
+            (f.areas ?? []).some((b) => a === b || a.startsWith(b) || b.startsWith(a)),
+          )
+        )
+          continue;
+        assert.ok(
+          (f.distinct_from?.[g.id] ?? '').trim().length >= 30,
+          `${f.id} is in ${f.class} next to open ${g.id} (${g.title}): if it is the same problem, add the evidence to ${g.id} instead; if not, say why in distinct_from`,
+        );
+      }
+    }
+  });
+  test('control: the same-problem rule fires on a planted duplicate', () => {
+    const open = FINDINGS.find((f) => f.status === 'open' && f.areas?.length);
+    const twin = { ...open, id: 'F-9999', status: 'open', distinct_from: undefined };
+    const fires = FINDINGS.some(
+      (g) =>
+        g.id !== twin.id &&
+        g.status === 'open' &&
+        g.class === twin.class &&
+        (g.areas ?? []).some((a) => twin.areas.includes(a)) &&
+        !(twin.distinct_from?.[g.id] ?? ''),
+    );
+    assert.ok(fires, 'a twin of an open finding must trip the rule');
   });
 });

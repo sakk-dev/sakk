@@ -4,8 +4,9 @@
 
 ## Ledger brief (R-22)
 
-<!-- Paste the "Past findings here" and "Ask before you build" lines from
-`npm run brief` for this change, and say how the change answers each question. -->
+<!-- The answers live in findings/acks/<branch>.json and CI checks they cover
+every changed file. Summarise here which problem classes this change touched
+and any finding it logged or attached to a class. -->
 
 ## Checklist
 

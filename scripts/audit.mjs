@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// One-command audit against the AI-agent testing standard (v1.2), following
+// One-command audit against the AI-agent testing standard (v1.3), following
 // its reference implementation. Every step's exit code is taken by this
 // process directly — never through a pipe (standard §12.3) — and its full
 // output is written to audit-logs/<stamp>/NN.log. Any red step = red audit.
@@ -12,6 +12,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { addItem } from './findings-inbox.mjs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -86,13 +87,17 @@ STEPS.forEach(([name, cmd, args], i) => {
   );
 });
 const bad = rows.filter((r) => r.code !== 0);
+// every red step is a seen problem: it goes to the inbox, and the commit gate
+// refuses until it is logged in the ledger or dismissed with a reason
+for (const r of bad)
+  addItem(`audit step red: ${r.name} (exit ${r.code})`, 'audit', { log: r.log, audit: stamp });
 const verdict = bad.length === 0 ? 'ALL GREEN' : `${bad.length} step(s) RED`;
 writeFileSync(
   join(logdir, 'SUMMARY.md'),
   [
     `# Audit ${stamp}`,
     '',
-    'Standard: AI-agent testing standard v1.2 · profile: docs/testing-profile.md',
+    'Standard: AI-agent testing standard v1.3 · profile: docs/testing-profile.md',
     'Executor mode for T2: FAKE (harness only). Real-model T2/T3: not verified (needs a model key).',
     '',
     '| Step | Exit | Seconds | Log |',

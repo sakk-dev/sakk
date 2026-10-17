@@ -1,0 +1,65 @@
+{
+  "branch": "evolve/self-evolution",
+  "answers": {
+    "C-01.1": {
+      "answer": "Missing pieces refuse here: a REAL run without model_id, a pack report missing a key, an ack file absent for a changed file, and an untriaged inbox item all fail their check instead of passing; the edit hook blocks when the answers file is absent."
+    },
+    "C-01.2": {
+      "answer": "Proven by deletion: bundle-absence deletes every key; self-evolution tests delete the answers file, blank an answer and remove a finding's class, and each run goes red; the seeded F-999 entry failed npm test."
+    },
+    "C-02.1": {
+      "answer": "No hand lists stand in for all: refusal codes for the MCP torture are extracted from src/, workflow timeouts read every file in .github/workflows, campaigns are enumerated from scripts/campaign, and required questions come from every finding whose areas cover a file."
+    },
+    "C-02.2": {
+      "answer": "Each fix was swept to its siblings: the symlink rule covers alerts and decision logs through one appendNoFollow helper, escaping covers every status line, the regular-file rule covers both readers, and the new gate applies to every staged or changed file."
+    },
+    "C-03.1": {
+      "answer": "Every new check was shown to fail for its own reason: the lockless mutant fails the race, MUT-X/MUT-Y/MUT-Z are killed by named tests, deleted scorer rules fail their rows, and each enforcement test seeds the exact violation it names."
+    },
+    "C-03.2": {
+      "answer": "Controls exist where silence could pass: the E7 attack helper first proves an allowed reserve is booked, the race asserts every worker overlapped behind a barrier, and the self-evolution tests check a compliant case passes before the violating one fails."
+    },
+    "C-04.1": {
+      "answer": "Work is bounded by counters and refusals, not clocks: decide() validates a path once, policy load keeps the shadow-scan budget, MCP frames stay capped at 1 MiB, and no new test asserts speed with a wall clock (the stopwatch detector still guards this)."
+    },
+    "C-05.1": {
+      "answer": "Doc sentences changed in this branch were read back against code and gained tests: the decision-log name is checked by the file-name detector, README exit codes by CLI tests, and SELF_EVOLUTION.md describes only checks the self-evolution tests exercise."
+    },
+    "C-05.2": {
+      "answer": "Reported figures now work when acted on: status max_reservable is 0 whenever every reserve refuses, exit 3 covers both reconciliation sources and staleness, and the checker's exit codes (0, 1, 2 for the edit hook) are asserted in tests."
+    },
+    "C-06.1": {
+      "answer": "Evidence names its real source: metrics record harness_dirty for every run, REAL runs must name their model, pack reports read HARNESS_MODIFIED on a modified tree, and the eval README states which gold cases cannot yet produce honest REAL evidence."
+    },
+    "C-07.1": {
+      "answer": "Foreign input is validated or escaped: MCP envelopes are type-checked before use and echoes are bounded, operator and agent text goes through display(), hook payloads are parsed defensively, and branch names are slugged before becoming file names."
+    },
+    "C-07.2": {
+      "answer": "The constrained party cannot clear its own gate: an agent can no longer settle a reconciliation entry over MCP, cannot lift a halt, and cannot write its own answers past the edit hook without them being committed and re-checked by CI."
+    },
+    "C-08.1": {
+      "answer": "One name per resource: the ledger path resolves its directory and refuses a symlinked or hard-linked file, the MCP ledger path is resolved once at startup, and the checker finds the repository root by walking up from the file's real location."
+    },
+    "C-09.1": {
+      "answer": "Other environments were tried: a nested repository, a fifo at the ledger and policy path, an uncreatable ledger directory, NODE_OPTIONS test flags, and a clone without hooks configured (CI re-runs the same checks over the branch)."
+    },
+    "C-10.1": {
+      "answer": "Required steps now run as code: answering the ledger is enforced by the Claude Code edit hook, the git pre-commit and commit-msg hooks installed by npm install, and a CI job over the whole branch; the inbox makes a red audit step block the next commit."
+    },
+    "C-11.1": {
+      "answer": "Writers are classified by what they confirm and who calls them: settle moved to the keeps-updatedAt class because agents call it over MCP, and the classification test fails if a new ledger write is unclassified."
+    },
+    "C-14.1": {
+      "answer": "Failures stay with their unit: one MCP frame's error answers -32603 and the server keeps serving, one gold case's scoring failure becomes that case's SCORER_ERROR, and the checker refuses with a message instead of crashing on a missing answers file."
+    },
+    "C-15.1": {
+      "answer": "Real paths are exercised where possible: the race uses real processes, MCP tests drive the real server binary, and the edit hook was proven live in this session when it blocked a Write; gold REAL fixtures stay open as gold v2 (F-90)."
+    },
+    "C-16.1": {
+      "answer": "The judge differed from the writer: five Claude Fable 5 reviewers on fresh clones found the regression findings; this branch's enforcement is checked by its own tests and must still get an independent review before merge."
+    },
+    "C-13.1": {
+      "answer": "The answer-quality rules were measured on both sides: abusive inputs (todo, copies, short text) are refused by tests, and this branch's own real answers are the benign side — the range check failed on them once (F-119) and the rule was narrowed."
+    }
+  }
+}
