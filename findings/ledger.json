@@ -3644,6 +3644,62 @@
       "areas": ["src/secret-scan.mjs"],
       "mechanism_gap": "The RC-04 scanner detectors test one pattern per sample, true and false positives; none puts one secret where two patterns overlap.",
       "mechanism_upgrade": "none: open — a test that scans one secret matched by two rules and expects one finding"
+    },
+    {
+      "date": "2026-10-17",
+      "found_by": "human",
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep_status": "not_done",
+      "status": "open",
+      "id": "F-123",
+      "introduced_in": "ece32d3",
+      "class": "C-09",
+      "title": "The self-evolution hooks assume Sakk's layout, so a project that copies them cannot commit",
+      "symptom": "In a fresh trial project with the five findings scripts and scripts/hooks copied, the first commit is refused: pre-commit runs test/findings-ledger.test.mjs and bin/sakk.mjs scan, neither of which exists there.",
+      "evidence": "2026-10-17 trial onboarding in a scratch repository (newproj), commit exit 1 with \"the findings ledger gate is red\"",
+      "direct_cause": "pre-commit names two Sakk files; the ledger gate test itself holds Sakk-only controls (F-65, F-11, BASELINE_LAST, taxonomy.lock.yaml).",
+      "why": [
+        "The hooks were written for and tried in Sakk only.",
+        "The standard (§15.8) names Sakk as the reference implementation for every project, but nothing tried it in a second one."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Fix: split the hooks into the portable gate (findings-check) and project steps read from package.json scripts; a generic ledger gate test; an init command that lays the kit into a project. Trial again in a fresh repository.",
+      "areas": ["scripts/hooks/", "test/findings-ledger.test.mjs"],
+      "mechanism_gap": "The C-09 detectors vary Sakk's own environment (layouts, git config, Node); none runs the kit inside a second project.",
+      "mechanism_upgrade": "none: open — a test that installs the kit into a temporary fresh project and commits"
+    },
+    {
+      "date": "2026-10-17",
+      "found_by": "human",
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep_status": "not_done",
+      "status": "open",
+      "id": "F-124",
+      "introduced_in": "ece32d3",
+      "class": "C-01",
+      "title": "An empty ledger requires no answers, so a new project starts without the classes Sakk learned",
+      "symptom": "In the trial project with all 16 classes registered and an empty ledger, the edit hook allows every edit and the brief lists no questions; the first logged finding makes C-01.1 and C-01.2 required at once.",
+      "evidence": "2026-10-17 trial onboarding: findings-check --edit exit 0 before F-01, refusal naming C-01.1/C-01.2 after",
+      "direct_cause": "required() takes classes from the project's own findings and the watch list from their counts; with no findings both are empty.",
+      "why": [
+        "The watch list was designed in a ledger with 121 findings.",
+        "No finding is read as nothing to guard against."
+      ],
+      "root_cause": "Missing input was read as success.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Proposal for the maintainer: below a threshold of own findings, the watch list falls back to a starter set of baseline classes (e.g. C-01, C-02, C-07) so day one is guarded.",
+      "areas": ["scripts/findings-lib.mjs"],
+      "mechanism_gap": "The C-01 detectors feed absent inputs to the product code; the gate's own empty-ledger case was never fed.",
+      "mechanism_upgrade": "none: open — a test that an empty ledger still requires the starter questions, once the starter set is decided"
     }
   ]
 }
