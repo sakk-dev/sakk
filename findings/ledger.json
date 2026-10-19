@@ -3732,11 +3732,11 @@
     {
       "date": "2026-10-19",
       "found_by": "review",
-      "instance_fix": "open",
+      "instance_fix": "this commit: \"signed\" becomes \"named\" in the CLI help, CLI error text, README, ARCHITECTURE, the kill-switch spec and CHANGELOG; the CLI helper is renamed named(); README lists the open core's limits (self-declared names, caller-reported costs, approval-required means refused, voluntary gating)",
       "class_fix": null,
-      "guard": "",
-      "sweep_status": "not_done",
-      "status": "open",
+      "guard": "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism",
+      "sweep_status": "done",
+      "status": "fixed",
       "class": "C-05",
       "rc": ["RC-10"],
       "es": ["ES-07"],
@@ -3752,10 +3752,17 @@
       ],
       "root_cause": "A statement in the docs claims a property the code does not have.",
       "dt": ["DT-SPEC"],
-      "sweep": "Replace \"signed\" with \"named\" (or \"by a named person\") in CLI help, README, ARCHITECTURE, specs; real signatures arrive with the approval service (SSO or Sigstore/SSH signing).",
-      "areas": ["bin/sakk.mjs", "README.md", "docs/ARCHITECTURE.md", "specs/kill-switch/spec.md"],
+      "sweep": "Replace \"signed\" with \"named\" (or \"by a named person\") in CLI help, README, ARCHITECTURE, specs; real signatures arrive with the approval service (SSO or Sigstore/SSH signing). Done: every user-facing file the new test scans was swept; internal code comments in src/ledger.mjs and test comments still say \"signed clearance\" and are out of scope (not user-facing, and src/ledger.mjs edits need the money-semantics review).",
+      "areas": [
+        "bin/sakk.mjs",
+        "README.md",
+        "docs/ARCHITECTURE.md",
+        "specs/kill-switch/spec.md",
+        "CHANGELOG.md",
+        "test/claims-are-checked.test.mjs"
+      ],
       "mechanism_gap": "The RC-10 detectors check that named codes, files and counts exist; none checks a security adjective (signed, verified, tamper-proof) against a mechanism.",
-      "mechanism_upgrade": "none: open — a claims test listing security words and the code each must point to",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism",
       "distinct_from": {
         "F-104": "F-104 is about durability limits of the lock and fsync promised away in the README; F-126 is about the word signed promising an identity mechanism that does not exist. Different mechanism, different fix."
       }

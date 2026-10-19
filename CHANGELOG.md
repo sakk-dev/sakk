@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (release preparation)
+
+- Halt, resume, reconcile and unlock records are now described as named:
+  they carry the name the operator typed and nothing verifies it (F-126).
+  A test fails if a user-facing document gives a record a security
+  property that no code provides.
+- README states the open core's limits: self-declared names,
+  caller-reported costs, approval-required means refused, voluntary gating.
+  Dashboards are no longer listed as not planned; a web console is on the
+  enterprise roadmap.
+
 ### Fixed (regression of the original modules, findings F-80 … F-115)
 
 - Ledger: the concurrency test was sequential and a lockless ledger passed
@@ -17,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ledger or policy refuses instead of blocking.
 - `sakk status` judges reconciliation from both sources, shows a stale
   ledger, exits 3 for either and reports nothing reservable when every
-  reserve would refuse; a signed `sakk reconcile` confirms stale books.
+  reserve would refuse; a named `sakk reconcile` confirms stale books.
 - MCP: a nested frame can no longer crash the gate (bounded echo, frame
   isolation); an agent cannot settle its own reconciliation entry; a
   relative `--ledger` is resolved at startup.
@@ -127,7 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added (kill switch)
 
 - `halt()` / `resume()` and `sakk halt|resume --by <name> [--agent <id>]`:
-  stop all new spending (or one agent's) with a signed record stored in a
+  stop all new spending (or one agent's) with a named record stored in a
   top-level ledger key `halt` — deliberately outside `flags`, which four
   money paths rewrite wholesale. **Schema `sakk-ledger.v2`**: the first
   halt upgrades the file to v2, which REQUIRES `halt` (deleting it refuses
@@ -476,7 +487,7 @@ against the running code:
   real-mode test evidence now reads the machine test log (honest real passes
   no longer structurally fail); non-object JSON stdout is a structured parse
   failure; settle overrun records + alerts + halts; flags is schema-required
-  with a dual-source halt and entry-resolving signed clearance; retry limits
+  with a dual-source halt and entry-resolving named clearance; retry limits
   count tool machine logs; canary scan covers all run artifacts; strict case
   selector (empty/unknown refuse); corrupt log heads fail closed; --out reuse
   refuses; flag parsing rejects flag-shaped values; tmp-boundary separator.

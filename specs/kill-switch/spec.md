@@ -9,7 +9,7 @@ independent adversarial review before merge (CONSTITUTION #4, R-05).
 `sakk halt --by <name> [--reason <text>] [--agent <id>]` stops spending:
 every subsequent `reserve()` on that ledger refuses (globally, or for one
 agent id). `sakk resume --by <name> [--agent <id>]` lifts it. The halt is a
-signed record inside the ledger itself, so "was it stopped, by whom, when,
+named record (the self-declared `--by`; nothing verifies it) inside the ledger itself, so "was it stopped, by whom, when,
 and did anything get through afterwards" is answerable from the books and
 the alerts log alone.
 

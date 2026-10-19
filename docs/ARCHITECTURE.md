@@ -62,7 +62,7 @@ structurally unreachable, by design.
 
 Each has a three-tables spec in `specs/`:
 
-- **Kill switch** — a signed halt record inside the ledger itself; only
+- **Kill switch** — a named halt record (the self-declared `--by`) inside the ledger itself; only
   `resume` lifts it, and who lifted it stays in the books
   (`specs/kill-switch`).
 - **Policy kernel and MCP enforcer** — `decide()` before `reserve()`, every

@@ -64,18 +64,18 @@ function ledgerPath() {
   }
   return resolve(val('ledger') ?? process.env.SAKK_LEDGER_PATH ?? 'sakk-ledger.json');
 }
-/** A signature is a name, not whitespace (ledger review N1; F-70 class). */
-const signed = (by) => typeof by === 'string' && by.trim() !== '';
+/** A name, not whitespace: self-declared and never verified (ledger review N1; F-70; F-126). */
+const named = (by) => typeof by === 'string' && by.trim() !== '';
 
 const USAGE = `sakk ${pkg.version} — fail-closed spend ledger for AI agents
 
 Usage:
   sakk init --cap <usd> [--ledger <path>] [--by <name>]   create a ledger (refuses to overwrite)
   sakk status [--ledger <path>] [--json]                  totals, entries, reconciliation state
-  sakk reconcile --by <name> [--ledger <path>]            clear the reconciliation flag (signed)
-  sakk unlock --by <name> [--ledger <path>]               break a stuck lock by hand (signed)
-  sakk halt --by <name> [--reason <t>] [--agent <id>]     kill switch: refuse all new spending (signed)
-  sakk resume --by <name> [--agent <id>]                  lift a halt (signed)
+  sakk reconcile --by <name> [--ledger <path>]            clear the reconciliation flag (named)
+  sakk unlock --by <name> [--ledger <path>]               break a stuck lock by hand (named)
+  sakk halt --by <name> [--reason <t>] [--agent <id>]     kill switch: refuse all new spending (named)
+  sakk resume --by <name> [--agent <id>]                  lift a halt (named)
   sakk mcp --ledger <path> [--policy <path>]              MCP stdio server: reserve/settle/status as tools
   sakk scan <paths...> | --staged | --install-hook        find secrets (fingerprints only; exit 1 on findings)
 
@@ -140,7 +140,7 @@ if (cmd === 'init') {
   }
   const p = ledgerPath();
   try {
-    if (val('by') !== undefined && !signed(val('by'))) {
+    if (val('by') !== undefined && !named(val('by'))) {
       console.error('init --by needs a name');
       process.exit(2);
     }
@@ -234,15 +234,15 @@ if (cmd === 'init') {
   process.exit(out.halted ? 4 : reco || stale ? 3 : 0);
 } else if (cmd === 'reconcile') {
   const by = val('by');
-  if (!signed(by)) {
-    console.error('reconcile requires --by <name> — clearing the books takes a signature');
+  if (!named(by)) {
+    console.error('reconcile requires --by <name> — clearing the books takes a name');
     process.exit(2);
   }
   const p = ledgerPath();
   // Stranger-test finding: claiming "cleared" on a ledger that required no
   // clearing misreports an action that never happened. Say so instead.
   // Read like the operation reads (review S3): a stale ledger is exactly
-  // what a signed reconcile is for.
+  // what a named reconcile is for.
   let doc;
   try {
     doc = readLedger({ ledgerPath: p, maxAgeMs: Number.POSITIVE_INFINITY });
@@ -265,7 +265,7 @@ if (cmd === 'init') {
 } else if (cmd === 'halt' || cmd === 'resume') {
   const by = val('by');
   if (typeof by !== 'string' || by === '') {
-    console.error(`${cmd} requires --by <name> — stopping and restarting spend takes a signature`);
+    console.error(`${cmd} requires --by <name> — stopping and restarting spend takes a name`);
     process.exit(2);
   }
   const p = ledgerPath();
@@ -306,8 +306,8 @@ if (cmd === 'init') {
     );
 } else if (cmd === 'unlock') {
   const by = val('by');
-  if (!signed(by)) {
-    console.error('unlock requires --by <name> — breaking a lock takes a signature');
+  if (!named(by)) {
+    console.error('unlock requires --by <name> — breaking a lock takes a name');
     process.exit(2);
   }
   const p = ledgerPath();
