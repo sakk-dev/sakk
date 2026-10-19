@@ -3728,6 +3728,65 @@
       "areas": ["src/ledger.mjs", "src/mcp.mjs", "README.md"],
       "mechanism_gap": "The RC-05 detectors check the SHAPE of caller values (prototype names, control characters, paths); none asks whether an amount is the caller's word or a measured figure.",
       "mechanism_upgrade": "none: open — the attack row \"under-report actualUsd over MCP\" lands with the price table, as a KNOWN row until then"
+    },
+    {
+      "date": "2026-10-19",
+      "found_by": "review",
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep_status": "not_done",
+      "status": "open",
+      "class": "C-05",
+      "rc": ["RC-10"],
+      "es": ["ES-07"],
+      "id": "F-126",
+      "introduced_in": "489f787",
+      "title": "Halt, resume, reconcile and unlock records are called \"signed\" but carry only a self-declared name",
+      "symptom": "The CLI help (\"(signed)\"), README (\"signed, global or per agent\"), docs/ARCHITECTURE.md (\"a signed halt record\") and specs/kill-switch/spec.md describe --by records as signed. The code only checks that --by is a non-empty string; anyone can write any name.",
+      "evidence": "UAE compliance research 2026-10-19 (CBUAE GN §6(f) mapping); bin/sakk.mjs signed() is typeof by === string && by.trim() !== \"\"",
+      "direct_cause": "\"signed\" was used for \"carries a name\", the word an auditor reads as a cryptographic signature.",
+      "why": [
+        "The halt was designed before identity was in scope.",
+        "The docs gate checks that named codes and files exist, not what a word promises."
+      ],
+      "root_cause": "A statement in the docs claims a property the code does not have.",
+      "dt": ["DT-SPEC"],
+      "sweep": "Replace \"signed\" with \"named\" (or \"by a named person\") in CLI help, README, ARCHITECTURE, specs; real signatures arrive with the approval service (SSO or Sigstore/SSH signing).",
+      "areas": ["bin/sakk.mjs", "README.md", "docs/ARCHITECTURE.md", "specs/kill-switch/spec.md"],
+      "mechanism_gap": "The RC-10 detectors check that named codes, files and counts exist; none checks a security adjective (signed, verified, tamper-proof) against a mechanism.",
+      "mechanism_upgrade": "none: open — a claims test listing security words and the code each must point to",
+      "distinct_from": {
+        "F-104": "F-104 is about durability limits of the lock and fsync promised away in the README; F-126 is about the word signed promising an identity mechanism that does not exist. Different mechanism, different fix."
+      }
+    },
+    {
+      "date": "2026-10-19",
+      "found_by": "review",
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep_status": "not_done",
+      "status": "open",
+      "class": "C-05",
+      "rc": ["RC-10"],
+      "es": ["ES-07"],
+      "id": "F-127",
+      "introduced_in": "4769e33",
+      "title": "The CBUAE case pack cites a theme the guidance does not contain and omits the binding CBUAE regulations",
+      "symptom": "cbuae-ai-oversight.json lists \"injected-instructions-ignored\" under the CBUAE AI Guidance Note, which has no such requirement (closest: §5(d) robustness). The pack anchors only on that non-binding note; the binding Operational Risk Management Regulation C 1/2026 (in force 2026-09-14; Art 12 change management, Art 13 third parties, Art 15 notification) and the Outsourcing Regulation (6.1, 6.3 data outside the UAE) are absent.",
+      "evidence": "UAE compliance research 2026-10-19 against rulebook.centralbank.ae originals (GN full text; ORM Arts 8–20; Outsourcing Arts 1–8)",
+      "direct_cause": "The pack was written from summaries of the guidance before any original text was read; the pack itself says THEMATIC and unverified.",
+      "why": [
+        "The blueprint named the guidance note, so the pack followed it.",
+        "No one read the CBUAE rulebook before writing the themes."
+      ],
+      "root_cause": "A statement in a pack claims a source the source does not contain.",
+      "dt": ["DT-FACT"],
+      "sweep": "Re-anchor the pack on the binding regulations (ORM 8.6, 9.4.5, 12.3/12.5, 13.6–13.9, 15.2–15.3; Outsourcing 5.7/5.8/6.1/6.3; CPS 6.1.6.3) with the GN as supervisory expectation; drop or re-cite the injection theme; check the DIFC and DORA packs the same way; a local law firm signs off before any external use.",
+      "areas": ["eval/packs/"],
+      "mechanism_gap": "The pack tests check that verdicts and case ids are consistent and that non-REAL runs cannot read COVERED; nothing checks a theme against the cited source.",
+      "mechanism_upgrade": "none: open — every requirement carries a quoted source clause and URL, and a test refuses a requirement without one"
     }
   ]
 }
