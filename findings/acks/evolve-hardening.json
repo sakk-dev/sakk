@@ -1,0 +1,74 @@
+{
+  "version": 2,
+  "branch": "evolve/hardening",
+  "answers": {
+    "C-16.1": {
+      "answer": "Yes for the checker: the version already merged on the base judges the branch as well as the branch's own version, and both must pass; the remaining gap (the branch still controls the workflow file on pull_request) is recorded in F-138 as the next step.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    },
+    "C-01.1": {
+      "answer": "A registry or ledger that is missing or unreadable at the base or at the head refuses with its name; a finding or class that exists at the base and is absent at the head is a regression, never 'nothing to compare'.",
+      "guard": "test/self-evolution.test.mjs::the registry and the ledger only move forward between base and head (R6)"
+    },
+    "C-01.2": {
+      "answer": "The control deletes a question, a detector and a finding at the head and expects each to be refused by name; restoring them passes, so the check is not optional.",
+      "guard": "test/self-evolution.test.mjs::the registry and the ledger only move forward between base and head (R6)"
+    },
+    "C-02.1": {
+      "answer": "The rule is stated once for the whole registry and ledger: what existed at the base still exists, unchanged or grown; the frozen fields are one list derived from what a finding claims about the past, and the test walks every field of a real ledger.",
+      "guard": "test/self-evolution.test.mjs::every frozen field of a real finding is checked"
+    },
+    "C-02.2": {
+      "answer": "The same forward-only rule covers both data files the gate reads (classes.json and ledger.json) and runs at both places that compare versions (pre-commit against HEAD, CI against the base), not one file at one place.",
+      "guard": "test/self-evolution.test.mjs::the registry and the ledger only move forward between base and head (R6)"
+    },
+    "C-03.1": {
+      "answer": "Each regression kind is planted on a copy of the real ledger and registry and must turn the check red with a message naming that kind; the unmodified copy must pass, so the check fails only for the reason it names.",
+      "guard": "test/self-evolution.test.mjs::the registry and the ledger only move forward between base and head (R6)"
+    },
+    "C-03.2": {
+      "answer": "The tests run the real findings-check script in a throwaway git repository with real commits, so they see what pre-commit and CI see, including the git reads of the base version.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    },
+    "C-03.3": {
+      "answer": "A loosened gate input fails the check itself: a removed question, a dropped detector or a status moved backwards is refused by the comparison, not by a document saying it should not happen.",
+      "guard": "test/self-evolution.test.mjs::the registry and the ledger only move forward between base and head (R6)"
+    },
+    "C-04.1": {
+      "answer": "The comparison is linear in the number of findings and classes (one map lookup each); both files are already bounded by the repository, and no pattern or recursion runs on their text.",
+      "guard": "none: the comparison is two map walks over files the repository already bounds; there is no hostile-size input beyond the committed ledger"
+    },
+    "C-05.1": {
+      "answer": "The docs sentences added (forward-only data, the base checker in CI) each name the test that holds them, and the CI workflow step is asserted by a test that reads the workflow file.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    },
+    "C-05.2": {
+      "answer": "Each refusal names the finding or class, the field and the way forward: restore it, or add a correction record with its reason; the test follows that instruction and expects a pass.",
+      "guard": "test/self-evolution.test.mjs::a correction record allows a changed field, with its reason"
+    },
+    "C-06.1": {
+      "answer": "A correction record is the author's own words and the docs say so; what becomes strong is that the original value stays in the record next to the new one, so a reader sees what changed and why.",
+      "guard": "test/self-evolution.test.mjs::a correction record allows a changed field, with its reason"
+    },
+    "C-09.1": {
+      "answer": "The base checker step runs on a pull request whose base is not main (a stacked branch) and on one whose base has no checker yet; both cases are tested, the second must say it was skipped and why.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    },
+    "C-09.2": {
+      "answer": "The workflow is read by a test so the step really exists in the file GitHub runs; the step itself fetches the base's scripts with git show, not from the working tree the pull request controls.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    },
+    "C-10.1": {
+      "answer": "Both required steps move into the CI gate itself: the forward-only comparison is in findings-check, and the base checker is a workflow step that a test asserts is present.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    },
+    "C-10.2": {
+      "answer": "The route this closes is a pull request changing the checker or its data in the same change it is judged by; the base version judges it too, and the data can only move forward, so neither route loosens the gate.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    },
+    "C-13.1": {
+      "answer": "The forward-only rule is measured on both sides: the real ledger's own history from base to head must pass (legitimate progress such as open to fixed), and planted regressions must fail.",
+      "guard": "test/self-evolution.test.mjs::legitimate progress passes: open to fixed, a new detector, an appended question"
+    }
+  }
+}

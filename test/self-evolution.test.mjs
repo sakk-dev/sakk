@@ -7,6 +7,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   classifyShell,
+  dataRegressions,
+  FROZEN,
   messageProblem,
   missingAnswers,
   required,
@@ -782,5 +784,190 @@ describe('every refusal says what to do', () => {
     );
     const s = bash(d, 'echo $(date) > src/x.mjs');
     assert.equal(s.status, 0, 'answered: the shell write passes too');
+  });
+});
+
+describe('R6: the data the gate reads only moves forward', () => {
+  const BASE_LEDGER = {
+    findings: [
+      {
+        id: 'F-01',
+        class: 'C-01',
+        areas: ['src/x.mjs'],
+        title: 'a known problem in x',
+        status: 'open',
+        why: ['a', 'b'],
+      },
+      {
+        id: 'F-02',
+        class: 'C-02',
+        areas: ['docs/'],
+        title: 'a known docs problem',
+        status: 'fixed',
+      },
+    ],
+  };
+  const BASE_CLASSES = {
+    classes: [
+      {
+        id: 'C-01',
+        name: 'absence',
+        questions: [{ id: 'C-01.1', ask: 'What happens when the input is absent here?' }],
+        detectors: ['test/d.test.mjs::feeds every key absent'],
+      },
+      {
+        id: 'C-02',
+        name: 'lists',
+        questions: [{ id: 'C-02.1', ask: 'Does a list stand in for all of them here?' }],
+      },
+    ],
+  };
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const regress = (mutate) => {
+    const head = { ledger: clone(BASE_LEDGER), registry: clone(BASE_CLASSES) };
+    mutate(head);
+    return dataRegressions({ ledger: BASE_LEDGER, registry: BASE_CLASSES }, head);
+  };
+  test('the registry and the ledger only move forward between base and head (R6)', () => {
+    assert.deepEqual(
+      regress(() => {}),
+      [],
+      'unchanged passes',
+    );
+    assert.match(regress((h) => h.registry.classes[0].questions.pop())[0], /C-01\.1 was removed/);
+    assert.match(
+      regress((h) => (h.registry.classes[0].questions[0].ask = 'Anything absent?'))[0],
+      /C-01\.1\.ask was reworded/,
+    );
+    assert.match(
+      regress((h) => (h.registry.classes[0].detectors = []))[0],
+      /C-01\.detectors lost entries/,
+    );
+    assert.match(regress((h) => h.registry.classes.pop())[0], /C-02 was removed/);
+    assert.match(regress((h) => h.ledger.findings.pop())[0], /F-02 was removed from the ledger/);
+    assert.match(regress((h) => (h.ledger.findings[0].title = 'softer'))[0], /F-01\.title changed/);
+    assert.match(
+      regress((h) => (h.ledger.findings[1].status = 'open'))[0],
+      /F-02\.status moved back from fixed to open/,
+    );
+    assert.match(regress((h) => (h.ledger.findings[0].why = ['a']))[0], /F-01\.why lost entries/);
+    // the same rule at commit and in CI
+    const { d, git } = repo({ ledger: BASE_LEDGER, classes: BASE_CLASSES });
+    ack(d, ANSWERS());
+    const loosened = clone(BASE_CLASSES);
+    loosened.classes[0].questions[0].ask = 'Anything absent?';
+    writeFileSync(join(d, 'findings', 'classes.json'), JSON.stringify(loosened));
+    git('add', '-A');
+    assert.match(check(d, ['--staged']).stderr, /C-01\.1\.ask was reworded/);
+    commit(git, 'docs: answers and a softer question');
+    assert.match(check(d, ['--range', 'main']).stderr, /C-01\.1\.ask was reworded/);
+  });
+  test('a correction record allows a changed field, with its reason', () => {
+    const fix = (why) =>
+      regress((h) => {
+        h.ledger.findings[0].title = 'a known problem in x, read wrongly before';
+        h.ledger.findings[0].corrections = [{ field: 'title', from: 'a known problem in x', why }];
+      });
+    assert.deepEqual(fix('the review showed the title named the wrong file'), []);
+    assert.match(fix('short')[0], /F-01\.title changed/);
+    // corrections only grow
+    const base = { ledger: clone(BASE_LEDGER), registry: BASE_CLASSES };
+    base.ledger.findings[0].corrections = [
+      { field: 'x', from: 1, why: 'an earlier correction with its reason' },
+    ];
+    assert.match(
+      dataRegressions(base, { ledger: clone(BASE_LEDGER), registry: BASE_CLASSES })[0],
+      /F-01\.corrections lost entries/,
+    );
+  });
+  test('legitimate progress passes: open to fixed, a new detector, an appended question', () => {
+    assert.deepEqual(
+      regress((h) => {
+        h.ledger.findings[0].status = 'fixed';
+        h.ledger.findings[0].areas.push('src/y.mjs');
+        h.ledger.findings.push({ id: 'F-03', class: 'C-01', areas: ['src/x.mjs'], title: 'new' });
+        h.registry.classes[0].detectors.push('test/e.test.mjs::another check');
+        h.registry.classes[0].questions[0].ask += ' Say how the test deletes it.';
+        h.registry.classes[0].questions.push({
+          id: 'C-01.2',
+          ask: 'A new question learned this week?',
+        });
+        h.registry.classes.push({ id: 'C-03', name: 'new class', questions: [] });
+      }),
+      [],
+    );
+    // the real ledger's own history from the stacked base to this branch is progress, not regression
+    const at = (rev, f) =>
+      JSON.parse(execFileSync('git', ['show', `${rev}:${f}`], { cwd: REPO, env: ENV }));
+    let base;
+    try {
+      base = {
+        ledger: at('release/oss-prep', 'findings/ledger.json'),
+        registry: at('release/oss-prep', 'findings/classes.json'),
+      };
+    } catch {
+      return; // a shallow clone without that branch: the planted cases above still hold
+    }
+    const head = {
+      ledger: JSON.parse(readFileSync(join(REPO, 'findings', 'ledger.json'), 'utf8')),
+      registry: JSON.parse(readFileSync(join(REPO, 'findings', 'classes.json'), 'utf8')),
+    };
+    assert.deepEqual(dataRegressions(base, head), []);
+  });
+  test('every frozen field of a real finding is checked', () => {
+    const real = JSON.parse(readFileSync(join(REPO, 'findings', 'ledger.json'), 'utf8'));
+    const f =
+      real.findings.find((x) => FROZEN.every((k) => x[k] !== undefined)) ??
+      real.findings.find((x) => x.answer_failed);
+    assert.ok(f, 'a real finding carrying the frozen fields');
+    for (const k of FROZEN) {
+      if (f[k] === undefined) continue;
+      const head = clone(real);
+      const h = head.findings.find((x) => x.id === f.id);
+      h[k] = typeof h[k] === 'string' ? `${h[k]} (changed)` : { changed: true };
+      const out = dataRegressions(
+        { ledger: real, registry: { classes: [] } },
+        { ledger: head, registry: { classes: [] } },
+      );
+      assert.ok(
+        out.some((m) => m.includes(`${f.id}.${k} changed`)),
+        `${k} is not frozen`,
+      );
+    }
+  });
+  test("the base branch's checker judges the pull request too", () => {
+    const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
+    const start = ci.indexOf('\n  self-evolution:\n');
+    const job = ci.slice(start + 1).split(/\n {2}[a-z][\w-]*:\n/)[0];
+    assert.match(
+      job,
+      /git show "origin\/\$base:\$f"/,
+      'the step reads the base scripts with git show',
+    );
+    assert.match(
+      job,
+      /node "\$RUNNER_TEMP\/base-checker\/scripts\/findings-check\.mjs" --range "origin\/\$base"/,
+    );
+    // functionally: a branch that guts its own checker is still judged by the base's
+    const { d, git } = repo();
+    writeFileSync(join(d, 'scripts', 'findings-check.mjs'), 'process.exit(0);\n');
+    writeFileSync(join(d, 'src', 'x.mjs'), 'export const x = 9;\n');
+    git('add', '-A');
+    commit(git, 'feat: x, with a checker that says yes');
+    assert.equal(check(d, ['--range', 'main']).status, 0, "the branch's own checker now says yes");
+    const baseDir = mkdtempSync(join(tmpdir(), 'base-checker-'));
+    mkdirSync(join(baseDir, 'scripts'));
+    for (const f of ['findings-check.mjs', 'findings-lib.mjs'])
+      writeFileSync(
+        join(baseDir, 'scripts', f),
+        execFileSync('git', ['show', `main:scripts/${f}`], { cwd: d, env: ENV }),
+      );
+    const r = spawnSync(
+      process.execPath,
+      [join(baseDir, 'scripts', 'findings-check.mjs'), '--range', 'main'],
+      { cwd: d, encoding: 'utf8', env: ENV },
+    );
+    assert.equal(r.status, 1, "the base's checker still refuses");
+    assert.match(r.stderr, /C-01\.1/);
   });
 });

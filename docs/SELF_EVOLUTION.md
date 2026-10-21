@@ -87,6 +87,18 @@ Anything else, including commands nobody listed, needs the answers for:
 - the watch list, when the command's targets cannot be read: interpreters,
   heredocs, `eval`, `sh -c`, `npx`, and unknown tools.
 
+Commands that turn the git hooks off are refused outright, even when every
+answer is given (F-140): `--no-verify`, `git commit -n`,
+`git -c core.hooksPath=…` and setting `core.hooksPath`. Agents reach for
+these when a gate blocks them; CI would catch the result, but only once a
+pull request exists.
+
+**When the gate is wrong.** Every refusal names one sanctioned way out:
+`npm run inbox -- add --source dispute "<why the gate is wrong>"`, then
+stop. The dispute blocks commits until the owner resolves it. Measured
+elsewhere, giving an agent an explicit flag-and-stop option cut cheating
+from 54% to 9% (ImpossibleBench, arXiv 2510.20270).
+
 A command over 64 KiB is refused as unclassifiable. The Write tool on
 `findings/acks/` stays open, so the way out is always to answer.
 
@@ -121,6 +133,47 @@ The record carries exactly one of:
 
 A new escape that upgrades a check also releases the class, because its
 last two escapes are then no longer both "none".
+
+## The gate's own data only moves forward
+
+The checker judges a change by `findings/classes.json` and
+`findings/ledger.json`, so a change must not loosen them (R6, F-137).
+Pre-commit compares them with HEAD, and CI compares them with the base:
+
+- Nothing is removed: no class, question, detector or finding.
+- A question's text may only be appended to.
+- A finding's account of the past is frozen: its class, date, title,
+  introduced_in, found_by, symptom, evidence, direct cause, root cause,
+  mechanism gap and answer_failed.
+- A finding's lists only grow, its status only moves forward, and its
+  upgrade only moves from "none" to a check.
+
+A deliberate change carries its own record in `corrections`:
+`{"field": "title", "from": "<the old value>", "why": "…"}`.
+
+CI also runs the **base branch's** checker over the pull request, read with
+`git show`, so a branch that weakens the checker is still judged by the one
+already merged (F-138).
+
+## A fix is proven, not claimed
+
+For every finding a pull request fixes, CI runs its guard test twice
+(R7, `scripts/findings-proof.mjs`). This is the FAIL_TO_PASS rule SWE-bench
+uses to validate a fix:
+
+1. On the base, the code before the fix, with the new test file copied in,
+   the guard must fail.
+2. On the branch, it must pass.
+
+A guard that already passes before the fix does not guard the bug, so it
+is refused.
+
+A bug that predates the branch needs a guard that **runs** on the old code
+and fails by its own assertion. A test that cannot even load there, because
+it imports what the fix added, shows nothing about the old code. Drive the
+command instead of the new function (`test/self-evolution-cli.test.mjs` is
+written that way). A bug introduced in the same branch may have a guard
+that needs the new code to load.
 
 ## Logging every problem
 

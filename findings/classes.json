@@ -346,7 +346,9 @@
           "learned_from": ["F-59"]
         }
       ],
-      "detectors": []
+      "detectors": [
+        "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+      ]
     }
   ]
 }
