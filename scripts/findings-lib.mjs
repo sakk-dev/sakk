@@ -762,3 +762,104 @@ export function pendingChanges(root) {
   }
   return files;
 }
+
+// --- R6: the data the gate reads only moves forward ---------------------------
+
+// what a finding says about the past: it never changes, unless a correction says why
+export const FROZEN = [
+  'class',
+  'date',
+  'title',
+  'introduced_in',
+  'found_by',
+  'symptom',
+  'evidence',
+  'direct_cause',
+  'root_cause',
+  'mechanism_gap',
+  'answer_failed',
+];
+const GROWS = ['areas', 'why', 'dt', 'rc', 'es'];
+const STATUS_ORDER = ['open', 'fixed', 'verified', 'class_closed'];
+
+/** A changed field is allowed when the head carries {field, from: <the base value>, why: 20+ chars}. */
+const corrected = (headItem, field, baseValue) =>
+  (headItem?.corrections ?? []).some(
+    (c) =>
+      c?.field === field &&
+      same(c.from, baseValue) &&
+      typeof c.why === 'string' &&
+      c.why.trim().length >= 20,
+  );
+const superset = (a, b) => (b ?? []).every((x) => (a ?? []).some((y) => same(x, y)));
+
+/**
+ * R6: what existed at the base still exists at the head, unchanged or grown.
+ * Findings keep their account of the past; status only moves forward; an
+ * upgrade only moves from "none" to a check. Classes keep their definition,
+ * questions (text may only be appended to) and detectors. A deliberate change
+ * is a `corrections` entry naming the field, its old value and why.
+ */
+export function dataRegressions(base, head) {
+  const out = [];
+  const hf = new Map((head.ledger?.findings ?? []).map((f) => [f.id, f]));
+  for (const b of base.ledger?.findings ?? []) {
+    const h = hf.get(b.id);
+    if (!h) {
+      out.push(`${b.id} was removed from the ledger — findings are never deleted`);
+      continue;
+    }
+    for (const k of FROZEN)
+      if (b[k] !== undefined && !same(b[k], h[k]) && !corrected(h, k, b[k]))
+        out.push(
+          `${b.id}.${k} changed — restore it, or add {"field": "${k}", "from": <the old value>, "why": "…"} to its "corrections"`,
+        );
+    for (const k of GROWS)
+      if (!superset(h[k], b[k]) && !corrected(h, k, b[k]))
+        out.push(`${b.id}.${k} lost entries — lists only grow`);
+    const si = STATUS_ORDER.indexOf(b.status);
+    if (si >= 0 && STATUS_ORDER.indexOf(h.status) < si && !corrected(h, 'status', b.status))
+      out.push(`${b.id}.status moved back from ${b.status} to ${h.status}`);
+    const bu = String(b.mechanism_upgrade ?? '');
+    if (
+      bu &&
+      !bu.startsWith('none:') &&
+      h.mechanism_upgrade !== b.mechanism_upgrade &&
+      !corrected(h, 'mechanism_upgrade', b.mechanism_upgrade)
+    )
+      out.push(`${b.id}.mechanism_upgrade changed from a check to something else`);
+    if (!superset(h.corrections, b.corrections))
+      out.push(`${b.id}.corrections lost entries — corrections only grow`);
+  }
+  const hc = new Map((head.registry?.classes ?? []).map((c) => [c.id, c]));
+  for (const b of base.registry?.classes ?? []) {
+    const h = hc.get(b.id);
+    if (!h) {
+      out.push(`${b.id} was removed from findings/classes.json — classes are never deleted`);
+      continue;
+    }
+    for (const k of ['name', 'definition', 'rc'])
+      if (b[k] !== undefined && h[k] !== b[k] && !corrected(h, k, b[k]))
+        out.push(
+          `${b.id}.${k} changed — restore it, or add a correction with the old value and why`,
+        );
+    const hq = new Map((h.questions ?? []).map((q) => [q.id, q]));
+    for (const q of b.questions ?? []) {
+      const n = hq.get(q.id);
+      if (!n) out.push(`${q.id} was removed — questions are never deleted`);
+      else {
+        if (typeof n.ask !== 'string' || !n.ask.startsWith(q.ask))
+          out.push(`${q.id}.ask was reworded — text may only be appended`);
+        if (!superset(n.learned_from, q.learned_from))
+          out.push(`${q.id}.learned_from lost entries`);
+      }
+    }
+    if (!superset(h.detectors, b.detectors) && !corrected(h, 'detectors', b.detectors))
+      out.push(`${b.id}.detectors lost entries — a class keeps every check it had`);
+    if (!superset(h.corrections, b.corrections))
+      out.push(`${b.id}.corrections lost entries — corrections only grow`);
+  }
+  if (!superset(head.registry?.baseline, base.registry?.baseline))
+    out.push('the class baseline lost entries');
+  return out;
+}

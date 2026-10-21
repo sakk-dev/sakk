@@ -4068,6 +4068,62 @@
         "qid": "C-06.1",
         "why": "The answer said an answer must point at a test that resolves, but the code accepted any file containing the name, and no test tried a document."
       }
+    },
+    {
+      "id": "F-137",
+      "date": "2026-10-21",
+      "found_by": "review",
+      "class_fix": null,
+      "sweep_status": "done",
+      "status": "fixed",
+      "introduced_in": "ece32d3",
+      "class": "C-10",
+      "title": "The data the gate reads could be loosened in the same change it judges",
+      "symptom": "A branch could delete or reword a prevention question, drop a class detector, delete a finding or move its status back, and the gate then judged the branch by the loosened data. Replaying the ledger history found one silent rewrite: commit f0bb305 changed F-63.symptom with no record.",
+      "evidence": "R6 replay over the 19 commits that touched findings/ledger.json or findings/classes.json between main and this branch (2026-10-21)",
+      "direct_cause": "The checker read the head's classes and ledger without comparing them to the base.",
+      "why": [
+        "\"Classes only grow\" and \"a finding's account of the past is fixed\" were rules in prose.",
+        "The checker trusted its inputs because they live in the same repository."
+      ],
+      "root_cause": "A required property of the gate's own inputs existed only as rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: findings-check compares the ledger and the registry with HEAD (pre-commit) and with the base (CI): nothing is removed, frozen fields change only with a correction record, status moves forward, questions are only appended to, detectors only grow (R6)",
+      "guard": "test/self-evolution.test.mjs::the registry and the ledger only move forward between base and head (R6)",
+      "sweep": "Both data files the gate reads are covered at both comparison points; the one historical rewrite (F-63.symptom, f0bb305) predates the rule and stays as history.",
+      "areas": ["scripts/findings-lib.mjs", "scripts/findings-check.mjs"],
+      "mechanism_gap": "The RC-07 detectors check that gates run and pass exit codes through; none checks that the gate's inputs cannot be weakened by the change being judged.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::the registry and the ledger only move forward between base and head (R6)"
+    },
+    {
+      "id": "F-138",
+      "date": "2026-10-21",
+      "found_by": "review",
+      "class_fix": null,
+      "sweep_status": "done",
+      "status": "fixed",
+      "introduced_in": "ece32d3",
+      "class": "C-16",
+      "title": "CI ran the pull request's own checker, so a branch could loosen the check that judged it",
+      "symptom": "The self-evolution job checked out the pull request and ran its scripts/findings-check.mjs; a branch that replaced the checker with \"exit 0\" passed its own CI.",
+      "evidence": "reproduced in a throwaway repository: the gutted checker exits 0 on a change with no answers; the base's checker, read with git show, exits 1",
+      "direct_cause": "The judge was the version of the checker the author had just written.",
+      "why": [
+        "On pull_request, GitHub runs the branch's workflow and the branch's files.",
+        "Nothing compared the checker's verdict with the verdict of the version already merged."
+      ],
+      "root_cause": "The writer of the change also supplied its judge.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-12"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: a CI step reads the base branch's checker scripts with git show and runs them over the branch too; both must pass",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too",
+      "sweep": "The workflow file itself is still the branch's on pull_request; moving the base-checker run to a workflow the branch cannot edit is the next step (pull_request_target or a ruleset-required workflow), tracked in the hardening plan.",
+      "areas": [".github/workflows/ci.yml"],
+      "mechanism_upgrade": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too",
+      "mechanism_gap": "The RC-12 detectors check the product's checks (controls, refusal codes, timeouts); none asked whether the loop's own checker could be replaced by the change it judges."
     }
   ]
 }

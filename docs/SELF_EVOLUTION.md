@@ -122,6 +122,27 @@ The record carries exactly one of:
 A new escape that upgrades a check also releases the class, because its
 last two escapes are then no longer both "none".
 
+## The gate's own data only moves forward
+
+The checker judges a change by `findings/classes.json` and
+`findings/ledger.json`, so a change must not loosen them (R6, F-137).
+Pre-commit compares them with HEAD, and CI compares them with the base:
+
+- Nothing is removed: no class, question, detector or finding.
+- A question's text may only be appended to.
+- A finding's account of the past is frozen: its class, date, title,
+  introduced_in, found_by, symptom, evidence, direct cause, root cause,
+  mechanism gap and answer_failed.
+- A finding's lists only grow, its status only moves forward, and its
+  upgrade only moves from "none" to a check.
+
+A deliberate change carries its own record in `corrections`:
+`{"field": "title", "from": "<the old value>", "why": "…"}`.
+
+CI also runs the **base branch's** checker over the pull request, read with
+`git show`, so a branch that weakens the checker is still judged by the one
+already merged (F-138).
+
 ## Logging every problem
 
 - `npm run audit` puts every red step in `findings/inbox/` itself.

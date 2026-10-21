@@ -31,6 +31,7 @@ import {
   ackPath,
   ackRewrites,
   answerFailedProblems,
+  dataRegressions,
   branchOf,
   classifyShell,
   explain,
@@ -250,6 +251,19 @@ if (mode === '--staged') {
     read: index,
   });
   problems.push(...ackRewrites(prev, ack, ids(ledger)).map((p) => `self-evolution: ${rel}: ${p}`));
+  // R6: the ledger and the registry only move forward
+  let headRegistry = null;
+  try {
+    headRegistry = json(head('findings/classes.json'), "HEAD's classes");
+  } catch (e) {
+    problems.push(`self-evolution: ${e.message}`);
+  }
+  if (headLedger && headRegistry)
+    problems.push(
+      ...dataRegressions({ ledger: headLedger, registry: headRegistry }, { ledger, registry }).map(
+        (p) => `self-evolution: ${p}`,
+      ),
+    );
   if (ack?.version === 2)
     problems.push(...guardResolution(ack, index).map((p) => `self-evolution: ${rel}: ${p}`));
   problems.push(
@@ -351,16 +365,28 @@ if (mode === '--range') {
     }
   };
   const atBase = new Set(acksAt(base));
-  const earlier = new Map();
+  const earlier = new Map(); // another answers file the range added → its last version
   for (const c of revs)
     for (const f of acksAt(c)) {
       if (atBase.has(f) || f === rel) continue;
+      let cur;
       try {
-        earlier.set(f, JSON.parse(git(root, 'show', `${c}:${f}`)));
+        cur = JSON.parse(git(root, 'show', `${c}:${f}`));
       } catch {
         problems.push(`self-evolution: ${f} at ${c.slice(0, 7)} is not valid JSON`);
+        continue;
       }
+      // every answers file the range added is append-only through its own history
+      if (earlier.has(f))
+        for (const p of ackRewrites(earlier.get(f), cur, ids(ledger)))
+          problems.push(`commit ${c.slice(0, 7)}: ${f}: ${p}`);
+      earlier.set(f, cur);
     }
+  // within a pull request's own range there is one answers file: another one the
+  // range added (kept or removed) is this branch under another name, and the
+  // current file carries its answers forward — keeping the old file while a
+  // looser new one is read would be the same bypass (CI ranges from the PR's own
+  // base, so a stacked parent's file is already at the base)
   for (const [f, last] of earlier)
     for (const p of ackRewrites(last, ack, ids(ledger)))
       problems.push(
@@ -368,6 +394,19 @@ if (mode === '--range') {
       );
   if (ack?.version === 2)
     problems.push(...guardResolution(ack, reader(root)).map((p) => `self-evolution: ${rel}: ${p}`));
+  // R6: the ledger and the registry only move forward from the base
+  let baseRegistry = null;
+  try {
+    baseRegistry = json(reader(root, base)('findings/classes.json'), `${base}'s classes`);
+  } catch (e) {
+    problems.push(`self-evolution: ${e.message}`);
+  }
+  if (baseLedger && baseRegistry)
+    problems.push(
+      ...dataRegressions({ ledger: baseLedger, registry: baseRegistry }, { ledger, registry }).map(
+        (p) => `self-evolution: ${p}`,
+      ),
+    );
   const onBranch = (f) =>
     f.introduced_in === 'worktree' ||
     (/^[0-9a-f]{7,40}$/.test(f.introduced_in ?? '') &&
