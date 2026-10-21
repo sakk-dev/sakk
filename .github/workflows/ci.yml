@@ -57,6 +57,12 @@ jobs:
             git show "origin/$base:$f" > "$RUNNER_TEMP/base-checker/$f"
           done
           SAKK_BRANCH="$HEAD_REF" node "$RUNNER_TEMP/base-checker/scripts/findings-check.mjs" --range "origin/$base"
+      - name: every fix in this branch is proven red before and green after
+        # FAIL_TO_PASS (R7): a finding fixed here names a guard test that fails
+        # on the base with the new test copied in, and passes on this branch.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/findings-proof.mjs --range "origin/${BASE_REF:?the proof needs the pull request base}"
   format:
     runs-on: ubuntu-latest
     timeout-minutes: 10
