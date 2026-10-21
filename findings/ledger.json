@@ -4152,6 +4152,38 @@
       "areas": ["scripts/findings-proof.mjs", ".github/workflows/ci.yml"],
       "mechanism_gap": "The RC-12 detectors check product checks and the gate's own refusals; none ran a guard against the code before its fix.",
       "mechanism_upgrade": "test/self-evolution-cli.test.mjs::F-139: a guard that already passes before the fix is refused"
+    },
+    {
+      "id": "F-140",
+      "date": "2026-10-21",
+      "introduced_in": "7237bcb",
+      "found_by": "review",
+      "class": "C-10",
+      "title": "The shell gate let git commands that turn the hooks off through, and offered no legitimate way to dispute a gate",
+      "symptom": "git commit --no-verify, git commit -n, git push --no-verify, git -c core.hooksPath=… and git config core.hooksPath passed the Claude Code shell gate once the answers existed (commit and push count as recording, not writing). A blocked agent had no sanctioned alternative to routing around the gate.",
+      "evidence": "anthropics/claude-code#40117 (Mar 2026): an agent used --no-verify across six commits despite memory and CLAUDE.md rules; ImpossibleBench (arXiv 2510.20270): giving agents an abort/flag option cut cheating from 54% to 9% for GPT-5; reproduced here on the evolve/close-bypasses checker",
+      "direct_cause": "The classifier judged git commit and push by whether they write files, not by whether they switch the hooks off.",
+      "why": [
+        "Skipping hooks was treated as acceptable because CI re-checks the branch, but CI runs only on pull requests and work before a PR is unchecked.",
+        "Refusals said what to answer, never what to do when the gate itself is wrong."
+      ],
+      "root_cause": "A required step (run the hooks) could be skipped by a flag, and the only alternative to complying was to route around.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: the hook refuses --no-verify, commit -n and hooksPath changes outright; every refusal names `npm run inbox -- add --source dispute \"<why>\"`, which records the dispute and blocks commits until the owner resolves it",
+      "guard": "test/self-evolution-cli.test.mjs::F-140: commands that turn the git hooks off are refused even with every answer given",
+      "class_fix": null,
+      "sweep": "Push and merge forms of --no-verify are covered; the dispute path is added to the edit and shell refusals; CI and pre-commit already block an unresolved inbox item.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "scripts/findings-lib.mjs",
+        "scripts/findings-check.mjs",
+        "scripts/findings-inbox.mjs"
+      ],
+      "mechanism_gap": "The RC-07 detectors check that gates run; none checks the flags that tell git not to run them.",
+      "mechanism_upgrade": "test/self-evolution-cli.test.mjs::F-140: commands that turn the git hooks off are refused even with every answer given"
     }
   ]
 }

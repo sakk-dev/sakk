@@ -293,3 +293,29 @@ describe('R7: a fix is proven red before and green after', () => {
     assert.match(r.stderr, /cannot even load on base/);
   });
 });
+
+describe('skipping the hooks is refused, and disputing the gate is the way out', () => {
+  test('F-140: commands that turn the git hooks off are refused even with every answer given', () => {
+    const { d } = repo();
+    ack(d);
+    for (const c of [
+      'git commit --no-verify -m x',
+      'git commit -nm x',
+      'git push --no-verify',
+      'git -c core.hooksPath=/dev/null commit -m x',
+      'git config core.hooksPath /dev/null',
+    ]) {
+      const r = bash(d, c);
+      assert.equal(r.status, 2, c);
+      assert.match(r.stderr, /refused/, c);
+    }
+    assert.equal(bash(d, 'git commit -m "-n is only text here"').status, 0);
+    assert.equal(bash(d, 'git config --get core.hooksPath').status, 0);
+  });
+  test('F-140: every refusal names the dispute path instead of a way around', () => {
+    const { d } = repo();
+    const r = edit(d);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /--source dispute/);
+  });
+});

@@ -34,6 +34,8 @@ import {
   dataRegressions,
   branchOf,
   classifyShell,
+  DISPUTE,
+  hookBypass,
   explain,
   findRoot,
   guardResolution,
@@ -139,6 +141,12 @@ if (mode === '--edit') {
       // R1: the repository this hook belongs to, wherever the session started
       const root = findRoot(real(join(dirname(fileURLToPath(import.meta.url)), '..')));
       if (!root) process.exit(0);
+      const skip = hookBypass(hook?.tool_input?.command);
+      if (skip)
+        fail(
+          `self-evolution: refused — ${skip}. Commits go through the hooks; CI checks the same rules anyway.\n${DISPUTE}`,
+          2,
+        );
       const cls = classifyShell(hook?.tool_input?.command, cwd);
       if (cls.kind === 'unclassifiable')
         fail(
@@ -206,7 +214,7 @@ if (mode === '--edit') {
       prev,
       read: reader(root),
     });
-    if (problems.length) fail(problems.join('\n\n'), 2);
+    if (problems.length) fail([...problems, DISPUTE].join('\n\n'), 2);
     process.exit(0);
   } catch (e) {
     // fail closed — but leave the way to repair the checker itself open

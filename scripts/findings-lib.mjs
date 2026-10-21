@@ -863,3 +863,45 @@ export function dataRegressions(base, head) {
     out.push('the class baseline lost entries');
   return out;
 }
+
+// --- skipping the hooks is not a write: it is refused outright --------------
+
+/**
+ * A command that turns the git hooks off (`--no-verify`, `commit -n`, setting
+ * or clearing core.hooksPath) is refused whatever the answers say: agents
+ * reach for it when a gate blocks them (anthropics/claude-code#40117). Returns
+ * the reason, or null.
+ */
+export function hookBypass(cmd) {
+  if (typeof cmd !== 'string') return null;
+  for (const seg of shellSegments(cmd).segs) {
+    const words = seg.filter((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
+    const gi = words.findIndex((w) => w === 'git' || w.endsWith('/git'));
+    if (gi < 0) continue;
+    const rest = words.slice(gi + 1);
+    for (let k = 0; k < rest.length; k++)
+      if (rest[k] === '-c' && /^core\.hookspath=/i.test(rest[k + 1] ?? ''))
+        return 'git -c core.hooksPath=… runs git without the hooks';
+    let j = 0;
+    while (j < rest.length && rest[j].startsWith('-')) j += /^-(C|c)$/.test(rest[j]) ? 2 : 1;
+    const sub = rest[j];
+    const args = rest.slice(j + 1);
+    if (args.includes('--no-verify')) return `git ${sub} --no-verify skips the hooks`;
+    if (
+      sub === 'commit' &&
+      args.some((a) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(a) && !a.startsWith('--'))
+    )
+      return 'git commit -n is --no-verify';
+    if (
+      sub === 'config' &&
+      args.some((a) => /^core\.hookspath$/i.test(a)) &&
+      !args.some((a) => /^--get/.test(a))
+    )
+      return 'changing core.hooksPath turns the hooks off';
+  }
+  return null;
+}
+
+/** The way out every refusal offers instead of routing around the gate. */
+export const DISPUTE =
+  'If you believe this gate is wrong, do not route around it: run `npm run inbox -- add --source dispute "<why the gate is wrong>"` and stop for the owner.';

@@ -87,6 +87,18 @@ Anything else, including commands nobody listed, needs the answers for:
 - the watch list, when the command's targets cannot be read: interpreters,
   heredocs, `eval`, `sh -c`, `npx`, and unknown tools.
 
+Commands that turn the git hooks off are refused outright, even when every
+answer is given (F-140): `--no-verify`, `git commit -n`,
+`git -c core.hooksPath=…` and setting `core.hooksPath`. Agents reach for
+these when a gate blocks them; CI would catch the result, but only once a
+pull request exists.
+
+**When the gate is wrong.** Every refusal names one sanctioned way out:
+`npm run inbox -- add --source dispute "<why the gate is wrong>"`, then
+stop. The dispute blocks commits until the owner resolves it. Measured
+elsewhere, giving an agent an explicit flag-and-stop option cut cheating
+from 54% to 9% (ImpossibleBench, arXiv 2510.20270).
+
 A command over 64 KiB is refused as unclassifiable. The Write tool on
 `findings/acks/` stays open, so the way out is always to answer.
 

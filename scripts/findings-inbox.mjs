@@ -6,7 +6,7 @@
 // a person or agent adds one for every review finding. The commit gate
 // refuses while any item is untriaged.
 //
-//   npm run inbox -- add "<what was seen>" [--source review|audit|human]
+//   npm run inbox -- add "<what was seen>" [--source review|audit|human|dispute]
 //   npm run inbox -- resolve <item> F-nn       logged: as a new finding or an occurrence of its class
 //   npm run inbox -- dismiss <item> "<why it is not a problem, 20+ characters>"
 //   npm run inbox -- list
@@ -40,7 +40,7 @@ export function addItem(text, source = 'human', extra = {}) {
 const itemPath = (id) => join(DIR, id.endsWith('.json') ? id : `${id}.json`);
 const usage = () => {
   console.error(
-    'usage: npm run inbox -- add "<text>" [--source review|audit|human] | resolve <item> F-nn | dismiss <item> "<reason>" | list',
+    'usage: npm run inbox -- add "<text>" [--source review|audit|human|dispute] | resolve <item> F-nn | dismiss <item> "<reason>" | list',
   );
   process.exit(2);
 };
@@ -51,7 +51,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const si = rest.indexOf('--source');
     const source = si >= 0 ? rest[si + 1] : 'human';
     const text = rest.filter((_, i) => si < 0 || (i !== si && i !== si + 1)).join(' ');
-    if (!text || !['review', 'audit', 'human'].includes(source)) usage();
+    if (!text || !['review', 'audit', 'human', 'dispute'].includes(source)) usage();
     console.log(`inbox: added ${addItem(text, source)}`);
   } else if (cmd === 'resolve') {
     const [item, fid] = rest;
