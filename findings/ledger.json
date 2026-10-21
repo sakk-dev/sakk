@@ -3794,6 +3794,37 @@
       "areas": ["eval/packs/"],
       "mechanism_gap": "The pack tests check that verdicts and case ids are consistent and that non-REAL runs cannot read COVERED; nothing checks a theme against the cited source.",
       "mechanism_upgrade": "none: open — every requirement carries a quoted source clause and URL, and a test refuses a requirement without one"
+    },
+    {
+      "id": "F-128",
+      "date": "2026-10-21",
+      "introduced_in": "ece32d3",
+      "found_by": "T0",
+      "class": "C-09",
+      "title": "The CI range check fell back to main on push, so a stacked branch had to answer for files its unmerged parents changed",
+      "symptom": "PR #15, stacked on #14, went red in the push-event self-evolution job: it demanded answers to C-12.1, C-13.1, C-14.1 and C-16.1 for .claude/settings.json, the workflows and other files that #13 and #14 changed. The pull_request run of the same job, ranged from the PR base, passed.",
+      "evidence": "CI run 39281845615 (push, failure) vs 39281852992 (pull_request, success), head 26a1bf3; reproduced locally: findings-check --range origin/main lists the four questions, --range origin/evolve/self-evolution exits 0",
+      "direct_cause": "BASE_REF is empty on push events, and the job defaulted it to main.",
+      "why": [
+        "The job was written and tested on branches cut from main.",
+        "A default stood in for a missing input instead of refusing, and nothing ran the job on a stacked branch."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: the job runs on pull requests only, and an empty base fails instead of falling back to main",
+      "guard": "test/self-evolution.test.mjs::F-128: the range check runs on pull requests against their own base, with no default",
+      "class_fix": null,
+      "sweep": "No other workflow step defaults a missing value (no \":-\" in .github/workflows); pr-review.yml checks out the PR base sha explicitly; the local hooks check the working branch, not a base.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [".github/workflows/ci.yml", "test/self-evolution.test.mjs"],
+      "mechanism_gap": "The C-09 detectors vary layouts, git configuration and Node versions for Sakk's own runs; none runs the CI range check on a branch whose base is not main.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::F-128: the range check runs on pull requests against their own base, with no default",
+      "distinct_from": {
+        "F-114": "F-114 collects low-impact ledger and release edges that touch ci.yml among other files; F-128 is the self-evolution job defaulting its base to main. Different job, different fix."
+      }
     }
   ]
 }

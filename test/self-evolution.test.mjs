@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -199,5 +199,21 @@ describe('in CI: the whole branch, so --no-verify does not get past', () => {
       'fix: handle x (F-01)',
     );
     assert.equal(check(d, ['--range', 'main']).status, 0);
+  });
+  test('F-128: the range check runs on pull requests against their own base, with no default', () => {
+    // A push has no base_ref. Defaulting to main charged a stacked branch with
+    // every file its unmerged parents changed, while its pull request passed.
+    const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
+    const start = ci.indexOf('\n  self-evolution:\n');
+    assert.ok(start > 0, 'self-evolution job not found');
+    const job = ci.slice(start + 1).split(/\n {2}[a-z][\w-]*:\n/)[0];
+    assert.match(job, /\n {4}if: github\.event_name == 'pull_request'\n/);
+    assert.match(job, /BASE_REF: \$\{\{ github\.base_ref \}\}/);
+    assert.doesNotMatch(
+      job,
+      /BASE_REF:-/,
+      "a default base charges a branch with its parents' files",
+    );
+    assert.match(job, /\$\{BASE_REF:\?/, 'an empty base must fail, not fall back');
   });
 });

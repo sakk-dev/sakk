@@ -18,7 +18,11 @@ jobs:
       - run: npm run test:eval
   self-evolution:
     # the ledger's questions are answered for every changed file, and every
-    # fix names its finding — re-checked here so --no-verify does not get past
+    # fix names its finding — re-checked here so --no-verify does not get past.
+    # Pull requests only: the range starts at the PR's own base. A push has no
+    # base, and main charged a stacked branch with its parents' files (F-128);
+    # a push to main was an empty range anyway.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -33,7 +37,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           HEAD_REF: ${{ github.head_ref || github.ref_name }}
         run: |
-          base="${BASE_REF:-main}"
+          base="${BASE_REF:?the range check needs the pull request base}"
           git fetch -q origin "$base"
           SAKK_BRANCH="$HEAD_REF" node scripts/findings-check.mjs --range "origin/$base"
   format:

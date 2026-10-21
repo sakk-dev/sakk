@@ -2,7 +2,7 @@
   "branch": "release/oss-prep",
   "answers": {
     "C-01.1": {
-      "answer": "The new wording check cannot pass on missing input: it asserts every scanned file exists and is non-empty before matching, so a renamed or deleted doc turns the test red instead of scanning nothing."
+      "answer": "Absence refuses in both changes: the wording check fails if a scanned file is missing or empty, and the CI range check now fails on an empty pull request base instead of silently substituting main."
     },
     "C-01.2": {
       "answer": "Deleting inputs is caught by the companion assertion that every allowlisted phrase is still found in its file; emptying the file list or the allowlist makes that assertion fail rather than read as PASS."
@@ -41,7 +41,7 @@
       "answer": "No ledger paths are touched. The scanner reads docs by fixed repository-relative paths resolved from the test file, so the same document cannot be reached under a second name that escapes the check."
     },
     "C-09.1": {
-      "answer": "The test resolves files from its own location, not the working directory, so it behaves the same from the repository top, from a subdirectory and in CI checkouts on Node 20 and 22."
+      "answer": "Two environments are assumed and both are now tested: the wording test resolves files from its own location, and the CI range check no longer assumes a branch is cut from main; it runs on pull requests against their own base (F-128, reproduced on stacked PR #15)."
     },
     "C-10.1": {
       "answer": "The wording rule existed only in the F-126 sweep text; it is now a test inside npm test (claims-are-checked), which the commit gate and CI both run, so the rule is enforced by code rather than by memory."
