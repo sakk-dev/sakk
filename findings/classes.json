@@ -80,6 +80,11 @@
           "id": "C-03.2",
           "ask": "Can this test actually observe what its name claims — does the race overlap, does the attack reach a live target? Add the control that proves it.",
           "learned_from": ["F-24", "F-39", "F-40", "F-41", "F-69", "F-78", "F-84", "F-89"]
+        },
+        {
+          "id": "C-03.3",
+          "ask": "Can this check fail when the thing it guards is not done — not just when its paperwork is missing? Tie the record to something that resolves or runs.",
+          "learned_from": ["F-130"]
         }
       ],
       "detectors": [
@@ -103,7 +108,14 @@
       "detectors": [
         "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
         "test/claims-are-checked.test.mjs::every node --test script carries --test-timeout"
-      ]
+      ],
+      "stopline": {
+        "after": "F-107",
+        "debt": {
+          "plan": "Open-source v1 M0: a class detector that sizes attacker-shaped inputs for every exported matcher and ledger operation by an operation counter (never a clock) and asserts the bound; closes the F-105 and F-107 gap before M1 and M2 touch src/match.mjs and src/ledger.mjs.",
+          "until": "2026-10-28"
+        }
+      }
     },
     {
       "id": "C-05",
@@ -194,6 +206,11 @@
           "id": "C-09.1",
           "ask": "Which environment or state does this assume — repository top, PATH node, git config, which operations run hooks, which states a real run reaches? Test the other one.",
           "learned_from": ["F-04", "F-07", "F-08", "F-30", "F-47", "F-61", "F-72", "F-74"]
+        },
+        {
+          "id": "C-09.2",
+          "ask": "Where will this really run — which folder the session starts in, which agent, which loader? Show it firing there, not only that it is configured.",
+          "learned_from": ["F-132"]
         }
       ],
       "detectors": [
@@ -211,6 +228,11 @@
           "id": "C-10.1",
           "ask": "Is a required step enforced only by rule text? Make the gate, a hook or the audit run it, and make a test fail when it is missing.",
           "learned_from": ["F-14", "F-53", "F-54", "F-55", "F-56", "F-57", "F-58", "F-60"]
+        },
+        {
+          "id": "C-10.2",
+          "ask": "Can the step be skipped by another route — another tool, another agent, a session started elsewhere, or by changing its input after the gate passed? Make every route meet the gate, and freeze what it read.",
+          "learned_from": ["F-129", "F-131"]
         }
       ],
       "detectors": [
@@ -265,7 +287,14 @@
       ],
       "detectors": [
         "test/secret-scan.test.mjs::ordinary identifiers starting sk_/rk_/sk- are not API keys"
-      ]
+      ],
+      "stopline": {
+        "after": "F-119",
+        "debt": {
+          "plan": "Open-source v1 M0: a class detector that runs every detection rule set (secret patterns, answer rules, the shell classifier) over a benign corpus and a planted corpus and asserts both rates; covers F-75 and F-119 before M3 changes src/secret-scan.mjs.",
+          "until": "2026-10-28"
+        }
+      }
     },
     {
       "id": "C-14",
@@ -296,7 +325,14 @@
           "learned_from": ["F-46", "F-90", "F-112"]
         }
       ],
-      "detectors": []
+      "detectors": [],
+      "stopline": {
+        "after": "F-112",
+        "debt": {
+          "plan": "Gold v2, pending the owner's decision on the scorer (F-76, F-90): REAL-mode cases that pass honestly and refuse a forged test log; the class detector is named when gold v2 is scoped.",
+          "until": "2026-11-30"
+        }
+      }
     },
     {
       "id": "C-16",

@@ -10,7 +10,8 @@ non-negotiables live in CONSTITUTION.md; the full rulebook in docs/RULES.md.
    spots of the checks that will run.
 2. Answer them in `findings/acks/<branch>.json` — how this change avoids
    each one (40+ characters, no copy-paste between answers). Until then a
-   Claude Code edit of those files is blocked (PreToolUse hook), a commit is
+   Claude Code edit of those files — or a shell command that may write — is
+   blocked (PreToolUse hook), a commit is
    refused (git pre-commit hook, installed by `npm install`), and CI fails
    the branch. Codex and people meet the same git hooks and CI.
 3. Every problem you see goes to the ledger: `npm run inbox -- add "<what>"`
