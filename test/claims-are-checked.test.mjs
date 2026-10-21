@@ -42,8 +42,10 @@ const TESTS = [...walk('test'), ...walk('eval/__tests__')]
   .filter((f) => f.endsWith('.mjs'))
   .map(read)
   .join('\n');
+// `rule:` too — scorer rules are refusals of a case, and eleven of them had no
+// test that could fail (gold review S6, F-89)
 const EMIT =
-  /(?:Error\(\s*|bad\(\s*|gap\(\s*|fail\(\s*|usage\(\s*|code:\s*)['`]([A-Z][A-Z0-9_]{3,}[A-Za-z0-9_]*)/g;
+  /(?:Error\(\s*|bad\(\s*|gap\(\s*|fail\(\s*|usage\(\s*|code:\s*|rule:\s*)['`]([A-Z][A-Z0-9_]{3,}[A-Za-z0-9_]*)/g;
 
 /**
  * Codes on purely defensive paths that no input can reach without a broken
@@ -84,6 +86,51 @@ describe('claims are checked', () => {
   });
 });
 
+describe('every file name the docs cite exists (F-83, RC-10 detector upgrade)', () => {
+  // claims-are-checked matched refusal CODES only; a backticked file name in
+  // the README (the decision log) was wrong for two releases of review.
+  test('each backticked file name in the docs appears in the code or the repository', () => {
+    const docs = [
+      'README.md',
+      'CHANGELOG.md',
+      'eval/README.md',
+      ...readdirSync(join(ROOT, 'docs'))
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => `docs/${f}`),
+    ];
+    const code = [
+      ...walk('src'),
+      ...walk('bin'),
+      ...walk('eval/lib'),
+      ...walk('eval/bin'),
+      ...walk('scripts'),
+    ]
+      .filter((f) => /\.(mjs|sh)$/.test(f))
+      .map(read)
+      .join('\n');
+    const all = (d) =>
+      readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory()
+          ? ['node_modules', '.git', 'audit-logs'].includes(e.name)
+            ? []
+            : all(join(d, e.name))
+          : [e.name],
+      );
+    const names = new Set(all('.'));
+    const missing = [];
+    let cited = 0;
+    for (const d of docs)
+      for (const [, t] of read(d).matchAll(
+        /`([A-Za-z0-9_.-]+\.(?:jsonl|json|mjs|md|sh|yml|yaml|tgz|sha256))`/g,
+      )) {
+        cited += 1;
+        if (!code.includes(t) && !names.has(t)) missing.push(`${d}: ${t}`);
+      }
+    assert.ok(cited >= 20, `only ${cited} file names cited — pattern drifted?`);
+    assert.deepEqual(missing, []);
+  });
+});
+
 describe('nothing hangs instead of failing (findings F-15)', () => {
   test('every node --test script carries --test-timeout', () => {
     const scripts = JSON.parse(read('package.json')).scripts;
@@ -102,13 +149,21 @@ describe('nothing hangs instead of failing (findings F-15)', () => {
       assert.match(gate, new RegExp(`npm run --silent ${step}\\b`), step);
   });
   test('every CI job has timeout-minutes', () => {
-    const ci = read('.github/workflows/ci.yml');
-    const jobs = [...ci.matchAll(/^ {2}([a-z][\w-]*):\n/gm)].map((m) => m[1]);
-    assert.ok(jobs.length >= 3, jobs.join());
-    for (const job of jobs) {
-      const body = ci.slice(ci.indexOf(`  ${job}:\n`)).split(/\n {2}[a-z][\w-]*:\n/)[0];
-      assert.match(body, /timeout-minutes:\s*\d+/, job);
+    // every workflow file, not one named file: the review workflow had no
+    // timeout while this test said "every CI job" (F-91, F-79 class)
+    const files = readdirSync(join(ROOT, '.github', 'workflows')).filter((f) => /\.ya?ml$/.test(f));
+    assert.ok(files.length >= 2, files.join());
+    let jobs = 0;
+    for (const f of files) {
+      const wf = read(join('.github', 'workflows', f));
+      const body = wf.slice(wf.indexOf('\njobs:\n'));
+      for (const [, job] of body.matchAll(/^ {2}([a-z][\w-]*):\n/gm)) {
+        jobs += 1;
+        const jb = body.slice(body.indexOf(`  ${job}:\n`)).split(/\n {2}[a-z][\w-]*:\n/)[0];
+        assert.match(jb, /timeout-minutes:\s*\d+/, `${f}: ${job}`);
+      }
     }
+    assert.ok(jobs >= 4, `only ${jobs} jobs found`);
   });
 });
 

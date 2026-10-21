@@ -1,0 +1,315 @@
+{
+  "schema": "sakk-problem-classes.v1",
+  "notes": "Problem classes: every finding belongs to exactly one. A new instance of a known problem is an occurrence of its class, never a new class. A new class must state why it differs from EVERY existing class and carry an approval (docs/SELF_EVOLUTION.md). Questions are what `npm run brief` asks before a change; the commit gate requires answers to them.",
+  "baseline": [
+    "C-01",
+    "C-02",
+    "C-03",
+    "C-04",
+    "C-05",
+    "C-06",
+    "C-07",
+    "C-08",
+    "C-09",
+    "C-10",
+    "C-11",
+    "C-12",
+    "C-13",
+    "C-14",
+    "C-15",
+    "C-16"
+  ],
+  "classes": [
+    {
+      "id": "C-01",
+      "name": "Absence read as success",
+      "definition": "Something a check needs is missing — an input, key, flag, file, field or piece of evidence — and the outcome reads as success or agreement instead of a refusal.",
+      "rc": "RC-01",
+      "questions": [
+        {
+          "id": "C-01.1",
+          "ask": "What happens when this input, key, file, flag or field is ABSENT? Absence must refuse or be declared — never read as success.",
+          "learned_from": ["F-06", "F-09", "F-16", "F-21", "F-23", "F-25", "F-28", "F-29"]
+        },
+        {
+          "id": "C-01.2",
+          "ask": "Delete it and run again: does the outcome still read PASS? If yes, the check is optional — make it required or declare why.",
+          "learned_from": ["F-06", "F-09", "F-16", "F-21", "F-23", "F-25", "F-28", "F-29"]
+        }
+      ],
+      "detectors": [
+        "test/cli-strictness.test.mjs::every CLI refuses what it does not understand",
+        "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed"
+      ]
+    },
+    {
+      "id": "C-02",
+      "name": "A partial fix or list stands in for the rule",
+      "definition": "A check, fix or list covers the instances someone thought of — one field, one file, one variable, one write site — instead of the rule they share, so the next instance passes.",
+      "rc": "RC-04",
+      "questions": [
+        {
+          "id": "C-02.1",
+          "ask": "Does a hand-written list stand in for 'all' (directories, keys, codes, fields, variables)? Enumerate from the source, or state the rule once and apply it everywhere.",
+          "learned_from": ["F-34", "F-48", "F-79", "F-81", "F-87", "F-101", "F-103", "F-108"]
+        },
+        {
+          "id": "C-02.2",
+          "ask": "You are fixing one instance: where else does the same rule apply, and does this change cover all of them?",
+          "learned_from": ["F-34", "F-48", "F-79", "F-81", "F-87", "F-101", "F-103", "F-108"]
+        }
+      ],
+      "detectors": [
+        "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
+        "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
+        "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has"
+      ]
+    },
+    {
+      "id": "C-03",
+      "name": "A check that cannot fail for the reason it names",
+      "definition": "A test, guard, fuzz or attack row passes for a reason other than the property it names: it never reaches the path, cannot take both values, proves a side effect, races nothing, or has no control.",
+      "rc": "RC-12",
+      "questions": [
+        {
+          "id": "C-03.1",
+          "ask": "Does the check fail for the reason it names, and only that? Put the bug back and watch it go red.",
+          "learned_from": ["F-24", "F-39", "F-40", "F-41", "F-69", "F-78", "F-84", "F-89"]
+        },
+        {
+          "id": "C-03.2",
+          "ask": "Can this test actually observe what its name claims — does the race overlap, does the attack reach a live target? Add the control that proves it.",
+          "learned_from": ["F-24", "F-39", "F-40", "F-41", "F-69", "F-78", "F-84", "F-89"]
+        }
+      ],
+      "detectors": [
+        "test/core-specs.test.mjs::each red line in docs/testing-profile.md names a drill anchor that exists",
+        "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test",
+        "eval/__tests__/scorer-rules.test.mjs::fires on its trigger, and not without it"
+      ]
+    },
+    {
+      "id": "C-04",
+      "name": "Unbounded or clock-judged cost",
+      "definition": "Time, size or work is unbounded on attacker- or load-shaped input, or a test judges it with a wall clock.",
+      "rc": "RC-01",
+      "questions": [
+        {
+          "id": "C-04.1",
+          "ask": "What bounds the work, time or size here on hostile input — and is that bound asserted by a counter or a refusal, not a stopwatch?",
+          "learned_from": ["F-10", "F-15", "F-32", "F-62", "F-66", "F-105", "F-107"]
+        }
+      ],
+      "detectors": [
+        "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
+        "test/claims-are-checked.test.mjs::every node --test script carries --test-timeout"
+      ]
+    },
+    {
+      "id": "C-05",
+      "name": "A statement the code does not keep",
+      "definition": "A sentence in docs, specs, packs, README, CHANGELOG or the tool's own status output states behaviour, coverage, a file or a figure the code does not have.",
+      "rc": "RC-10",
+      "questions": [
+        {
+          "id": "C-05.1",
+          "ask": "Is every sentence you add to docs, specs or packs backed by a test that fails without it? Read it back against the code, not the intent.",
+          "learned_from": ["F-05", "F-19", "F-26", "F-27", "F-52", "F-68", "F-73", "F-77"]
+        },
+        {
+          "id": "C-05.2",
+          "ask": "Does every figure or exit code the tool reports work when someone acts on it?",
+          "learned_from": ["F-05", "F-19", "F-26", "F-27", "F-52", "F-68", "F-73", "F-77"]
+        }
+      ],
+      "detectors": [
+        "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code",
+        "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository"
+      ]
+    },
+    {
+      "id": "C-06",
+      "name": "Weak evidence presented as strong",
+      "definition": "Evidence from a weaker source — a FAKE run, a stub binary, a modified tree, a self-shipped verifier, an agent-writable record — is presented as if it came from the stronger one.",
+      "rc": "RC-10",
+      "questions": [
+        {
+          "id": "C-06.1",
+          "ask": "Which source does this evidence really come from, and does every reader see that source — not a stronger one?",
+          "learned_from": ["F-02", "F-03", "F-17", "F-22", "F-35", "F-36", "F-37", "F-42"]
+        }
+      ],
+      "detectors": [
+        "eval/__tests__/case-packs.test.mjs::FAKE mode → HARNESS_ONLY for every requirement, even when every case passed",
+        "test/evidence-bundle.test.mjs::a REAL run whose metrics name no model → METRICS_UNVERIFIABLE, even with traces relabelled"
+      ]
+    },
+    {
+      "id": "C-07",
+      "name": "Untrusted input trusted",
+      "definition": "Input or state controlled by someone else — caller ids, operator text, agent arguments, repository state, files on disk — crosses into the code without validation, escaping or isolation.",
+      "rc": "RC-05",
+      "questions": [
+        {
+          "id": "C-07.1",
+          "ask": "Which inputs come from someone else — the agent under test, operator text, hand-edited files, repository state? Each crosses a trust boundary: validate, escape, or do not trust it.",
+          "learned_from": ["F-01", "F-12", "F-13", "F-18", "F-70", "F-71", "F-82", "F-110"]
+        },
+        {
+          "id": "C-07.2",
+          "ask": "Can the party this gate constrains perform the step that clears it? A person must.",
+          "learned_from": ["F-01", "F-12", "F-13", "F-18", "F-70", "F-71", "F-82", "F-110"]
+        }
+      ],
+      "detectors": [
+        "test/hostile-names.test.mjs::callIds and agentIds that are prototype names reserve, settle, halt and resume like any id",
+        "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving"
+      ]
+    },
+    {
+      "id": "C-08",
+      "name": "One thing, two names",
+      "definition": "The same resource is reachable under two names — symlink, hard link, relative path, case alias, an enclosing repository — and the code treats them as different, or one as the other.",
+      "rc": "RC-01",
+      "questions": [
+        {
+          "id": "C-08.1",
+          "ask": "Can the same thing be reached by two names (symlink, hard link, relative path, case alias, enclosing repository)? One name must be the only one.",
+          "learned_from": ["F-20", "F-44", "F-64", "F-85"]
+        }
+      ],
+      "detectors": [
+        "test/ledger.test.mjs::F-85: a ledger reached through a symlinked or hard-linked FILE refuses",
+        "eval/__tests__/stranger-regressions.test.mjs::relative --out stranger"
+      ]
+    },
+    {
+      "id": "C-09",
+      "name": "An environment or state assumed, never tried",
+      "definition": "The code assumes an environment, layout or reachable state — PATH and node location, git version or config, which git operations run hooks, which states a genuine run reaches — that was never tested in its other form.",
+      "rc": "RC-01",
+      "questions": [
+        {
+          "id": "C-09.1",
+          "ask": "Which environment or state does this assume — repository top, PATH node, git config, which operations run hooks, which states a real run reaches? Test the other one.",
+          "learned_from": ["F-04", "F-07", "F-08", "F-30", "F-47", "F-61", "F-72", "F-74"]
+        }
+      ],
+      "detectors": [
+        "eval/__tests__/stranger-regressions.test.mjs::relative --out stranger",
+        "test/secret-scan.test.mjs::the hook as SHIPPED"
+      ]
+    },
+    {
+      "id": "C-10",
+      "name": "A required step exists only as rule text",
+      "definition": "A step the process requires — a spec, a drill anchor, a lint, a gate, a version bump, a release roll, a campaign run — exists only as written rule and gets skipped.",
+      "rc": "RC-07",
+      "questions": [
+        {
+          "id": "C-10.1",
+          "ask": "Is a required step enforced only by rule text? Make the gate, a hook or the audit run it, and make a test fail when it is missing.",
+          "learned_from": ["F-14", "F-53", "F-54", "F-55", "F-56", "F-57", "F-58", "F-60"]
+        }
+      ],
+      "detectors": [
+        "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through",
+        "test/core-specs.test.mjs::every source file is classified core or not core",
+        "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit"
+      ]
+    },
+    {
+      "id": "C-11",
+      "name": "A value whose meaning outlives its scope",
+      "definition": "A write or value carries a meaning beyond what its writer did — a timestamp that means 'confirmed', a lock that a manual override bypasses.",
+      "rc": "RC-08",
+      "questions": [
+        {
+          "id": "C-11.1",
+          "ask": "Does this write or value carry a meaning beyond its scope, and who can cause it? Classify every writer by what it confirms and who calls it.",
+          "learned_from": ["F-49", "F-67", "F-99"]
+        }
+      ],
+      "detectors": [
+        "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option"
+      ]
+    },
+    {
+      "id": "C-12",
+      "name": "Judged on the literal without its context",
+      "definition": "A rule decides on the captured text alone, without what surrounds it or what the capture swallowed.",
+      "rc": "RC-03",
+      "questions": [
+        {
+          "id": "C-12.1",
+          "ask": "Is a match judged on the captured text alone? Judge it in context: what surrounds it, and what the capture swallowed.",
+          "learned_from": ["F-11", "F-63"]
+        }
+      ],
+      "detectors": [
+        "test/secret-scan.test.mjs::RC-03 class: a fiction token beside any real secret, in any position, never hides it"
+      ]
+    },
+    {
+      "id": "C-13",
+      "name": "A detector tuned on one side",
+      "definition": "A detection rule misses real instances or flags ordinary ones, because it was tuned on positive or negative samples only.",
+      "rc": "RC-04",
+      "questions": [
+        {
+          "id": "C-13.1",
+          "ask": "Has this detection rule been measured on both sides — real instances it must catch and ordinary inputs it must leave alone?",
+          "learned_from": ["F-31", "F-43", "F-75"]
+        }
+      ],
+      "detectors": [
+        "test/secret-scan.test.mjs::ordinary identifiers starting sk_/rk_/sk- are not API keys"
+      ]
+    },
+    {
+      "id": "C-14",
+      "name": "A failure that is not isolated",
+      "definition": "One unit's failure — a frame, a case, a file — takes down the whole run or the whole server.",
+      "rc": "RC-09",
+      "questions": [
+        {
+          "id": "C-14.1",
+          "ask": "If this one unit (a frame, a case, a file) fails, does the whole run fail with it? Isolate it: the unit gets a named failure, the rest carries on.",
+          "learned_from": ["F-38", "F-95"]
+        }
+      ],
+      "detectors": [
+        "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving",
+        "eval/__tests__/scorer-rules.test.mjs::SCORER_ERROR: a judge that cannot score"
+      ]
+    },
+    {
+      "id": "C-15",
+      "name": "The real path never exercised",
+      "definition": "Tests and stand-ins exercise a different path from the one the product runs — fake agents writing their own evidence, amounts that never overrun, fixtures the real executor never sees.",
+      "rc": "RC-06",
+      "questions": [
+        {
+          "id": "C-15.1",
+          "ask": "Does any test run the real path — the real executor, the real fixture, the overrun — or only a stand-in that writes its own evidence?",
+          "learned_from": ["F-46", "F-90", "F-112"]
+        }
+      ],
+      "detectors": []
+    },
+    {
+      "id": "C-16",
+      "name": "The judge is the writer",
+      "definition": "The same model or person that wrote a change also judged it, with no measured bias.",
+      "rc": "RC-12",
+      "questions": [
+        {
+          "id": "C-16.1",
+          "ask": "Was the judge different from the writer (another model, a fresh clone)?",
+          "learned_from": ["F-59"]
+        }
+      ],
+      "detectors": []
+    }
+  ]
+}

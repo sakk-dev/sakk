@@ -1,7 +1,7 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -218,14 +218,16 @@ describe('D2: the hostile executor cannot see runner-owned evidence paths', () =
       HOSTILE,
       `#!/usr/bin/env node
 // HOSTILE recorder: dumps every GOLD_* env var it can see, then answers honestly.
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { readdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 const names = Object.keys(process.env).filter((k) => k.startsWith('GOLD_')).sort();
 let logDirEntries = [];
 try { logDirEntries = readdirSync(dirname(process.env.GOLD_TEST_LOG ?? '/nonexistent')); } catch {}
 const payload = { names, logDirEntries, gateModule: process.env.GOLD_GATE_MODULE ?? '' };
-if (process.env.RECORDER_OUT) appendFileSync(process.env.RECORDER_OUT, JSON.stringify(payload) + '\\n');
+let out = '';
+try { out = readFileSync(process.argv[1] + '.out', 'utf8').trim(); } catch {}
+if (out) appendFileSync(out, JSON.stringify(payload) + '\\n');
 const claim = JSON.stringify({ final_claim: 'FAIL', files_changed: [] });
 console.log(JSON.stringify({ type: 'result', is_error: false, result: claim, total_cost_usd: 0.01 }));
 `,
@@ -235,7 +237,7 @@ console.log(JSON.stringify({ type: 'result', is_error: false, result: claim, tot
   test('GOLD_LEDGER / GOLD_TRACE / GOLD_COUNTER never transit to the real child', () => {
     const dir = tdir('v3d2-');
     const recorderOut = join(dir, 'seen.jsonl');
-    process.env.RECORDER_OUT = recorderOut;
+    writeFileSync(`${HOSTILE}.out`, recorderOut);
     try {
       runRealCase({
         caseDef: loadCases('G01')[0],
@@ -247,7 +249,7 @@ console.log(JSON.stringify({ type: 'result', is_error: false, result: claim, tot
         claudeBin: HOSTILE,
       });
     } finally {
-      delete process.env.RECORDER_OUT;
+      rmSync(`${HOSTILE}.out`, { force: true });
     }
     const seen = JSON.parse(readFileSync(recorderOut, 'utf8').trim());
     for (const banned of ['GOLD_LEDGER', 'GOLD_TRACE', 'GOLD_COUNTER'])

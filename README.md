@@ -17,16 +17,17 @@ Agents spend real money and report their own success. Both are problems:
 
 The ledger closes the first gap. The eval harness in [`eval/`](eval/) grades the second from machine evidence (portable evidence packs are on the roadmap). Every potentially paid action must **reserve** against a capped ledger _before_ it runs, and **settle** with the real cost after. Everything pathological refuses:
 
-| Situation                                         | Sakk's answer                                                                                                                   |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Budget would reach the cap                        | **Refused.** The cap is a wall, not a target — reaching it counts as crossing it.                                               |
-| Same `callId` reserved twice                      | **Refused.** Deduplicated billing with re-executed side effects is how money leaks.                                             |
-| Ledger missing / corrupted / stale / wrong schema | **Refused.** A broken ledger is never "zero spend so far".                                                                      |
-| Actual cost unknowable after a failure            | **No fake numbers.** The entry enters reconciliation, a global flag halts all further paid calls until a named human clears it. |
-| Lock held by another process                      | **Refused after timeout.** The budget is never judged without mutual exclusion.                                                 |
-| Ordinary read failure                             | **Never auto-creates an empty ledger.** "Lost ledger equals free money" is the exact back door this tool exists to close.       |
+| Situation                                         | Sakk's answer                                                                                                                                       |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Budget would reach the cap                        | **Refused.** The cap is a wall, not a target — reaching it counts as crossing it.                                                                   |
+| Same `callId` reserved twice                      | **Refused.** Deduplicated billing with re-executed side effects is how money leaks.                                                                 |
+| Ledger missing / corrupted / stale / wrong schema | **Refused.** A broken ledger is never "zero spend so far". Stale = not confirmed for 7 days; a person revives it with `sakk reconcile --by <name>`. |
+| Actual cost unknowable after a failure            | **No fake numbers.** The entry enters reconciliation, a global flag halts all further paid calls until a named human clears it.                     |
+| Lock held by another process                      | **Refused after timeout.** The budget is never judged without mutual exclusion.                                                                     |
+| Ledger reached through a symlink or hard link     | **Refused** (`LEDGER_PATH_NOT_CANONICAL`). A write would replace the link and fork the books; use the one real path.                                |
+| Ordinary read failure                             | **Never auto-creates an empty ledger.** "Lost ledger equals free money" is the exact back door this tool exists to close.                           |
 
-Two concurrent agents cannot jointly overspend: read-modify-write runs under an atomic lock, writes are temp+rename, and there is a real two-process race in the test suite to prove it (`test/ledger.test.mjs`, "two concurrent reservations cannot jointly overspend").
+Two concurrent agents cannot jointly overspend: read-modify-write runs under an atomic lock, writes are temp+rename, and a real race proves it: eight processes started together reserve against one cap, and every grant must be booked with nothing past the cap (`test/ledger.test.mjs`, "8 concurrent processes cannot jointly overspend"; mutation drill MUT-Z removes the lock and the race goes red).
 
 ## Install
 
@@ -42,10 +43,14 @@ npx sakk status                 # totals, entries, reconciliation state (--json 
 npx sakk reconcile --by alice   # clear a reconciliation halt — takes a name
 ```
 
-Every command accepts `--ledger <path>` (default: `./sakk-ledger.json`, or
-`SAKK_LEDGER_PATH`).
+The ledger commands (`init`, `status`, `reconcile`, `halt`, `resume`,
+`unlock`, `mcp`) accept `--ledger <path>` (default: `./sakk-ledger.json`, or
+`SAKK_LEDGER_PATH`; set-but-empty refuses).
 
-`sakk status` exits 3 while reconciliation is required — gate your CI on it.
+`sakk status` exits 3 while a person must act before spending resumes —
+reconciliation required (flag or entry), or a stale ledger — and 4 while
+globally halted; gate your CI on it. `max_reservable_usd` is 0 whenever
+every reserve would refuse.
 
 In code:
 
@@ -79,10 +84,12 @@ clearReconciliation({ ledgerPath, by: 'your-name' });
 Zero dependencies. Plain Node (≥20) on **macOS or Linux** (the lock and the
 tooling are POSIX; Windows is not supported yet). The ledger is a
 human-readable JSON file; alerts append to a greppable `sakk-alerts.jsonl`
-next to it. Writes are fsync'd before an atomic rename — the gate's decision
-survives power loss.
+next to it (never written through a planted symlink). Writes are fsync'd
+before an atomic rename. On Linux that survives power loss; on macOS fsync
+does not flush the drive cache (Node has no F_FULLFSYNC), so a power cut can
+lose the last writes there.
 
-The API is deliberately **synchronous** (lock waits block up to ~2s): correct
+The API is deliberately **synchronous** (lock waits block up to ~3s): correct
 for CLIs, hooks and per-task processes. Inside a long-running async server,
 call it from a worker thread. Ledgers are single JSON files scanned per call
 — right for hundreds-to-thousands of entries per ledger; archive or rotate
@@ -106,16 +113,19 @@ Practical notes, earned the hard way:
   invoice that disagrees with the books, a provider incident. It halts all
   further reservations until a named human clears the flag.
 
-If a process crashes while holding the lock, the next caller detects the
-dead owner (same host) and breaks the lock automatically; anything it cannot
-judge stays locked until `npx sakk unlock --by <your-name>`.
+If a process crashes while holding the lock, the next caller usually detects
+the dead owner (same host) and breaks the lock automatically. A crash in the
+few microseconds while the lock is being created or released leaves a lock
+it cannot judge (measured: about 3 in 100 SIGKILLs); that stays locked —
+fail-closed — until `npx sakk unlock --by <your-name>`. One ledger directory
+must not be shared across hosts: the dead-owner check compares hostnames.
 
 **Auditors**: [docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) — what you can
 verify on your own clean machine in under 30 minutes, without trusting us.
 
 ## API
 
-`initLedger · reserve · settle · markReconciliationRequired · clearReconciliation · forceUnlock · readLedger · totalsOf · LedgerError (every refusal carries .code and .details)`
+`initLedger · reserve · settle · halt · resume · markReconciliationRequired · clearReconciliation · forceUnlock · readLedger · totalsOf · LedgerError (every refusal carries .code and .details)`
 
 Accounting rule: `settled actuals + outstanding reservations (at estimated max) + this estimate >= cap ⇒ refuse`.
 
@@ -132,17 +142,31 @@ decision carries the SHA-256 of the policy file that produced it — "why was
 this allowed on March 3rd?" is answered by replay, not by trust. Policy files
 (`sakk-policy.v1`, plain JSON) read top-to-bottom, **first match wins**, the
 `default_verdict` is mandatory, and everything pathological refuses:
-`POLICY_VACUOUS_ALLOW` (a gate that can only say yes), `POLICY_RULE_SHADOWED`
-(provably dead rules), `CONTEXT_INVALID` (no coercion — and no path aliases:
-a non-canonical scope like `prod//x` refuses outright rather than sliding
-past a deny; normalizing paths and unicode before calling `decide()` is the
-enforcer's job), `POLICY_TOO_COMPLEX` (bounded by refusal, never by
-hanging), `DECISION_UNLOGGABLE`
-(an unauditable allow is a deny). Two reference policies ship in
-[`policies/`](policies/) — a permissive dev profile and a regulated
-three-tier profile. The kernel never imports the ledger and never performs
-actions; an enforcer composes the two: `decide()` → on `allow` only →
-`reserve()`.
+`POLICY_VACUOUS_ALLOW` (a gate that can only say yes: no rule that refuses
+under a default allow, or a first rule that allows everything),
+`POLICY_RULE_SHADOWED` (provably dead rules), `POLICY_SCHEMA_INVALID` (also
+for a `*` inside an agent or action name — only the exact `*` is a
+wildcard), `CONTEXT_INVALID` (no coercion — and no path aliases: a
+non-canonical scope like `prod//x` refuses outright rather than sliding
+past a deny), `POLICY_TOO_COMPLEX` (bounded by refusal, never by hanging),
+`DECISION_UNLOGGABLE` (an unauditable allow is a deny).
+
+Two limits to know before relying on a deny:
+
+- **Under `default_verdict: allow`, a deny constrains only what the caller
+  declares.** A rule on `scope` or `action` does not match a request that
+  omits that field, so the request falls through to the allow default. Use
+  a deny default (like `policies/regulated-strict.json`) when the caller is
+  the party being constrained.
+- **Paths are compared byte for byte.** The kernel and the MCP enforcer do
+  not fold case, resolve symlinks or normalize unicode: on a
+  case-insensitive volume (the macOS default) `Prod/api` is `prod/api` on
+  disk but not to the policy. Normalize before calling `decide()`, or use a
+  deny default. Two reference policies ship in
+  [`policies/`](policies/) — a permissive dev profile and a regulated
+  three-tier profile. The kernel never imports the ledger and never performs
+  actions; an enforcer composes the two: `decide()` → on `allow` only →
+  `reserve()`.
 
 ## Kill switch
 
@@ -251,13 +275,17 @@ config (Cursor/Copilot analogous):
 ```
 
 The ledger path is REQUIRED (no cwd default — a server guessing where the
-books live is not a gate). `--policy` is optional; when set, every
+books live is not a gate). `--policy` (or `SAKK_POLICY_PATH`; set-but-empty
+refuses) is optional; when set, every
 `sakk_reserve` is decided by the policy kernel first and every decision —
-allow and deny alike — lands hash-pinned in `sakk-decisions.jsonl` next to
+allow and deny alike — lands hash-pinned in `<ledger>.decisions.jsonl` next to
 the ledger. `require_approval` refuses over MCP by design (approval
 collection is an enterprise concern, not an agent tool). The server adds
-no semantics: replaying the same calls through the library yields
-byte-identical books, and the test suite proves it.
+no semantics: replaying the same calls through the library yields the same
+entries (callId, status, amounts — timestamps differ by construction), and
+the test suite proves it. A policy `allow` is a decision, not a
+reservation: the ledger can still refuse it (a zero estimate, for one), so
+count reservations from the books, not allows from the decision log.
 
 ## Roadmap — honest edition
 

@@ -152,7 +152,7 @@ if (isMain) {
     console.error(`CERT_INTERNAL: ${e.message} — no certificate emitted`);
     process.exit(2);
   });
-  const EXPECTED_MUTANTS = 23;
+  const EXPECTED_MUTANTS = 26;
   const refuse = (code, msg) => {
     // Review F9: a stale certificate from an earlier commit lying around
     // IS an emitted claim — refusal removes it.

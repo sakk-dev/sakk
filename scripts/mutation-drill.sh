@@ -110,8 +110,8 @@ run_drill MUT-E src/policy.mjs \
 
 # MUT-F: let an empty allow-by-default policy load → the vacuous-gate test must die red
 run_drill MUT-F src/policy.mjs \
-  "if (doc.rules.length === 0 && doc.default_verdict === 'allow')" \
-  "if (false)" \
+  "    (doc.default_verdict === 'allow' && doc.rules.every((r) => r.verdict === 'allow')) ||" \
+  "    false ||" \
   "POLICY_VACUOUS_ALLOW: an empty allow-by-default policy refuses at load" \
   "test"
 
@@ -164,6 +164,28 @@ run_drill MUT-W src/ledger.mjs \
   "    else h.global = null;" \
   "    h.global = null;" \
   "a scoped resume leaves the global halt in force" \
+  "test"
+
+# MUT-X: drop the cap check → a reservation past the cap must be refused by its test (red line)
+run_drill MUT-X src/ledger.mjs \
+  "    if (t.committedUsd + estimatedMaxUsd >= doc.capUsd - CAP_EPSILON_USD) {" \
+  "    if (false) {" \
+  "exactly at the cap: refused (the cap is a wall, not a target)" \
+  "test"
+
+# MUT-Y: print the secret instead of its keyed fingerprint → its test must die red (red line)
+run_drill MUT-Y src/secret-scan.mjs \
+  "const fingerprint = (value) => createHmac('sha256', KEY).update(value).digest('hex').slice(0, 12);" \
+  "const fingerprint = (value) => value;" \
+  "keyed fingerprints: stable within a run, different across runs unless SAKK_SCAN_KEY is set" \
+  "test"
+
+# MUT-Z: take away mutual exclusion → concurrent reservations lose updates and
+# overspend; the real race must die red (F-84: the old "race" was sequential)
+run_drill MUT-Z src/ledger.mjs \
+  "      mkdirSync(lock);" \
+  "      mkdirSync(lock, { recursive: true });" \
+  "8 concurrent processes cannot jointly overspend, and every grant is booked" \
   "test"
 
 # MUT-J: judge the fiction-token exemption on the WHOLE match → a token in a

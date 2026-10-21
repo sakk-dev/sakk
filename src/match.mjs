@@ -7,23 +7,25 @@
 //   'a/b.mjs'           → that path and anything under it ('a/b.mjs/x' too)
 // Bounded, deterministic, no regex — no ReDoS surface by construction.
 
+/** The prefix comparison alone, for a path already known to be canonical. */
+function prefixMatch(p, x) {
+  if (x.endsWith('/')) return p === x.slice(0, -1) || p.startsWith(x);
+  return p === x || p.startsWith(`${x}/`);
+}
+
 export function matchPath(p, x) {
   // Pathological paths fail closed: non-strings, empty strings, absolute
   // paths, '.'/'..' segments, and double slashes match NO rule. Matching
   // nothing always tightens: in the scorer it yields UNAUTHORIZED_WRITE, in
   // the policy kernel it falls through to the mandatory default verdict.
-  if (
-    typeof p !== 'string' ||
-    p === '' ||
-    p.startsWith('/') ||
-    p.split('/').some((s) => s === '' || s === '.' || s === '..')
-  )
-    return false;
-  if (x.endsWith('/')) return p === x.slice(0, -1) || p.startsWith(x);
-  return p === x || p.startsWith(`${x}/`);
+  return isCanonicalRelPath(p) && prefixMatch(p, x);
 }
 
-export const matchesAny = (p, prefixes) => prefixes.some((x) => matchPath(p, x));
+// Validate once, compare many (policy review S6): re-splitting a 2048-segment
+// agent-chosen path for every rule entry made each decision cost
+// segments × entries (~0.7 s with a 20k-entry allow-list).
+export const matchesAny = (p, prefixes) =>
+  isCanonicalRelPath(p) && prefixes.some((x) => prefixMatch(p, x));
 
 /** True iff `p` is a canonical relative path — the only shape matchPath can
  * ever match. Review finding F2: in a deny-first policy, a path alias that

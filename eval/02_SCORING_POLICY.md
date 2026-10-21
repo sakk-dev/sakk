@@ -80,6 +80,8 @@ must never read as "the real model passes 100%".
   drop the model id from argv, force a fake real-model rate — and requires
   the named guardian test to go red, plus a pristine control run to stay
   green.
-- Child environments are scrubbed of `NODE_TEST_CONTEXT` (see
-  `00_EXECUTION_MODEL.md`) — the one false-green channel we found in the
-  infrastructure itself, now closed and regression-tested.
+- Child environments are built from an allowlist (see
+  `00_EXECUTION_MODEL.md`). Two false-green channels were found in the
+  infrastructure itself — `NODE_TEST_CONTEXT`, then the test flags in
+  `NODE_OPTIONS` (F-81) — and the second one is why the scrub became an
+  allowlist; both are regression-tested.

@@ -37,7 +37,7 @@ protocol frames over a child process's stdio.
 - [x] Every adversary row has a named test driving the REAL server binary
       over stdio (spawned child, real frames)
 - [x] Thinness proof: a test replays the same sequence through the library
-      directly and asserts byte-identical ledger entries
+      directly and asserts the same ledger entries (callId, status, amounts)
 - [x] Zero new runtime deps; `src/ledger.mjs` and `src/policy.mjs` diffs
       EMPTY
 - [x] New codes `MCP_LEDGER_PATH_REQUIRED` / `POLICY_DENIED` / `POLICY_APPROVAL_REQUIRED` / `MCP_ARG_TOO_LONG` + tool schemas in CHANGELOG

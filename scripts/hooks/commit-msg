@@ -1,0 +1,3 @@
+#!/bin/sh
+# A fix names the finding it fixes (docs/SELF_EVOLUTION.md).
+exec node scripts/findings-check.mjs --commit-msg "$1"

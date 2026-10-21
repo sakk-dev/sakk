@@ -5,3 +5,6 @@ node_modules/
 mutation-drill-report.txt
 CERTIFICATE.md
 audit-logs/
+
+# untriaged inbox items are local until logged (docs/SELF_EVOLUTION.md)
+findings/inbox/

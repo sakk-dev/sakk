@@ -2,6 +2,12 @@
 
 <!-- One logical change. Link the issue: Fixes #NNN -->
 
+## Ledger brief (R-22)
+
+<!-- The answers live in findings/acks/<branch>.json and CI checks they cover
+every changed file. Summarise here which problem classes this change touched
+and any finding it logged or attached to a class. -->
+
 ## Checklist
 
 - [ ] `npm run test:all` green locally
@@ -12,7 +18,8 @@
 - [ ] Case/fixture/scoring/schema changes reviewed as executable code
 - [ ] Core-area change: three-tables + contract in `specs/` and converge check done (R-01/R-11)
 - [ ] Bugfix: attack-shaped regression included; self-report verified / partial / failed
-- [ ] CLA signed (bot will prompt on first PR)
+- [ ] Every problem found while building is in `findings/ledger.json` (areas, root cause, guard; escape fields if its class had a detector)
+- [ ] CLA signed (collected by the maintainer before your first merge)
 
 ## Money semantics
 

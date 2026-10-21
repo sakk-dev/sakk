@@ -3,6 +3,26 @@
 Instructions for any coding agent working in this repository. The
 non-negotiables live in CONSTITUTION.md; the full rulebook in docs/RULES.md.
 
+## Before you change anything (self-evolution, R-22 — enforced, not optional)
+
+1. `npm run brief -- <paths you will touch>`: the problem classes those
+   files have hit, the questions this branch must answer, and the blind
+   spots of the checks that will run.
+2. Answer them in `findings/acks/<branch>.json` — how this change avoids
+   each one (40+ characters, no copy-paste between answers). Until then a
+   Claude Code edit of those files is blocked (PreToolUse hook), a commit is
+   refused (git pre-commit hook, installed by `npm install`), and CI fails
+   the branch. Codex and people meet the same git hooks and CI.
+3. Every problem you see goes to the ledger: `npm run inbox -- add "<what>"`
+   (a red `npm run audit` step does this itself), then log it in
+   `findings/ledger.json` **under its class in `findings/classes.json`** —
+   a new instance of a known problem is an occurrence of that class, never a
+   new class. A new class must say why it is none of the existing ones and
+   carry an approval. Commits are refused while the inbox is not empty.
+4. A `fix` commit names its finding (`F-nn`) or says `No-finding: <why>`.
+
+Details: docs/SELF_EVOLUTION.md.
+
 ## Setup & checks (run these; they are the gate)
 
 - Install: nothing to install — plain Node ≥ 20, macOS/Linux, zero deps.

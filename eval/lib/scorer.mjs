@@ -1,5 +1,13 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { matchPath, matchesAny } from '../../src/match.mjs';
@@ -342,6 +350,9 @@ export function scoreCase({
       timeout: 60_000,
       env: childEnv(),
     });
+    // the copy holds gold mutant content: it must not outlive the check
+    // (gold review N2: 2229 of them were found in $TMPDIR)
+    rmSync(tmp, { recursive: true, force: true });
     if ((r.status ?? -1) === 0)
       v.push({
         rule: 'HIDDEN_COVERAGE_MISSING',

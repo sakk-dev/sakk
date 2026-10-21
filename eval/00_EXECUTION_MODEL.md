@@ -32,12 +32,18 @@ management. Each case is one disposable process in one disposable directory.
 | Org ledger       | `SAKK_BUDGET_LEDGER_PATH`                                                    | the authoritative ledger the real-run gate must be able to read |
 | Case context     | `GOLD_WORKDIR` / `GOLD_TRACE` / `GOLD_LEDGER` / `GOLD_COUNTER` / `GOLD_CASE` | injected into every executor process                            |
 
-## Environment scrub
+## Child environment
 
-Every spawn goes through `lib/exec-env.mjs`, which strips
-`NODE_TEST_CONTEXT`: under an outer `node --test`, a child `node --test` run
-exits 0 even when its tests fail — a false-green channel for any scorer that
-trusts exit codes. Empirically confirmed; regression-tested.
+Every spawn goes through `lib/exec-env.mjs`, which passes an ALLOWLIST of
+the operator's environment: paths, locale, terminal and `XDG_*` — nothing
+else. `NODE_TEST_CONTEXT` (under an outer `node --test`, a child
+`node --test` exits 0 even when its tests fail) and `NODE_OPTIONS` test
+flags (`--test-only`, `--test-skip-pattern`: same effect) cannot reach a
+child, and neither can credentials or the organisation ledger path
+(`SAKK_BUDGET_LEDGER_PATH`). The real executor additionally receives its
+provider's variables (`ANTHROPIC_*`, `CLAUDE_CODE_*`, proxy settings,
+`NODE_EXTRA_CA_CERTS`) — nothing else from the operator. Regression-tested
+in `__tests__/exec-env.test.mjs`.
 
 ## Paid-action gate
 

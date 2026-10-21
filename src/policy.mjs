@@ -10,8 +10,12 @@
 //  - Every refusal carries a stable machine code (public API).
 
 import { createHash } from 'node:crypto';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
+import { appendNoFollow } from './append.mjs';
 import { matchPath, matchesAny, prefixCovers, isCanonicalRelPath } from './match.mjs';
+
+// eslint-disable-next-line no-control-regex -- control characters are what it finds
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 
 export class PolicyError extends Error {
   constructor(code, message, details = {}) {
@@ -51,15 +55,27 @@ function validatePolicyDoc(doc, policyPath) {
     for (const k of Object.keys(r))
       if (!RULE_KEYS.includes(k)) inv(`rules[${i}]: unknown key "${k}"`);
     if (typeof r.id !== 'string' || r.id === '') inv(`rules[${i}]: id must be a non-empty string`);
+    // ids and names reach refusal messages and terminals (review N4)
+    if (CONTROL.test(r.id)) inv(`rules[${i}]: id contains control characters`);
     if (seen.has(r.id)) inv(`duplicate rule id "${r.id}"`);
     seen.add(r.id);
     if (!VERDICTS.includes(r.verdict)) inv(`rule "${r.id}": unknown verdict`, { got: r.verdict });
     if (!isPlainObject(r.match)) inv(`rule "${r.id}": match must be an object`);
     for (const k of Object.keys(r.match))
       if (!MATCH_KEYS.includes(k)) inv(`rule "${r.id}": unknown match key "${k}"`);
-    for (const f of ['agent', 'action'])
+    for (const f of ['agent', 'action']) {
       if (f in r.match && (typeof r.match[f] !== 'string' || r.match[f] === ''))
         inv(`rule "${r.id}": match.${f} must be a non-empty string`);
+      // review S3: F10's no-globs rule held for scope only — a 'ci-*' deny
+      // was a literal that never fired. Only the exact '*' is a wildcard.
+      if (f in r.match && r.match[f] !== '*' && /[*?[\]]/.test(r.match[f]))
+        inv(
+          `rule "${r.id}": match.${f} "${r.match[f]}" is not a glob — only the exact "*" is a wildcard, so this rule would never match`,
+          { got: r.match[f] },
+        );
+      if (f in r.match && CONTROL.test(r.match[f]))
+        inv(`rule "${r.id}": match.${f} contains control characters`);
+    }
     if ('scope' in r.match) {
       if (!Array.isArray(r.match.scope) || r.match.scope.length === 0)
         inv(`rule "${r.id}": match.scope must be a non-empty array of path prefix rules`);
@@ -97,11 +113,18 @@ function validatePolicyDoc(doc, policyPath) {
         inv(`rule "${r.id}": approvers_min must be an integer >= 1`);
     }
   });
-  // R-04: a gate that can only say yes is not a gate.
-  if (doc.rules.length === 0 && doc.default_verdict === 'allow')
+  // R-04: a gate that can only say yes is not a gate — empty or not
+  // (review S4: rules that are all allow, or a first rule that allows
+  // everything, loaded although the README promised this refusal).
+  const unconditional = (r) =>
+    Object.entries(r.match).every(([k, v]) => (k === 'agent' || k === 'action') && v === '*');
+  if (
+    (doc.default_verdict === 'allow' && doc.rules.every((r) => r.verdict === 'allow')) ||
+    (doc.rules.length > 0 && doc.rules[0].verdict === 'allow' && unconditional(doc.rules[0]))
+  )
     bad(
       'POLICY_VACUOUS_ALLOW',
-      `empty rules with default allow can never refuse anything (${policyPath})`,
+      `this policy can only say yes — it can never refuse anything (${policyPath})`,
       { policyPath },
     );
 }
@@ -223,8 +246,14 @@ export function loadPolicy({ policyPath }) {
     bad('POLICY_UNREADABLE', 'policyPath is required — policies are never implicit', {});
   let raw;
   try {
+    // a fifo or device would block the read forever (review N1): files only
+    if (!statSync(policyPath).isFile())
+      bad('POLICY_UNREADABLE', `the policy path is not a regular file (${policyPath})`, {
+        policyPath,
+      });
     raw = readFileSync(policyPath);
   } catch (e) {
+    if (e instanceof PolicyError) throw e;
     bad('POLICY_UNREADABLE', `cannot read policy file: ${e.code ?? e.message}`, { policyPath });
   }
   let doc;
@@ -264,6 +293,9 @@ function validateContext(context) {
       // Review finding F11: unbounded strings flow into the audit log verbatim.
       if (context[f].length > MAX_CONTEXT_STRING)
         inv(`context.${f} exceeds ${MAX_CONTEXT_STRING} chars`, { field: f });
+      // review N3: '' is no agent and no action — the ledger refuses it later,
+      // after the decision was already logged as an allow
+      if (context[f] === '') inv(`context.${f} must not be empty when present`, { field: f });
     }
   // Review finding F2: a non-canonical scope ('prod//x', './prod/x',
   // '/prod/x', 'a/../b') can match NO rule — in a deny-first policy that
@@ -368,7 +400,7 @@ export function logDecision({ decisionLogPath, decision, by }) {
       policyHash: decision.policyHash,
       context: decision.context ?? null,
     })}\n`;
-    appendFileSync(decisionLogPath, line);
+    appendNoFollow(decisionLogPath, line); // never written through a planted symlink (review S4)
   } catch (e) {
     bad('DECISION_UNLOGGABLE', `decision log write failed: ${e.code ?? e.message}`, {
       decisionLogPath,

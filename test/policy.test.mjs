@@ -1,5 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -720,5 +721,66 @@ describe('integration demo: an enforcer composes kernel + ledger (ledger touched
     assert.equal(r.acted, false);
     assert.equal(r.why, 'DECISION_UNLOGGABLE');
     assert.equal(readLedger({ ledgerPath }).entries.length, 0);
+  });
+});
+
+describe('2026-10-17 regression (independent review of the policy engine)', () => {
+  const load = (doc) => loadPolicy({ policyPath: writePolicy(doc) });
+  test('review S3: a "*" inside agent or action is refused at load — only the exact "*" is a wildcard', () => {
+    for (const match of [{ agent: 'ci-*' }, { action: 'rm_*' }, { action: 'deploy?' }])
+      expectCode(
+        () => load(base({ rules: [{ id: 'd', match, verdict: 'deny' }, ...base().rules] })),
+        'POLICY_SCHEMA_INVALID',
+      );
+    load(
+      base({ rules: [{ id: 'any', match: { agent: '*', action: 'deploy' }, verdict: 'deny' }] }),
+    );
+  });
+  test('review S4: a policy that can only say yes refuses, not only the empty one', () => {
+    for (const doc of [
+      base({
+        default_verdict: 'allow',
+        rules: [{ id: 'a', match: { action: 'x' }, verdict: 'allow' }],
+      }),
+      base({ rules: [{ id: 'all', match: {}, verdict: 'allow' }] }),
+      base({ rules: [{ id: 'all', match: { agent: '*' }, verdict: 'allow' }] }),
+    ])
+      expectCode(() => load(doc), 'POLICY_VACUOUS_ALLOW');
+    load(base()); // control: an allow rule under default deny can still refuse
+  });
+  test('review N3/N4: empty names in a context, and control characters in a policy, refuse', () => {
+    const { policy, policyHash } = load(base());
+    for (const over of [{ agent: '' }, { action: '' }])
+      expectCode(() => decide({ policy, policyHash, context: ctx(over) }), 'CONTEXT_INVALID');
+    expectCode(
+      () => load(base({ rules: [{ id: 'r\u001b[2J', match: { action: 'x' }, verdict: 'deny' }] })),
+      'POLICY_SCHEMA_INVALID',
+    );
+  });
+  test('review N1: a fifo as the policy path refuses instead of blocking forever', () => {
+    const fifo = join(tdir(), 'p.json');
+    spawnSync('mkfifo', [fifo]);
+    expectCode(() => loadPolicy({ policyPath: fifo }), 'POLICY_UNREADABLE');
+  });
+  test('review N2: an equal amount limit shadows (>=), and a directory itself matches its subtree rule', () => {
+    expectCode(
+      () =>
+        load(
+          base({
+            rules: [
+              { id: 'a', match: { action: 'x', max_estimated_usd: 2 }, verdict: 'deny' },
+              { id: 'b', match: { action: 'x', max_estimated_usd: 2 }, verdict: 'allow' },
+            ],
+          }),
+        ),
+      'POLICY_RULE_SHADOWED',
+    );
+    const { policy, policyHash } = load(
+      base({
+        default_verdict: 'allow',
+        rules: [{ id: 'no-prod', match: { scope: ['prod/'] }, verdict: 'deny' }],
+      }),
+    );
+    assert.equal(decide({ policy, policyHash, context: ctx({ scope: 'prod' }) }).verdict, 'deny');
   });
 });

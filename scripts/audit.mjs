@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// One-command audit against the AI-agent testing standard (v1.1), following
+// One-command audit against the AI-agent testing standard (v1.3), following
 // its reference implementation. Every step's exit code is taken by this
 // process directly — never through a pipe (standard §12.3) — and its full
 // output is written to audit-logs/<stamp>/NN.log. Any red step = red audit.
@@ -12,6 +12,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { addItem } from './findings-inbox.mjs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -27,6 +28,18 @@ const STEPS = [
   ['T0 ledger invariant fuzz', node, ['scripts/invariant-fuzz.mjs']],
   ['T0 policy invariant fuzz', node, ['scripts/policy-fuzz.mjs']],
   ['L1 invariant fuzz (packs, scan, bundle)', node, ['scripts/l1-fuzz.mjs']],
+  // campaigns ran nowhere until the 2026-10-17 regression (F-80): short legs here and in CI
+  ['T0 fault injection campaign', node, ['scripts/campaign/fault-injection.mjs']],
+  [
+    'T0 ledger soak with crash injection (12 s)',
+    node,
+    ['scripts/campaign/soak-ledger.mjs', '--minutes', '0.2', '--workers', '4'],
+  ],
+  [
+    'T3 MCP protocol torture (15 s)',
+    node,
+    ['scripts/campaign/mcp-torture.mjs', '--minutes', '0.25', '--servers', '2'],
+  ],
   ['T2 gold k=3, key cases k=5 (FAKE executor — harness only)', node, ['scripts/golden-k.mjs']],
   ['T3 attack list + ASR', node, ['scripts/attack-asr.mjs']],
   [
@@ -74,13 +87,17 @@ STEPS.forEach(([name, cmd, args], i) => {
   );
 });
 const bad = rows.filter((r) => r.code !== 0);
+// every red step is a seen problem: it goes to the inbox, and the commit gate
+// refuses until it is logged in the ledger or dismissed with a reason
+for (const r of bad)
+  addItem(`audit step red: ${r.name} (exit ${r.code})`, 'audit', { log: r.log, audit: stamp });
 const verdict = bad.length === 0 ? 'ALL GREEN' : `${bad.length} step(s) RED`;
 writeFileSync(
   join(logdir, 'SUMMARY.md'),
   [
     `# Audit ${stamp}`,
     '',
-    'Standard: AI-agent testing standard v1.1 · profile: docs/testing-profile.md',
+    'Standard: AI-agent testing standard v1.3 · profile: docs/testing-profile.md',
     'Executor mode for T2: FAKE (harness only). Real-model T2/T3: not verified (needs a model key).',
     '',
     '| Step | Exit | Seconds | Log |',

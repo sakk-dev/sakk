@@ -1,0 +1,1 @@
+{"id":"2026-10-17T09-55-44-270Z-d3c2c5","source":"audit","text":"CI push run: the branch's answers missed C-12.1 for secret-scan files changed relative to main","dismissed_at":"2026-10-17T09:58:24.293Z","reason":"the gate caught an incomplete answer set (stacked branch measured against main); answered C-12.1 — the mechanism worked, no product defect"}

@@ -1,6 +1,6 @@
 # Testing profile: Sakk
 
-- **Standard:** internal AI-agent testing standard **v1.1** (layers T0–T6,
+- **Standard:** internal AI-agent testing standard **v1.3** (layers T0–T6,
   change levels L0–L2, §14 root-cause attribution). The standard's text is
   not copied here; this file records only what is specific to Sakk.
 - **Phase:** development → pre-release. Real-model runs are fail-closed
@@ -13,7 +13,7 @@
 
 | Layer            | Applies? | How Sakk meets it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Status                                                                       |
 | ---------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| T0 deterministic | yes      | lint (`npm run lint`, ESLint core rules, 0 warnings) + format + `npm test` + `npm run test:eval`; commit gate `npm run gate && git commit` (exit codes passed straight through, standard §12.3); every refusal code asserted by a test (`test/claims-are-checked.test.mjs`); mutation drill, one anchor per core guard (23 anchors, `test/core-specs.test.mjs` requires one per core file); invariant fuzz for every L1 module (`fuzz` ledger, `fuzz:policy`, `fuzz:l1` packs/scan/bundle — each with PASS controls); secret self-scan; frozen gold set (`test/gold-set-frozen.test.mjs`) | verified                                                                     |
+| T0 deterministic | yes      | lint (`npm run lint`, ESLint core rules, 0 warnings) + format + `npm test` + `npm run test:eval`; commit gate `npm run gate && git commit` (exit codes passed straight through, standard §12.3); every refusal code asserted by a test (`test/claims-are-checked.test.mjs`); mutation drill, one anchor per core guard (26 anchors, `test/core-specs.test.mjs` requires one per core file); invariant fuzz for every L1 module (`fuzz` ledger, `fuzz:policy`, `fuzz:l1` packs/scan/bundle — each with PASS controls); secret self-scan; frozen gold set (`test/gold-set-frozen.test.mjs`) | verified                                                                     |
 | T1 judge         | no       | Sakk has no model judge: the gold scorer is deterministic code, and its ability to fail is proven by the drill                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | n/a                                                                          |
 | T2 reliability   | partly   | `npm run golden-k` — every gold case k = 3, key cases (G05, G06, G07, G12) k = 5, pass@1 with Wilson 95% interval, pass^k, run-to-run stability; k and thresholds from `eval/thresholds.json`                                                                                                                                                                                                                                                                                                                                                                                             | FAKE executor only (harness reliability); real-model k-runs **not verified** |
 | T3 adversarial   | yes      | `npm run attack-asr` (`--list` prints the attack list: entry × payload × variants, each with its target and success signature, standard §6); each payload ≥ 5 variants; CLAIMED rows gate at ASR 0, KNOWN rows (documented non-coverage) are reported; Sakk calls no model, so system-level ASR = model-level                                                                                                                                                                                                                                                                             | verified (deterministic)                                                     |
@@ -55,11 +55,22 @@ test shown to fail on the old code; F-75 (scanner precision) and F-76
 (scorer evidence from the agent's `.git`) open; review in
 `findings/reviews/2026-10-17-independent-round.md`.
 
+Second round, the original modules (2026-10-17): five independent reviews
+plus a framework pass — F-80 … F-115, six blockers, 27 fixed, 9 open;
+review in `findings/reviews/2026-10-17-original-modules.md`.
+
 ## Red lines
 
-No spend after a halt; no reservation past the cap; no PASS from a FAKE run
-read as model evidence; no secret printed in any output; no bundle reads
-PASS while its spend is unresolved.
+Each red line names the drill anchors that prove its guard can fail
+(`test/core-specs.test.mjs` requires at least one per line).
+
+| Red line                                           | Drill anchors       |
+| -------------------------------------------------- | ------------------- |
+| No spend after a halt                              | MUT-G, MUT-H, MUT-W |
+| No reservation past the cap                        | MUT-X, MUT-Z        |
+| No PASS from a FAKE run read as model evidence     | MUT-I, MUT-T, MUT-U |
+| No secret printed in any output                    | MUT-Y               |
+| No bundle reads PASS while its spend is unresolved | MUT-L               |
 
 ## Governance mapping (standard §10, thematic)
 
@@ -74,7 +85,21 @@ PASS while its spend is unresolved.
 Ledger `findings/ledger.json` · gate `test/findings-ledger.test.mjs` ·
 indicators `npm run findings-report` · stop-line reviews `findings/reviews/`.
 Class detectors: `cli-strictness`, `claims-are-checked`, `hostile-names`,
-`schema-pins`, `core-specs` (all under `test/`).
+`schema-pins`, `core-specs`, `bundle-absence` (all under `test/`), plus the
+secret-scan context matrix and the ledger-write classification.
+
+## Self-evolution (§15)
+
+Enforced at three points (standard §15.6): the Claude Code edit hook
+blocks an edit until `findings/acks/<branch>.json` answers the questions
+for that file; the git pre-commit and commit-msg hooks (installed by
+`npm install`) refuse unanswered changes, an untriaged inbox and fix
+commits that name no finding; the CI `self-evolution` job re-checks the
+whole branch. Every finding belongs to one class in `findings/classes.json`
+(§15.7). Design: `docs/SELF_EVOLUTION.md`.
+
+**CI is advisory until `main` has branch protection** (F-116): a red check
+does not stop a merge today.
 
 ## Open items
 

@@ -83,7 +83,7 @@ describe('render refuses any non-green dossier', () => {
     version: '0.1.0',
     green: { unit: true, drill: true },
     suites: { 'unit + CLI': '99/99 pass, 0 fail' },
-    drill: { kills: 23, checked: 23, stale: [], fresh: true },
+    drill: { kills: 26, checked: 26, stale: [], fresh: true },
     fuzz: { ledger: 'all invariants held (seed=1)' },
     reproHash: 'f'.repeat(64),
     certified: { 'src/ledger.mjs': 'a'.repeat(64) },
@@ -91,7 +91,7 @@ describe('render refuses any non-green dossier', () => {
   test('all-green renders with commit, kills and fingerprint', () => {
     const md = renderCertificate(dossier());
     assert.match(md, /commit `deadbeef`/);
-    assert.match(md, /23\/23 mutants killed/);
+    assert.match(md, /26\/26 mutants killed/);
     assert.match(md, new RegExp('f'.repeat(64)));
   });
   test('ANY false gate throws CERT_REFUSED naming the gate', () => {

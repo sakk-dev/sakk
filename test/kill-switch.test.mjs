@@ -641,11 +641,11 @@ describe('RC-08 class: every ledger write declares whether it confirms the books
   const CONFIRMS = new Set([
     'initLedger',
     'reserve',
-    'settle',
     'markReconciliationRequired',
     'clearReconciliation',
   ]);
-  const KEEPS = new Set(['halt', 'resume']);
+  // settle: an agent settling an old reservation confirmed nothing (ledger review S1)
+  const KEEPS = new Set(['halt', 'resume', 'settle']);
   test('each writeLedger call sits in a classified function, with the matching option', () => {
     const src = readFileSync(join(HERE, '..', 'src', 'ledger.mjs'), 'utf8');
     const calls = [...src.matchAll(/(?<!function )writeLedger\(ledgerPath, [^;]*?\);/gs)];

@@ -67,7 +67,9 @@ as cases/traces. Shape (illustrative, the schema is the contract):
   schema accepts `allow` for permissive dev use, but there is no implicit
   default — absence is a validation error, not a fallback.
 - **Matchers are the scorer's prefix rules** (the existing, mutation-drilled
-  `matchesAny` family — `x/` = subtree, `x` = exact path; no wildcards),
+  `matchesAny` family — `x` and `x/` both mean that path and its subtree:
+  `README.md` also matches `README.md/anything`, never `README.mdx`; no
+  wildcards),
   never regexes — bounded, deterministic, no ReDoS surface. (Amended at
   implementation: the signed "reuse the scorer matcher" decision implies
   prefix semantics, which are stricter than the draft's glob examples.)

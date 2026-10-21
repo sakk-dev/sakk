@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (regression of the original modules, findings F-80 … F-115)
+
+- Ledger: the concurrency test was sequential and a lockless ledger passed
+  it — eight workers now race for real (drill MUT-Z); a ledger reached
+  through a symlink or hard link refuses (`LEDGER_PATH_NOT_CANONICAL`)
+  instead of forking the books; settle no longer makes a stale ledger
+  fresh; alerts and decision logs never follow a planted symlink; a fifo
+  ledger or policy refuses instead of blocking.
+- `sakk status` judges reconciliation from both sources, shows a stale
+  ledger, exits 3 for either and reports nothing reservable when every
+  reserve would refuse; a signed `sakk reconcile` confirms stale books.
+- MCP: a nested frame can no longer crash the gate (bounded echo, frame
+  isolation); an agent cannot settle its own reconciliation entry; a
+  relative `--ledger` is resolved at startup.
+- Policy: `*` inside agent/action names refuses at load; policies that can
+  only say yes refuse; decisions validate the path once.
+- Eval: the child environment is an allowlist (operator credentials and
+  `NODE_OPTIONS` test flags no longer reach children); a scoring failure
+  is that case's FAIL; the answer key is checked in every mode; every
+  scorer rule has a negative test.
+- CI: the review workflow actually posts and has a timeout; the timeout
+  detector reads every workflow.
+
+### Added
+
+- Attack rows for the ledger core, policy kernel, MCP enforcer and gold
+  harness environment (E5–E8); campaigns run in the audit and CI; every red
+  line names its drill anchors (26 mutants); `specs/ledger`.
+
+### Added (self-evolution loop — docs/SELF_EVOLUTION.md)
+
+- `npm run brief -- <paths>`: before a change, the past findings for those
+  files, the questions to answer first (`findings/prevention.json`), the
+  known blind spots of the checks that will run, and those checks. The
+  commit gate prints it.
+- The ledger gate now requires `areas` on every finding, `since` on every
+  class-mechanism reference, and for every escape past an existing
+  detector a `mechanism_gap` and `mechanism_upgrade`; every class has a
+  prevention question; two escapes in a row that upgraded nothing need a
+  stop-line review. `findings-report` adds the past-detector escape rate
+  and the detector upgrade rate.
+- Rule R-22; AGENTS.md "Before you change anything"; PR template section.
+
 ### Fixed (independent review on a second model, findings F-62 … F-79)
 
 - Evidence bundles: a REAL run must name its model (verifier and
@@ -285,7 +328,7 @@ status`), for a genuine run with unsettled/unreconciled spend, unknown
   configured policy is loaded once, hash-pinned, and refuses startup on
   any `POLICY_*` code. Policy refusals surface as `POLICY_DENIED` /
   `POLICY_APPROVAL_REQUIRED` (public API) with the full decision attached;
-  every decision logs to `sakk-decisions.jsonl` beside the ledger. 1 MiB
+  every decision logs to `<ledger>.decisions.jsonl` beside the ledger. 1 MiB
   frame cap; contract tests drive the real binary over real frames,
   including a thinness proof (library replay yields identical books).
 

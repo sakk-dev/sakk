@@ -8,15 +8,18 @@
       "refs": [
         {
           "kind": "detector",
-          "ref": "test/cli-strictness.test.mjs::every CLI refuses what it does not understand"
+          "ref": "test/cli-strictness.test.mjs::every CLI refuses what it does not understand",
+          "since": "F-50"
         },
         {
           "kind": "detector",
-          "ref": "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test"
+          "ref": "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test",
+          "since": "F-50"
         },
         {
           "kind": "detector",
-          "ref": "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed"
+          "ref": "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
+          "since": "F-65"
         }
       ]
     },
@@ -25,11 +28,18 @@
       "refs": [
         {
           "kind": "detector",
-          "ref": "test/hostile-names.test.mjs::callIds and agentIds that are prototype names reserve, settle, halt and resume like any id"
+          "ref": "test/hostile-names.test.mjs::callIds and agentIds that are prototype names reserve, settle, halt and resume like any id",
+          "since": "F-50"
         },
         {
           "kind": "runtime_guard",
-          "ref": "src/ledger.mjs::agentHaltOf"
+          "ref": "src/ledger.mjs::agentHaltOf",
+          "since": "F-50"
+        },
+        {
+          "kind": "runtime_guard",
+          "ref": "src/append.mjs::appendNoFollow",
+          "since": "F-101"
         }
       ]
     },
@@ -38,15 +48,18 @@
       "refs": [
         {
           "kind": "detector",
-          "ref": "eval/__tests__/stranger-regressions.test.mjs::relative --out stranger"
+          "ref": "eval/__tests__/stranger-regressions.test.mjs::relative --out stranger",
+          "since": "F-50"
         },
         {
           "kind": "detector",
-          "ref": "test/secret-scan.test.mjs::the hook as SHIPPED"
+          "ref": "test/secret-scan.test.mjs::the hook as SHIPPED",
+          "since": "F-50"
         },
         {
           "kind": "rule_text",
-          "ref": "docs/RULES.md::R-17"
+          "ref": "docs/RULES.md::R-17",
+          "since": "F-50"
         }
       ]
     },
@@ -55,19 +68,33 @@
       "refs": [
         {
           "kind": "detector",
-          "ref": "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test"
+          "ref": "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test",
+          "since": "F-50"
         },
         {
           "kind": "detector",
-          "ref": "test/schema-pins.test.mjs::the v1 ledger key list is pinned"
+          "ref": "test/schema-pins.test.mjs::the v1 ledger key list is pinned",
+          "since": "F-50"
         },
         {
           "kind": "detector",
-          "ref": "test/core-specs.test.mjs::every source file is classified core or not core"
+          "ref": "test/core-specs.test.mjs::every source file is classified core or not core",
+          "since": "F-55"
         },
         {
           "kind": "detector",
-          "ref": "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through"
+          "ref": "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through",
+          "since": "F-61"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/core-specs.test.mjs::each red line in docs/testing-profile.md names a drill anchor that exists",
+          "since": "F-80"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit",
+          "since": "F-98"
         }
       ]
     },
@@ -76,11 +103,18 @@
       "refs": [
         {
           "kind": "detector",
-          "ref": "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code"
+          "ref": "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code",
+          "since": "F-50"
         },
         {
           "kind": "detector",
-          "ref": "eval/__tests__/case-packs.test.mjs::eval/README states the true number of cases that appear in packs"
+          "ref": "eval/__tests__/case-packs.test.mjs::eval/README states the true number of cases that appear in packs",
+          "since": "F-50"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
+          "since": "F-83"
         }
       ]
     },
@@ -89,11 +123,18 @@
       "refs": [
         {
           "kind": "detector",
-          "ref": "test/secret-scan.test.mjs::ordinary identifiers starting sk_/rk_/sk- are not API keys"
+          "ref": "test/secret-scan.test.mjs::ordinary identifiers starting sk_/rk_/sk- are not API keys",
+          "since": "F-50"
         },
         {
           "kind": "detector",
-          "ref": "test/secret-scan.test.mjs::S1: Stripe-style prefixed keys without digits"
+          "ref": "test/secret-scan.test.mjs::S1: Stripe-style prefixed keys without digits",
+          "since": "F-50"
+        },
+        {
+          "kind": "detector",
+          "ref": "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has",
+          "since": "F-81"
         }
       ]
     },
@@ -102,27 +143,38 @@
       "refs": [
         {
           "kind": "detector",
-          "ref": "test/claims-are-checked.test.mjs::every node --test script carries --test-timeout"
+          "ref": "test/claims-are-checked.test.mjs::every node --test script carries --test-timeout",
+          "since": "F-50"
         },
         {
           "kind": "detector",
-          "ref": "test/claims-are-checked.test.mjs::every CI job has timeout-minutes"
+          "ref": "test/claims-are-checked.test.mjs::every CI job has timeout-minutes",
+          "since": "F-50"
         },
         {
           "kind": "detector",
-          "ref": "eval/__tests__/case-packs.test.mjs::control: the fixture reaches the case-type gate"
+          "ref": "eval/__tests__/case-packs.test.mjs::control: the fixture reaches the case-type gate",
+          "since": "F-50"
         },
         {
           "kind": "rule_text",
-          "ref": "docs/RULES.md::R-20"
+          "ref": "docs/RULES.md::R-20",
+          "since": "F-50"
         },
         {
           "kind": "rule_text",
-          "ref": "docs/RULES.md::R-21"
+          "ref": "docs/RULES.md::R-21",
+          "since": "F-61"
         },
         {
           "kind": "detector",
-          "ref": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock"
+          "ref": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
+          "since": "F-62"
+        },
+        {
+          "kind": "detector",
+          "ref": "eval/__tests__/scorer-rules.test.mjs::fires on its trigger, and not without it",
+          "since": "F-89"
         }
       ]
     },
@@ -131,11 +183,13 @@
       "refs": [
         {
           "kind": "detector",
-          "ref": "test/secret-scan.test.mjs::RC-03 class: a fiction token beside any real secret, in any position, never hides it"
+          "ref": "test/secret-scan.test.mjs::RC-03 class: a fiction token beside any real secret, in any position, never hides it",
+          "since": "F-65"
         },
         {
           "kind": "detector",
-          "ref": "scripts/l1-fuzz.mjs::F-63 class: a declared fiction right before the secret"
+          "ref": "scripts/l1-fuzz.mjs::F-63 class: a declared fiction right before the secret",
+          "since": "F-65"
         }
       ]
     },
@@ -144,7 +198,23 @@
       "refs": [
         {
           "kind": "detector",
-          "ref": "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option"
+          "ref": "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option",
+          "since": "F-70"
+        }
+      ]
+    },
+    "RC-09": {
+      "landed_in": "this commit",
+      "refs": [
+        {
+          "kind": "detector",
+          "ref": "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving",
+          "since": "F-82"
+        },
+        {
+          "kind": "detector",
+          "ref": "eval/__tests__/scorer-rules.test.mjs::SCORER_ERROR: a judge that cannot score",
+          "since": "F-95"
         }
       ]
     }
@@ -173,7 +243,9 @@
       "guard": "test/ledger.test.mjs::campaign C-1: sakk-ledger.v1 is a CLOSED schema",
       "sweep": "Ledger top level only at the time; widened to every public entry point by F-13.",
       "sweep_status": "partial",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["specs/retro/2026-10-16-hardening-campaign.md", "src/ledger.mjs"],
+      "class": "C-07"
     },
     {
       "id": "F-02",
@@ -198,7 +270,9 @@
       "guard": "eval/__tests__/gold-m1-closeout.test.mjs::FAKE mode: real_model_case_pass_rate must be null",
       "sweep": "Metrics only at the time; recurred in pack reports (F-03) and docs (F-19).",
       "sweep_status": "partial",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/bin/gold-runner.mjs", "eval/lib/scorer.mjs"],
+      "class": "C-06"
     },
     {
       "id": "F-03",
@@ -223,7 +297,9 @@
       "guard": "eval/__tests__/case-packs.test.mjs::FAKE mode → HARNESS_ONLY for every requirement, even when every case passed",
       "sweep": "Every customer-facing report emitter checked: metrics (F-02), pack report (this), certificate, bundle verifier (MODE_MISMATCH). See class mechanism RC-10.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-06"
     },
     {
       "id": "F-04",
@@ -248,7 +324,9 @@
       "guard": "eval/__tests__/case-packs.test.mjs::each shipped pack passes the real-run case-type gate",
       "sweep": "All shipped packs pass the gate; no other component selects cases for real runs.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-09"
     },
     {
       "id": "F-05",
@@ -273,7 +351,9 @@
       "guard": "eval/__tests__/case-packs.test.mjs::missing not_covered, or a requirement without gaps, is invalid",
       "sweep": "Packs, README claims, bundle README checked; doc-claim drift recurred in F-19.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-05"
     },
     {
       "id": "F-06",
@@ -299,7 +379,9 @@
       "sweep": "sakk CLI val() refuses a missing value (F3, earlier); equals form on sakk CLI not checked — F-21.",
       "sweep_status": "partial",
       "status": "fixed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-01"
     },
     {
       "id": "F-07",
@@ -324,7 +406,9 @@
       "guard": "test/secret-scan.test.mjs::the installed hook runs this installation by absolute path; clean commits pass, secret commits are refused",
       "sweep": "Other shipped scripts: MCP config in README uses npx by user choice (documented); no other generated executables.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-09"
     },
     {
       "id": "F-08",
@@ -349,7 +433,9 @@
       "guard": "test/secret-scan.test.mjs::a file literally named \"0:foo\" is read as itself, not as stage 0 of \"foo\" (review S-2)",
       "sweep": "Other git invocations: certificate engine uses rev-parse/status only (no path syntax).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-09"
     },
     {
       "id": "F-09",
@@ -375,7 +461,9 @@
       "sweep": "See pattern fail-open-absence: F-06, F-09, F-16.",
       "sweep_status": "done",
       "status": "fixed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-01"
     },
     {
       "id": "F-10",
@@ -400,7 +488,9 @@
       "guard": "test/secret-scan.test.mjs::200KB adversarial lines for every rule scan without catastrophic backtracking",
       "sweep": "Other regexes on caller input: policy scope matcher has POLICY_TOO_COMPLEX budget (earlier F4); match.mjs is glob, not regex.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-04"
     },
     {
       "id": "F-11",
@@ -425,7 +515,9 @@
       "guard": "test/secret-scan.test.mjs::a token in the USERNAME does not exempt a real password (review)",
       "sweep": "All eight rules declare their secret group; rules without one use the full match by design.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-12"
     },
     {
       "id": "F-12",
@@ -450,7 +542,9 @@
       "guard": "test/secret-scan.test.mjs::a secret in a FILE NAME is redacted in output and counted as a finding (review)",
       "sweep": "Other printers of caller data: sakk status prints agent ids and reasons (operator-supplied, not secrets); alerts log callIds.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-07"
     },
     {
       "id": "F-13",
@@ -475,7 +569,9 @@
       "guard": "test/kill-switch.test.mjs::never read as halted before a halt; halt is written to disk; refuse; resume lifts",
       "sweep": "Swept src/, bin/, eval/lib, eval/bin, scripts/ for computed member access on caller data: only ledger agents map (fixed). Class detector: test/hostile-names.test.mjs.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "eval/bin", "eval/lib", "src/ledger.mjs"],
+      "class": "C-07"
     },
     {
       "id": "F-14",
@@ -500,7 +596,9 @@
       "guard": "test/kill-switch.test.mjs::genesis is v1 with no halt key; the first halt makes it v2; resume keeps v2 with an emptied record",
       "sweep": "Other closed formats: case-pack schema, bundle schema, policy schema — pinned by detector test/schema-pins.test.mjs.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "src/ledger.mjs"],
+      "class": "C-10"
     },
     {
       "id": "F-15",
@@ -525,7 +623,9 @@
       "guard": "test/kill-switch.test.mjs::CLI halt succeeds while 6 processes hammer the ledger",
       "sweep": "All tests that spawn children reviewed; class fix: --test-timeout on every test script and timeout-minutes on every CI job.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "src/ledger.mjs"],
+      "class": "C-04"
     },
     {
       "id": "F-16",
@@ -551,7 +651,9 @@
       "sweep": "See pattern fail-open-absence: F-06, F-09, F-16.",
       "sweep_status": "done",
       "status": "fixed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-01"
     },
     {
       "id": "F-17",
@@ -576,7 +678,9 @@
       "guard": "test/evidence-bundle.test.mjs::the bundle README orders the independent checks BEFORE running verify.mjs",
       "sweep": "Other artifacts executed by auditors: none (certificate is data).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-06"
     },
     {
       "id": "F-18",
@@ -601,7 +705,9 @@
       "guard": "test/evidence-bundle.test.mjs::a symlink in the run directory → BUNDLE_SOURCE_INVALID, nothing written",
       "sweep": "Secret scan skips links (F-07 branch); ledger writes use wx (F15 earlier).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-07"
     },
     {
       "id": "F-19",
@@ -626,7 +732,9 @@
       "guard": "test/evidence-bundle.test.mjs::relabelled REAL while the traces still say FAKE → MODE_MISMATCH",
       "sweep": "Third RC-10 occurrence → stop-line review findings/reviews/2026-10-16-rc10.md; detector test/claims-are-checked.test.mjs.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["README.md", "docs/", "eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-05"
     },
     {
       "id": "F-20",
@@ -651,7 +759,9 @@
       "guard": "eval/__tests__/stranger-regressions.test.mjs::`--out run1` from some directory scores exactly like an absolute --out",
       "sweep": "All path flags: sakk --ledger/--policy resolved or read in-process; gold-runner --authorization read in-process; evidence-bundle resolves; scan walks relative to cwd by design.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/bin/gold-runner.mjs"],
+      "class": "C-08"
     },
     {
       "id": "F-21",
@@ -677,7 +787,9 @@
       "sweep": "All CLIs: sakk (every documented command, discovered from --help), gold-runner (F-25), evidence-bundle (this commit).",
       "sweep_status": "done",
       "status": "fixed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["bin/sakk.mjs", "eval/bin/gold-runner.mjs"],
+      "class": "C-01"
     },
     {
       "id": "F-22",
@@ -702,7 +814,9 @@
       "guard": "eval/__tests__/case-packs.test.mjs::review N-1: a REAL report names its model",
       "sweep": "Reports: metrics carries model_id; bundle verifier checks trace model ids (F-36).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-06"
     },
     {
       "id": "F-23",
@@ -728,7 +842,9 @@
       "sweep": "Bundle verifier treats a stopped batch as INCOMPLETE (F-33).",
       "sweep_status": "done",
       "status": "fixed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-01"
     },
     {
       "id": "F-24",
@@ -753,7 +869,9 @@
       "guard": "eval/__tests__/case-packs.test.mjs::control: the fixture reaches the case-type gate",
       "sweep": "Other gate tests: invariant fuzz has a vacuity guard (killProbes); mutation drill anchors MUT-A..G.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-03"
     },
     {
       "id": "F-25",
@@ -779,7 +897,9 @@
       "sweep": "Class detector test/cli-strictness.test.mjs covers every CLI.",
       "sweep_status": "done",
       "status": "class_closed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["bin/sakk.mjs", "eval/bin/gold-runner.mjs", "eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-01"
     },
     {
       "id": "F-26",
@@ -804,7 +924,9 @@
       "guard": "eval/__tests__/case-packs.test.mjs::eval/README states the true number of cases that appear in packs",
       "sweep": "Doc-named codes checked by test/claims-are-checked.test.mjs.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["README.md", "docs/", "eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-05"
     },
     {
       "id": "F-27",
@@ -829,7 +951,9 @@
       "guard": "eval/__tests__/case-packs.test.mjs::review N-1: a REAL report names its model; a FAKE report has none",
       "sweep": "All three packs reread by an independent reviewer (round 3).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-05"
     },
     {
       "id": "F-28",
@@ -855,7 +979,9 @@
       "sweep": "Other joins on names: bundle verifier keys by case id from one source; none other.",
       "sweep_status": "done",
       "status": "fixed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-01"
     },
     {
       "id": "F-29",
@@ -881,7 +1007,9 @@
       "sweep": "Same pattern swept across CLIs by test/cli-strictness.test.mjs.",
       "sweep_status": "done",
       "status": "fixed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["bin/sakk.mjs", "eval/bin/gold-runner.mjs", "src/secret-scan.mjs"],
+      "class": "C-01"
     },
     {
       "id": "F-30",
@@ -906,7 +1034,9 @@
       "guard": "test/secret-scan.test.mjs::installed under umask 177 the hook is still executable and still refuses secrets",
       "sweep": "Other installers: none; other decoders: bundle verifier reads UTF-8 JSON only.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-09"
     },
     {
       "id": "F-31",
@@ -931,7 +1061,9 @@
       "guard": "test/secret-scan.test.mjs::ordinary identifiers starting sk_/rk_/sk- are not API keys",
       "sweep": "All eight rules now have a positive and a negative sentinel in the suite.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-13"
     },
     {
       "id": "F-32",
@@ -952,7 +1084,9 @@
       "guard": "test/secret-scan.test.mjs::2000 staged files scan in one batch, not one process per blob",
       "sweep": "Bundle builder: files over 1 GiB refused (F-38).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-04"
     },
     {
       "id": "F-33",
@@ -978,7 +1112,9 @@
       "sweep": "sakk status already exits 3 on reconciliation; gold-runner REAL exit (F-23).",
       "sweep_status": "done",
       "status": "fixed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-01"
     },
     {
       "id": "F-34",
@@ -1003,7 +1139,9 @@
       "guard": "test/evidence-bundle.test.mjs::a negative \"refund\" entry",
       "sweep": "Other second readers: MCP status uses readLedger (the first reader).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-02"
     },
     {
       "id": "F-35",
@@ -1028,7 +1166,9 @@
       "guard": "test/evidence-bundle.test.mjs::a checkout with an uncommitted verifier refuses to build (BUNDLE_VERIFIER_DIRTY)",
       "sweep": "Case definitions also come from the harness commit (F-17 sweep).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-06"
     },
     {
       "id": "F-36",
@@ -1053,7 +1193,9 @@
       "guard": "test/evidence-bundle.test.mjs::a FAKE bundle whose mode label claims a real baseline → MODE_MISMATCH",
       "sweep": "Doc and code claims: test/claims-are-checked.test.mjs.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["README.md", "docs/", "eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-06"
     },
     {
       "id": "F-37",
@@ -1078,7 +1220,9 @@
       "guard": "test/evidence-bundle.test.mjs::a case budget raised in cases/ no longer matches its ledger → LEDGER_INVALID",
       "sweep": "Bundle README 'What a PASS does not show' reviewed in round 3.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-06"
     },
     {
       "id": "F-38",
@@ -1103,7 +1247,9 @@
       "guard": "test/evidence-bundle.test.mjs::duplicate JSON keys (readers disagree on the winner) → DUPLICATE_JSON_KEY",
       "sweep": "Other JSON readers of untrusted input: ledger (closed schema), packs (closed schema), policy (closed schema).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-14"
     },
     {
       "id": "F-39",
@@ -1128,7 +1274,9 @@
       "guard": "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test",
       "sweep": "Whole source tree (src, bin, eval/lib, eval/bin, bundle and certificate scripts).",
       "sweep_status": "done",
-      "status": "class_closed"
+      "status": "class_closed",
+      "areas": ["AGENTS.md", "README.md", "docs/", "eval/bin", "eval/lib"],
+      "class": "C-03"
     },
     {
       "id": "F-40",
@@ -1153,7 +1301,9 @@
       "guard": "test/evidence-bundle.test.mjs::a PASS verdict carrying violations → VERDICT_VIOLATION_MISMATCH",
       "sweep": "Every problem code is now pinned to a test by test/claims-are-checked.test.mjs, so a dropped check turns it red.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["README.md", "docs/", "eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-03"
     },
     {
       "id": "F-41",
@@ -1178,7 +1328,9 @@
       "guard": "eval/__tests__/case-packs.test.mjs::harness_dirty: false on a clean tree, true after an eval/ or src/ change",
       "sweep": "Other boolean provenance fields: binary_overridden (tested both ways via CLAUDE_BIN); not_covered_is_exhaustive is a constant.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/", "package.json"],
+      "class": "C-03"
     },
     {
       "id": "F-42",
@@ -1203,7 +1355,9 @@
       "guard": "eval/__tests__/case-packs.test.mjs::the executor binary is recorded as what PATH resolves",
       "sweep": "Bundle verifier cross-checks the pack report's model against the run's (F-48).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/"],
+      "class": "C-06"
     },
     {
       "id": "F-43",
@@ -1228,7 +1382,9 @@
       "guard": "test/secret-scan.test.mjs::S1: Stripe-style prefixed keys without digits, sk_<hex> and long sk- keys are found",
       "sweep": "All eight rules now carry positive and negative sentinels; a pattern change must keep both.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-13"
     },
     {
       "id": "F-44",
@@ -1253,7 +1409,9 @@
       "guard": "test/secret-scan.test.mjs::S2: diff.relative=true does not hide files from a subdirectory scan",
       "sweep": "Other git output parsed: ls-files no longer used; cat-file --batch output is config-independent.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-08"
     },
     {
       "id": "F-45",
@@ -1279,7 +1437,9 @@
       "sweep": "Class detector test/cli-strictness.test.mjs covers every documented command.",
       "sweep_status": "done",
       "status": "class_closed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["bin/sakk.mjs", "eval/bin/gold-runner.mjs", "src/ledger.mjs"],
+      "class": "C-01"
     },
     {
       "id": "F-46",
@@ -1304,7 +1464,9 @@
       "guard": "test/kill-switch.test.mjs::an OVERRUN settle under a global and an agent halt keeps both halts",
       "sweep": "Kill-switch spec rows 1-16 each map to a named deterministic test.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "src/ledger.mjs"],
+      "class": "C-15"
     },
     {
       "id": "F-47",
@@ -1330,7 +1492,9 @@
       "sweep": "Every FAIL rule in the verifier reviewed against 'can a genuine run produce this?'.",
       "sweep_status": "done",
       "status": "fixed",
-      "pattern": "fail-open-absence"
+      "pattern": "fail-open-absence",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-09"
     },
     {
       "id": "F-48",
@@ -1355,7 +1519,9 @@
       "guard": "test/evidence-bundle.test.mjs::paid steps and ledger entries must match one to one",
       "sweep": "Remaining unchecked: pack meaning text, clause_status and not_covered (need the pack JSON in the bundle) — follow-up F-50.",
       "sweep_status": "partial",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "class": "C-02"
     },
     {
       "id": "F-49",
@@ -1380,7 +1546,9 @@
       "guard": "",
       "sweep": "Follow-up: unlock should refuse a live holder unless forced twice; no follow-up needed: tracked here as open.",
       "sweep_status": "not_done",
-      "status": "open"
+      "status": "open",
+      "areas": ["src/ledger.mjs", "bin/sakk.mjs"],
+      "class": "C-11"
     },
     {
       "id": "F-50",
@@ -1405,7 +1573,9 @@
       "guard": "",
       "sweep": "Follow-up: bundle eval/packs/<id>.json from the harness commit and recompute meaning/clause_status/not_covered.",
       "sweep_status": "not_done",
-      "status": "open"
+      "status": "open",
+      "areas": ["eval/lib/bundle-verify.mjs", "eval/lib/packs.mjs"],
+      "class": "C-06"
     },
     {
       "id": "F-51",
@@ -1430,7 +1600,11 @@
       "guard": "test/findings-ledger.test.mjs::the taxonomy lock is well-formed, and equals the canonical taxonomy wherever that is present",
       "sweep": "Remaining conditional skips: two root-only permission tests and one test that needs `shasum` (present on macOS and Ubuntu). If any of them skips, the certificate refuses — the intended fail-closed signal, not a hole.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["scripts/gate-certificate.mjs", "test/findings-ledger.test.mjs"],
+      "mechanism_gap": "RC-01 detectors cover CLI arguments and refusal codes; a test that skips itself on a condition is a test-tool shape they never inspect.",
+      "mechanism_upgrade": "none: the certificate refuses any skipped test, which caught it; no detector looks for conditional skips in test files",
+      "class": "C-01"
     },
     {
       "id": "F-52",
@@ -1455,7 +1629,11 @@
       "guard": "test/cli-strictness.test.mjs::sakk --help lists the commands this detector covers",
       "sweep": "README sections, CHANGELOG and AUDITOR_REPLAY reread after the merge; no other stale shipped/not-shipped claim found.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["README.md"],
+      "mechanism_gap": "RC-10 detectors check codes named in docs, not the README's feature list.",
+      "mechanism_upgrade": "none: README prose stays reviewer-checked — a wording detector would check words, not behaviour (stop-line 2026-10-17)",
+      "class": "C-05"
     },
     {
       "id": "F-53",
@@ -1480,7 +1658,20 @@
       "guard": "test/core-specs.test.mjs::every source file is classified core or not core",
       "sweep": "Every file under src/, eval/lib/, eval/bin/ classified CORE (with spec) or NOT_CORE (with reason).",
       "sweep_status": "done",
-      "status": "class_closed"
+      "status": "class_closed",
+      "areas": [
+        "AGENTS.md",
+        "eval/bin/",
+        "eval/lib/",
+        "scripts/mutation-drill.sh",
+        "specs/",
+        "specs/case-packs",
+        "specs/evidence-bundle",
+        "specs/secret-scan"
+      ],
+      "mechanism_gap": "RC-07 detectors pinned refusal codes and the v1 key list; nothing tied core files to a spec.",
+      "mechanism_upgrade": "test/core-specs.test.mjs::every source file is classified core or not core",
+      "class": "C-10"
     },
     {
       "id": "F-54",
@@ -1505,7 +1696,11 @@
       "guard": "test/core-specs.test.mjs::has a spec and a mutation-drill anchor",
       "sweep": "All 11 core files now have at least one anchor; the certificate expects 18.",
       "sweep_status": "done",
-      "status": "class_closed"
+      "status": "class_closed",
+      "areas": ["scripts/mutation-drill.sh", "specs/"],
+      "mechanism_gap": "No detector tied core files to drill anchors.",
+      "mechanism_upgrade": "test/core-specs.test.mjs::has a spec and a mutation-drill anchor",
+      "class": "C-10"
     },
     {
       "id": "F-55",
@@ -1530,7 +1725,19 @@
       "guard": "test/core-specs.test.mjs::scripts/audit.mjs covers T0, T2, T3 and §14",
       "sweep": "Layer map in docs/testing-profile.md: T1/T4 not applicable, T5 not started, T6 partial — each with its reason.",
       "sweep_status": "done",
-      "status": "class_closed"
+      "status": "class_closed",
+      "areas": [
+        "docs/testing-profile.md",
+        "scripts/attack-asr.mjs",
+        "scripts/audit.mjs",
+        "scripts/findings-report.mjs",
+        "scripts/golden-k.mjs",
+        "scripts/mutation-drill.sh",
+        "specs/"
+      ],
+      "mechanism_gap": "No detector checked that each layer of the standard has an executable.",
+      "mechanism_upgrade": "test/core-specs.test.mjs::scripts/audit.mjs covers T0, T2, T3 and §14",
+      "class": "C-10"
     },
     {
       "id": "F-56",
@@ -1555,7 +1762,11 @@
       "guard": "test/core-specs.test.mjs::the audit runs every applicable layer of the standard",
       "sweep": "Whole repository linted; CI format job runs lint.",
       "sweep_status": "done",
-      "status": "class_closed"
+      "status": "class_closed",
+      "areas": ["package.json", "scripts/mutation-drill.sh", "specs/"],
+      "mechanism_gap": "The layer check listed layers, not the tools a layer requires (lint in T0).",
+      "mechanism_upgrade": "test/core-specs.test.mjs::the audit runs every applicable layer of the standard",
+      "class": "C-10"
     },
     {
       "id": "F-57",
@@ -1580,7 +1791,11 @@
       "guard": "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through",
       "sweep": "audit.mjs and the certificate take exit codes from spawnSync directly; mutation-drill.sh greps output only to name the killer, its status comes from $?.",
       "sweep_status": "done",
-      "status": "class_closed"
+      "status": "class_closed",
+      "areas": ["scripts/gate.sh", "AGENTS.md"],
+      "mechanism_gap": "A mandatory step (commit gate with exit codes passed through) existed only as rule text.",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through",
+      "class": "C-10"
     },
     {
       "id": "F-58",
@@ -1605,7 +1820,11 @@
       "guard": "test/core-specs.test.mjs::the audit runs every applicable layer of the standard",
       "sweep": "Every CORE file is covered by a fuzzer or by the drill; the three fuzzers break on seeded mutants (packs 434, scan 27, bundle 1 violations).",
       "sweep_status": "done",
-      "status": "class_closed"
+      "status": "class_closed",
+      "areas": ["scripts/l1-fuzz.mjs", "scripts/mutation-drill.sh", "specs/"],
+      "mechanism_gap": "The layer detector did not require an invariant fuzz per L1 module.",
+      "mechanism_upgrade": "test/core-specs.test.mjs::the audit runs every applicable layer of the standard",
+      "class": "C-10"
     },
     {
       "id": "F-59",
@@ -1630,7 +1849,11 @@
       "guard": "docs/RULES.md::R-21",
       "sweep": "All four plan 1–4 modules re-reviewed on the other model.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["docs/RULES.md", "docs/testing-profile.md"],
+      "mechanism_gap": "RC-12 detectors check timeouts and controls inside tests; the reviewer's model is outside any test.",
+      "mechanism_upgrade": "docs/RULES.md::R-21",
+      "class": "C-16"
     },
     {
       "id": "F-60",
@@ -1655,7 +1878,11 @@
       "guard": "test/gold-set-frozen.test.mjs::every frozen case is unchanged, and every case file is frozen",
       "sweep": "golden-k, attack-asr and l1-fuzz read eval/thresholds.json.",
       "sweep_status": "done",
-      "status": "class_closed"
+      "status": "class_closed",
+      "areas": ["eval/thresholds.json", "eval/cases-version.json", "scripts/attack-asr.mjs"],
+      "mechanism_gap": "Thresholds, the attack list and the gold-set version lived in code; no detector required them as files.",
+      "mechanism_upgrade": "test/gold-set-frozen.test.mjs::every frozen case is unchanged, and every case file is frozen",
+      "class": "C-10"
     },
     {
       "id": "F-61",
@@ -1680,7 +1907,11 @@
       "guard": "test/gold-set-frozen.test.mjs::the gold set declares a version and a freeze date",
       "sweep": "Other loader-owned directories: eval/packs (only .json packs), eval/gold (manifest-pinned).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/cases/", "eval/bin/gold-runner.mjs"],
+      "mechanism_gap": "RC-01 detectors cover inputs, not loader-owned directories (any .json in eval/cases is read as a case).",
+      "mechanism_upgrade": "test/gold-set-frozen.test.mjs::every frozen case is unchanged, and every case file is frozen",
+      "class": "C-09"
     },
     {
       "id": "F-62",
@@ -1705,7 +1936,11 @@
       "guard": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
       "sweep": "All Date.now() comparisons in test/, eval/__tests__/, scripts/: 8 upper bounds fixed; kill-switch '>= 2900' is a lower bound (load only lengthens it); the fake binary's busy-wait is a wait, not a bound.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["test/", "eval/__tests__/", "scripts/policy-fuzz.mjs", "scripts/l1-fuzz.mjs"],
+      "mechanism_gap": "RC-12 detectors required timeouts (hangs); nothing looked at tight wall-clock bounds.",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
+      "class": "C-04"
     },
     {
       "id": "F-63",
@@ -1730,7 +1965,9 @@
       "guard": "test/secret-scan.test.mjs::F-63: an exempt match never hides a real secret it swallowed",
       "sweep": "Other exemption paths: display() redaction uses the same isExempt on the whole name (fails toward redaction); the glued-token pass (N8) still finds keys after a token.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "class": "C-12"
     },
     {
       "id": "F-64",
@@ -1755,7 +1992,11 @@
       "guard": "eval/__tests__/stranger-regressions.test.mjs::an execution mode refuses with HARNESS_GIT_REQUIRED instead of naming the parent commit",
       "sweep": "Bundle builder in a nested checkout: `git show <commit>:eval/cases/…` resolves from the enclosing top and refuses (BUNDLE_SOURCE_INVALID) — fail-closed; verifierCommit there would name the parent's HEAD, but the auditor procedure no longer trusts it (F-65).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/bin/gold-runner.mjs"],
+      "mechanism_gap": "Stranger tests covered 'no .git', not 'someone else's .git'; layouts are enumerated by hand.",
+      "mechanism_upgrade": "none: instance guard in the stranger suite; no generator of repository layouts exists",
+      "class": "C-08"
     },
     {
       "id": "F-65",
@@ -1781,7 +2022,11 @@
       "guard": "test/evidence-bundle.test.mjs::a REAL run whose metrics name no model → METRICS_UNVERIFIABLE, even with traces relabelled",
       "sweep": "Exhaustive key deletion over a real pack bundle (every document, every key): 46 keys still pass, each declared with its reason (descriptive case fields, scorer evidence, ledger fields sakk itself does not require). Drill MUT-U/MUT-V hold the checks.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "mechanism_gap": "RC-01 detectors covered CLI arguments; no test deleted keys from the JSON documents a verifier reads.",
+      "mechanism_upgrade": "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
+      "class": "C-01"
     },
     {
       "id": "F-66",
@@ -1806,7 +2051,11 @@
       "guard": "test/kill-switch.test.mjs::CLI halt succeeds while 6 processes hammer the ledger",
       "sweep": "Detector extended to deadline shapes (Date.now() + literal); fault-injection's +3600_000 is a fixture timestamp, soak's minutes-based deadline is a campaign length, not a pass/fail bound.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["test/kill-switch.test.mjs", "src/ledger.mjs"],
+      "mechanism_gap": "The stopwatch detector (F-62) matched `Date.now() - t` comparisons, not deadlines.",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
+      "class": "C-04"
     },
     {
       "id": "F-67",
@@ -1831,7 +2080,9 @@
       "guard": "test/kill-switch.test.mjs::review S1: halting or resuming a STALE ledger never makes it fresh",
       "sweep": "Other writes that confirm nothing about the books: none — settle/mark/clear are money operations and keep refreshing.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "src/ledger.mjs"],
+      "class": "C-11"
     },
     {
       "id": "F-68",
@@ -1856,7 +2107,11 @@
       "guard": "test/kill-switch.test.mjs::genesis is v1 with no halt key; the first halt makes it v2; resume keeps v2 with an emptied record",
       "sweep": "halt() records its signer in the ledger already; clearReconciliation records by in the entry history.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "src/ledger.mjs"],
+      "mechanism_gap": "RC-10 detectors check that codes named in docs exist; 'resume is signed' is a property, not a code.",
+      "mechanism_upgrade": "none: instance guard; spec properties stay reviewer-checked",
+      "class": "C-05"
     },
     {
       "id": "F-69",
@@ -1881,7 +2136,11 @@
       "guard": "test/kill-switch.test.mjs::a scoped resume leaves the global halt in force",
       "sweep": "Adversary rows 17-20 added with named tests; each M1/M2/M3 mutant applied by hand dies.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "src/ledger.mjs"],
+      "mechanism_gap": "'Every adversary row has a named test' was itself unchecked: names resolved, but the tests drove another path.",
+      "mechanism_upgrade": "scripts/mutation-drill.sh::MUT-W",
+      "class": "C-03"
     },
     {
       "id": "F-70",
@@ -1906,7 +2165,11 @@
       "guard": "test/kill-switch.test.mjs::CLI status never writes an operator-supplied control sequence to the terminal",
       "sweep": "Other CLI outputs of operator text: `sakk scan` already escapes via display(); reconcile prints the reason through the same status path.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "src/ledger.mjs"],
+      "mechanism_gap": "RC-05 detectors cover ids used as object keys; operator text reaching a terminal is a different boundary.",
+      "mechanism_upgrade": "none: instance guard; status is the only operator-text sink besides scan output, which was already escaped",
+      "class": "C-07"
     },
     {
       "id": "F-71",
@@ -1931,7 +2194,11 @@
       "guard": "test/secret-scan.test.mjs::review S1: a git replace ref cannot make --staged read other bytes than the commit records",
       "sweep": "Other git object reads: the gold runner reads its own commit (not a scan target); the bundle builder's `git show <commit>:` reads case files the issuer controls.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "mechanism_gap": "RC-05 detectors cover caller-supplied ids; repository state (replace refs) was never treated as untrusted input.",
+      "mechanism_upgrade": "none: instance guard",
+      "class": "C-07"
     },
     {
       "id": "F-72",
@@ -1956,7 +2223,11 @@
       "guard": "test/secret-scan.test.mjs::review S2: a merge commit bringing in a secret is refused by the pre-merge-commit hook",
       "sweep": "Other paths to a recorded commit: fast-forward, rebase, cherry-pick, --no-verify — documented as not covered (no hook exists for them).",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "mechanism_gap": "RC-01 detectors cover inputs; which git operations run hooks is an environment fact no test enumerated.",
+      "mechanism_upgrade": "none: instance guard; the remaining paths are documented as not covered",
+      "class": "C-09"
     },
     {
       "id": "F-73",
@@ -1981,7 +2252,11 @@
       "guard": "test/secret-scan.test.mjs::review S4: a PGP private key block is a private-key block",
       "sweep": "Each README format sentence re-read against its regex: DSN schemes, URL-encoded, AWS, GitHub, bearer, password assignment match.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "mechanism_gap": "claims-are-checked matches codes, not format descriptions in prose.",
+      "mechanism_upgrade": "none: format sentences stay reviewer-checked (stop-line 2026-10-17)",
+      "class": "C-05"
     },
     {
       "id": "F-74",
@@ -2006,7 +2281,11 @@
       "guard": "test/secret-scan.test.mjs::review S6: a hook whose node is gone refuses with SCAN_HOOK_STALE, not a bare shell error",
       "sweep": "yarn dlx caches (nit N6) behave the same — the stale guard now names the fix for them too.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["src/secret-scan.mjs"],
+      "mechanism_gap": "No test moved node after installing the hook.",
+      "mechanism_upgrade": "none: instance guard",
+      "class": "C-09"
     },
     {
       "id": "F-75",
@@ -2031,7 +2310,11 @@
       "guard": "",
       "sweep": "Proposed: add a benign corpus (i18n JSON, Ansible, .env.example templates) to T3 as a precision row, then tune password_assignment against both lists. Not changed in this round: a precision change moves the recall line and needs the attack list re-measured.",
       "sweep_status": "not_done",
-      "status": "open"
+      "status": "open",
+      "areas": ["src/secret-scan.mjs"],
+      "mechanism_gap": "RC-06 detectors are stranger layouts; no benign corpus exists for scanner precision.",
+      "mechanism_upgrade": "none: open — a benign-corpus precision row in the T3 attack list is the proposed class detector",
+      "class": "C-13"
     },
     {
       "id": "F-76",
@@ -2056,7 +2339,11 @@
       "guard": "",
       "sweep": "Disclosed now: every pack requirement backed by a git-fact case (G01–G03, G05, G07, G10, G11) carries the gap. Fix needs a decision: record the baseline sha and a filesystem snapshot at prepCase and diff against those instead of the workdir .git — a scorer change, i.e. a change to the frozen ruler (principle 8), so it ships with a gold-set version bump.",
       "sweep_status": "not_done",
-      "status": "open"
+      "status": "open",
+      "areas": ["eval/lib/scorer.mjs", "eval/packs/"],
+      "mechanism_gap": "RC-05 detectors cover inputs to sakk; the scorer's own evidence source was never treated as agent-controlled.",
+      "mechanism_upgrade": "none: open — needs the scorer change (decision pending)",
+      "class": "C-06"
     },
     {
       "id": "F-77",
@@ -2081,7 +2368,11 @@
       "guard": "eval/__tests__/case-packs.test.mjs::review S4: an EMPTY gaps or not_covered list is invalid",
       "sweep": "Every pack evidence sentence re-read against its cases' scoring.json. Not changed: the `regulator` field holds the instrument name (N2) — renaming is a pack-schema change; regulator names must be verified before citation (clause_status already says so). not_covered lists are thin (N1) and marked non-exhaustive.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/packs.mjs", "eval/packs/"],
+      "mechanism_gap": "The RC-10 pack detector checks the case count in eval/README, not evidence sentences against scoring rules.",
+      "mechanism_upgrade": "eval/__tests__/case-packs.test.mjs::review S4: an EMPTY gaps or not_covered list is invalid",
+      "class": "C-05"
     },
     {
       "id": "F-78",
@@ -2106,7 +2397,11 @@
       "guard": "test/evidence-bundle.test.mjs::a RESERVED entry left open is unresolved spend too",
       "sweep": "Other guards asserting only a code: SPEND_OVER_CAP and BATCH_STOPPED tests already assert status.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["eval/lib/bundle-verify.mjs", "scripts/evidence-bundle.mjs"],
+      "mechanism_gap": "RC-12 detectors check that controls exist, not that a guard asserts the outcome rather than a code.",
+      "mechanism_upgrade": "none: instance guard",
+      "class": "C-03"
     },
     {
       "id": "F-79",
@@ -2132,7 +2427,1366 @@
       "guard": "test/secret-scan.test.mjs::the whole repository — tests included — scans clean",
       "sweep": "Other fixed directory lists in tests (claims-are-checked, core-specs, the stopwatch detector) are scoped by name to source or test directories and claim nothing wider.",
       "sweep_status": "done",
-      "status": "fixed"
+      "status": "fixed",
+      "areas": ["test/secret-scan.test.mjs", "README.md"],
+      "mechanism_gap": "RC-01 detectors enumerate CLI arguments and JSON keys; a hand-written directory list standing in for 'all' is not a shape they see.",
+      "mechanism_upgrade": "none: instance guard; fixed lists claiming 'all' stay reviewer-checked",
+      "class": "C-02"
+    },
+    {
+      "id": "F-80",
+      "date": "2026-10-17",
+      "title": "Two red lines had no drill anchor",
+      "symptom": "The mutation drill never touched the cap check or the keyed fingerprint: 'no reservation past the cap' and 'no secret printed' were red lines nothing could prove guarded.",
+      "evidence": "framework regression of the original modules against the standard (2026-10-17)",
+      "found_by": "T0",
+      "introduced_in": "unknown",
+      "direct_cause": "core-specs required one anchor per core file; src/ledger.mjs passed on its halt anchors.",
+      "why": [
+        "The detector counted files, not guards.",
+        "Red lines were prose in the profile, not linked to anchors."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: MUT-X (cap) and MUT-Y (fingerprint); the profile's red lines are a table naming their anchors",
+      "class_fix": "test/core-specs.test.mjs::each red line in docs/testing-profile.md names a drill anchor that exists",
+      "guard": "test/core-specs.test.mjs::each red line in docs/testing-profile.md names a drill anchor that exists",
+      "sweep": "All five red lines now name anchors (MUT-G/H/W, MUT-X/Z, MUT-I/T/U, MUT-Y, MUT-L).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "scripts/mutation-drill.sh",
+        "docs/testing-profile.md",
+        "src/ledger.mjs",
+        "src/secret-scan.mjs"
+      ],
+      "mechanism_gap": "F-54's detector asked for one anchor per core FILE; src/ledger.mjs passed on halt anchors while the cap check had none.",
+      "mechanism_upgrade": "test/core-specs.test.mjs::each red line in docs/testing-profile.md names a drill anchor that exists",
+      "class": "C-10"
+    },
+    {
+      "id": "F-81",
+      "date": "2026-10-17",
+      "title": "The child environment passed every operator credential and a second false-green channel",
+      "symptom": "NODE_OPTIONS='--test-only' or '--test-skip-pattern=.' made a failing verification exit 0 (a wrong fix scored PASS); ANTHROPIC_API_KEY, GITHUB_TOKEN and SAKK_BUDGET_LEDGER_PATH reached the agent under test.",
+      "evidence": "Fable 5 regression review of the original gold harness (2026-10-17), S1+S2",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "exec-env deleted one variable (NODE_TEST_CONTEXT) from a copy of process.env.",
+      "why": [
+        "The first false-green channel was fixed by name.",
+        "A denylist enumerates what is known bad; an allowlist states what is needed."
+      ],
+      "root_cause": "A list of cases stood in for a structural rule.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-04", "RC-05"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: childEnv is an allowlist (paths, locale, terminal, XDG); the real executor also gets its provider's variables; test stubs read config from files",
+      "class_fix": "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has",
+      "guard": "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has",
+      "sweep": "Every spawn in eval/ goes through childEnv (four call sites); attack row E8 measures five env variants.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["eval/lib/exec-env.mjs", "eval/bin/gold-runner.mjs", "eval/lib/scorer.mjs"],
+      "mechanism_gap": "RC-04 detectors are secret-pattern tests and RC-05 detectors cover caller ids; the env scrub was a one-name denylist that nothing enumerated.",
+      "mechanism_upgrade": "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has",
+      "class": "C-02"
+    },
+    {
+      "id": "F-82",
+      "date": "2026-10-17",
+      "title": "A nested caller value crashed the MCP gate",
+      "symptom": "A 10–16 KB nested array as method, tool name, callId or policy context overflowed the stack in a template literal or JSON.stringify; the server exited (also: an uncreatable ledger directory threw a raw fs error and exited).",
+      "evidence": "Fable 5 regression review of the original MCP enforcer (2026-10-17), B1+S1",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Caller values were interpolated and echoed in refusal details unchecked; no frame isolation.",
+      "why": [
+        "The envelope was trusted to hold strings.",
+        "One frame's exception propagated to the process.",
+        "The torture corpus sent only strings and flat values."
+      ],
+      "root_cause": "A trust boundary left undefended.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-05", "RC-09"],
+      "es": ["ES-02"],
+      "instance_fix": "this commit: envelope validated first, echoed values bounded, refusal details bounded, per-frame try/catch (-32603), settle refuses non-string callIds, LEDGER_WRITE_FAILED for an uncreatable directory",
+      "class_fix": "scripts/campaign/mcp-torture.mjs::non-string envelope members and deep nesting",
+      "guard": "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving",
+      "sweep": "Other stringifications of caller values: the CLI prints through display(); the ledger echoes only validated ids now.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/mcp.mjs", "src/ledger.mjs", "scripts/campaign/mcp-torture.mjs"],
+      "mechanism_gap": "hostile-names covers ids used as object keys; nested values reaching string conversion and serialization were never tried, and the torture corpus sent strings only.",
+      "mechanism_upgrade": "scripts/campaign/mcp-torture.mjs::non-string envelope members and deep nesting",
+      "class": "C-07"
+    },
+    {
+      "id": "F-83",
+      "date": "2026-10-17",
+      "title": "README and CHANGELOG named a decision log that does not exist",
+      "symptom": "Both said `sakk-decisions.jsonl` next to the ledger; the code writes `<ledger>.decisions.jsonl`.",
+      "evidence": "Fable 5 regression review of the original MCP enforcer (2026-10-17) S3; Fable 5 regression review of the promise surface and release (2026-10-17) S1",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "The file name was written from intent and never read back.",
+      "why": [
+        "claims-are-checked matched refusal codes only.",
+        "Two reviews of the docs did not compare names with the code."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: both docs name the real file",
+      "class_fix": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
+      "guard": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
+      "sweep": "Every backticked file name in README, CHANGELOG, eval/README and docs/*.md: this was the only one missing.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["README.md", "CHANGELOG.md", "bin/sakk.mjs"],
+      "mechanism_gap": "claims-are-checked matched refusal codes only; a file name in the docs was invisible to it.",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
+      "class": "C-05"
+    },
+    {
+      "id": "F-84",
+      "date": "2026-10-17",
+      "title": "The 'real two-process race' ran its processes one after the other",
+      "symptom": "spawnSync ran the race's two processes, the D1 stampede's six and the fuzz's four sequentially; a ledger with no lock passed every test that claimed to prove mutual exclusion.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17), B1",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Each worker was spawned with spawnSync, which waits for exit.",
+      "why": [
+        "The test named a race but never measured overlap.",
+        "No drill anchor targeted the lock, so nothing showed the test could fail."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-05"],
+      "instance_fix": "this commit: eight workers start together behind a barrier; booked must equal granted and the cap must hold; the stampede test is concurrent too",
+      "class_fix": "scripts/mutation-drill.sh::MUT-Z",
+      "guard": "test/ledger.test.mjs::8 concurrent processes cannot jointly overspend, and every grant is booked",
+      "sweep": "invariant-fuzz's concurrency leg is still sequential (spawnSync) — its claim is now carried by the race test; soak-ledger is concurrent and runs in the audit.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["test/ledger.test.mjs", "scripts/mutation-drill.sh", "README.md"],
+      "mechanism_gap": "RC-12 detectors check timeouts and positive controls; nothing checked that a concurrency test actually overlaps its processes.",
+      "mechanism_upgrade": "scripts/mutation-drill.sh::MUT-Z",
+      "class": "C-03"
+    },
+    {
+      "id": "F-85",
+      "date": "2026-10-17",
+      "title": "A ledger reached through a symlink or hard link forked the books",
+      "symptom": "The atomic rename replaced the link name with a new file: two $6 reservations under a $10 cap were both granted, into two diverging ledgers.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17), B2",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Lock and temp names derive from the raw path string; rename replaces whatever name it is given.",
+      "why": [
+        "'The path identifies the ledger' was assumed.",
+        "Path aliasing was handled for policy scopes, never for the ledger itself."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: every public function resolves the directory and refuses a linked ledger file (LEDGER_PATH_NOT_CANONICAL)",
+      "class_fix": "scripts/attack-asr.mjs::two reservations through a symlinked ledger file",
+      "guard": "test/ledger.test.mjs::F-85: a ledger reached through a symlinked or hard-linked FILE refuses",
+      "sweep": "Other paths sakk writes: alerts and decision logs (F-101), the bundle target (exclusive link target already).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/ledger.mjs", "README.md"],
+      "mechanism_gap": "RC-01 detectors enumerate inputs; the identity of the ledger path (links, directory aliases) was never varied.",
+      "mechanism_upgrade": "scripts/attack-asr.mjs::two reservations through a symlinked ledger file",
+      "class": "C-08"
+    },
+    {
+      "id": "F-86",
+      "date": "2026-10-17",
+      "title": "The ledger's money paths had no three-tables spec",
+      "symptom": "core-specs mapped src/ledger.mjs to the kill-switch spec, which covers only the halt; no adversary row covered lock interleavings, path aliasing, crash windows or the epsilon.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17), N11; framework regression of the original modules against the standard (2026-10-17)",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "One spec per file satisfied the detector.",
+      "why": [
+        "The ledger predates the three-tables rule.",
+        "The kill-switch spec arrived later and filled the slot."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: specs/ledger/spec.md; a core file may name several specs",
+      "class_fix": null,
+      "guard": "test/core-specs.test.mjs::every guard test a three-tables spec names exists",
+      "sweep": "Other core files with a borrowed spec: none (policy/match share the policy spec by design).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["specs/ledger/spec.md", "test/core-specs.test.mjs"],
+      "mechanism_gap": "core-specs accepted any one spec per file, so the kill-switch spec satisfied it for the whole ledger.",
+      "mechanism_upgrade": "none: core-specs cannot tell whether a spec covers a file's money paths; specs/ledger was written by review",
+      "class": "C-10"
+    },
+    {
+      "id": "F-87",
+      "date": "2026-10-17",
+      "title": "A '*' inside an agent or action name was a dead deny",
+      "symptom": "A rule {agent:'ci-*', action:'deploy'} deny loaded and never fired; ci-7 deployed through a later allow.",
+      "evidence": "Fable 5 regression review of the original policy engine (2026-10-17), S3",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Only the exact '*' is a wildcard in agent/action; the no-globs check covered scope only.",
+      "why": [
+        "F10 fixed globs in one field.",
+        "The fix named a field instead of stating the rule."
+      ],
+      "root_cause": "A list of cases stood in for a structural rule.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: '*', '?' or '[' in agent/action refuse at load unless the value is exactly '*'",
+      "class_fix": null,
+      "guard": "test/policy.test.mjs::review S3: a \"*\" inside agent or action is refused at load",
+      "sweep": "Every match field now refuses glob characters: agent, action, scope; max_estimated_usd is numeric.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/policy.mjs"],
+      "mechanism_gap": "RC-04 detectors are secret-pattern tests; F10's no-globs rule was applied to one field only.",
+      "mechanism_upgrade": "test/policy.test.mjs::review S3: a \"*\" inside agent or action is refused at load",
+      "class": "C-02"
+    },
+    {
+      "id": "F-88",
+      "date": "2026-10-17",
+      "title": "POLICY_VACUOUS_ALLOW refused only the empty policy; the spec misdescribed the matcher",
+      "symptom": "The README promised refusal of 'a gate that can only say yes', but all-allow policies and a leading catch-all allow loaded; the spec said `x` is an exact path while the matcher treats it as path-or-subtree.",
+      "evidence": "Fable 5 regression review of the original policy engine (2026-10-17), S4+S5",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Docs were written from the rule's intent (R-04), the check from its narrowest case.",
+      "why": [
+        "claims-are-checked verifies a code exists, not the meaning beside it.",
+        "The spec line predates the reuse of the scorer matcher."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: can-only-say-yes policies refuse; README and spec state the matcher's real semantics",
+      "class_fix": null,
+      "guard": "test/policy.test.mjs::review S4: a policy that can only say yes refuses, not only the empty one",
+      "sweep": "Other README parentheticals for policy codes re-read against the code.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/policy.mjs", "README.md", "specs/policy-engine/spec.md"],
+      "mechanism_gap": "claims-are-checked verifies that a code named in the README exists, not the meaning written beside it.",
+      "mechanism_upgrade": "none: the meaning of prose stays reviewer-checked (stop-line 2026-10-17)",
+      "class": "C-05"
+    },
+    {
+      "id": "F-89",
+      "date": "2026-10-17",
+      "title": "Eleven scorer rules could be deleted with the suite green",
+      "symptom": "WRONG_FINAL_CLAIM, CONTENT_ASSERTION, HARD_CAP_DRIFT, the paid-count rules, LEDGER_TRACE_MISMATCH, VERIFICATION_FAILED, the three gate rules and SECRET_LEAK's trace channel each survived deletion; 02_SCORING_POLICY claimed a negative case for every rule.",
+      "evidence": "Fable 5 regression review of the original gold harness (2026-10-17), S6",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Rules were exercised through whole fake runs that pass, never fired one by one.",
+      "why": [
+        "The claims detector matched code: and Error( emitters, not rule: ones.",
+        "F-41's sweep stopped at provenance booleans."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: a table-driven test fires every rule and proves the base input does not; LEDGER_UNREADABLE_AT_SCORING and SCORER_ERROR included",
+      "class_fix": "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test",
+      "guard": "eval/__tests__/scorer-rules.test.mjs::fires on its trigger, and not without it",
+      "sweep": "The extended detector found the two further untested rules; none remain.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["eval/lib/scorer.mjs", "test/claims-are-checked.test.mjs"],
+      "mechanism_gap": "claims-are-checked matched codes emitted as code: or Error(, not scorer rules emitted as rule:.",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test",
+      "class": "C-03"
+    },
+    {
+      "id": "F-90",
+      "date": "2026-10-17",
+      "title": "REAL mode: five cases cannot pass honestly and a forged test log passes; G09 accepts a hand-made artifact",
+      "symptom": "An honest PASS on G02/G03/G04/G10/G11 scores FALSE_COMPLETION (no fixture writes the machine test log, the packet never names it), while a hand-appended {exit:0} line passes G10; G09 passes with zero tool invocations.",
+      "evidence": "Fable 5 regression review of the original gold harness (2026-10-17), B1+S3",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "The REAL evidence rule reads a log only two fixtures write; G09's rule bounds retries from above only.",
+      "why": [
+        "FAKE agents write their own evidence, so the REAL path never met a real fixture.",
+        "No case requires the flaky tool to have run."
+      ],
+      "root_cause": "Test data was not representative.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-06"],
+      "es": ["ES-03"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Disclosed in eval/README 'Known limits before the first real run'. Fix changes the frozen gold set (fixtures, packet, scoring): ships as gold v2 with F-76 — needs a decision.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["eval/lib/scorer.mjs", "eval/fixtures/", "eval/gold/", "eval/README.md"],
+      "mechanism_gap": "RC-06 detectors are stranger layouts; FAKE agents write their own test evidence, so no run exercised the REAL evidence path against the real fixtures.",
+      "mechanism_upgrade": "none: open — gold v2, decision pending",
+      "class": "C-15"
+    },
+    {
+      "id": "F-91",
+      "date": "2026-10-17",
+      "title": "The review workflow never posted, and had no timeout while the detector said 'every CI job'",
+      "symptom": "pr-review's post step used hashFiles('/tmp/comment.md'), which sees only the workspace: every review was computed, paid for and dropped; the job had no timeout-minutes; the detector read ci.yml only.",
+      "evidence": "Fable 5 regression review of the promise surface and release (2026-10-17), S3+S4",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Platform behaviour of hashFiles was assumed; the timeout detector read one named file.",
+      "why": [
+        "An absent comment read as 'nothing to post'.",
+        "F-79's sweep cleared this exact test as 'scoped by name' although its name says every CI job."
+      ],
+      "root_cause": "An assumption about the environment was never verified. (pattern fail-open-absence)",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "instance_fix": "this commit: the post step tests the file in shell and says when nothing was posted; 20-minute timeout; CI read-only permissions",
+      "class_fix": null,
+      "guard": "test/claims-are-checked.test.mjs::every CI job has timeout-minutes",
+      "sweep": "Both workflows now covered by the timeout detector.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        ".github/workflows/pr-review.yml",
+        ".github/workflows/ci.yml",
+        "test/claims-are-checked.test.mjs"
+      ],
+      "pattern": "fail-open-absence",
+      "mechanism_gap": "The timeout detector read ci.yml only while its name said every CI job — the F-79 shape (a named list standing in for all).",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::every CI job has timeout-minutes",
+      "class": "C-01"
+    },
+    {
+      "id": "F-92",
+      "date": "2026-10-17",
+      "title": "The architecture map and contributor docs described a smaller or different product",
+      "symptom": "ARCHITECTURE.md listed the ledger and eval only; the README API line omitted halt/resume; SAKK_POLICY_PATH was undocumented; RULES' title said R-01…R-13; CONTRIBUTING promised a CLA bot that does not exist; the tarball did not ship CHANGELOG.md.",
+      "evidence": "Fable 5 regression review of the promise surface and release (2026-10-17), S5+N1–N8",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Docs were updated per feature; maps were never re-read whole.",
+      "why": [
+        "No detector reads ARCHITECTURE.md for coverage.",
+        "F-52's sweep re-read README and CHANGELOG, not the map."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: map lists every module and spec; README, RULES, CONTRIBUTING and package.json corrected",
+      "class_fix": null,
+      "guard": "docs/ARCHITECTURE.md",
+      "sweep": "Remaining claims nits are F-114.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "docs/ARCHITECTURE.md",
+        "README.md",
+        "docs/RULES.md",
+        "CONTRIBUTING.md",
+        "package.json"
+      ],
+      "mechanism_gap": "No detector reads ARCHITECTURE.md or CONTRIBUTING.md for what they claim; F-52's sweep stopped at the README and CHANGELOG.",
+      "mechanism_upgrade": "none: document maps stay reviewer-checked",
+      "class": "C-05"
+    },
+    {
+      "id": "F-93",
+      "date": "2026-10-17",
+      "title": "An attack row's helper reached no server and read every refusal as 'blocked'",
+      "symptom": "The new E7 rows emptied SAKK_POLICY_PATH; the MCP server refused to start, four variants read 0 got through against nothing, and the crash row read the silence as success.",
+      "evidence": "framework regression of the original modules against the standard (2026-10-17)",
+      "found_by": "T3",
+      "introduced_in": "unknown",
+      "direct_cause": "Set-but-empty is a refusal by design; the helper used it as 'unset'.",
+      "why": [
+        "The row had no control proving the server answered.",
+        "A refusal and an unreachable target looked the same."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-05"],
+      "instance_fix": "this commit: the helper removes the variables; a control proves an allowed reserve is booked before any variant runs",
+      "class_fix": null,
+      "guard": "scripts/attack-asr.mjs::E7 control failed",
+      "sweep": "E5/E6/E8 call the library or childEnv directly; their failure path is the attack, not a missing target.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/attack-asr.mjs"],
+      "mechanism_gap": "RC-12 detectors require controls inside test files; attack rows in scripts/attack-asr.mjs had none.",
+      "mechanism_upgrade": "scripts/attack-asr.mjs::E7 control failed",
+      "class": "C-03"
+    },
+    {
+      "id": "F-94",
+      "date": "2026-10-17",
+      "title": "T3 attacked only the four plan modules",
+      "symptom": "'0 attacks got through' measured the kill switch, scanner, packs and bundles; the ledger core, policy kernel, MCP enforcer and gold harness had no attack rows.",
+      "evidence": "framework regression of the original modules against the standard (2026-10-17)",
+      "found_by": "T3",
+      "introduced_in": "unknown",
+      "direct_cause": "The attack list was built in the round that built those four modules.",
+      "why": [
+        "The layer detector required that a T3 step exists, not what it covers.",
+        "Original modules predate the standard."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-07"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: rows E5 ledger (9), E6 policy (8 + 2 KNOWN), E7 MCP (5), E8 gold env (5); 7/98 got through against the code before this round, 0 now",
+      "class_fix": null,
+      "guard": "scripts/attack-asr.mjs::E5 ledger core",
+      "sweep": "Every core module now has at least one row.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/attack-asr.mjs"],
+      "mechanism_gap": "The layer detector required that a T3 step exists, not that every core module has attack rows.",
+      "mechanism_upgrade": "none: no detector maps core modules to attack rows yet (proposal: a module→row table checked like the red lines)",
+      "class": "C-10"
+    },
+    {
+      "id": "F-95",
+      "date": "2026-10-17",
+      "title": "One case's scoring failure crashed the whole batch",
+      "symptom": "An agent that deleted .git made actualChanges throw: the batch exited 1, later cases never ran, metrics.json and pack-report.json were never written.",
+      "evidence": "Fable 5 regression review of the original gold harness (2026-10-17), S5",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "scoreCase ran without isolation inside the batch loop.",
+      "why": [
+        "The scorer assumed the workdir's .git exists.",
+        "Spend for REAL cases is already settled when scoring runs."
+      ],
+      "root_cause": "A failure was not isolated: one unit's error took down the whole run.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-09"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: scoreSafely turns a judge failure into that case's FAIL (SCORER_ERROR)",
+      "class_fix": null,
+      "guard": "eval/__tests__/scorer-rules.test.mjs::SCORER_ERROR: a judge that cannot score",
+      "sweep": "MCP frames got the same isolation (F-82).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["eval/bin/gold-runner.mjs"],
+      "mechanism_gap": "The RC-09 guard from F-82 isolates MCP frames only; the gold batch had no isolation of its own unit, the case.",
+      "mechanism_upgrade": "eval/__tests__/scorer-rules.test.mjs::SCORER_ERROR: a judge that cannot score",
+      "class": "C-14"
+    },
+    {
+      "id": "F-96",
+      "date": "2026-10-17",
+      "title": "The gold answer key was not checked in fake mode",
+      "symptom": "A tampered scoring.json ran and passed under --fake-executor; README said the manifest is verified at every runner start.",
+      "evidence": "Fable 5 regression review of the original gold harness (2026-10-17), S4",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "goldManifestStatus was called by --validate and --real only.",
+      "why": [
+        "The check was added with the real path.",
+        "The README sentence was written for the design."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: every execution mode refuses GOLD_MANIFEST_MISMATCH",
+      "class_fix": null,
+      "guard": "eval/__tests__/stranger-regressions.test.mjs::a gold file that differs from its manifest stops a fake-executor run too",
+      "sweep": "--dry-run executes nothing; --validate and --real already checked.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["eval/bin/gold-runner.mjs", "eval/README.md"],
+      "mechanism_gap": "RC-10 detectors check that named codes exist, not that a documented check runs in every mode.",
+      "mechanism_upgrade": "none: instance guard",
+      "class": "C-05"
+    },
+    {
+      "id": "F-97",
+      "date": "2026-10-17",
+      "title": "A commit landed while the gate was red",
+      "symptom": "`npm run gate >log; git commit` — the commit did not wait for the gate's exit code; a formatting failure was committed (amended to green before any push).",
+      "evidence": "framework regression of the original modules against the standard (2026-10-17)",
+      "found_by": "T0",
+      "introduced_in": "unknown",
+      "direct_cause": "The commit command was sequenced with ';' instead of chained on the gate.",
+      "why": [
+        "The commit gate is a rule in AGENTS.md, not a hook.",
+        "A git pre-commit hook running the gate cannot commit verifier changes (the bundle builder refuses an uncommitted verifier)."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: commands chain the commit on the gate's exit code; the bad commit was amended before push",
+      "class_fix": null,
+      "guard": "AGENTS.md",
+      "sweep": "All later commits in this round are chained (if [ $rc -eq 0 ]).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/gate.sh", "AGENTS.md"],
+      "mechanism_gap": "The RC-07 detector checks that gate.sh passes exit codes through, not that a commit waits for it.",
+      "mechanism_upgrade": "none: a pre-commit hook running the gate would block verifier commits; the chaining is how commits are made",
+      "class": "C-10"
+    },
+    {
+      "id": "F-98",
+      "date": "2026-10-17",
+      "title": "The fault-injection, soak and MCP torture campaigns ran nowhere",
+      "symptom": "All three passed when run, but neither the audit nor CI ran them.",
+      "evidence": "framework regression of the original modules against the standard (2026-10-17)",
+      "found_by": "T0",
+      "introduced_in": "unknown",
+      "direct_cause": "They were written as one-off campaigns.",
+      "why": [
+        "Nothing listed campaigns as audit steps.",
+        "The layer detector checked steps exist, not that scripts are wired."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: short legs in npm run audit, npm run campaigns and the CI drill job",
+      "class_fix": "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit",
+      "guard": "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit",
+      "sweep": "All three campaigns wired.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/campaign/", "scripts/audit.mjs", ".github/workflows/ci.yml"],
+      "mechanism_gap": "The layer detector checked that audit steps exist, not that every campaign script is wired into one.",
+      "mechanism_upgrade": "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit",
+      "class": "C-10"
+    },
+    {
+      "id": "F-99",
+      "date": "2026-10-17",
+      "title": "An agent could make a stale ledger fresh by settling",
+      "symptom": "settle stamped updatedAt: on a 30-day-stale ledger an agent settled an old reservation at $0 over MCP and the next reserve was granted, no person involved.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17), S1",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "settle sat in the 'confirms the books' class of the RC-08 detector.",
+      "why": [
+        "F-67 classified writers by option, not by who can call them.",
+        "settle is reachable from the agent channel."
+      ],
+      "root_cause": "A value's meaning was used outside its scope.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-08"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: settle keeps updatedAt; the classification moves it to KEEPS",
+      "class_fix": null,
+      "guard": "test/ledger.test.mjs::review S1: settling an old reservation does not make a stale ledger fresh",
+      "sweep": "reserve refreshes only on a fresh ledger (it refuses on a stale one); mark/clear are person operations.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/ledger.mjs", "test/kill-switch.test.mjs"],
+      "mechanism_gap": "The RC-08 detector asked which option each writer uses, not who can call it: settle sat in CONFIRMS though agents call it over MCP.",
+      "mechanism_upgrade": "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option",
+      "class": "C-11"
+    },
+    {
+      "id": "F-100",
+      "date": "2026-10-17",
+      "title": "`sakk status` read 0 while every reserve refused; `reconcile` refused what the library clears",
+      "symptom": "status judged reconciliation from the flag only, never showed staleness and printed a reservable amount on a stale ledger; reconcile pre-read with the 7-day bound and could not confirm stale books; no documented recovery existed.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17), S2+S3; Fable 5 regression review of the promise surface and release (2026-10-17), S2",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "The CLI re-implemented the library's conditions partially.",
+      "why": [
+        "The dual-source reconciliation rule was applied to reserve only.",
+        "No test drove status or reconcile on a stale ledger."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: status uses both sources, shows STALE, exits 3 for either, max_reservable 0 when blocked; signed reconcile confirms stale books",
+      "class_fix": null,
+      "guard": "test/cli.test.mjs::review S2: a stale ledger is shown as stale, exits 3, and reports nothing reservable",
+      "sweep": "MCP sakk_status shares the totals but not the exit code; its max_reservable formula is unchanged (F-114).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "README.md"],
+      "mechanism_gap": "RC-10 detectors check codes, not that a reported figure or exit code works when acted on.",
+      "mechanism_upgrade": "none: instance guards in test/cli.test.mjs",
+      "class": "C-05"
+    },
+    {
+      "id": "F-101",
+      "date": "2026-10-17",
+      "title": "Alerts and decision logs were written through planted symlinks",
+      "symptom": "sakk-alerts.jsonl at a guessable name followed a symlink: a refused reserve appended attacker-controlled callId text into a victim file; the decision log had the same shape.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17), S4",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "appendFileSync/flag 'a' follow symlinks.",
+      "why": ["F15's fix covered the temp file only.", "Each writer opened its file its own way."],
+      "root_cause": "A trust boundary left undefended.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: appendNoFollow (O_NOFOLLOW) for alerts and decisions",
+      "class_fix": null,
+      "guard": "test/ledger.test.mjs::review S4: the alert file is never written through a planted symlink",
+      "sweep": "Remaining writers: the ledger (temp + wx + rename), hooks (wx), bundles (exclusive target).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/ledger.mjs", "src/policy.mjs", "src/append.mjs"],
+      "mechanism_gap": "RC-05 detectors cover caller ids; the F15 fix covered one write site instead of every path sakk appends to.",
+      "mechanism_upgrade": "src/append.mjs::appendNoFollow",
+      "class": "C-02"
+    },
+    {
+      "id": "F-102",
+      "date": "2026-10-17",
+      "title": "Six fail-closed guards in the books had no test that failed without them",
+      "symptom": "A negative RESERVED entry (frees cap), a string cap, an unparseable updatedAt, a non-string entry callId, the EPERM-means-alive rule and the cross-host rule each survived deletion.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17), S8",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "The guards share refusal codes with tested ones, so the code detector was satisfied.",
+      "why": [
+        "claims-are-checked proves each code is asserted, not each guard.",
+        "Existing tests hit those codes for other reasons."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: one test per guard; the EPERM test shown to fail with the guard removed",
+      "class_fix": null,
+      "guard": "test/ledger.test.mjs::review S8: every fail-closed guard in the books has a test that fails without it",
+      "sweep": "Untestable by design: the wx temp-open, zero-progress write and fsync (F-114).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/ledger.mjs", "test/ledger.test.mjs"],
+      "mechanism_gap": "claims-are-checked proves each refusal code is asserted, not that each guard is load-bearing; six guards shared codes with tested ones.",
+      "mechanism_upgrade": "none: no per-guard mutation detector (proposal: a fast in-process mutation runner for readLedger guards)",
+      "class": "C-03"
+    },
+    {
+      "id": "F-103",
+      "date": "2026-10-17",
+      "title": "Operator and agent text reached the terminal unescaped; blank signatures and odd inputs were accepted",
+      "symptom": "The reconciliation reason (with an agent-chosen callId) printed raw; init/reconcile/unlock accepted '   ' as a name; SAKK_LEDGER_PATH='' meant the current directory; --cap 0x10 was accepted.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17), S7+N1+N2+N12",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "F-70 fixed the halt fields only; inputs were checked for presence, not shape.",
+      "why": ["Escaping was per field.", "Each command validated its own arguments."],
+      "root_cause": "A trust boundary left undefended.",
+      "dt": ["DT-SHAPE"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: the reason goes through display(); signatures must be non-blank everywhere; empty SAKK_LEDGER_PATH refuses; --cap is a plain decimal",
+      "class_fix": null,
+      "guard": "test/cli.test.mjs::review N1/N2/N12: blank signatures, an empty SAKK_LEDGER_PATH and a hex cap refuse",
+      "sweep": "Every status line printing stored text now escapes it.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "src/ledger.mjs"],
+      "mechanism_gap": "The F-70 fix escaped the halt fields only; RC-05 detectors cover ids, not every operator- or agent-supplied string a command prints or accepts.",
+      "mechanism_upgrade": "none: instance guards",
+      "class": "C-02"
+    },
+    {
+      "id": "F-104",
+      "date": "2026-10-17",
+      "title": "The lock's crash windows, cross-host sharing and macOS fsync were promised away",
+      "symptom": "~3% of SIGKILLs leave a lock auto-break refuses (owner.json written after mkdir, released before rmdir) and a parked .breaklock can wedge every caller; the dead-owner check trusts hostnames; macOS fsync does not flush the drive cache.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17), S5+S6+N9",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "The owner metadata is not atomic with the lock; durability claims were Linux-shaped.",
+      "why": ["Measured only on idle single-host runs.", "The README stated the happy path."],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "README now states all three limits. Fix: owner encoded in the lock directory name (atomic), release via rename-then-remove — a lock-protocol change for review.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/ledger.mjs", "README.md"],
+      "mechanism_gap": "RC-01 detectors enumerate inputs; crash timing and host identity are environment facts no test generated.",
+      "mechanism_upgrade": "none: open — lock protocol change",
+      "class": "C-05"
+    },
+    {
+      "id": "F-105",
+      "date": "2026-10-17",
+      "title": "The books are unbounded under the cap",
+      "symptom": "1,500 reservations with 4 KB callIds and 1e-300 estimates grew the ledger to 6 MB and per-call latency from 12 ms to 58 ms (O(n²)); nothing bounds entry count or file size.",
+      "evidence": "Fable 5 regression review of the original MCP enforcer (2026-10-17), S2",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "The string cap was taken as bounding the books.",
+      "why": ["Every call rewrites and fsyncs the whole file.", "No minimum estimate exists."],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Needs a policy choice: an entry cap, a size guard or a minimum estimate — a product decision.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/ledger.mjs", "src/mcp.mjs"],
+      "mechanism_gap": "RC-01 detectors cover inputs one call at a time; growth across many valid calls was never measured.",
+      "mechanism_upgrade": "none: open — product decision",
+      "class": "C-04"
+    },
+    {
+      "id": "F-106",
+      "date": "2026-10-17",
+      "title": "Under an allow-default policy a deny constrains only what the caller declares; paths are byte-compared",
+      "symptom": "Omitting scope or action dodged 'no prod deploys' in permissive-dev through the MCP enforcer; on a case-insensitive volume Prod/api passed a prod/ deny.",
+      "evidence": "Fable 5 regression review of the original policy engine (2026-10-17), S1+S2",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "An absent field makes a rule not apply; the kernel does not fold case.",
+      "why": [
+        "Absence was read as 'not applicable'.",
+        "The enforcer delegates normalization to the agent it constrains."
+      ],
+      "root_cause": "An assumption about the environment was never verified. (pattern fail-open-absence)",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "README states both limits; attack-asr measures them as KNOWN. Options for a decision: require declared fields when a policy is loaded, or refuse allow-default policies over MCP.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/policy.mjs", "src/mcp.mjs", "policies/", "README.md"],
+      "pattern": "fail-open-absence",
+      "mechanism_gap": "RC-01 detectors cover CLI arguments and bundle keys; absent fields in a decide() context were never deleted by any test.",
+      "mechanism_upgrade": "scripts/attack-asr.mjs::dodge a deny under an allow-default policy",
+      "class": "C-01"
+    },
+    {
+      "id": "F-107",
+      "date": "2026-10-17",
+      "title": "A decision cost segments × rule entries",
+      "symptom": "decide() re-validated and re-split a 2048-segment agent-chosen scope once per rule entry: ~0.7 s per decision against a 20k-entry allow-list.",
+      "evidence": "Fable 5 regression review of the original policy engine (2026-10-17), S6",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "matchesAny called matchPath, which validates its path every time.",
+      "why": [
+        "F-10's sweep declared match.mjs covered without a measurement.",
+        "Load is budgeted, decide is not."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: matchesAny validates once, then compares prefixes",
+      "class_fix": null,
+      "guard": "src/match.mjs::Validate once, compare many",
+      "sweep": "The scorer uses matchPath per path (no repeated validation of one path).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/match.mjs"],
+      "mechanism_gap": "F-10's sweep declared match.mjs covered without a measurement; RC-01 detectors do not size attacker-shaped inputs.",
+      "mechanism_upgrade": "none: no timing test by rule (F-62); the structure is reviewed",
+      "class": "C-04"
+    },
+    {
+      "id": "F-108",
+      "date": "2026-10-17",
+      "title": "A fifo at the ledger or policy path blocked forever",
+      "symptom": "readFileSync on a fifo blocked reserve with the lock held, and sakk mcp --policy <fifo> before serving.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17), N3; Fable 5 regression review of the original policy engine (2026-10-17), N1",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "The readers did not check the file type.",
+      "why": [
+        "F-29's regular-file rule lived in the scanner only.",
+        "A synchronous read cannot be timed out."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: readLedger and loadPolicy refuse anything but a regular file",
+      "class_fix": null,
+      "guard": "test/ledger.test.mjs::review N3: a fifo at the ledger path refuses",
+      "sweep": "Other readers of operator paths: the scanner (already), the bundle verifier (regular files only).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/ledger.mjs", "src/policy.mjs"],
+      "mechanism_gap": "F-29's file-type guard lived in the scanner only; no detector asks every reader whether its path is a regular file.",
+      "mechanism_upgrade": "none: instance guards in readLedger and loadPolicy",
+      "class": "C-02"
+    },
+    {
+      "id": "F-109",
+      "date": "2026-10-17",
+      "title": "MCP protocol edges were unpinned or wrong",
+      "symptom": "A notification tools/call was (correctly) never executed but no test pinned it; a relative --ledger resolved against the host's cwd per call; a final unterminated line was never answered; the spec claimed {code,message,details} and 'byte-identical books'.",
+      "evidence": "Fable 5 regression review of the original MCP enforcer (2026-10-17), S4+N1–N7",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Edge behaviour followed from code shape, not from a stated rule.",
+      "why": [
+        "The input-space table listed notifications without a must-hold.",
+        "The thinness test compares four fields, not bytes."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-07"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: tests pin the notification rule and the EOF line; the ledger path is resolved at startup; spec and README say what is true",
+      "class_fix": null,
+      "guard": "test/mcp.test.mjs::MCP S4: a notification tools/call never runs a tool and never spends",
+      "sweep": "Envelope members are validated (F-82).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/mcp.mjs", "bin/sakk.mjs", "specs/mcp-server/", "README.md"],
+      "mechanism_gap": "RC-07 detectors pin codes and schemas; protocol edges with no refusal code were not covered by any detector.",
+      "mechanism_upgrade": "none: instance guards",
+      "class": "C-03"
+    },
+    {
+      "id": "F-110",
+      "date": "2026-10-17",
+      "title": "An agent could settle its own reconciliation entry at $0 over MCP",
+      "symptom": "sakk_settle on a RECONCILIATION_REQUIRED entry with actualUsd 0 succeeded, so the 'resolve the entries before clearing' guard was satisfied by the agent before any person looked.",
+      "evidence": "Fable 5 regression review of the original MCP enforcer (2026-10-17), N8",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "settle treated reconciliation entries like any other.",
+      "why": [
+        "Who may resolve reconciliation was never framed as a trust question.",
+        "The MCP tool forwarded settle verbatim."
+      ],
+      "root_cause": "A trust boundary left undefended.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: settle({allowReconciling:false}) over MCP refuses SETTLE_RECONCILIATION_HUMAN_ONLY; the library path for people is unchanged",
+      "class_fix": "scripts/attack-asr.mjs::settle a reconciliation entry at $0",
+      "guard": "test/ledger.test.mjs::MCP review N8: an entry awaiting reconciliation",
+      "sweep": "Other person-only operations: halt/resume/unlock/reconcile have no MCP tool.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/ledger.mjs", "src/mcp.mjs"],
+      "mechanism_gap": "RC-05 detectors cover ids; who may resolve a reconciliation was never treated as a trust question.",
+      "mechanism_upgrade": "scripts/attack-asr.mjs::settle a reconciliation entry at $0",
+      "class": "C-07"
+    },
+    {
+      "id": "F-111",
+      "date": "2026-10-17",
+      "title": "Version, CHANGELOG and tag do not describe the artifact that would be published",
+      "symptom": "package.json says 0.1.0, CHANGELOG's 0.1.0 lists only the ledger while everything else sits under [Unreleased], and the links name a v0.1.0 tag that does not exist; npm versions are immutable.",
+      "evidence": "Fable 5 regression review of the promise surface and release (2026-10-17), B1",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "The version roll is a rule in CONTRIBUTING, not a step.",
+      "why": ["Nothing has been published yet.", "Release mechanics were never rehearsed."],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Needs the publish decision (version number, tag) — the maintainer's.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["package.json", "CHANGELOG.md"],
+      "mechanism_gap": "RC-07 detectors pin codes, keys and the gate; release mechanics have no detector.",
+      "mechanism_upgrade": "none: open — release decision",
+      "class": "C-10"
+    },
+    {
+      "id": "F-112",
+      "date": "2026-10-17",
+      "title": "Gold harness nits waiting for gold v2",
+      "symptom": "G12 passes on a voluntary stop; REAL first_pass_yield is vacuous; the packet tells the model to write a trace it does not have; GOLD_CASE hands the model expected_claim; paid steps record runId 'gold'; a .DS_Store breaks --validate; G09's hidden marker trap.",
+      "evidence": "Fable 5 regression review of the original gold harness (2026-10-17), N1 N3–N9",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "The REAL path was never exercised against real fixtures.",
+      "why": [
+        "Several fixes change the frozen gold set.",
+        "FAKE agents mask the packet's wording."
+      ],
+      "root_cause": "Test data was not representative.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-06"],
+      "es": ["ES-03"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Batch with gold v2 (F-90, F-76).",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["eval/bin/gold-runner.mjs", "eval/lib/scorer.mjs", "eval/lib/paid-step.mjs"],
+      "mechanism_gap": "RC-06 detectors are stranger layouts; the REAL packet and evidence path were never run against the fixtures.",
+      "mechanism_upgrade": "none: open — gold v2",
+      "class": "C-15"
+    },
+    {
+      "id": "F-113",
+      "date": "2026-10-17",
+      "title": "The policy fuzz has no semantic oracle",
+      "symptom": "policy-fuzz checks invariants with short fixed vocabularies; it cannot see omission (F-106), literal globs (F-87) or many-segment scopes (F-107).",
+      "evidence": "Fable 5 regression review of the original policy engine (2026-10-17), N5",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "It was written to catch crashes and shape errors.",
+      "why": [
+        "No reference implementation of decide() exists to compare against.",
+        "The vocabulary was hand-picked."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-02"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Proposal: a ten-line reference decide() as oracle, plus generated absent/present fields and long paths.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["scripts/policy-fuzz.mjs"],
+      "mechanism_gap": "RC-12 detectors check controls and timeouts; nothing checks a fuzzer against an oracle.",
+      "mechanism_upgrade": "none: open — a reference decide() as oracle is the proposed detector",
+      "class": "C-03"
+    },
+    {
+      "id": "F-114",
+      "date": "2026-10-17",
+      "title": "Ledger and release nits not fixed this round",
+      "symptom": "max_reservable is not reservable for caps ≥ 1e11; temp files from crashed writes are never cleaned; a read-only directory reports LEDGER_LOCK_UNAVAILABLE; reserve on a missing ledger creates its directory; lint/format fetch tools by version without integrity; CI runs twice on PR branches; untestable wx/zero-progress/fsync guards.",
+      "evidence": "Fable 5 regression review of the original ledger core (2026-10-17) N4 N6 N7 N10; Fable 5 regression review of the promise surface and release (2026-10-17) N5 N7",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Low-impact edges outside this round's fixes.",
+      "why": ["Each fails closed or is cosmetic.", "Several need a design choice."],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Listed for the next ledger change.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/ledger.mjs", "bin/sakk.mjs", "package.json", ".github/workflows/ci.yml"],
+      "mechanism_gap": "RC-01 detectors cover inputs, not magnitudes, debris or error attribution.",
+      "mechanism_upgrade": "none: open — low-impact edges listed for the next ledger change",
+      "class": "C-09"
+    },
+    {
+      "id": "F-115",
+      "date": "2026-10-17",
+      "title": "Policy kernel edges: untested guards, empty names, control characters",
+      "symptom": "The equal-limit shadow rule and the directory-itself match had no test; '' agent/action passed decide() and was logged as an allow the ledger then refused; rule ids with control characters loaded and reached refusal messages.",
+      "evidence": "Fable 5 regression review of the original policy engine (2026-10-17), N2–N4",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Boundary values were outside the drift catalog.",
+      "why": [
+        "Guards were tested for the common case.",
+        "Names were checked non-empty at load, not in context."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-SHAPE"],
+      "rc": ["RC-12"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: tests for both guards; empty names refuse CONTEXT_INVALID; control characters refuse at load",
+      "class_fix": null,
+      "guard": "test/policy.test.mjs::review N3/N4: empty names in a context, and control characters in a policy, refuse",
+      "sweep": "Context fields agent/action/scope/callId all validated for type, length and emptiness.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/policy.mjs", "src/match.mjs"],
+      "mechanism_gap": "RC-12 detectors check controls and timeouts, not that boundary values of each guard are exercised.",
+      "mechanism_upgrade": "none: instance guards",
+      "class": "C-03"
+    },
+    {
+      "date": "2026-10-17",
+      "introduced_in": "unknown",
+      "found_by": "human",
+      "id": "F-116",
+      "title": "A red CI does not block a merge",
+      "symptom": "main has no branch protection: a pull request with failing checks can be merged; every enforcement that lives in CI is advisory until it does.",
+      "evidence": "gh api repos/sakk-dev/sakk/branches/main/protection → 404 Branch not protected (2026-10-17)",
+      "direct_cause": "Branch protection was never configured; on a private repository it needs a paid GitHub plan.",
+      "why": [
+        "CI was treated as the floor without checking that it binds.",
+        "The self-evolution job is only as strong as the merge rule behind it."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "open",
+      "guard": "",
+      "class_fix": null,
+      "sweep": "Needs the plan decision (GitHub Pro for a private repository, or protection once public).",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": [".github/workflows/ci.yml"],
+      "mechanism_gap": "RC-07 detectors check what CI runs, never whether a red run can be merged.",
+      "mechanism_upgrade": "none: open — needs branch protection, a plan decision",
+      "class": "C-10"
+    },
+    {
+      "date": "2026-10-17",
+      "introduced_in": "unknown",
+      "found_by": "human",
+      "id": "F-117",
+      "title": "Checking the ledger before development was rule text only",
+      "symptom": "R-22 asked every change to run the brief and answer its questions, but no hook, CI job or test enforced it; the maintainer asked whether it was enforced and it was not.",
+      "evidence": "question of 2026-10-17; findings-check introduced in this commit",
+      "direct_cause": "The brief was printed at commit time and asked for in the PR template; nothing refused an edit or a commit without answers.",
+      "why": [
+        "The loop was built as information, not as a gate.",
+        "Answers had no place to live, so nothing could check them."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: findings-check enforces answers in findings/acks/<branch>.json at edit (Claude Code PreToolUse hook), at commit (git pre-commit, installed by npm install) and in CI over the branch",
+      "guard": "test/self-evolution.test.mjs::an edit of a file the ledger knows is blocked (exit 2) until the branch answers its questions",
+      "class_fix": "test/self-evolution.test.mjs::a fix commit made with --no-verify and without answers fails the range check",
+      "sweep": "Same gap for logging problems: closed by the inbox and the fix-commit rule (this commit).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "scripts/findings-check.mjs",
+        "scripts/hooks/",
+        ".github/workflows/ci.yml",
+        "AGENTS.md"
+      ],
+      "distinct_from": {
+        "F-116": "F-116 is about merging past a red CI; this one is that nothing ran to turn the brief into a red result in the first place."
+      },
+      "mechanism_gap": "RC-07 detectors check that the commit gate passes exit codes through, not that the brief is answered before a change.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::a fix commit made with --no-verify and without answers fails the range check",
+      "class": "C-10"
+    },
+    {
+      "date": "2026-10-17",
+      "introduced_in": "unknown",
+      "found_by": "human",
+      "id": "F-118",
+      "title": "The ledger had no problem classes, so a known problem could re-enter under a new name",
+      "symptom": "Findings were classified only by the root-cause axis (RC-01 alone held 30); nothing tied a new finding to the problem it repeats, so the same problem reworded read as new.",
+      "evidence": "the maintainer's requirement of 2026-10-17; text similarity measured useless for this (76 of 115 nearest neighbours in another class)",
+      "direct_cause": "§14's three axes describe a finding, they do not group repeats of the same problem.",
+      "why": [
+        "The taxonomy was designed for attribution, not for deduplication.",
+        "Without a class the countermeasure of a problem had no single home."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-07"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: findings/classes.json (16 classes, definitions, questions, detectors); every finding belongs to one; a new class must say why it is none of the others and carry an approval; a new finding beside an open one of its class must say whether it is the same problem",
+      "guard": "test/findings-ledger.test.mjs::every finding belongs to exactly one registered class",
+      "class_fix": "test/findings-ledger.test.mjs::a class added after the baseline says why it is none of the others, and was approved",
+      "sweep": "All 115 findings classified in one pass.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["findings/classes.json", "test/findings-ledger.test.mjs"],
+      "mechanism_gap": "RC-07 detectors check fields and counts per root-cause axis; none asks which existing problem a finding repeats.",
+      "mechanism_upgrade": "test/findings-ledger.test.mjs::a new finding next to an open one of the same class says whether it is the same problem",
+      "class": "C-10"
+    },
+    {
+      "date": "2026-10-17",
+      "introduced_in": "unknown",
+      "found_by": "human",
+      "id": "F-119",
+      "title": "The first placeholder rule rejected real answers",
+      "symptom": "Answers starting with 'No' were refused as placeholders: this branch's own C-02.1 answer ('No hand lists stand in…') failed the range check.",
+      "evidence": "findings-check --range on evolve/self-evolution, 2026-10-17",
+      "direct_cause": "The placeholder pattern listed 'no', 'yes', 'n/a' as words that make an answer empty.",
+      "why": [
+        "The rule was written from the abuse side only.",
+        "'No, because…' and 'Not applicable: …' are answers."
+      ],
+      "root_cause": "A list of cases stood in for a structural rule.",
+      "dt": ["DT-FP"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: placeholders are only todo/tbd/same/see above/ditto; length and copy-paste rules carry the rest",
+      "guard": "test/self-evolution.test.mjs::placeholders, short answers and one sentence copied everywhere do not count",
+      "class_fix": null,
+      "sweep": "The other answer rules (length, repeating the question, copies) re-read against real answers: they hold.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/findings-lib.mjs"],
+      "mechanism_gap": "RC-04 detectors are secret-pattern tests; the answer rules are a new detector tuned on abusive inputs only.",
+      "mechanism_upgrade": "none: instance guard; the real answers of every branch are its benign corpus",
+      "class": "C-13"
+    },
+    {
+      "date": "2026-10-17",
+      "introduced_in": "unknown",
+      "found_by": "human",
+      "id": "F-120",
+      "title": "Edits through the Bash tool bypass the Claude Code edit hook",
+      "symptom": "The PreToolUse hook matches Edit, Write, MultiEdit and NotebookEdit; a file changed by a shell command is not checked before the change.",
+      "evidence": "hook matcher in .claude/settings.json; most edits in this session went through shell scripts",
+      "direct_cause": "A shell command's writes cannot be read reliably from its text.",
+      "why": [
+        "The edit hook sees tool names, not file writes.",
+        "Matching shell text for writes would miss and misfire."
+      ],
+      "root_cause": "A list of cases stood in for a structural rule.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "instance_fix": "open",
+      "guard": "",
+      "class_fix": null,
+      "sweep": "Covered at commit and in CI: the pre-commit hook and the range check refuse unanswered changes whatever tool made them. Open question: block shell writes to tracked files, or accept commit-time enforcement.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": [".claude/settings.json", "scripts/findings-check.mjs"],
+      "mechanism_gap": "RC-04 detectors are secret-pattern tests; the edit hook enumerates tool names instead of the rule 'every write to a tracked file'.",
+      "mechanism_upgrade": "none: open — commit-time and CI enforcement cover it; a shell-write hook would be heuristic",
+      "class": "C-02"
+    },
+    {
+      "id": "F-121",
+      "date": "2026-10-17",
+      "introduced_in": "unknown",
+      "found_by": "T0",
+      "class": "C-09",
+      "title": "A test passed only on the newest Node: its deep frame overflowed JSON.stringify on Node 20 and 22",
+      "symptom": "CI (Node 20/22) failed the F-82 test with 'Maximum call stack size exceeded' while every local run (Node 25) passed; the test itself built the 8000-deep frame with JSON.stringify, which older V8 does recursively.",
+      "evidence": "CI run 39022150910, job test (22); reproduced with npx node@22",
+      "direct_cause": "The test constructed its hostile frame as a value and serialized it.",
+      "why": [
+        "The local gate and audit run one Node version.",
+        "Deep-value behaviour of JSON differs between V8 versions."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-02"],
+      "instance_fix": "this commit: the frames are built as text, only the server parses them; the MCP suite passes on Node 22",
+      "guard": "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving",
+      "class_fix": null,
+      "sweep": "Other tests and scripts that build deep values: attack-asr E7 and mcp-torture already build them as text.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["test/mcp.test.mjs"],
+      "mechanism_gap": "The environment detectors vary layouts and git configuration, not the Node version; the local gate runs one version while CI runs the supported ones.",
+      "mechanism_upgrade": "none: the CI matrix on Node 20 and 22 is the check that caught it; the local gate stays single-version"
+    },
+    {
+      "id": "F-122",
+      "date": "2026-10-17",
+      "introduced_in": "86f0599",
+      "found_by": "human",
+      "class": "C-02",
+      "title": "One secret matched by two rules is reported twice, so the scan overstates its count",
+      "symptom": "`sakk scan` on a file holding one DSN password with a %-escape prints two findings with the same fingerprint (dsn_with_password and url_encoded_password) and its summary says '3 finding(s)' for two secrets.",
+      "evidence": "2026-10-17 status demo for the maintainer: a scratch file with one GitHub token and one postgres DSN; three lines, two fingerprints",
+      "direct_cause": "The first pass of scanText reports every rule match on its own; only the second pass (exempt spans, F-63) skips a span already reported.",
+      "why": [
+        "Overlap was handled where F-63 met it, in the second pass, not as the rule that one secret is one finding.",
+        "The tests count findings per rule and never put a secret two rules both match into one text."
+      ],
+      "root_cause": "A fix covered the instance it met instead of the rule the instances share.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Fix: in scanText drop a first-pass hit whose span overlaps a reported hit with the same fingerprint, plus a test that puts one secret under two rules. Check display() and nameFindings for the same overlap.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/secret-scan.mjs"],
+      "mechanism_gap": "The RC-04 scanner detectors test one pattern per sample, true and false positives; none puts one secret where two patterns overlap.",
+      "mechanism_upgrade": "none: open — a test that scans one secret matched by two rules and expects one finding"
+    },
+    {
+      "date": "2026-10-17",
+      "found_by": "human",
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep_status": "not_done",
+      "status": "open",
+      "id": "F-123",
+      "introduced_in": "ece32d3",
+      "class": "C-09",
+      "title": "The self-evolution hooks assume Sakk's layout, so a project that copies them cannot commit",
+      "symptom": "In a fresh trial project with the five findings scripts and scripts/hooks copied, the first commit is refused: pre-commit runs test/findings-ledger.test.mjs and bin/sakk.mjs scan, neither of which exists there.",
+      "evidence": "2026-10-17 trial onboarding in a scratch repository (newproj), commit exit 1 with \"the findings ledger gate is red\"",
+      "direct_cause": "pre-commit names two Sakk files; the ledger gate test itself holds Sakk-only controls (F-65, F-11, BASELINE_LAST, taxonomy.lock.yaml).",
+      "why": [
+        "The hooks were written for and tried in Sakk only.",
+        "The standard (§15.8) names Sakk as the reference implementation for every project, but nothing tried it in a second one."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Fix: split the hooks into the portable gate (findings-check) and project steps read from package.json scripts; a generic ledger gate test; an init command that lays the kit into a project. Trial again in a fresh repository.",
+      "areas": ["scripts/hooks/", "test/findings-ledger.test.mjs"],
+      "mechanism_gap": "The C-09 detectors vary Sakk's own environment (layouts, git config, Node); none runs the kit inside a second project.",
+      "mechanism_upgrade": "none: open — a test that installs the kit into a temporary fresh project and commits"
+    },
+    {
+      "date": "2026-10-17",
+      "found_by": "human",
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep_status": "not_done",
+      "status": "open",
+      "id": "F-124",
+      "introduced_in": "ece32d3",
+      "class": "C-01",
+      "title": "An empty ledger requires no answers, so a new project starts without the classes Sakk learned",
+      "symptom": "In the trial project with all 16 classes registered and an empty ledger, the edit hook allows every edit and the brief lists no questions; the first logged finding makes C-01.1 and C-01.2 required at once.",
+      "evidence": "2026-10-17 trial onboarding: findings-check --edit exit 0 before F-01, refusal naming C-01.1/C-01.2 after",
+      "direct_cause": "required() takes classes from the project's own findings and the watch list from their counts; with no findings both are empty.",
+      "why": [
+        "The watch list was designed in a ledger with 121 findings.",
+        "No finding is read as nothing to guard against."
+      ],
+      "root_cause": "Missing input was read as success.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Proposal for the maintainer: below a threshold of own findings, the watch list falls back to a starter set of baseline classes (e.g. C-01, C-02, C-07) so day one is guarded.",
+      "areas": ["scripts/findings-lib.mjs"],
+      "mechanism_gap": "The C-01 detectors feed absent inputs to the product code; the gate's own empty-ledger case was never fed.",
+      "mechanism_upgrade": "none: open — a test that an empty ledger still requires the starter questions, once the starter set is decided"
+    },
+    {
+      "id": "F-125",
+      "date": "2026-10-17",
+      "introduced_in": "9ca2795",
+      "found_by": "human",
+      "class": "C-07",
+      "title": "The ledger books whatever cost the caller states; over MCP the agent reports its own spend",
+      "symptom": "reserve takes estimatedMaxUsd and settle takes actualUsd from the caller; Sakk has no model field and no price table. Over MCP both numbers come from the agent being gated, so an agent that under-reports keeps spending past the real cap, and one project using several models cannot be priced or broken down per model.",
+      "evidence": "the maintainer's question 2026-10-17 ('real per-model token prices, or our prediction?'); src/ledger.mjs settle, src/mcp.mjs sakk_reserve/sakk_settle schemas; the REAL gold runner alone takes cost from the vendor CLI's total_cost_usd",
+      "direct_cause": "The ledger was designed as an amounts book; pricing was left to the caller (README: estimatedMaxUsd is the worst case the provider can bill).",
+      "why": [
+        "The first callers were trusted scripts that know their own prices.",
+        "The MCP channel handed the same amount fields to the agent the gate exists to constrain."
+      ],
+      "root_cause": "Input controlled by the gated party crosses into the books unchecked.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-05"],
+      "es": ["ES-07"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Design proposed to the maintainer: a versioned price table per provider/model (unknown model refuses), reserve from model + max tokens, settle from the provider-reported usage, entries carry model, tokens and price version, status breaks spend down per model; later a proxy that reads usage itself and a reconciliation against the provider usage/cost export.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/ledger.mjs", "src/mcp.mjs", "README.md"],
+      "mechanism_gap": "The RC-05 detectors check the SHAPE of caller values (prototype names, control characters, paths); none asks whether an amount is the caller's word or a measured figure.",
+      "mechanism_upgrade": "none: open — the attack row \"under-report actualUsd over MCP\" lands with the price table, as a KNOWN row until then"
+    },
+    {
+      "date": "2026-10-19",
+      "found_by": "review",
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep_status": "not_done",
+      "status": "open",
+      "class": "C-05",
+      "rc": ["RC-10"],
+      "es": ["ES-07"],
+      "id": "F-126",
+      "introduced_in": "489f787",
+      "title": "Halt, resume, reconcile and unlock records are called \"signed\" but carry only a self-declared name",
+      "symptom": "The CLI help (\"(signed)\"), README (\"signed, global or per agent\"), docs/ARCHITECTURE.md (\"a signed halt record\") and specs/kill-switch/spec.md describe --by records as signed. The code only checks that --by is a non-empty string; anyone can write any name.",
+      "evidence": "UAE compliance research 2026-10-19 (CBUAE GN §6(f) mapping); bin/sakk.mjs signed() is typeof by === string && by.trim() !== \"\"",
+      "direct_cause": "\"signed\" was used for \"carries a name\", the word an auditor reads as a cryptographic signature.",
+      "why": [
+        "The halt was designed before identity was in scope.",
+        "The docs gate checks that named codes and files exist, not what a word promises."
+      ],
+      "root_cause": "A statement in the docs claims a property the code does not have.",
+      "dt": ["DT-SPEC"],
+      "sweep": "Replace \"signed\" with \"named\" (or \"by a named person\") in CLI help, README, ARCHITECTURE, specs; real signatures arrive with the approval service (SSO or Sigstore/SSH signing).",
+      "areas": ["bin/sakk.mjs", "README.md", "docs/ARCHITECTURE.md", "specs/kill-switch/spec.md"],
+      "mechanism_gap": "The RC-10 detectors check that named codes, files and counts exist; none checks a security adjective (signed, verified, tamper-proof) against a mechanism.",
+      "mechanism_upgrade": "none: open — a claims test listing security words and the code each must point to",
+      "distinct_from": {
+        "F-104": "F-104 is about durability limits of the lock and fsync promised away in the README; F-126 is about the word signed promising an identity mechanism that does not exist. Different mechanism, different fix."
+      }
+    },
+    {
+      "date": "2026-10-19",
+      "found_by": "review",
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep_status": "not_done",
+      "status": "open",
+      "class": "C-05",
+      "rc": ["RC-10"],
+      "es": ["ES-07"],
+      "id": "F-127",
+      "introduced_in": "4769e33",
+      "title": "The CBUAE case pack cites a theme the guidance does not contain and omits the binding CBUAE regulations",
+      "symptom": "cbuae-ai-oversight.json lists \"injected-instructions-ignored\" under the CBUAE AI Guidance Note, which has no such requirement (closest: §5(d) robustness). The pack anchors only on that non-binding note; the binding Operational Risk Management Regulation C 1/2026 (in force 2026-09-14; Art 12 change management, Art 13 third parties, Art 15 notification) and the Outsourcing Regulation (6.1, 6.3 data outside the UAE) are absent.",
+      "evidence": "UAE compliance research 2026-10-19 against rulebook.centralbank.ae originals (GN full text; ORM Arts 8–20; Outsourcing Arts 1–8)",
+      "direct_cause": "The pack was written from summaries of the guidance before any original text was read; the pack itself says THEMATIC and unverified.",
+      "why": [
+        "The blueprint named the guidance note, so the pack followed it.",
+        "No one read the CBUAE rulebook before writing the themes."
+      ],
+      "root_cause": "A statement in a pack claims a source the source does not contain.",
+      "dt": ["DT-FACT"],
+      "sweep": "Re-anchor the pack on the binding regulations (ORM 8.6, 9.4.5, 12.3/12.5, 13.6–13.9, 15.2–15.3; Outsourcing 5.7/5.8/6.1/6.3; CPS 6.1.6.3) with the GN as supervisory expectation; drop or re-cite the injection theme; check the DIFC and DORA packs the same way; a local law firm signs off before any external use.",
+      "areas": ["eval/packs/"],
+      "mechanism_gap": "The pack tests check that verdicts and case ids are consistent and that non-REAL runs cannot read COVERED; nothing checks a theme against the cited source.",
+      "mechanism_upgrade": "none: open — every requirement carries a quoted source clause and URL, and a test refuses a requirement without one"
     }
   ]
 }
