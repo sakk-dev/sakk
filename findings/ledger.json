@@ -4174,7 +4174,7 @@
       "instance_fix": "this commit: the hook refuses --no-verify, commit -n and hooksPath changes outright; every refusal names `npm run inbox -- add --source dispute \"<why>\"`, which records the dispute and blocks commits until the owner resolves it",
       "guard": "test/self-evolution-cli.test.mjs::F-140: commands that turn the git hooks off are refused even with every answer given",
       "class_fix": null,
-      "sweep": "Push and merge forms of --no-verify are covered; the dispute path is added to the edit and shell refusals; CI and pre-commit already block an unresolved inbox item.",
+      "sweep": "Push and merge forms of --no-verify are covered; the dispute path is added to the edit and shell refusals; CI and pre-commit already block an unresolved inbox item. Widened after the Codex/Cursor/Gemini research (2026-10-21): a shell wrapping a script (`bash -lc …`, the form Codex now sends — rsyslog 9d384cf), git configuration set through GIT_CONFIG_* variables, HUSKY=0 / SKIP=, merge and am -n, and plumbing that writes history without hooks (commit-tree, update-ref, replace, hash-object -w).",
       "sweep_status": "done",
       "status": "fixed",
       "areas": [

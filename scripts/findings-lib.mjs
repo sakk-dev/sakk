@@ -872,10 +872,28 @@ export function dataRegressions(base, head) {
  * reach for it when a gate blocks them (anthropics/claude-code#40117). Returns
  * the reason, or null.
  */
-export function hookBypass(cmd) {
-  if (typeof cmd !== 'string') return null;
+export function hookBypass(cmd, depth = 0) {
+  if (typeof cmd !== 'string' || depth > 3) return null;
   for (const seg of shellSegments(cmd).segs) {
+    // environment that switches hooks off or rewrites git's configuration
+    for (const w of seg) {
+      if (
+        /^(GIT_CONFIG_PARAMETERS|GIT_CONFIG_COUNT|GIT_CONFIG_KEY_\d+|GIT_CONFIG_VALUE_\d+)=/.test(w)
+      )
+        return 'setting git configuration through the environment can switch the hooks off';
+      if (/^(HUSKY=0|SKIP=|PRE_COMMIT_ALLOW_NO_CONFIG=|LEFTHOOK=0)/.test(w))
+        return `${w.split('=')[0]} switches the hooks off`;
+    }
     const words = seg.filter((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
+    // a shell wrapping a script: judge the script too (Codex sends `bash -lc '…'`)
+    const si = words.findIndex((w) => /^(ba|z|da|k)?sh$/.test(w.split('/').pop()));
+    if (si >= 0) {
+      const ci = words.findIndex((w, k) => k > si && /^-[a-z]*c[a-z]*$/.test(w));
+      if (ci >= 0 && words[ci + 1] !== undefined) {
+        const inner = hookBypass(words[ci + 1], depth + 1);
+        if (inner) return inner;
+      }
+    }
     const gi = words.findIndex((w) => w === 'git' || w.endsWith('/git'));
     if (gi < 0) continue;
     const rest = words.slice(gi + 1);
@@ -887,17 +905,23 @@ export function hookBypass(cmd) {
     const sub = rest[j];
     const args = rest.slice(j + 1);
     if (args.includes('--no-verify')) return `git ${sub} --no-verify skips the hooks`;
+    // -n is --no-verify for commit, merge and am (for push it is a dry run)
     if (
-      sub === 'commit' &&
-      args.some((a) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(a) && !a.startsWith('--'))
+      ['commit', 'merge', 'am'].includes(sub) &&
+      args.some((a) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(a))
     )
-      return 'git commit -n is --no-verify';
+      return `git ${sub} -n is --no-verify`;
     if (
       sub === 'config' &&
       args.some((a) => /^core\.hookspath$/i.test(a)) &&
       !args.some((a) => /^--get/.test(a))
     )
       return 'changing core.hooksPath turns the hooks off';
+    // plumbing writes commits and refs without any hook
+    if (['commit-tree', 'update-ref', 'replace'].includes(sub))
+      return `git ${sub} writes history without the hooks`;
+    if (sub === 'hash-object' && args.includes('-w'))
+      return 'git hash-object -w writes objects without the hooks';
   }
   return null;
 }

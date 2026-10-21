@@ -304,6 +304,13 @@ describe('skipping the hooks is refused, and disputing the gate is the way out',
       'git push --no-verify',
       'git -c core.hooksPath=/dev/null commit -m x',
       'git config core.hooksPath /dev/null',
+      'bash -lc "git commit --no-verify -m x"',
+      "sh -c 'git commit -n -m x'",
+      'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x',
+      'HUSKY=0 git commit -m x',
+      'git merge -n feat',
+      'git commit-tree HEAD^{tree} -m x',
+      'git update-ref refs/heads/main HEAD',
     ]) {
       const r = bash(d, c);
       assert.equal(r.status, 2, c);
@@ -311,6 +318,7 @@ describe('skipping the hooks is refused, and disputing the gate is the way out',
     }
     assert.equal(bash(d, 'git commit -m "-n is only text here"').status, 0);
     assert.equal(bash(d, 'git config --get core.hooksPath').status, 0);
+    assert.equal(bash(d, 'git push -n origin feat/y').status, 0, 'push -n is a dry run');
   });
   test('F-140: every refusal names the dispute path instead of a way around', () => {
     const { d } = repo();
