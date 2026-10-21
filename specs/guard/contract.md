@@ -1,0 +1,18 @@
+# Contract — agent guard (M1)
+
+Agreed before code. Done means converged: every row holds, the review has
+no open blocker, and `npm run gate` and `npm run drill` are green.
+
+| #   | Delivered                                                                                                                               | Verified by                                                                                                          |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 1   | Real payloads of all three agents recorded; A1–A5 confirmed or corrected in the spec                                                    | `test/fixtures/hooks/<agent>/*.json` and the spec diff                                                               |
+| 2   | Every row of the adversary table holds                                                                                                  | the named tests in `test/guard.test.mjs`                                                                             |
+| 3   | The classifier is measured on both sides: read-only forms stay `file.read`/`shell.run`; every destructive form is caught                | `test/guard.test.mjs::the classifier table: destructive forms caught, ordinary work untouched`                       |
+| 4   | Allow is silent; deny and ask use each agent's documented shape; Codex ask → deny                                                       | `test/guard.test.mjs::each agent gets its own answer shape`                                                          |
+| 5   | Every error is a deny with a code; the 2 s deadline holds                                                                               | `test/guard.test.mjs::every malformed payload is a deny with a code`, `…::the hook answers deny at its own deadline` |
+| 6   | Every decision is logged with the policy hash; an unwritable log denies                                                                 | `test/guard.test.mjs::an unwritable decision log is a deny`                                                          |
+| 7   | `install` merges, is idempotent and reversible; `uninstall` removes only its own entries                                                | `test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself`                                    |
+| 8   | `doctor` fails when the hook would not fire (missing, wrong start folder, broken path)                                                  | `test/guard.test.mjs::doctor fails when the hook would not fire`                                                     |
+| 9   | `try` and the hook give the same answer for the same input                                                                              | `test/guard.test.mjs::try and the hook agree`                                                                        |
+| 10  | The hook's median time is under 150 ms on this machine, measured by a counter of work done, not asserted by a stopwatch in tests (C-04) | a printed timing in the PR; the test bounds input size instead                                                       |
+| 11  | The shipped policy loads clean and denies the five v10 headline cases                                                                   | `test/guard.test.mjs::the shipped policy denies the headline cases`                                                  |
