@@ -3940,6 +3940,134 @@
       "areas": ["docs/SELF_EVOLUTION.md", ".claude/settings.json"],
       "mechanism_gap": "The C-09 detectors vary layouts, git configuration and Node versions for Sakk's own runs; none observes a hook firing from the folder sessions really start in.",
       "mechanism_upgrade": "test/self-evolution.test.mjs::the hook works when the session started in a parent folder"
+    },
+    {
+      "id": "F-133",
+      "date": "2026-10-21",
+      "introduced_in": "7237bcb",
+      "found_by": "review",
+      "class_fix": null,
+      "sweep_status": "done",
+      "status": "fixed",
+      "class": "C-02",
+      "title": "The shell gate let git commands that rewrite working-tree files through as read-only",
+      "symptom": "Independent review of 7237bcb: git checkout -- <file>, git checkout <ref> -- <file>, git restore, git stash pop, git reset --hard and git clean were classified read, so a blocked agent could change or discard tracked files through them without answers; git config <key> <value> (e.g. core.hooksPath) also passed as a read.",
+      "evidence": "review repro in a harness repo: echo x > src/x.mjs exits 2, git checkout -- src/x.mjs exits 0; classifyShell put checkout, restore, stash, reset, clean in a hand list of \"branch moves\"",
+      "direct_cause": "A hand list (GIT_VCS) on the read-only side admitted subcommands that write files.",
+      "why": [
+        "The rule \"provably read-only\" was applied to commands by name, and git was listed by subcommand name without asking what each does to the working tree.",
+        "The classifier table tested git reads and branch creation but no git subcommand that writes."
+      ],
+      "root_cause": "A list stood in for the rule on the side that lets things through.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: git is classified by what each command does to the working tree — pathspec checkouts, restore and rm/mv are writes with targets; stash push/pop/apply, reset --hard/--merge/--keep, clean, cherry-pick, revert, apply and config writes are opaque; only commands that create or move between existing commits pass",
+      "guard": "test/self-evolution.test.mjs::the shell classifier: every read-only form passes and every writing form is caught",
+      "sweep": "Every git subcommand the classifier names was re-read for its effect on tracked files; npm install now names package.json and package-lock.json; npm ci, which writes only ignored files, passes.",
+      "areas": ["scripts/findings-lib.mjs"],
+      "mechanism_gap": "The C-02 detectors check docs, bundle keys and suite environments; the new classifier table was itself the detector and listed no git writes.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::the shell classifier: every read-only form passes and every writing form is caught",
+      "answer_failed": {
+        "qid": "C-02.1",
+        "why": "The answer said the gate states one rule (provably read-only) instead of listing commands, but the read side was itself a hand list of git subcommands, and its guard table had no git write to fail on."
+      }
+    },
+    {
+      "id": "F-134",
+      "date": "2026-10-21",
+      "introduced_in": "7237bcb",
+      "found_by": "review",
+      "class_fix": null,
+      "sweep_status": "done",
+      "status": "fixed",
+      "class": "C-01",
+      "title": "Renaming the branch started a fresh answers file, so committed answers could be rewritten",
+      "symptom": "Independent review of 7237bcb: after git branch -m feat/y feat/y2, a new findings/acks/feat-y2.json with contradicting answers passed --staged and --range; the frozen answers under the old name were no longer consulted.",
+      "evidence": "review repro in a harness repo; --range compared only the current branch's answers file across commits",
+      "direct_cause": "A missing earlier version (no file under the new name) was read as \"nothing to compare\".",
+      "why": [
+        "The freeze was keyed on the branch name, which the author controls.",
+        "The absence of a previous version was treated as a new branch rather than checked against the other answers files the range had added."
+      ],
+      "root_cause": "Absence of the earlier answers was read as success.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: the range check freezes every answers file the range added; the current file must carry each one's answers forward unchanged (revisions may be appended)",
+      "guard": "test/self-evolution.test.mjs::renaming the branch does not unfreeze its answers (review I2)",
+      "sweep": "pre-commit cannot see the range base, so the rename is caught in CI; the docs state it.",
+      "areas": ["scripts/findings-check.mjs"],
+      "mechanism_gap": "The C-01 detectors delete inputs to the product code and the empty-ledger case; the answers freeze was tested only under one branch name.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::renaming the branch does not unfreeze its answers (review I2)",
+      "answer_failed": {
+        "qid": "C-01.1",
+        "why": "The answer listed every new input that refuses when absent, but not the earlier answers file, whose absence under a new branch name read as a fresh start."
+      }
+    },
+    {
+      "id": "F-135",
+      "date": "2026-10-21",
+      "introduced_in": "7237bcb",
+      "found_by": "review",
+      "class_fix": null,
+      "sweep_status": "done",
+      "status": "fixed",
+      "class": "C-03",
+      "title": "A later escape with any upgrade text released a stopped class",
+      "symptom": "Independent review of 7237bcb: a third escape whose mechanism_upgrade was any string not starting with \"none:\" (e.g. \"x\") released a stopped class with no stopline record and no check that resolves.",
+      "evidence": "review probe of stoppedClasses with a third escape mechanism_upgrade \"x\" → no stopped classes",
+      "direct_cause": "The release path counted the absence of the \"none:\" prefix, not a check that resolves.",
+      "why": [
+        "The detector path required a reference that resolves; the later-escape path was written as the negation of \"none\" and never given the same test.",
+        "The ledger gate checks resolution, but the hook and commit check run without it."
+      ],
+      "root_cause": "One of two release paths could not fail for the reason it names.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-12"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: an escape counts as upgraded only when its mechanism_upgrade is a path::name that resolves",
+      "guard": "test/self-evolution.test.mjs::a later escape releases a stopped class only with an upgrade that resolves (review I3)",
+      "sweep": "Both release paths (stopline record, later escape) now resolve the reference with the same function.",
+      "areas": ["scripts/findings-lib.mjs"],
+      "mechanism_gap": "The C-03 detectors check refusal codes and controls; the stop-line's two release paths were tested one at a time.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::a later escape releases a stopped class only with an upgrade that resolves (review I3)",
+      "answer_failed": {
+        "qid": "C-03.3",
+        "why": "The answer said a stopped class needs a detector that resolves; that held for the stopline record but not for release by a later escape, which nothing tested."
+      }
+    },
+    {
+      "id": "F-136",
+      "date": "2026-10-21",
+      "introduced_in": "7237bcb",
+      "found_by": "review",
+      "class_fix": null,
+      "sweep_status": "done",
+      "status": "fixed",
+      "class": "C-06",
+      "title": "A guard could point at a document or the answers file and still count as a check",
+      "symptom": "Independent review of 7237bcb: guards such as findings/acks/feat-y.json::C-01.1, docs/SELF_EVOLUTION.md::answer and README.md::hello passed the format check and resolved.",
+      "evidence": "review probe of guardProblem and resolveRef",
+      "direct_cause": "A guard was accepted when its file existed and contained the name, whatever the file was.",
+      "why": [
+        "The rule was written for the shape path::name, not for what the path is.",
+        "The tests used test files only, so nothing tried a document."
+      ],
+      "root_cause": "Evidence that a check exists was accepted from a source that is not a check.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: a guard path must be a test (a test folder, or a .test/.spec/_test/test_ file name) and never under findings/ or a document type",
+      "guard": "test/self-evolution.test.mjs::every answer names a guard that resolves, or says none with a reason",
+      "sweep": "Answers and revisions share the same guard rule; stop-line detectors were already restricted to class detectors.",
+      "areas": ["scripts/findings-lib.mjs"],
+      "mechanism_gap": "The C-06 detectors check bundle modes and model metrics; the answers' new evidence field was not given a source rule.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::every answer names a guard that resolves, or says none with a reason",
+      "answer_failed": {
+        "qid": "C-06.1",
+        "why": "The answer said an answer must point at a test that resolves, but the code accepted any file containing the name, and no test tried a document."
+      }
     }
   ]
 }

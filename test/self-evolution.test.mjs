@@ -304,6 +304,12 @@ describe('R1: a shell command that may write meets the same gate', () => {
       'cd src && ls -la && wc -l x.mjs',
       'FOO=1 npm run gate',
       'git checkout -b feat/z',
+      'git switch feat/z',
+      'git stash list',
+      'git reset HEAD~1',
+      'git config --get user.name',
+      'git pull --rebase',
+      'npm ci',
       'gh pr view 15 --json state',
       'cat a | sort | uniq -c # > not a redirect',
       "awk '{print $1}' f",
@@ -322,7 +328,16 @@ describe('R1: a shell command that may write meets the same gate', () => {
       'mkdir -p d && touch d/f': 'write',
       'git apply p.diff': 'opaque',
       'git rm src/a': 'write',
-      'npm install': 'opaque',
+      'npm install': 'write',
+      'git checkout -- src/x.mjs': 'write',
+      'git checkout main -- src/x.mjs': 'write',
+      'git restore src/x.mjs': 'write',
+      'git stash pop': 'opaque',
+      'git stash': 'opaque',
+      'git reset --hard HEAD~1': 'opaque',
+      'git clean -fdx': 'opaque',
+      'git cherry-pick abc123': 'opaque',
+      'git config core.hooksPath /dev/null': 'opaque',
       'npx prettier --write .': 'opaque',
       'node bin/sakk.mjs ledger init': 'opaque',
       'python3 x.py': 'opaque',
@@ -419,6 +434,48 @@ describe('R2–R3: answers are frozen once committed, and each names its check',
       /commit [0-9a-f]{7}: findings\/acks\/feat-y\.json: C-01\.1: a committed answer was rewritten/,
     );
   });
+  test('renaming the branch does not unfreeze its answers (review I2)', () => {
+    const { d, git } = repo();
+    ack(d, ANSWERS());
+    writeFileSync(join(d, 'src', 'x.mjs'), 'export const x = 7;\n');
+    git('add', '-A');
+    commit(git, 'feat: x with answers');
+    git('branch', '-m', 'feat/y', 'feat/y2');
+    const fresh = ANSWERS();
+    fresh['C-01.1'].answer = `${ANSWER} A different promise, written under the new name.`;
+    writeFileSync(
+      join(d, 'findings', 'acks', 'feat-y2.json'),
+      JSON.stringify({
+        version: 2,
+        branch: 'feat/y2',
+        answers: Object.fromEntries(
+          Object.entries(fresh).map(([q, a]) => [q, { guard: NONE, ...a }]),
+        ),
+      }),
+    );
+    git('add', '-A');
+    commit(git, 'docs: answers under the new name');
+    let r = check(d, ['--range', 'main']);
+    assert.equal(r.status, 1);
+    assert.match(
+      r.stderr,
+      /feat-y\.json was this branch's answers file under another name — findings\/acks\/feat-y2\.json must carry its answers forward: C-01\.1: a committed answer was rewritten/,
+    );
+    // the contradicting file is itself frozen once committed; before pushing, undo that commit and
+    // carry the answers forward unchanged instead
+    git('reset', '-q', '--soft', 'HEAD~1');
+    writeFileSync(
+      join(d, 'findings', 'acks', 'feat-y2.json'),
+      readFileSync(join(d, 'findings', 'acks', 'feat-y.json'), 'utf8').replace(
+        '"feat/y"',
+        '"feat/y2"',
+      ),
+    );
+    git('add', '-A');
+    commit(git, 'docs: carry the answers forward');
+    r = check(d, ['--range', 'main']);
+    assert.equal(r.status, 0, r.stderr);
+  });
   test('every answer names a guard that resolves, or says none with a reason', () => {
     const req = required(LEDGER, CLASSES, ['src/x.mjs']);
     const why = (guards) =>
@@ -436,6 +493,14 @@ describe('R2–R3: answers are frozen once committed, and each names its check',
     assert.match(why(['none: short', NONE])[0], /is not "path::test name"/);
     assert.match(why(['test/a.test.mjs', NONE])[0], /is not "path::test name"/);
     assert.deepEqual(why(['test/a.test.mjs::refuses absent input', NONE]), []);
+    // a guard is a test, not the answers file or a document (review I4)
+    assert.match(
+      why(['findings/acks/feat-y.json::C-01.1 answer', NONE])[0],
+      /must point at a test file/,
+    );
+    assert.match(why(['docs/SELF_EVOLUTION.md::answer', NONE])[0], /must point at a test file/);
+    assert.match(why(['test/fixtures/data.json::key', NONE])[0], /must point at a test file/);
+    assert.deepEqual(why(['tests/test_gate.py::test_refuses', NONE]), []);
     // the hook needs only the field (the test may not exist yet); the commit needs it to resolve
     const { d, git } = repo();
     ack(d, {
@@ -596,6 +661,42 @@ describe('R5: stop-the-line is a gate, not a document', () => {
     writeFileSync(join(d, 'findings', 'ledger.json'), JSON.stringify(up));
     assert.equal(edit(d).status, 0);
   });
+  test('a later escape releases a stopped class only with an upgrade that resolves (review I3)', () => {
+    const escape = (id, up) => ({
+      id,
+      class: 'C-01',
+      areas: ['src/x.mjs'],
+      title: id,
+      mechanism_gap: 'g',
+      mechanism_upgrade: up,
+    });
+    const files = { 'test/d.test.mjs': "test('feeds every key absent', () => {});" };
+    const read = (p) => files[p] ?? null;
+    const at = (third) => [
+      ...stoppedClasses(
+        {
+          findings: [
+            escape('F-03', 'none: instance'),
+            escape('F-04', 'none: instance'),
+            escape('F-05', third),
+          ],
+        },
+        CLASSES,
+        { read, today: '2026-10-21' },
+      ).keys(),
+    ];
+    assert.deepEqual(at('x'), ['C-01'], 'prose upgrades nothing');
+    assert.deepEqual(
+      at('test/d.test.mjs::no such test'),
+      ['C-01'],
+      'a reference that does not resolve upgrades nothing',
+    );
+    assert.deepEqual(
+      at('test/d.test.mjs::feeds every key absent'),
+      [],
+      'a check that resolves releases it',
+    );
+  });
   test('waivers and debt release a stopped class; debt falls due', () => {
     const cls = (stopline) => ({ id: 'C-01', detectors: [], stopline });
     const at = (stopline, today = '2026-10-21') =>
@@ -634,9 +735,14 @@ describe('R5: stop-the-line is a gate, not a document', () => {
         ),
     };
     const bare = { classes: reg.classes.map(({ stopline, ...c }) => c) };
-    const stopped = [
-      ...stoppedClasses(then, bare, { read: () => null, today: '2026-10-21' }).keys(),
-    ].sort();
+    const read = (p) => {
+      try {
+        return readFileSync(join(REPO, p), 'utf8');
+      } catch {
+        return null;
+      }
+    };
+    const stopped = [...stoppedClasses(then, bare, { read, today: '2026-10-21' }).keys()].sort();
     assert.deepEqual(stopped, ['C-02', 'C-03', 'C-04', 'C-13', 'C-15']);
   });
 });

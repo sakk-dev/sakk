@@ -69,8 +69,12 @@ none, 20+ characters>`. The edit hook needs only the field, because the
 The PreToolUse hook also sees `Bash`. A command passes without answers only
 if every part of it is provably read-only:
 
-- inspection (`cat`, `grep`, `ls`, `sed -n`)
-- `git` reads and branch moves
+- inspection (`cat`, `grep`, `ls`, `sed` without `-i`)
+- `git` reads, and commands that only record or move between existing
+  commits (`add`, `commit`, `fetch`, `pull`, `branch`, `switch <branch>`).
+  A checkout or restore of a path, `stash`, `reset --hard`, `clean`,
+  `cherry-pick`, `revert`, `apply` and setting a `config` value are writes.
+- `npm ci` (it writes only ignored files)
 - the checks (`npm test`, `npm run lint`)
 - this loop's own tools (`npm run brief`, `npm run inbox`)
 
@@ -78,7 +82,8 @@ Anything else, including commands nobody listed, needs the answers for:
 
 - every file the working tree has changed, whatever wrote it;
 - the files the command names (redirects, `tee`, `sed -i`, `cp`, `mv`,
-  `rm`, `touch`); and
+  `rm`, `touch`, `git checkout|restore <path>`, and `npm install`, which
+  names `package.json` and `package-lock.json`); and
 - the watch list, when the command's targets cannot be read: interpreters,
   heredocs, `eval`, `sh -c`, `npx`, and unknown tools.
 
@@ -166,7 +171,15 @@ new class.
 - Waivers and debt dates are the author's own words. They are visible in the
   pull request, and the owner merges.
 - Shell classification is conservative. Some read-only commands it does not
-  know are treated as writes and need answers. A writing command is never
-  treated as read-only.
+  know are treated as writes and need answers. It aims never to treat a
+  writing command as read-only; its table of forms is the test, and review
+  found git writes it had missed (F-133). `node --test` is trusted, so a test
+  file that writes runs unanswered.
+- Renaming the branch: every answers file a branch added stays frozen, and
+  the current one must carry its answers forward. This is checked in CI;
+  pre-commit cannot see the base.
+- The miss count trusts `introduced_in`. A finding marked `unknown`, or
+  logged under a class the branch did not answer, needs no `answer_failed`.
+  Review checks both.
 - Truth of answers and correctness of a class choice stay with review; a
   model judge for the class choice needs a CI model key.

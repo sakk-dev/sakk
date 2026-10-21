@@ -45,8 +45,12 @@ Read-only means one of these, with no output redirect and no heredoc:
 
 - `cat`, `head`, `tail`, `ls`, `wc`, `grep`, `rg`, `find`, `stat`, `diff` and
   similar inspection commands. `find` must not carry `-delete`, `-exec` or
-  `-ok`. `sed` must carry `-n` and not `-i`.
-- `git` with a read subcommand.
+  `-ok`. `sed` must not carry `-i` or a script that writes or executes
+  (`w`, `e`).
+- `git` with a read subcommand, or one that only records or moves between
+  existing commits. Review I1 (F-133): checkout or restore of a path,
+  `stash`, `reset --hard`, `clean`, `cherry-pick`, `revert`, `apply` and
+  config writes are writes.
 - The checks: `npm test`, `npm run lint`, `format:check`, `gate`, `audit`,
   `node --test`.
 - The loop's own tools: `npm run brief|inbox|findings-report`.
@@ -177,3 +181,27 @@ outsider.
 
 R1, then R2 and R3 (same file), then R4, then R5. Each lands with its tests
 before the next starts.
+
+## Independent review, round 1 (2026-10-21, on 7237bcb)
+
+An adversarial reviewer worked in a clone and in throwaway repositories, and
+tried to get past each gate the way a blocked agent would.
+
+| #   | Severity   | Gate | Finding                                                                                     | Outcome                                                        |
+| --- | ---------- | ---- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| I1  | blocker    | R1   | `git checkout -- f`, `git restore`, `stash pop`, `reset --hard` and `clean` passed as reads | fixed: git is judged by its effect on the working tree (F-133) |
+| I2  | should-fix | R2   | Renaming the branch started a fresh answers file                                            | fixed: every file the range added stays frozen in CI (F-134)   |
+| I3  | should-fix | R5   | A later escape with any upgrade text released a stopped class                               | fixed: the upgrade must resolve (F-135)                        |
+| I4  | should-fix | R3   | A guard could point at a document or the answers file                                       | fixed: a guard is a test file (F-136)                          |
+| I5  | note       | R4   | The miss count trusts `introduced_in` and the class                                         | stated as a ceiling in docs/SELF_EVOLUTION.md                  |
+| I6  | note       | R1   | `git config <key> <value>` passed as a read                                                 | fixed with I1                                                  |
+
+The reviewer also confirmed what held:
+
+- Non-git writers are caught, including `>|`, `&>>`, `exec >f`, brace
+  groups, `$'…'` and process substitution.
+- Rewrites and deletions of committed answers are refused, including a
+  rewrite in a middle commit.
+- A review document releases nothing.
+- The hook fails closed on malformed commands, oversized input and a
+  missing git.

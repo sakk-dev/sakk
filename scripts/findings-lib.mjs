@@ -178,8 +178,15 @@ export function guardProblem(guard) {
     return 'no guard — name the check: "path::test name", or "none: <why there is none, 20+ characters>"';
   if (!GUARD.test(guard.trim()))
     return 'guard is not "path::test name" or "none: <why there is none, 20+ characters>"';
+  const g = guard.trim();
+  const path = g.startsWith('none: ') ? null : g.slice(0, g.indexOf('::'));
+  if (path !== null && (!TEST_PATH.test(path) || /\.(md|txt|json|ya?ml)$/i.test(path)))
+    return `guard must point at a test file, not ${path} (review I4)`;
   return null;
 }
+/** A guard is a test: a file in a test folder or named like a test — never the answers file or a doc. */
+export const TEST_PATH =
+  /^(?!findings\/)(?:(?:[\w.@-]+\/)*(?:test|tests|__tests__|spec|specs)\/[\w.@/-]+|(?:[\w.@-]+\/)*[\w.@-]*(?:\.test|\.spec|_test)\.\w+|(?:[\w.@-]+\/)*test_[\w.@-]+\.\w+)$/;
 
 /** `path::name` resolves when the file exists and contains the name. `read(path)` returns text or null. */
 export function resolveRef(ref, read) {
@@ -285,14 +292,15 @@ export function answerFailedProblems(baseLedger, ledger, ack, onBranch) {
 export function stoppedClasses(ledger, registry, { read, today }) {
   const esc = {};
   for (const f of ledger.findings) if (f.mechanism_gap) (esc[f.class] ??= []).push(f);
+  // an upgrade counts only when it names a check that resolves — prose upgrades nothing (review I3)
+  const upgraded = (f) => {
+    const u = String(f.mechanism_upgrade ?? '');
+    return u.includes('::') && resolveRef(u, read);
+  };
   const out = new Map();
   for (const [cid, list] of Object.entries(esc)) {
     const last = list.sort((a, b) => num(a.id) - num(b.id)).slice(-2);
-    if (
-      last.length < 2 ||
-      !last.every((f) => String(f.mechanism_upgrade ?? '').startsWith('none:'))
-    )
-      continue;
+    if (last.length < 2 || last.some(upgraded)) continue;
     const after = last[1].id;
     const why = stoplineGap(
       registry.classes.find((c) => c.id === cid),
@@ -377,16 +385,63 @@ const TARGET_LAST = new Set(['cp', 'ln', 'install']);
 const GIT_READ = new Set(
   (
     'status diff log show rev-parse ls-files ls-tree blame grep describe shortlog cat-file ' +
-    'rev-list merge-base show-ref name-rev for-each-ref reflog whatchanged config remote'
+    'rev-list merge-base show-ref name-rev for-each-ref whatchanged'
   ).split(' '),
 );
-// change which commit the tree shows, or record it; they author no content (commits meet pre-commit)
+// record, or move between commits that already exist: no new file content
+// (a commit meets pre-commit; merged content met its own gates)
 const GIT_VCS = new Set(
-  (
-    'add commit push fetch pull merge rebase checkout switch branch stash tag reset worktree ' +
-    'cherry-pick revert clean init clone submodule restore bisect notes'
-  ).split(' '),
+  'add commit push fetch pull merge rebase branch tag worktree init clone notes'.split(' '),
 );
+/**
+ * What a git command does to the working tree: 'read', 'vcs' (no new content),
+ * 'write' (with targets) or 'opaque'. Copying content into tracked files,
+ * discarding changes and deleting files are writes (review I1); setting a
+ * config value is not a read (review I6).
+ */
+function gitKind(rest, isPath) {
+  const [sub, ...a] = rest;
+  const flags = a.filter((x) => x.startsWith('-'));
+  const plain = a.filter((x) => !x.startsWith('-'));
+  const dd = a.indexOf('--');
+  const paths = dd >= 0 ? a.slice(dd + 1) : [];
+  if (sub === undefined || GIT_READ.has(sub)) return { kind: 'read' };
+  if (sub === 'config') {
+    const query = a.some((x) => /^(--get(-all|-regexp)?|--list|-l)$/.test(x));
+    return query || plain.length <= 1 ? { kind: 'read' } : { kind: 'opaque' };
+  }
+  if (sub === 'remote')
+    return plain.length === 0 || ['show', 'get-url'].includes(plain[0])
+      ? { kind: 'read' }
+      : { kind: 'vcs' };
+  if (sub === 'reflog')
+    return plain.length === 0 || plain[0] === 'show' ? { kind: 'read' } : { kind: 'vcs' };
+  if (sub === 'stash')
+    return ['list', 'show'].includes(plain[0]) ? { kind: 'read' } : { kind: 'opaque' };
+  if (sub === 'checkout' || sub === 'switch') {
+    if (paths.length) return { kind: 'write', targets: paths };
+    if (flags.some((f) => /^(-f|--force|-m|--merge|-p|--patch|--overwrite-ignore)$/.test(f)))
+      return { kind: 'opaque' };
+    const creates = flags.some((f) => /^(-[bBcC]|--orphan)$/.test(f));
+    // `git checkout <ref> <path>` and `git checkout <path>` copy content without --
+    if (sub === 'checkout' && !creates && plain.length > 1)
+      return { kind: 'write', targets: plain.slice(1) };
+    // one bare word is a branch unless it names a file or folder that exists
+    if (sub === 'checkout' && !creates && plain.length === 1 && isPath(plain[0]))
+      return { kind: 'write', targets: plain };
+    return { kind: 'vcs' };
+  }
+  if (sub === 'restore') return { kind: 'write', targets: plain.length ? plain : ['.'] };
+  if (sub === 'reset')
+    return flags.some((f) => /^--(hard|merge|keep)$/.test(f))
+      ? { kind: 'opaque' }
+      : { kind: 'vcs' };
+  if (sub === 'rm')
+    return a.includes('--cached') ? { kind: 'vcs' } : { kind: 'write', targets: plain };
+  if (sub === 'mv') return { kind: 'write', targets: plain };
+  if (GIT_VCS.has(sub)) return { kind: 'vcs' };
+  return { kind: 'opaque' }; // clean, apply, am, cherry-pick, revert, submodule, bisect, …
+}
 const NPM_READ =
   /^(test|t|lint|format:check|gate|audit|brief|inbox|findings-report|findings:check|test:[\w:-]+)$/;
 const LOOP_TOOLS = /^scripts\/findings-(brief|check|inbox|report)\.mjs$/;
@@ -546,7 +601,7 @@ export function shellSegments(cmd) {
  * 'write' (writes only the listed targets), 'opaque' (may write anything),
  * 'unclassifiable' (too long to read). Targets are absolute paths.
  */
-export function classifyShell(cmd, cwd, home = process.env.HOME ?? '') {
+export function classifyShell(cmd, cwd, home = process.env.HOME ?? '', exists = existsSync) {
   if (typeof cmd !== 'string') return { kind: 'unclassifiable', targets: [], why: 'no command' };
   if (cmd.length > MAX_COMMAND)
     return { kind: 'unclassifiable', targets: [], why: `longer than ${MAX_COMMAND} characters` };
@@ -622,14 +677,16 @@ export function classifyShell(cmd, cwd, home = process.env.HOME ?? '') {
     }
     if (name === 'git') {
       let j = 0;
-      while (j < args.length && args[j].startsWith('-'))
+      let gitHere = here;
+      while (j < args.length && args[j].startsWith('-')) {
+        if (args[j] === '-C' && args[j + 1]) gitHere = resolve(gitHere, args[j + 1]);
         j += /^-(C|c)$|^--(git-dir|work-tree)$/.test(args[j]) ? 2 : 1;
-      const sub = args[j];
-      if (sub === undefined || GIT_READ.has(sub) || GIT_VCS.has(sub)) continue;
-      if (sub === 'mv' || sub === 'rm') {
-        for (const f of args.slice(j + 1).filter((a) => !a.startsWith('-'))) targets.push(abs(f));
-        write('write', `git ${sub}`);
-      } else write('opaque', `git ${sub}`);
+      }
+      const at = (f) => resolve(gitHere, f);
+      const g = gitKind(args.slice(j), (f) => exists(at(f)));
+      if (g.kind === 'read' || g.kind === 'vcs') continue;
+      for (const f of g.targets ?? []) targets.push(at(f));
+      write(g.kind, `git ${args[j]}`);
       continue;
     }
     if (name === 'npm') {
@@ -637,9 +694,14 @@ export function classifyShell(cmd, cwd, home = process.env.HOME ?? '') {
       if (
         sub === 'test' ||
         sub === 't' ||
-        ['ls', 'view', 'outdated', '--version', '-v'].includes(sub)
+        ['ls', 'view', 'outdated', 'ci', '--version', '-v'].includes(sub)
       )
+        continue; // npm ci writes only node_modules, which git ignores
+      if (sub === 'install' || sub === 'i') {
+        for (const f of ['package.json', 'package-lock.json']) targets.push(abs(f));
+        write('write', 'npm install');
         continue;
+      }
       if (sub === 'run' && NPM_READ.test(args.find((a, x) => x > 0 && !a.startsWith('-')) ?? ''))
         continue;
       write('opaque', `npm ${sub ?? ''}`.trim());

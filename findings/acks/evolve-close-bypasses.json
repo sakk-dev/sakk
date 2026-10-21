@@ -4,7 +4,14 @@
   "answers": {
     "C-01.1": {
       "answer": "Every new input refuses when absent: no answers file, an answer without a guard, a v2 file without a version, a finding without answer_failed under an answered class, a stopped class without a record, and a shell command that cannot be parsed are all refusals, never a pass.",
-      "guard": "test/self-evolution.test.mjs::absent inputs refuse: no answers, no guard, no version, no answer_failed, no stop-line record"
+      "guard": "test/self-evolution.test.mjs::absent inputs refuse: no answers, no guard, no version, no answer_failed, no stop-line record",
+      "revisions": [
+        {
+          "finding": "F-134",
+          "answer": "An answers file that disappears under a new branch name is not a fresh start: every answers file the range added stays frozen and the current one must carry its answers forward.",
+          "guard": "test/self-evolution.test.mjs::renaming the branch does not unfreeze its answers (review I2)"
+        }
+      ]
     },
     "C-01.2": {
       "answer": "Each new rule has a control that deletes its input and expects red: removing the guard field, the revisions entry, the answer_failed field or the stop-line record turns the check red in the tests, so none of them is optional.",
@@ -12,7 +19,14 @@
     },
     "C-02.1": {
       "answer": "The shell gate does not list writing commands to catch. It states the rule once: a command passes without answers only if every segment is provably read-only; anything else, including commands nobody listed, needs the answers for what the tree has changed.",
-      "guard": "test/self-evolution.test.mjs::the shell classifier: every read-only form passes and every writing form is caught"
+      "guard": "test/self-evolution.test.mjs::the shell classifier: every read-only form passes and every writing form is caught",
+      "revisions": [
+        {
+          "finding": "F-133",
+          "answer": "The read-only side is no longer a list of git names: each git command is classified by what it does to the working tree, and the table now carries git writes that must be caught.",
+          "guard": "test/self-evolution.test.mjs::the shell classifier: every read-only form passes and every writing form is caught"
+        }
+      ]
     },
     "C-02.2": {
       "answer": "The same rule (answer before any write to a tracked file) applies to every route: edit tools and shell in the hook, pre-commit for every staged file, CI per commit over the branch. The answers file rules (append-only, guards) are checked at commit and in CI, not only in the hook.",
@@ -40,7 +54,14 @@
     },
     "C-06.1": {
       "answer": "Answers and waivers stay self-declared text and the docs say so. What changes is that an answer must point at a test that resolves, and a correction keeps the original, so a reader sees what was promised before the change and what proved it wrong.",
-      "guard": "none: answers and waivers are the author's own words by design; the docs state that review judges their truth and that a resolving guard proves only that the test exists"
+      "guard": "none: answers and waivers are the author's own words by design; the docs state that review judges their truth and that a resolving guard proves only that the test exists",
+      "revisions": [
+        {
+          "finding": "F-136",
+          "answer": "A guard must be a test file — a test folder or a test-named file, never findings/ or a document — so a pointer at the answers or the docs is refused as evidence.",
+          "guard": "test/self-evolution.test.mjs::every answer names a guard that resolves, or says none with a reason"
+        }
+      ]
     },
     "C-09.1": {
       "answer": "The hook is tested from a cwd outside the repository with absolute paths (a session started in a parent folder routes here), on a branch whose answers file is not yet committed, and on one where it is; git config and GIT_ variables are cleared in the child.",
@@ -56,7 +77,14 @@
     },
     "C-03.3": {
       "answer": "The new checks fail on substance, not paperwork: a guard must resolve to a test that exists, a stopped class needs a detector the registry lists and that resolves (or a dated decision), and a miss under an answered question must name that question — a review file no longer releases anything.",
-      "guard": "test/self-evolution.test.mjs::every answer names a guard that resolves, or says none with a reason"
+      "guard": "test/self-evolution.test.mjs::every answer names a guard that resolves, or says none with a reason",
+      "revisions": [
+        {
+          "finding": "F-135",
+          "answer": "Both release paths of a stopped class now need a reference that resolves: a stopline detector, or a later escape whose upgrade names a check that exists; prose releases nothing.",
+          "guard": "test/self-evolution.test.mjs::a later escape releases a stopped class only with an upgrade that resolves (review I3)"
+        }
+      ]
     },
     "C-09.2": {
       "answer": "The Bash check finds its repository from its own file location, so it works when a parent folder routes the call; a test runs it with a cwd and payload from outside the repository. The parent routing itself was fed real payloads and denied a real edit while the answers were withheld.",

@@ -340,6 +340,32 @@ if (mode === '--range') {
       problems.push(`commit ${c.slice(0, 7)}: ${rel}: ${p}`);
     prev = cur;
   }
+  // R2 across names (review I2): renaming the branch starts a new answers file;
+  // every answers file this range added is frozen too, so the current one must
+  // carry its answers forward unchanged
+  const acksAt = (rev) => {
+    try {
+      return git(root, 'ls-tree', '--name-only', rev, 'findings/acks/').split('\n').filter(Boolean);
+    } catch {
+      return [];
+    }
+  };
+  const atBase = new Set(acksAt(base));
+  const earlier = new Map();
+  for (const c of revs)
+    for (const f of acksAt(c)) {
+      if (atBase.has(f) || f === rel) continue;
+      try {
+        earlier.set(f, JSON.parse(git(root, 'show', `${c}:${f}`)));
+      } catch {
+        problems.push(`self-evolution: ${f} at ${c.slice(0, 7)} is not valid JSON`);
+      }
+    }
+  for (const [f, last] of earlier)
+    for (const p of ackRewrites(last, ack, ids(ledger)))
+      problems.push(
+        `self-evolution: ${f} was this branch's answers file under another name — ${rel} must carry its answers forward: ${p}`,
+      );
   if (ack?.version === 2)
     problems.push(...guardResolution(ack, reader(root)).map((p) => `self-evolution: ${rel}: ${p}`));
   const onBranch = (f) =>
