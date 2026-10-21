@@ -173,7 +173,7 @@ Two limits to know before relying on a deny:
 ```bash
 npx sakk halt --by alice --reason "runaway agent"   # every new reservation refuses
 npx sakk halt --by alice --agent bot-7              # stop one agent only
-npx sakk resume --by alice                          # lift it (signed)
+npx sakk resume --by alice                          # lift it (named)
 ```
 
 While halted, `reserve()` refuses `LEDGER_HALTED` (or `AGENT_HALTED`),
@@ -293,15 +293,27 @@ count reservations from the books, not allows from the decision log.
 - [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — ships in [`eval/`](eval/)
 - [x] Policy kernel (`sakk/policy`): declarative `sakk-policy.v1`, pure `decide()`, hash-pinned decision log
 - [x] MCP server enforcer (`sakk mcp`): reserve/settle/status as tools, policy-gated
-- [x] Kill switch (`sakk halt / resume`): signed, global or per agent; stop state provable from the books
+- [x] Kill switch (`sakk halt / resume`): named (self-declared `--by`), global or per agent; stop state provable from the books
 - [x] Secret scanning (`sakk scan`, pre-commit hook): eight recognized formats, fingerprints only
 - [x] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts
 - [ ] `sakk settle` CLI command (late settlement without writing code)
 - [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6)
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
 - [ ] Named-approver identity, SSO — enterprise
+- [ ] Web console: approvals, roles, audit export — enterprise
 
-Not planned: orchestration frameworks, model-level safety (prompt-injection detection), dashboards. Sakk is the change-control and evidence layer, not another agent platform.
+Not planned: orchestration frameworks, model-level safety (prompt-injection detection). Sakk is the change-control and evidence layer, not another agent platform.
+
+Know these limits of the open core before relying on it:
+
+- **Names are self-declared.** `--by` on halt, resume, reconcile and unlock
+  records the name the operator typed; nothing authenticates it.
+- **Costs are what the caller reports.** `reserve()` and `settle()` book the
+  amounts they are given; nothing reads the provider's usage yet.
+- **Approval-required means refused.** A policy that asks for approval
+  answers `POLICY_APPROVAL_REQUIRED`; the open core has no approval service.
+- **Gating is voluntary.** An agent that never calls the MCP tools or the
+  library is not gated.
 
 ## License
 

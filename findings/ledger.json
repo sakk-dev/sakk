@@ -3732,11 +3732,11 @@
     {
       "date": "2026-10-19",
       "found_by": "review",
-      "instance_fix": "open",
+      "instance_fix": "this commit: \"signed\" becomes \"named\" in the CLI help, CLI error text, README, ARCHITECTURE, the kill-switch spec and CHANGELOG; the CLI helper is renamed named(); README lists the open core's limits (self-declared names, caller-reported costs, approval-required means refused, voluntary gating)",
       "class_fix": null,
-      "guard": "",
-      "sweep_status": "not_done",
-      "status": "open",
+      "guard": "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism",
+      "sweep_status": "done",
+      "status": "fixed",
       "class": "C-05",
       "rc": ["RC-10"],
       "es": ["ES-07"],
@@ -3752,10 +3752,17 @@
       ],
       "root_cause": "A statement in the docs claims a property the code does not have.",
       "dt": ["DT-SPEC"],
-      "sweep": "Replace \"signed\" with \"named\" (or \"by a named person\") in CLI help, README, ARCHITECTURE, specs; real signatures arrive with the approval service (SSO or Sigstore/SSH signing).",
-      "areas": ["bin/sakk.mjs", "README.md", "docs/ARCHITECTURE.md", "specs/kill-switch/spec.md"],
+      "sweep": "Replace \"signed\" with \"named\" (or \"by a named person\") in CLI help, README, ARCHITECTURE, specs; real signatures arrive with the approval service (SSO or Sigstore/SSH signing). Done: every user-facing file the new test scans was swept; internal code comments in src/ledger.mjs and test comments still say \"signed clearance\" and are out of scope (not user-facing, and src/ledger.mjs edits need the money-semantics review).",
+      "areas": [
+        "bin/sakk.mjs",
+        "README.md",
+        "docs/ARCHITECTURE.md",
+        "specs/kill-switch/spec.md",
+        "CHANGELOG.md",
+        "test/claims-are-checked.test.mjs"
+      ],
       "mechanism_gap": "The RC-10 detectors check that named codes, files and counts exist; none checks a security adjective (signed, verified, tamper-proof) against a mechanism.",
-      "mechanism_upgrade": "none: open — a claims test listing security words and the code each must point to",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism",
       "distinct_from": {
         "F-104": "F-104 is about durability limits of the lock and fsync promised away in the README; F-126 is about the word signed promising an identity mechanism that does not exist. Different mechanism, different fix."
       }
@@ -3787,6 +3794,37 @@
       "areas": ["eval/packs/"],
       "mechanism_gap": "The pack tests check that verdicts and case ids are consistent and that non-REAL runs cannot read COVERED; nothing checks a theme against the cited source.",
       "mechanism_upgrade": "none: open — every requirement carries a quoted source clause and URL, and a test refuses a requirement without one"
+    },
+    {
+      "id": "F-128",
+      "date": "2026-10-21",
+      "introduced_in": "ece32d3",
+      "found_by": "T0",
+      "class": "C-09",
+      "title": "The CI range check fell back to main on push, so a stacked branch had to answer for files its unmerged parents changed",
+      "symptom": "PR #15, stacked on #14, went red in the push-event self-evolution job: it demanded answers to C-12.1, C-13.1, C-14.1 and C-16.1 for .claude/settings.json, the workflows and other files that #13 and #14 changed. The pull_request run of the same job, ranged from the PR base, passed.",
+      "evidence": "CI run 39281845615 (push, failure) vs 39281852992 (pull_request, success), head 26a1bf3; reproduced locally: findings-check --range origin/main lists the four questions, --range origin/evolve/self-evolution exits 0",
+      "direct_cause": "BASE_REF is empty on push events, and the job defaulted it to main.",
+      "why": [
+        "The job was written and tested on branches cut from main.",
+        "A default stood in for a missing input instead of refusing, and nothing ran the job on a stacked branch."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: the job runs on pull requests only, and an empty base fails instead of falling back to main",
+      "guard": "test/self-evolution.test.mjs::F-128: the range check runs on pull requests against their own base, with no default",
+      "class_fix": null,
+      "sweep": "No other workflow step defaults a missing value (no \":-\" in .github/workflows); pr-review.yml checks out the PR base sha explicitly; the local hooks check the working branch, not a base.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [".github/workflows/ci.yml", "test/self-evolution.test.mjs"],
+      "mechanism_gap": "The C-09 detectors vary layouts, git configuration and Node versions for Sakk's own runs; none runs the CI range check on a branch whose base is not main.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::F-128: the range check runs on pull requests against their own base, with no default",
+      "distinct_from": {
+        "F-114": "F-114 collects low-impact ledger and release edges that touch ci.yml among other files; F-128 is the self-evolution job defaulting its base to main. Different job, different fix."
+      }
     }
   ]
 }

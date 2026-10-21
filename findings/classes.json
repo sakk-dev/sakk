@@ -124,7 +124,8 @@
       ],
       "detectors": [
         "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code",
-        "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository"
+        "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
+        "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism"
       ]
     },
     {

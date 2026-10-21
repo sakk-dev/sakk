@@ -1,0 +1,56 @@
+{
+  "branch": "release/oss-prep",
+  "answers": {
+    "C-01.1": {
+      "answer": "Absence refuses in both changes: the wording check fails if a scanned file is missing or empty, and the CI range check now fails on an empty pull request base instead of silently substituting main."
+    },
+    "C-01.2": {
+      "answer": "Deleting inputs is caught by the companion assertion that every allowlisted phrase is still found in its file; emptying the file list or the allowlist makes that assertion fail rather than read as PASS."
+    },
+    "C-02.1": {
+      "answer": "Instead of patching four help lines by hand, the detector applies one word rule to every user-facing doc plus the CLI source, so an occurrence added later in any of them is caught without editing a list of lines."
+    },
+    "C-02.2": {
+      "answer": "The rule (a self-declared name is not a signature) applies to CLI help, CLI error text, README, ARCHITECTURE, the kill-switch spec and CHANGELOG; all six change and all six are scanned. Internal comments in src/ledger.mjs are out of scope on purpose."
+    },
+    "C-03.1": {
+      "answer": "I run the new test on the unfixed tree first and confirm it lists exactly the lines calling these records signed; after the wording fix it passes. Nothing else in the test can turn it red."
+    },
+    "C-03.2": {
+      "answer": "The control is the allowlist check: each permitted phrase (the CLA and design sign-off lines) must still be found, which proves the scanner really reads those files rather than silently matching an empty string."
+    },
+    "C-04.1": {
+      "answer": "The scan reads a fixed set of repository files once with one simple word-boundary expression; there is no untrusted input, no recursion and no pattern that can backtrack, so its work is bounded by file size."
+    },
+    "C-05.1": {
+      "answer": "Each changed sentence was read back against the code: halt, resume, reconcile and unlock store the --by string after a non-blank check only, so the docs now say named, and the new test fails if signed returns."
+    },
+    "C-05.2": {
+      "answer": "No figure or exit code changes in this branch: the help keeps the same commands and exit codes, and the new README limitation lines cite codes that the existing docs-codes check already verifies exist."
+    },
+    "C-06.1": {
+      "answer": "The evidence for who stopped spending is the --by text the operator typed; every reader is now told it is a self-declared name, never presented as a stronger source such as a verified identity or a signature."
+    },
+    "C-07.1": {
+      "answer": "The --by value is operator text that nothing verifies; the README limitations section now says identity is self-declared until enterprise sign-in exists, so a reader does not mistake it for an authenticated user."
+    },
+    "C-07.2": {
+      "answer": "Unchanged by this branch and restated in the docs: an agent cannot resume a halt or clear reconciliation over MCP; only the CLI does those, run by a person under a self-declared name."
+    },
+    "C-08.1": {
+      "answer": "No ledger paths are touched. The scanner reads docs by fixed repository-relative paths resolved from the test file, so the same document cannot be reached under a second name that escapes the check."
+    },
+    "C-09.1": {
+      "answer": "Two environments are assumed and both are now tested: the wording test resolves files from its own location, and the CI range check no longer assumes a branch is cut from main; it runs on pull requests against their own base (F-128, reproduced on stacked PR #15)."
+    },
+    "C-10.1": {
+      "answer": "The wording rule existed only in the F-126 sweep text; it is now a test inside npm test (claims-are-checked), which the commit gate and CI both run, so the rule is enforced by code rather than by memory."
+    },
+    "C-11.1": {
+      "answer": "The --by value is written into halt and lift records and the alerts log; it means the name the operator typed, which anyone with file access can set, and the docs now classify it exactly that way."
+    },
+    "C-15.1": {
+      "answer": "The check runs on the real shipped files (README, docs, specs, CHANGELOG and bin/sakk.mjs), not on fixture copies, so it verifies exactly the text a user of the published package will read."
+    }
+  }
+}

@@ -131,6 +131,49 @@ describe('every file name the docs cite exists (F-83, RC-10 detector upgrade)', 
   });
 });
 
+describe('a security word is backed by a mechanism (F-126, C-05 detector upgrade)', () => {
+  // The checks above match codes and file names. "signed" described a
+  // self-declared --by name in the CLI help and four documents because no
+  // check read adjectives: a name somebody typed is not a signature.
+  const SCANNED = [
+    'README.md',
+    'CHANGELOG.md',
+    'SECURITY.md',
+    'docs/ARCHITECTURE.md',
+    'docs/AUDITOR_REPLAY.md',
+    'specs/kill-switch/spec.md',
+    'bin/sakk.mjs',
+  ];
+  const WORD = /\b(?:signed|signatures?|tamper-proof|immutable|cryptographically)\b/gi;
+  // Each permitted use is a person who really signs something, or a mechanism
+  // that exists in the code. Adding one is a reviewed choice.
+  const ALLOWED = [
+    ['CHANGELOG.md', 'design signed 2026-10-15', 'the maintainer signed the policy-engine design review'],
+  ];
+  test('every scanned file exists and has text', () => {
+    for (const f of SCANNED) assert.ok(read(f).trim().length > 0, f);
+  });
+  test('no user-facing text calls a record signed, immutable or tamper-proof without a mechanism', () => {
+    const hits = [];
+    for (const f of SCANNED)
+      read(f)
+        .split('\n')
+        .forEach((line, i) => {
+          if ([...line.matchAll(WORD)].length === 0) return;
+          if (ALLOWED.some(([af, phrase]) => af === f && line.includes(phrase))) return;
+          hits.push(`${f}:${i + 1}: ${line.trim()}`);
+        });
+    assert.deepEqual(
+      hits,
+      [],
+      'say "named" (self-declared), or point to the mechanism and allow it here',
+    );
+  });
+  test('every allowed phrase is still present (no stale exemptions)', () => {
+    for (const [f, phrase] of ALLOWED) assert.ok(read(f).includes(phrase), `${f}: ${phrase}`);
+  });
+});
+
 describe('nothing hangs instead of failing (findings F-15)', () => {
   test('every node --test script carries --test-timeout', () => {
     const scripts = JSON.parse(read('package.json')).scripts;
