@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "branch": "oss/m0-specs",
+  "answers": {
+    "C-01.1": {
+      "answer": "Each spec has an input-space table with an 'absent' row for every input (no hook payload field, no log directory, no price for a model, no policy file, no token on a console request), and each absent row names the refusal or the declared default, never a silent pass.",
+      "guard": "none: M0 writes specs only; each absent row names the test M1–M4 must add, and test/core-specs.test.mjs makes those named tests exist once the source file is registered as core"
+    },
+    "C-01.2": {
+      "answer": "The contracts list, per feature, the control that deletes an input and expects red (no price row, no cap file, no hook config, no token), so M1–M4 cannot ship a check that still reads PASS when its input is gone.",
+      "guard": "none: spec-only branch; the contract rows become tests in M1–M4 and are checked by the core-specs rule that every named guard test exists"
+    },
+    "C-05.1": {
+      "answer": "Every behaviour a spec promises names its guard test in backticks (`test/<file>.test.mjs::<name>`); when M1–M4 register the source files as core, the core-specs test fails until each named test exists, so a promise without a test cannot merge.",
+      "guard": "test/core-specs.test.mjs::every guard test a three-tables spec names exists"
+    },
+    "C-05.2": {
+      "answer": "The specs fix the hook's exit codes and JSON output per agent (Claude Code, Cursor, Codex) from their official docs read on 2026-10-21, and each contract row says how the output is acted on: deny blocks, ask prompts (Codex: deny), allow stays silent.",
+      "guard": "none: M0 writes specs only; the per-agent output contract becomes the M1 hook tests named in specs/guard/contract.md"
+    },
+    "C-10.1": {
+      "answer": "Required steps in the specs are placed at an enforcement point, not in prose: the guard decides in the hook, the cap is checked in the same hook, secrets are checked in the hook and in pre-commit, and the console refuses without its token; each has a contract row and a named test.",
+      "guard": "none: spec-only branch; enforcement points are listed per feature in each contract.md and land with their tests in M1–M4"
+    },
+    "C-10.2": {
+      "answer": "Each spec's adversary table includes the other routes: a second agent without the hook, a session started in a parent folder (F-132), the @-mention route that skips PreToolUse, Cursor running Claude Code hooks twice, and an agent editing its own logs or policy; each row says what holds and what is a stated ceiling.",
+      "guard": "none: spec-only branch; the route rows become M1 tests (doctor detects missing hooks and the parent-folder start) named in specs/guard/contract.md"
+    }
+  }
+}
