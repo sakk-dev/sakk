@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (independent review on a second model, findings F-62 … F-79)
+
+- Evidence bundles: a REAL run must name its model (verifier and
+  builder); every run records `harness_dirty` in `metrics.json`; a REAL
+  run on a modified or uncheckable harness tree is INCOMPLETE and its pack
+  requirements read `HARNESS_MODIFIED`, never `COVERED`; pack reports and
+  `bundle.json` are closed (every key required). The auditor procedure now
+  runs the CURRENT verifier from a clone — a bundle can ship an older
+  genuine verifier that misses later checks.
+- Gold runner: a copy of sakk inside another git repository refuses
+  (`HARNESS_GIT_REQUIRED`) instead of recording that repository's commit.
+- Secret scan: an exempt fiction-token match no longer hides a real secret
+  it swallowed; `--staged` ignores git replace refs; PGP private-key
+  blocks are detected; `--install-hook` writes pre-commit AND
+  pre-merge-commit hooks (both or neither) and the hook refuses with
+  `SCAN_HOOK_STALE` after a node upgrade instead of a bare shell error.
+- Kill switch: halt and resume keep `updatedAt`, so a stop never makes a
+  stale ledger fresh; `halt.lifts` keeps who lifted which halt in the
+  ledger (v2 halt shape, unreleased); blank names refuse; `sakk status`
+  escapes operator text.
+- Case packs: `gaps` and `not_covered` must be non-empty; pack evidence
+  sentences state what the cases check (G03 markers, G06's reference gate,
+  git facts the agent can rewrite).
+
+### Added (class detectors)
+
+- `test/bundle-absence.test.mjs`: deletes every key of every bundle
+  document; any deletion that still verifies must be declared.
+- Secret-scan context matrix (every secret shape × every fiction-token
+  position); ledger-write classification (confirms the books or not);
+  the stopwatch detector covers deadlines; the repository self-scan test
+  scans the root, not a list of directories.
+- Mutation drill: 23 anchors (was 18).
+
+### Known, not fixed
+
+- F-75: false positives on translation files and Ansible variables
+  (precision needs a benign corpus and a re-measured attack list).
+- F-76: the scorer reads changed files from the agent's own `.git`;
+  disclosed in every affected pack requirement; the fix changes the
+  frozen scorer and needs a decision.
+
 ### Added (testing-standard audit)
 
 - `npm run audit`: one command for every layer of the AI-agent testing
@@ -18,11 +60,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CLAIMED ASR must be 0, documented non-coverage reported); §14 ledger gate
   and `npm run findings-report`. Exit codes taken directly; logs in
   `audit-logs/`. Layer map: `docs/testing-profile.md`.
-- Mutation drill: 18 anchors (was 7) — one per core guard, including the
-  per-agent halt, the HARNESS_ONLY rule, the secret-scan exemption and
-  staged type changes, the bundle verifier's spend, metrics and parsing
-  checks, the MCP policy gate, the path matcher, the paid-step cap and the
-  bundle self-check. The certificate now expects 18.
+- Mutation drill: 23 anchors (was 7) — one per core guard, including the
+  per-agent halt and resume scoping, the HARNESS_ONLY and HARNESS_MODIFIED
+  rules, the secret-scan exemption (both directions) and staged type
+  changes, the bundle verifier's spend, metrics, parsing, model and
+  closed-report checks, the MCP policy gate, the path matcher, the
+  paid-step cap and the bundle self-check. The certificate expects 23.
 - `specs/case-packs`, `specs/secret-scan`, `specs/evidence-bundle`: the
   three-tables files these L1 changes lacked; `test/core-specs.test.mjs`
   keeps every core file specified and drilled.

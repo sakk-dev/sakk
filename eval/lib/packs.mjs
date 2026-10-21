@@ -41,6 +41,8 @@ export class PackError extends Error {
 
 const nonEmptyString = (x) => typeof x === 'string' && x.trim() !== '';
 const stringArray = (x) => Array.isArray(x) && x.every(nonEmptyString);
+// a pack always has limits: an empty list reads as "nothing missing" (review S4)
+const nonEmptyStringArray = (x) => stringArray(x) && x.length > 0;
 
 /** Validate one parsed pack. `knownCases` maps case id → case definition. */
 export function validatePack(doc, file, knownCases) {
@@ -53,8 +55,8 @@ export function validatePack(doc, file, knownCases) {
   for (const k of ['id', 'title', 'regulator', 'clause_status'])
     if (!nonEmptyString(doc[k])) bad(`${k} must be a non-empty string`);
   if (`${doc.id}.json` !== file) bad(`id "${doc.id}" must match the file name`);
-  if (!stringArray(doc.not_covered))
-    bad('not_covered must be an array of strings (empty only if truly nothing is missing)');
+  if (!nonEmptyStringArray(doc.not_covered))
+    bad('not_covered must name at least one thing the pack does not cover');
   if (!Array.isArray(doc.requirements) || doc.requirements.length === 0)
     bad('requirements must be a non-empty array — an empty pack certifies nothing');
   const seen = new Set();
@@ -64,7 +66,8 @@ export function validatePack(doc, file, knownCases) {
       if (!REQ_KEYS.includes(k)) bad(`requirement: unknown key "${k}"`);
     for (const k of ['id', 'theme', 'evidence'])
       if (!nonEmptyString(r[k])) bad(`requirement ${r.id ?? '?'}: ${k} must be a non-empty string`);
-    if (!stringArray(r.gaps)) bad(`requirement ${r.id}: gaps must be an array of strings`);
+    if (!nonEmptyStringArray(r.gaps))
+      bad(`requirement ${r.id}: gaps must name at least one limit of what its cases show`);
     if (seen.has(r.id)) bad(`duplicate requirement id "${r.id}"`);
     seen.add(r.id);
     if (!Array.isArray(r.cases) || r.cases.length === 0)
@@ -134,6 +137,8 @@ const MEANING = {
   FAKE: 'FAKE run: proves the harness chain only — says nothing about any model or agent (no requirement can read COVERED)',
   UNKNOWN:
     'executor mode not stated: nothing about any model or agent can be read from this report (no requirement can read COVERED)',
+  REAL_MODIFIED:
+    'REAL run on a harness tree that differed from harness_commit, or could not be compared: the scorer that judged it is not provably the one at that commit (no requirement can read COVERED; passing ones read HARNESS_MODIFIED)',
 };
 
 /**
@@ -153,13 +158,20 @@ export function packReport(pack, entries, run) {
   }
   const real = run?.executorMode === 'REAL';
   const mode = real ? 'REAL' : run?.executorMode === 'FAKE' ? 'FAKE' : 'UNKNOWN';
+  // only a tree PROVEN to match the commit can back COVERED (F-65)
+  const clean = run?.harnessDirty === false;
+  const statusOf = (allPass) => {
+    if (!real) return 'HARNESS_ONLY';
+    if (!allPass) return 'NOT_COVERED';
+    return clean ? 'COVERED' : 'HARNESS_MODIFIED';
+  };
   const requirements = pack.requirements.map((r) => {
     const cases = r.cases.map((c) => ({ case: c, verdict: verdictOf.get(c) ?? 'NOT_RUN' }));
     const allPass = cases.every((x) => x.verdict === 'PASS');
     return {
       id: r.id,
       theme: r.theme,
-      status: !real ? 'HARNESS_ONLY' : allPass ? 'COVERED' : 'NOT_COVERED',
+      status: statusOf(allPass),
       cases,
       gaps: r.gaps,
     };
@@ -170,7 +182,7 @@ export function packReport(pack, entries, run) {
     regulator: pack.regulator,
     clause_status: pack.clause_status,
     executor_mode: mode,
-    meaning: MEANING[mode],
+    meaning: MEANING[real && !clean ? 'REAL_MODIFIED' : mode],
     model: real ? (run?.model ?? null) : null,
     run_id: run?.runId ?? null,
     harness_commit: run?.harnessCommit ?? null,

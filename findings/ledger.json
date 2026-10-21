@@ -13,6 +13,10 @@
         {
           "kind": "detector",
           "ref": "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed"
         }
       ]
     },
@@ -60,6 +64,10 @@
         {
           "kind": "detector",
           "ref": "test/core-specs.test.mjs::every source file is classified core or not core"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through"
         }
       ]
     },
@@ -107,6 +115,36 @@
         {
           "kind": "rule_text",
           "ref": "docs/RULES.md::R-20"
+        },
+        {
+          "kind": "rule_text",
+          "ref": "docs/RULES.md::R-21"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock"
+        }
+      ]
+    },
+    "RC-03": {
+      "landed_in": "this commit",
+      "refs": [
+        {
+          "kind": "detector",
+          "ref": "test/secret-scan.test.mjs::RC-03 class: a fiction token beside any real secret, in any position, never hides it"
+        },
+        {
+          "kind": "detector",
+          "ref": "scripts/l1-fuzz.mjs::F-63 class: a declared fiction right before the secret"
+        }
+      ]
+    },
+    "RC-08": {
+      "landed_in": "this commit",
+      "refs": [
+        {
+          "kind": "detector",
+          "ref": "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option"
         }
       ]
     }
@@ -359,7 +397,7 @@
       "es": ["ES-04"],
       "instance_fix": "9799390 bounded quantifiers, binary-search line index",
       "class_fix": null,
-      "guard": "test/secret-scan.test.mjs::200KB adversarial lines for every rule scan in well under a second",
+      "guard": "test/secret-scan.test.mjs::200KB adversarial lines for every rule scan without catastrophic backtracking",
       "sweep": "Other regexes on caller input: policy scope matcher has POLICY_TOO_COMPLEX budget (earlier F4); match.mjs is glob, not regex.",
       "sweep_status": "done",
       "status": "fixed"
@@ -1493,6 +1531,608 @@
       "sweep": "Layer map in docs/testing-profile.md: T1/T4 not applicable, T5 not started, T6 partial — each with its reason.",
       "sweep_status": "done",
       "status": "class_closed"
+    },
+    {
+      "id": "F-56",
+      "date": "2026-10-16",
+      "title": "T0 had no lint; the first ESLint run found six defects",
+      "symptom": "The standard requires lint on every commit; Sakk ran a formatter only. ESLint (core rules) found unused imports in four files and a loose != in the invariant fuzz.",
+      "evidence": "second pass against the standard page, T0",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "No lint step existed in package.json, CI or the audit.",
+      "why": [
+        "The zero-dependency rule was read as 'no linter'.",
+        "The formatter was taken as a lint.",
+        "Nothing compared the audit's steps against the standard's T0 MUST list."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: eslint.config.mjs (core rules), npm run lint (pinned via npx, 0 warnings), CI and audit steps; six defects fixed",
+      "class_fix": "test/core-specs.test.mjs",
+      "guard": "test/core-specs.test.mjs::the audit runs every applicable layer of the standard",
+      "sweep": "Whole repository linted; CI format job runs lint.",
+      "sweep_status": "done",
+      "status": "class_closed"
+    },
+    {
+      "id": "F-57",
+      "date": "2026-10-16",
+      "title": "No commit gate passed test exit codes straight through",
+      "symptom": "Standard §12.3 requires a pre-commit gate with pipefail; Sakk relied on CI only. In this session the author twice read a pipeline's tail exit code as the command's.",
+      "evidence": "second pass against the standard page, §12.3; session transcript",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "No scripts/gate.sh; interactive checks piped output through tail before echoing $?.",
+      "why": [
+        "Commits were gated by CI after the fact.",
+        "Local checks were typed by hand.",
+        "A pipe hides the left side's exit code unless pipefail is set."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: scripts/gate.sh (set -euo pipefail), npm run gate, AGENTS.md: npm run gate && git commit",
+      "class_fix": "test/claims-are-checked.test.mjs",
+      "guard": "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through",
+      "sweep": "audit.mjs and the certificate take exit codes from spawnSync directly; mutation-drill.sh greps output only to name the killer, its status comes from $?.",
+      "sweep_status": "done",
+      "status": "class_closed"
+    },
+    {
+      "id": "F-58",
+      "date": "2026-10-16",
+      "title": "Three L1 modules had no invariant fuzz",
+      "symptom": "Standard §5 requires invariant fuzz for L1 changes; case packs, secret scanning and the bundle verifier had example tests only.",
+      "evidence": "second pass against the standard page, §5",
+      "found_by": "review",
+      "introduced_in": "4769e33",
+      "direct_cause": "Fuzzers existed for the ledger and policy kernel only.",
+      "why": [
+        "Fuzz was added where it was first needed.",
+        "New L1 modules came with example tests.",
+        "No check tied L1 modules to a fuzzer."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: scripts/l1-fuzz.mjs (200 seeded trials per module, PASS controls), npm run fuzz:l1 in CI and the audit",
+      "class_fix": "test/core-specs.test.mjs",
+      "guard": "test/core-specs.test.mjs::the audit runs every applicable layer of the standard",
+      "sweep": "Every CORE file is covered by a fuzzer or by the drill; the three fuzzers break on seeded mutants (packs 434, scan 27, bundle 1 violations).",
+      "sweep_status": "done",
+      "status": "class_closed"
+    },
+    {
+      "id": "F-59",
+      "date": "2026-10-16",
+      "title": "Independent reviews used the author's own model",
+      "symptom": "Three review rounds on PRs #5–#8 ran on the same model that wrote the code; principle 6 requires a different judge, or a measured and published bias.",
+      "evidence": "second pass against the standard page, principle 6",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Review agents inherited the session model.",
+      "why": [
+        "The review harness defaulted to the author's model.",
+        "Independence was taken to mean a separate context.",
+        "Self-preference bias was never measured."
+      ],
+      "root_cause": "Checks and fields shipped without a test proving they can take both values, so a vacuous check reads green.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: L1 reviews re-run on Claude Fable 5 from a fresh clone; the profile states which model reviews",
+      "class_fix": "docs/RULES.md::R-21",
+      "guard": "docs/RULES.md::R-21",
+      "sweep": "All four plan 1–4 modules re-reviewed on the other model.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-60",
+      "date": "2026-10-16",
+      "title": "Thresholds, attack list and gold-set version were not files",
+      "symptom": "Standard §6/T1 want thresholds in a file, an attack list naming target and success signature, and a gold set with version and freeze date; all three lived in code or nowhere.",
+      "evidence": "second pass against the standard page, §6",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "direct_cause": "Thresholds were literals in scripts; attack rows had no target text; eval/cases had no version.",
+      "why": [
+        "The executors were written before the dataset rules were read.",
+        "Code-only thresholds cannot be reviewed apart from code.",
+        "Nothing refused an undocumented attack row or an unfrozen case."
+      ],
+      "root_cause": "A mandatory step was enforced only by rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: eval/thresholds.json, attack rows with target + success signature (attack-asr refuses undescribed rows, --list prints them), eval/cases-version.json + cases-frozen.sha256",
+      "class_fix": "test/gold-set-frozen.test.mjs",
+      "guard": "test/gold-set-frozen.test.mjs::every frozen case is unchanged, and every case file is frozen",
+      "sweep": "golden-k, attack-asr and l1-fuzz read eval/thresholds.json.",
+      "sweep_status": "done",
+      "status": "class_closed"
+    },
+    {
+      "id": "F-61",
+      "date": "2026-10-16",
+      "title": "A version file in eval/cases broke --validate",
+      "symptom": "Adding eval/cases/VERSION.json made the case loader read it as a case; --validate crashed before the change was committed.",
+      "evidence": "this session, gold-runner --validate",
+      "found_by": "T0",
+      "introduced_in": "unknown",
+      "direct_cause": "loadCases reads every .json in eval/cases.",
+      "why": [
+        "The directory is a loader input, not a free folder.",
+        "The convention was implicit in the loader.",
+        "The full gate caught it — the guard worked."
+      ],
+      "root_cause": "An assumption about the environment a test runs in was never measured.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: version and manifest live beside the directory (eval/cases-version.json, eval/cases-frozen.sha256)",
+      "class_fix": null,
+      "guard": "test/gold-set-frozen.test.mjs::the gold set declares a version and a freeze date",
+      "sweep": "Other loader-owned directories: eval/packs (only .json packs), eval/gold (manifest-pinned).",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-62",
+      "date": "2026-10-16",
+      "title": "Stopwatch assertions failed the audit under load",
+      "symptom": "The audit on 8f672f4 went red at the mutation drill's pristine control: the N1 policy test took 17.6 s against a 10 s bound (1.3 s idle) while four review agents loaded the machine.",
+      "evidence": "audit-logs/2026-10-16T19-08-19/06.log",
+      "found_by": "T0",
+      "introduced_in": "unknown",
+      "direct_cause": "Eight checks asserted speed with a wall clock 3x–300x the idle time; load slowed the drill 14x.",
+      "why": [
+        "The guarantee (bounded work) was proved with a stopwatch, an indirect signal.",
+        "The code already has a deterministic work counter, but the test did not assert it.",
+        "Bounds were sized on an idle machine and never run under load."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-02"],
+      "instance_fix": "this commit: policy refusal tests assert the pinned work budget (details.budget) instead of a clock; remaining wall clocks are pathology lines ≥ 30 s; the 300 s test timeout catches hangs",
+      "class_fix": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
+      "guard": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
+      "sweep": "All Date.now() comparisons in test/, eval/__tests__/, scripts/: 8 upper bounds fixed; kill-switch '>= 2900' is a lower bound (load only lengthens it); the fake binary's busy-wait is a wait, not a bound.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-63",
+      "date": "2026-10-16",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "title": "An exempt fiction-token match hid a real secret it swallowed",
+      "symptom": "A DSN carrying the fiction token as its password, glued directly to a second DSN with a real password (also comma lists, URL-encoded passwords), scanned clean with exempted:1 — a recognized-format DSN was literally present.",
+      "evidence": "Fable 5 review of plan item ② (2026-10-16), blocker B1",
+      "direct_cause": "The first pass recorded every match's span before deciding exemption, so the second (token-blanked) pass skipped the real DSN overlapping the exempt one.",
+      "why": [
+        "The greedy DSN capture runs to the first '@' and swallows a second DSN.",
+        "Exemption re-scans only the capture, without the surrounding text.",
+        "Span suppression was meant for reported findings but applied to exempt ones too."
+      ],
+      "root_cause": "A rule judged on the literal capture without the context around it.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-03"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: only reported findings close their span to the second pass",
+      "class_fix": "test/secret-scan.test.mjs::RC-03 class: a fiction token beside any real secret, in any position, never hides it",
+      "guard": "test/secret-scan.test.mjs::F-63: an exempt match never hides a real secret it swallowed",
+      "sweep": "Other exemption paths: display() redaction uses the same isExempt on the whole name (fails toward redaction); the glued-token pass (N8) still finds keys after a token.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-64",
+      "date": "2026-10-16",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "title": "A copy of sakk inside another repository recorded that repository's commit",
+      "symptom": "Extracted into any git repo, a pack run wrote harness_commit = the parent's HEAD and harness_dirty:false while sakk's eval/ and src/ were modified; README promised HARNESS_GIT_REQUIRED for downloads.",
+      "evidence": "Fable 5 review of plan item ① (2026-10-16), blocker B1",
+      "direct_cause": "gitRoot() asked `git rev-parse HEAD` from eval/ and harnessDirty() used `:/` pathspecs, both answered by the enclosing repository.",
+      "why": [
+        "Provenance assumed sakk is the top of its own repository.",
+        "Stranger tests covered 'no .git' but not 'someone else's .git'.",
+        "The dirty flag returned false (clean) instead of unknown when it looked at the wrong tree."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-02"],
+      "instance_fix": "this commit: runs refuse with HARNESS_GIT_REQUIRED unless git's top is sakk's root; harnessDirty returns null (unknown) there",
+      "class_fix": null,
+      "guard": "eval/__tests__/stranger-regressions.test.mjs::an execution mode refuses with HARNESS_GIT_REQUIRED instead of naming the parent commit",
+      "sweep": "Bundle builder in a nested checkout: `git show <commit>:eval/cases/…` resolves from the enclosing top and refuses (BUNDLE_SOURCE_INVALID) — fail-closed; verifierCommit there would name the parent's HEAD, but the auditor procedure no longer trusts it (F-65).",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-65",
+      "date": "2026-10-16",
+      "found_by": "review",
+      "introduced_in": "unknown",
+      "pattern": "fail-open-absence",
+      "title": "Deleting one key skipped the REAL model check and hid a modified harness",
+      "symptom": "A REAL bundle with metrics.model_id deleted verified PASS even after every trace was relabelled to another model; a run from a modified harness carried harness_dirty only in pack-report.json, which nothing checked; an older genuine verifier shipped in a bundle passed forgeries later versions catch.",
+      "evidence": "Fable 5 review of plan item ④ (2026-10-16): blocker + 2 should-fix; plan item ① S5",
+      "direct_cause": "The verifier read model_id as 'if present'; metrics.json never recorded harness_dirty; packReport read COVERED for any REAL run; the auditor procedure trusted the shipped verifier.",
+      "why": [
+        "Each check was written for the forged value, not for the missing one.",
+        "Optional-by-default reads (`'k' in x`, `?? null`) turned absence into agreement.",
+        "No test deleted keys; forgeries in the suite only changed values."
+      ],
+      "root_cause": "An assumption about the environment was never verified (pattern fail-open-absence, 12th instance).",
+      "dt": ["DT-FN"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: REAL requires model_id (verifier + builder); every run records harness_dirty; REAL on a modified/unknown tree is INCOMPLETE and reads HARNESS_MODIFIED; pack report and bundle.json are closed; the auditor runs the current verifier from a clone",
+      "class_fix": "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
+      "guard": "test/evidence-bundle.test.mjs::a REAL run whose metrics name no model → METRICS_UNVERIFIABLE, even with traces relabelled",
+      "sweep": "Exhaustive key deletion over a real pack bundle (every document, every key): 46 keys still pass, each declared with its reason (descriptive case fields, scorer evidence, ledger fields sakk itself does not require). Drill MUT-U/MUT-V hold the checks.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-66",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "T0",
+      "title": "The lock-storm test decided pass/fail with a 20 s deadline",
+      "symptom": "Under load the halt CLI took longer than the workers' 20 s window, every worker exited 3 and the test failed; 96 instrumented storms showed halt latency p50 1.4 s, max 8.1 s, and 0 reservations booked after any halt.",
+      "evidence": "kill-switch.test.mjs full-file run during this round; scratch storm harness (96 storms, 24-way concurrency)",
+      "direct_cause": "Workers stopped at Date.now() + 20000 and treated that as failure; the F-62 sweep and detector only matched `Date.now() - t` comparisons.",
+      "why": [
+        "The test proved 'the halt is seen' with a clock, not with order.",
+        "The mkdir lock is not fair, so halt latency grows with load.",
+        "The class sweep searched one textual shape of the class."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-02"],
+      "instance_fix": "this commit: workers learn the halt returned through a signal file; a reservation granted after it exits 5 (the bug), and no entry may be created after halt.at; 120 s is a hang guard only",
+      "class_fix": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
+      "guard": "test/kill-switch.test.mjs::CLI halt succeeds while 6 processes hammer the ledger",
+      "sweep": "Detector extended to deadline shapes (Date.now() + literal); fault-injection's +3600_000 is a fixture timestamp, soak's minutes-based deadline is a campaign length, not a pass/fail bound.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-67",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Halting or resuming a stale ledger made it fresh",
+      "symptom": "halt({agentId:'bot'}) on a 365-day-old ledger restamped updatedAt, so an anonymous reserve that refused LEDGER_STALE before the halt succeeded after it.",
+      "evidence": "Fable 5 review of plan item ③ (2026-10-16), S1",
+      "direct_cause": "writeLedger stamps updatedAt on every write, including halt and resume.",
+      "why": [
+        "updatedAt means 'books confirmed', but it was written as 'file touched'.",
+        "The halt path reads with infinite staleness on purpose, then wrote a fresh stamp.",
+        "No test combined a stale ledger with a stop."
+      ],
+      "root_cause": "A value's meaning was used outside its scope: a file-touched stamp stood in for books-confirmed.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-08"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: halt and resume keep updatedAt",
+      "class_fix": "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option",
+      "guard": "test/kill-switch.test.mjs::review S1: halting or resuming a STALE ledger never makes it fresh",
+      "sweep": "Other writes that confirm nothing about the books: none — settle/mark/clear are money operations and keep refreshing.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-68",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Who lifted a halt lived only in the best-effort alert log",
+      "symptom": "With sakk-alerts.jsonl unwritable, resume({by:'mallory'}) succeeded and the name appeared nowhere; the spec called resume signed.",
+      "evidence": "Fable 5 review of plan item ③ (2026-10-16), S2",
+      "direct_cause": "resume() nulled the record and wrote the resumer only to emitAlert, which swallows errors.",
+      "why": [
+        "Alerts are best-effort so a broken alert path never blocks a stop.",
+        "The same best-effort channel was used for evidence that must survive.",
+        "Nothing tested the record after a resume with the alert path broken."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: halt.lifts (append-only, closed entries) records by/at/scope/agentId/haltedBy/haltedAt in the ledger; deleting it refuses",
+      "class_fix": null,
+      "guard": "test/kill-switch.test.mjs::genesis is v1 with no halt key; the first halt makes it v2; resume keeps v2 with an emptied record",
+      "sweep": "halt() records its signer in the ledger already; clearReconciliation records by in the entry history.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-69",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Two kill-switch guarantees were held only by a probabilistic fuzz",
+      "symptom": "A scoped resume that also cleared the global halt, a global resume that wiped agent halts, and reconciliation checked before the halt all passed npm test; the fuzz caught the first on some seeds only.",
+      "evidence": "Fable 5 review of plan item ③ (2026-10-16), S3+S4 (mutants M1, M2, M3)",
+      "direct_cause": "Spec rows claimed named tests, but the tests drove only CLI usage errors, not the library path.",
+      "why": [
+        "Row tests were written for the CLI attack, not for the library guarantee.",
+        "The fuzz was counted as the guard although its seed is Date.now().",
+        "No mutation targeted resume scoping."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: deterministic tests for both resume directions and halt-over-reconciliation; drill MUT-W",
+      "class_fix": null,
+      "guard": "test/kill-switch.test.mjs::a scoped resume leaves the global halt in force",
+      "sweep": "Adversary rows 17-20 added with named tests; each M1/M2/M3 mutant applied by hand dies.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-70",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Kill-switch nits: raw control characters in status, blank names, docs that disagreed",
+      "symptom": "`sakk status` printed `--by $'\\e[2J'` raw; halt records accepted by ' ' and agents['']; the README put 'exits 4' under the per-agent example; the spec said null was anonymous for halt/resume while row 15 refuses it.",
+      "evidence": "Fable 5 review of plan item ③ (2026-10-16), nits",
+      "direct_cause": "Operator input reached the terminal unescaped; validation checked non-empty, not non-blank; docs were edited row by row.",
+      "why": [
+        "Names were treated as trusted because operators type them.",
+        "Escaping existed for file names only.",
+        "Doc rows were not cross-read after row 15 landed."
+      ],
+      "root_cause": "A trust boundary left undefended.",
+      "dt": ["DT-SHAPE"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: status escapes names, reasons and agent ids; blank names refuse at halt/resume and in the record check; README and spec corrected",
+      "class_fix": null,
+      "guard": "test/kill-switch.test.mjs::CLI status never writes an operator-supplied control sequence to the terminal",
+      "sweep": "Other CLI outputs of operator text: `sakk scan` already escapes via display(); reconcile prints the reason through the same status path.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-71",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "A git replace ref made --staged scan other bytes than the commit records",
+      "symptom": "With refs/replace mapping the secret blob to a clean one, scanStaged reported 0 findings; the commit still recorded the secret blob.",
+      "evidence": "Fable 5 review of plan item ② (2026-10-16), S1",
+      "direct_cause": "git cat-file honours refs/replace/* and echoes the original sha in its header, so the header check passed.",
+      "why": [
+        "The scanner trusted the repository's object lookup.",
+        "Replace refs are repository state an attacker can plant or a fetch can bring.",
+        "The header check compared the sha, not the content source."
+      ],
+      "root_cause": "A trust boundary left undefended.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: every scanner git call runs with GIT_NO_REPLACE_OBJECTS=1",
+      "class_fix": null,
+      "guard": "test/secret-scan.test.mjs::review S1: a git replace ref cannot make --staged read other bytes than the commit records",
+      "sweep": "Other git object reads: the gold runner reads its own commit (not a scan target); the bundle builder's `git show <commit>:` reads case files the issuer controls.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-72",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Merge commits bypassed the commit hook",
+      "symptom": "A branch commit made with --no-verify merged with --no-ff into a hooked branch: exit 0, secret recorded; README said the hook refuses commits that contain secrets.",
+      "evidence": "Fable 5 review of plan item ② (2026-10-16), S2",
+      "direct_cause": "Only pre-commit was installed; git runs pre-merge-commit for merge commits.",
+      "why": [
+        "'Every commit runs pre-commit' was assumed.",
+        "The README claim was written from the hook's name, not from git's hook list.",
+        "Fast-forwards, rebases and cherry-picks create commits no hook sees, and nothing said so."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: --install-hook writes pre-commit and pre-merge-commit (both or neither); README and spec name what no hook covers and recommend a CI scan",
+      "class_fix": null,
+      "guard": "test/secret-scan.test.mjs::review S2: a merge commit bringing in a secret is refused by the pre-merge-commit hook",
+      "sweep": "Other paths to a recorded commit: fast-forward, rebase, cherry-pick, --no-verify — documented as not covered (no hook exists for them).",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-73",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Scanner docs claimed formats and checks the code did not have",
+      "symptom": "README claimed 'private-key blocks' (PGP blocks were missed) and 'sk_… with at least 40 characters' (only sk- had that branch); the extension skip list and SCAN_FAILED were undocumented; SCAN_FAILED printed git stderr unescaped.",
+      "evidence": "Fable 5 review of plan item ② (2026-10-16), S4, S5, N3, N4, N5",
+      "direct_cause": "README sentences were written from intent, not read back against the regexes.",
+      "why": [
+        "The claims detector checks codes, not format descriptions.",
+        "PGP keys use 'PRIVATE KEY BLOCK'.",
+        "The one non-display() output path was the generic error."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: PGP blocks detected; README states the sk/rk rule as coded (and the identifier it still flags), the extension skips, replace refs; spec lists SCAN_FAILED; SCAN_FAILED detail escaped",
+      "class_fix": null,
+      "guard": "test/secret-scan.test.mjs::review S4: a PGP private key block is a private-key block",
+      "sweep": "Each README format sentence re-read against its regex: DSN schemes, URL-encoded, AWS, GitHub, bearer, password assignment match.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-74",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "The hook broke with a bare shell error after a node upgrade",
+      "symptom": "The hook pins node's realpath (Homebrew Cellar, nvm version dir); after an upgrade every commit failed with 'No such file or directory' and no hint.",
+      "evidence": "Fable 5 review of plan item ② (2026-10-16), S6",
+      "direct_cause": "process.execPath is symlink-resolved; the hook comment said to re-run only if sakk moves.",
+      "why": [
+        "The absolute path was chosen to avoid npx (correctly).",
+        "Version-managed node paths change on upgrade.",
+        "Fail-closed was right, but the message was the shell's."
+      ],
+      "root_cause": "An assumption about the environment was never verified.",
+      "dt": ["DT-DEP"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "instance_fix": "this commit: the hook checks node and sakk exist and refuses with SCAN_HOOK_STALE naming the fix",
+      "class_fix": null,
+      "guard": "test/secret-scan.test.mjs::review S6: a hook whose node is gone refuses with SCAN_HOOK_STALE, not a bare shell error",
+      "sweep": "yarn dlx caches (nit N6) behave the same — the stale guard now names the fix for them too.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-75",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "False positives on translation files and Ansible variables",
+      "symptom": "`\"password\": \"Password\"`, `\"forgotPassword\": \"Forgot your password?\"` and Ansible `db_password: \"{{ lookup('env','DB_PASSWORD') }}\"` each produce a finding; a locales/*.json commit is refused.",
+      "evidence": "Fable 5 review of plan item ② (2026-10-16), S3",
+      "direct_cause": "password_assignment has no left boundary and an 8-character floor; the placeholder check never sees a '{{' value closed.",
+      "why": [
+        "The rule was tuned on secret-shaped samples only.",
+        "No benign corpus of real config/i18n files exists in the test data.",
+        "Precision was never measured, only recall."
+      ],
+      "root_cause": "Test data was not representative.",
+      "dt": ["DT-FP"],
+      "rc": ["RC-06"],
+      "es": ["ES-02"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Proposed: add a benign corpus (i18n JSON, Ansible, .env.example templates) to T3 as a precision row, then tune password_assignment against both lists. Not changed in this round: a precision change moves the recall line and needs the attack list re-measured.",
+      "sweep_status": "not_done",
+      "status": "open"
+    },
+    {
+      "id": "F-76",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Scorer evidence of which files changed comes from an agent-writable .git",
+      "symptom": "In a case workdir, `git add -A && git commit` by the agent empties actualChanges (diff against HEAD); a '*' in .git/info/exclude hides new files such as LEAK.txt; a user-level excludesFile hides files from the operator side.",
+      "evidence": "Fable 5 review of plan item ① (2026-10-16), S1",
+      "direct_cause": "scorer.actualChanges diffs against HEAD with --exclude-standard; the baseline sha from prepCase is never recorded.",
+      "why": [
+        "The fixtures assumed a cooperative agent that does not touch .git.",
+        "FAKE agents never rewrite git, so no run showed it.",
+        "The trust boundary between agent and scorer runs through the same .git."
+      ],
+      "root_cause": "A trust boundary left undefended.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-05"],
+      "es": ["ES-03"],
+      "instance_fix": "open",
+      "class_fix": null,
+      "guard": "",
+      "sweep": "Disclosed now: every pack requirement backed by a git-fact case (G01–G03, G05, G07, G10, G11) carries the gap. Fix needs a decision: record the baseline sha and a filesystem snapshot at prepCase and diff against those instead of the workdir .git — a scorer change, i.e. a change to the frozen ruler (principle 8), so it ships with a gold-set version bump.",
+      "sweep_status": "not_done",
+      "status": "open"
+    },
+    {
+      "id": "F-77",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Pack texts and pack validation claimed more than the cases show",
+      "symptom": "DORA scoped-changes said assertions are never weakened (G03 only checks markers); G06's approval gate is sakk's own stub but no gap said so; `gaps: []` and `not_covered: []` validated; the eval README implied the non-overridden binary is verified; the spec cited a dirty-tree test as the binary guard.",
+      "evidence": "Fable 5 review of plan item ① (2026-10-16), S2, S3, S4, S6, N3, N4",
+      "direct_cause": "Evidence sentences were written from the case's intent, not from what its scoring checks.",
+      "why": [
+        "F-27 made gaps mandatory but not non-empty.",
+        "Gold scoring.json was not read when writing pack evidence.",
+        "Docs were updated per feature, not re-read as a whole."
+      ],
+      "root_cause": "Produced without verification.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: G03 sentence states what is checked; G06 and git-fact gaps added; gaps/not_covered must be non-empty; README and spec corrected",
+      "class_fix": null,
+      "guard": "eval/__tests__/case-packs.test.mjs::review S4: an EMPTY gaps or not_covered list is invalid",
+      "sweep": "Every pack evidence sentence re-read against its cases' scoring.json. Not changed: the `regulator` field holds the instrument name (N2) — renaming is a pack-schema change; regulator names must be verified before citation (clause_status already says so). not_covered lists are thin (N1) and marked non-exhaustive.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-78",
+      "date": "2026-10-16",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "title": "Evidence tooling nits: a guard that proved the wrong thing, wrong refusal wording, an attack list blind to absence",
+      "symptom": "The MUT-L guard fixture also made the ledger invalid, so it proved a gap was emitted, not that the status was INCOMPLETE; a budget-refused REAL case was described as an estimated cost; attack-asr had no deleted-key or runner-fact variants.",
+      "evidence": "Fable 5 review of plan item ④ (2026-10-16), nits",
+      "direct_cause": "Fixtures and attack variants were built for value forgeries only.",
+      "why": [
+        "The guard asserted presence of a code, not the outcome.",
+        "The refused path shares the estimate branch.",
+        "Absence was not an attack class in the list."
+      ],
+      "root_cause": "The measuring tool's own logic was never tested against the conditions it runs in.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: consistent MUT-L fixture asserting INCOMPLETE with no problems; refused cases named as refused; E4 gains the F-65 attacks (CLAIMED, 0/10 through) and a KNOWN row for a flipped harness_dirty, stated in the README, spec and auditor guide",
+      "class_fix": null,
+      "guard": "test/evidence-bundle.test.mjs::a RESERVED entry left open is unresolved spend too",
+      "sweep": "Other guards asserting only a code: SPEND_OVER_CAP and BATCH_STOPPED tests already assert status.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-79",
+      "date": "2026-10-17",
+      "introduced_in": "unknown",
+      "found_by": "T0",
+      "pattern": "fail-open-absence",
+      "title": "The 'whole repository' self-scan test scanned seven named directories",
+      "symptom": "The audit's `sakk scan .` found two secret-shaped strings this round wrote into README.md and findings/ledger.json; the commit gate stayed green because the test named 'the whole repository' scanned only src, bin, eval, scripts, test, docs and policies.",
+      "evidence": "audit-logs/2026-10-16T20-11-05/05.log",
+      "direct_cause": "A fixed directory list stood in for the repository; root files, findings/ and specs/ were absent from it.",
+      "why": [
+        "The list was written when those were the only directories with content.",
+        "Absence from the list read as clean, not as unscanned.",
+        "Neither the gate nor CI runs the CLI self-scan; only the audit does."
+      ],
+      "root_cause": "An assumption about the environment was never verified (pattern fail-open-absence).",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: the test scans the repository root (with a file-count floor); both strings reworded",
+      "class_fix": "test/secret-scan.test.mjs::the whole repository — tests included — scans clean",
+      "guard": "test/secret-scan.test.mjs::the whole repository — tests included — scans clean",
+      "sweep": "Other fixed directory lists in tests (claims-are-checked, core-specs, the stopwatch detector) are scoped by name to source or test directories and claim nothing wider.",
+      "sweep_status": "done",
+      "status": "fixed"
     }
   ]
 }

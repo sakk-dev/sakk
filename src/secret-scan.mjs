@@ -65,7 +65,7 @@ export const RULES = Object.freeze([
     name: 'github_token',
     re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{22,255})/g,
   },
-  { name: 'private_key_block', re: /-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----/g },
+  { name: 'private_key_block', re: /-----BEGIN [A-Z ]{0,40}PRIVATE KEY(?: BLOCK)?-----/g },
   { name: 'bearer_token', re: /\bBearer\s{1,5}[A-Za-z0-9._-]{25,500}/g },
   {
     name: 'password_assignment',
@@ -136,16 +136,17 @@ export function scanText(text, path = '(inline)') {
       fingerprint: fingerprint(h.secret),
     });
   for (const h of rawFindings(text)) {
-    spans.push([h.index, h.end]);
     if (isExempt(h.secret)) {
       exempted += 1; // counted, never silent
       continue;
     }
+    spans.push([h.index, h.end]);
     add(h);
   }
-  // A real key glued to a fiction token (TOKENsk_live_…) hides from `\b`;
-  // with the tokens blanked it stands alone. Only hits the first pass did
-  // not already cover are new.
+  // A real key glued to a fiction token (TOKENsk_live_…) hides from `\b`,
+  // and a greedy exempt match can swallow a real one (F-63); with the tokens
+  // blanked both stand alone. Only an exempt match's span is open to the
+  // second pass — a reported finding is never counted twice.
   if (EXEMPTIONS.some((t) => text.includes(t)))
     for (const h of rawFindings(blankTokens(text)))
       if (!spans.some(([a, b]) => h.index < b && h.end > a)) add(h);
@@ -153,7 +154,7 @@ export function scanText(text, path = '(inline)') {
 }
 
 /** Names are output too: escape control characters, redact anything secret-shaped. */
-function display(p) {
+export function display(p) {
   const hits = rawFindings(p).filter((h) => !isExempt(h.secret));
   if (hits.length > 0) return `[redacted path ${fingerprint(hits[0].secret)}]`;
   // C0, DEL, C1 and the Unicode line separators never reach a terminal raw
@@ -313,6 +314,9 @@ export function scanStaged(cwd = process.cwd()) {
         cwd,
         maxBuffer: Number.POSITIVE_INFINITY,
         stdio: ['pipe', 'pipe', 'pipe'],
+        // refs/replace/* would make cat-file return OTHER bytes than the
+        // commit records, under the same sha (review S1)
+        env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' },
         ...opts,
       });
     } catch (e) {

@@ -112,7 +112,7 @@ for (let step = 0; step < 250; step += 1) {
   for (const a of killedAgents)
     if (!(op === 'resumeAgent' && a === agent))
       check(
-        doc.halt != null && Object.hasOwn(doc.halt.agents, a),
+        Boolean(doc.halt) && Object.hasOwn(doc.halt.agents, a),
         `agent halt ${a} lost by ${op}`,
         step,
       );

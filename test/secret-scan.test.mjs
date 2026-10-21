@@ -31,6 +31,11 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, '..', 'bin', 'sakk.mjs');
 const SCHEME = ['postgresql', ':', '//'].join('');
+// A wall clock only catches pathology (catastrophic backtracking, quadratic
+// line numbering, one process per blob) — never speed. These run in ~3 ms,
+// ~85 ms and a few seconds idle; the audit's mutation drill ran a test 14x
+// slower than idle (F-62), so any tighter line reports load, not code.
+const PATHOLOGY_MS = 30_000;
 const FAKE_PW = ['zz', 'fake', 'pw', '12345'].join('');
 const FAKE_DSN = `${SCHEME}user:${FAKE_PW}@db.internal.example/app`;
 const tdir = () => mkdtempSync(join(tmpdir(), 'sakk-scan-'));
@@ -172,7 +177,7 @@ describe('walking the tree safely', () => {
 });
 
 describe('performance: hostile lines cost linear time (review S-4)', () => {
-  test('200KB adversarial lines for every rule scan in well under a second', () => {
+  test('200KB adversarial lines for every rule scan without catastrophic backtracking', () => {
     const hostile = [
       `://${'a:%41'.repeat(40_000)}`,
       `${SCHEME}${'a:'.repeat(100_000)}`,
@@ -182,7 +187,7 @@ describe('performance: hostile lines cost linear time (review S-4)', () => {
     ];
     const t0 = Date.now();
     for (const h of hostile) scanText(h);
-    assert.ok(Date.now() - t0 < 1000, `took ${Date.now() - t0}ms`);
+    assert.ok(Date.now() - t0 < PATHOLOGY_MS, `took ${Date.now() - t0}ms`);
   });
   test('many findings in a big file do not go quadratic on line numbers', () => {
     const text = Array.from(
@@ -193,7 +198,7 @@ describe('performance: hostile lines cost linear time (review S-4)', () => {
     const r = scanText(text);
     assert.equal(r.findings.length, 50_000);
     assert.equal(r.findings.at(-1).line, 50_000);
-    assert.ok(Date.now() - t0 < 3000, `took ${Date.now() - t0}ms`);
+    assert.ok(Date.now() - t0 < PATHOLOGY_MS, `took ${Date.now() - t0}ms`);
   });
 });
 
@@ -282,6 +287,57 @@ describe('the hook as SHIPPED (review S-1: no npx, nothing rewritten in the test
       'nothing written through the link',
     );
   });
+  test('review S2: a merge commit bringing in a secret is refused by the pre-merge-commit hook', () => {
+    const d = repo();
+    writeFileSync(join(d, 'base.txt'), 'base\n');
+    git(d, 'add', 'base.txt');
+    git(d, 'commit', '-qm', 'base');
+    assert.equal(cli(['--install-hook'], { cwd: d }).status, 0);
+    git(d, 'checkout', '-qb', 'feat');
+    writeFileSync(join(d, 'app.env'), `DB=${FAKE_DSN}\n`);
+    git(d, 'add', 'app.env');
+    git(d, 'commit', '--no-verify', '-qm', 'leak on a branch');
+    git(d, 'checkout', '-q', '-');
+    const head = git(d, 'rev-parse', 'HEAD').trim();
+    const m = spawnSync('git', ['merge', '--no-ff', '-q', '-m', 'merge', 'feat'], { cwd: d });
+    assert.notEqual(m.status, 0, 'the merge commit is refused');
+    assert.equal(git(d, 'rev-parse', 'HEAD').trim(), head, 'nothing recorded');
+  });
+  test('review S2: an existing pre-merge-commit hook means NOTHING is installed (both or neither)', () => {
+    const d = repo();
+    writeFileSync(join(d, '.git', 'hooks', 'pre-merge-commit'), '#!/bin/sh\n');
+    const r = cli(['--install-hook'], { cwd: d });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /SCAN_HOOK_EXISTS: .*pre-merge-commit/);
+    assert.equal(spawnSync('test', ['-e', join(d, '.git', 'hooks', 'pre-commit')]).status, 1);
+  });
+  test('review S6: a hook whose node is gone refuses with SCAN_HOOK_STALE, not a bare shell error', () => {
+    const d = repo();
+    assert.equal(cli(['--install-hook'], { cwd: d }).status, 0);
+    const hookPath = join(d, '.git', 'hooks', 'pre-commit');
+    writeFileSync(
+      hookPath,
+      readFileSync(hookPath, 'utf8').replaceAll(
+        process.execPath,
+        '/nonexistent/Cellar/node/0/bin/node',
+      ),
+    );
+    writeFileSync(join(d, 'ok.txt'), 'clean\n');
+    git(d, 'add', 'ok.txt');
+    const c = spawnSync('git', ['commit', '-qm', 'x'], { cwd: d, encoding: 'utf8' });
+    assert.notEqual(c.status, 0);
+    assert.match(c.stderr, /SCAN_HOOK_STALE/);
+  });
+  test('review S1: a git replace ref cannot make --staged read other bytes than the commit records', () => {
+    const d = repo();
+    writeFileSync(join(d, 'clean.txt'), 'nothing here\n');
+    const cleanSha = git(d, 'hash-object', '-w', 'clean.txt').trim();
+    writeFileSync(join(d, 'app.env'), `DB=${FAKE_DSN}\n`);
+    git(d, 'add', 'app.env');
+    const secretSha = git(d, 'rev-parse', ':app.env').trim();
+    git(d, 'replace', secretSha, cleanSha);
+    assert.equal(scanStaged(d).findings.length, 1);
+  });
   test('a hooksPath pointing nowhere → SCAN_HOOK_DIR_MISSING, exit 2', () => {
     const d = repo();
     git(d, 'config', 'core.hooksPath', 'no/such/dir');
@@ -293,10 +349,11 @@ describe('the hook as SHIPPED (review S-1: no npx, nothing rewritten in the test
 
 describe('the repository itself', () => {
   test('the whole repository — tests included — scans clean', () => {
+    // the ROOT, not a list of directories: README, CHANGELOG, findings/ and
+    // specs/ were never scanned while the list said "whole repository" (F-79)
     const root = join(HERE, '..');
-    const r = scanPaths(
-      ['src', 'bin', 'eval', 'scripts', 'test', 'docs', 'policies'].map((p) => join(root, p)),
-    );
+    const r = scanPaths([root]);
+    assert.ok(r.scanned > 200, `scanned only ${r.scanned} files`);
     assert.deepEqual(r.findings, []);
     assert.deepEqual(r.unreadable, []);
   });
@@ -348,7 +405,7 @@ describe('verify pass B1: no staged blob can go unscanned', () => {
     git(d, 'add', '-A');
     const t0 = Date.now();
     assert.equal(scanStaged(d).scanned, 2000);
-    assert.ok(Date.now() - t0 < 15_000, `took ${Date.now() - t0}ms`);
+    assert.ok(Date.now() - t0 < PATHOLOGY_MS, `took ${Date.now() - t0}ms`);
   });
 });
 
@@ -592,5 +649,53 @@ describe('verify pass round 3', () => {
   test('N8: a key glued right after the fiction token is found', () => {
     const glued = [FICTIONAL_EXEMPTION_TOKEN, 'sk', '_live_', '7Kd'.repeat(10)].join('');
     assert.equal(scanText(glued).findings.length, 1);
+  });
+  test('review S4: a PGP private key block is a private-key block', () => {
+    const pgp = ['-----BEGIN PGP', 'PRIVATE KEY BLOCK-----'].join(' ');
+    assert.equal(scanText(pgp).findings.length, 1);
+  });
+  test('RC-03 class: a fiction token beside any real secret, in any position, never hides it', () => {
+    // judged in context, not on the literal capture: every recognized shape
+    // × every way a declared fiction can sit next to it (F-11, F-63)
+    const T = FICTIONAL_EXEMPTION_TOKEN;
+    const F = `${SCHEME}u:${T}`;
+    const shapes = [
+      `${SCHEME}app:${FAKE_PW}@db.internal/app`,
+      ['AKIA', 'Q7RT2VW4MN8KZX9P'].join(''),
+      ['ghp', '_', 'Zx9pQ7rT2vW4mN8kL3s'.repeat(2)].join(''),
+      ['sk', '_live_', 'Zx9pQ7rT2vW4mN8kL3sJ'].join(''),
+      ['password', ' = "', 'Zx9pQ7rT2vW4', '"'].join(''),
+    ];
+    const contexts = [
+      (x) => `${F}${x}`,
+      (x) => `${F},${x}`,
+      (x) => `${F} ${x}`,
+      (x) => `${T}${x}`,
+      (x) => `${x}${T}`,
+      (x) => `${x} ${F}@h`,
+      (x) => `${F}@h ${x}`,
+      (x) => x.replace('app:', `${T}:`), // the fiction as the real DSN's own user (F-11)
+    ];
+    const missed = [];
+    for (const x of shapes)
+      contexts.forEach((c, i) => {
+        if (scanText(c(x)).findings.length === 0) missed.push(`context ${i}: ${x.slice(0, 12)}…`);
+      });
+    assert.deepEqual(missed, []);
+  });
+  test('F-63: an exempt match never hides a real secret it swallowed', () => {
+    // the greedy DSN capture runs to the first '@', swallowing a second DSN;
+    // the outer match is exempt, the inner one is a real recognized secret
+    const T = FICTIONAL_EXEMPTION_TOKEN;
+    const ENC = ['p', '%40', 'ss'].join('');
+    for (const text of [
+      `${SCHEME}u:${T}${SCHEME}x:${FAKE_PW}@h`,
+      `urls=${SCHEME}u:${T},${SCHEME}x:${FAKE_PW}@h`,
+      `https://u:${T}https://x:${ENC}@h`,
+    ])
+      assert.equal(scanText(text).findings.length, 1, text);
+    // control: a lone declared fiction is still exempt
+    const lone = scanText(`${SCHEME}stub:${T}@127.0.0.1:5499/db`);
+    assert.deepEqual([lone.findings.length, lone.exempted], [0, 1]);
   });
 });

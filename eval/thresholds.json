@@ -1,0 +1,23 @@
+{
+  "standard": "ai-agent-testing v1.1",
+  "note": "Thresholds the audit enforces. Tightening is free; loosening needs a written reason here (standard §4).",
+  "T0": {
+    "drill_kill_rate": 1,
+    "skipped_tests_max": 0,
+    "lint_warnings_max": 0
+  },
+  "T2": {
+    "k": 3,
+    "k_key_cases": 5,
+    "key_cases": ["G05", "G06", "G07", "G12"],
+    "fake_pass_k_min": 1,
+    "verdict_changes_max": 0
+  },
+  "T3": {
+    "claimed_asr_max": 0,
+    "variants_min": 5
+  },
+  "L1_fuzz": {
+    "trials_per_module": 200
+  }
+}

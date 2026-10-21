@@ -19,20 +19,25 @@ the alerts log alone.
    rewrite `flags` wholesale (settle overrun, unknown-cost settle,
    markReconciliationRequired, clearReconciliation). A halt stored there
    would be silently LIFTED by an ordinary settle. Shape:
-   `halt: { global: null | {by, at, reason}, agents: { [id]: {by, at, reason} } }`.
+   `halt: { global: null | {by, at, reason}, agents: { [id]: {by, at, reason} }, lifts: [{by, at, scope, agentId, haltedBy, haltedAt}] }`.
    **Schema bump (review B2):** the closed-schema rule (C-1) says new
    fields mean a new version, so the first halt rewrites the file as
    `sakk-ledger.v2`, where `halt` is REQUIRED; v1 forbids it. Genesis
    ledgers stay v1 and readable by every release; older releases refuse v2
    by schema name — the safe downgrade direction: an old binary can never
-   ignore a halt it does not understand. Resume keeps v2 with an emptied
-   record (`global: null, agents: {}`), which is itself the evidence that a
-   halt existed.
+   ignore a halt it does not understand. Resume keeps v2: the halt leaves
+   `global`/`agents` and is appended to `lifts`, so who lifted which stop,
+   and when, is in the books — not only in the best-effort alert log
+   (review S2). Halt and resume keep the ledger's `updatedAt`: they confirm
+   nothing about the books, so a stop never makes a stale ledger fresh
+   (review S1).
 2. **Agent ids are data, not property names (review B1).** Lookups use
    own keys only and writes define own properties, so `__proto__`,
-   `constructor`, `toString` behave like any id. reserve/halt/resume share
-   one id rule: absent/null = anonymous, otherwise a non-empty string
-   (`AGENT_ID_INVALID`); matching is exact and case-sensitive.
+   `constructor`, `toString` behave like any id. reserve, halt and resume
+   share one id rule: absent = no agent (for reserve, anonymous; for halt
+   and resume, the global scope), otherwise a non-empty string
+   (`AGENT_ID_INVALID`). `null` is anonymous for reserve only — halt and
+   resume refuse it (row 15). Matching is exact and case-sensitive.
 3. **Halting can never be blocked by the conditions it exists for.** The
    halt path reads with infinite staleness (stale books can be stopped),
    works during reconciliation, and the CLI retries lock acquisition (a
@@ -68,6 +73,10 @@ the alerts log alone.
 | 14  | `resume --agent=bot` / misspelled or repeated `--agent`    | exit 2 — never widens to a global resume                                      |
 | 15  | `halt`/`resume` with `agentId: null` (failed id lookup)    | `AGENT_ID_INVALID` — null never means "everyone" for a stop or a resume       |
 | 16  | Overrun settle while halted; money paths after a resume    | halts survive the flags rewrite; a resumed ledger stays v2                    |
+| 17  | A scoped resume while a global halt is set, or the reverse | each lifts exactly its own scope (drill MUT-W)                                |
+| 18  | Halt or resume a STALE ledger                              | it stays stale — a stop never reopens spending                                |
+| 19  | Reserve while halted AND in reconciliation                 | `LEDGER_HALTED`, alerted — the stop outranks every other check                |
+| 20  | Resume, then lose the alert log                            | who lifted which halt is in the ledger's `halt.lifts`                         |
 
 ## Input space
 
@@ -84,7 +93,7 @@ halted). Never process output alone.
 
 ## Contract (done = converged)
 
-- [x] every adversary row has a named test (rows 1-6, 8-16 unit; 7 MCP)
+- [x] every adversary row has a named test (rows 1-6, 8-20 unit; 7 MCP)
 - [x] invariant fuzz gains halt/resume ops: no reservation is granted
       while a global halt is active, nor to a halted agent; the agent pool
       includes `__proto__`/`constructor`/`toString`, every agent halt must

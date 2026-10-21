@@ -34,6 +34,26 @@ const CASE_ID = /^G\d+$/;
 const RULE_NAME = /^[A-Z][A-Z0-9_]*$/;
 const LEDGER_SCHEMAS = ['sakk-ledger.v1', 'sakk-ledger.v2'];
 const ENTRY_STATUS = ['RESERVED', 'SETTLED', 'RECONCILIATION_REQUIRED'];
+// Every key packReport writes. A reader quotes these; a deleted one must be a
+// named failure, not a silently shorter report (F-65, fail-open-absence).
+const PACK_REPORT_KEYS = [
+  'pack',
+  'title',
+  'regulator',
+  'clause_status',
+  'executor_mode',
+  'meaning',
+  'model',
+  'run_id',
+  'harness_commit',
+  'harness_dirty',
+  'batch_stopped',
+  'covered',
+  'total',
+  'not_covered',
+  'not_covered_is_exhaustive',
+  'requirements',
+];
 const LEDGER_KEYS = [
   'schema',
   'initializedAt',
@@ -209,6 +229,11 @@ function check(root, bad, gap) {
     bad('BUNDLE_META_INVALID', 'harnessCommit must be a full commit id');
   if (meta.executorMode !== 'FAKE' && meta.executorMode !== 'REAL')
     bad('BUNDLE_META_INVALID', 'executorMode must be FAKE or REAL');
+  // the README tells the auditor which verifier and version made the bundle
+  if (typeof meta.verifierCommit !== 'string' || !/^[0-9a-f]{40}$/.test(meta.verifierCommit))
+    bad('BUNDLE_META_INVALID', 'verifierCommit must be a full commit id');
+  for (const k of ['createdAt', 'sakkVersion'])
+    if (typeof meta[k] !== 'string' || meta[k] === '') bad('BUNDLE_META_INVALID', k);
   const real = meta.executorMode === 'REAL';
   const caseIds = [];
   if (!Array.isArray(meta.cases) || meta.cases.length === 0)
@@ -256,6 +281,25 @@ function check(root, bad, gap) {
       bad('METRICS_UNVERIFIABLE', 'metrics.json does not say whether the batch stopped');
     else if (metricsDoc.stopped !== null)
       gap('BATCH_STOPPED', `the batch stopped: ${fmt(metricsDoc.stopped)}`);
+    // F-65: absence is not success — a REAL run must name its model, and
+    // every run must say whether its tree matched the commit it names
+    if (real && !(typeof metricsDoc.model_id === 'string' && metricsDoc.model_id.trim() !== ''))
+      bad(
+        'METRICS_UNVERIFIABLE',
+        'a REAL run whose metrics.json names no model — the traces cannot be checked against it',
+      );
+    if (![true, false, null].includes(metricsDoc.harness_dirty))
+      bad(
+        'METRICS_UNVERIFIABLE',
+        'metrics.json does not say whether the harness tree matched its commit (made by an older runner?)',
+      );
+    else if (real && metricsDoc.harness_dirty !== false)
+      gap(
+        'HARNESS_MODIFIED',
+        metricsDoc.harness_dirty
+          ? 'the harness tree differed from the commit the traces name — the scorer that judged this run is not provably the one at that commit'
+          : 'the harness tree could not be compared with the commit the traces name',
+      );
   }
 
   // 3. per case
@@ -384,7 +428,12 @@ function check(root, bad, gap) {
       trace.cost_is_estimate === true ||
       (realExec && !isNum(realExec.cost_usd))
     )
-      gap('SPEND_UNRESOLVED', `${id}: the cost recorded is an estimate, not a reported cost`);
+      gap(
+        'SPEND_UNRESOLVED',
+        realExec && typeof realExec.refused === 'string'
+          ? `${id}: the case was refused before it ran (${fmt(realExec.refused)}) — no reported cost`
+          : `${id}: the cost recorded is an estimate, not a reported cost`,
+      );
     if (settled > ledger.capUsd + 1e-6)
       // a truthful ledger flags its own overrun: evidence of the worst spend
       // event must still be issuable, labelled — an unflagged one is a forgery
@@ -469,19 +518,35 @@ function check(root, bad, gap) {
     const pr = obj('run/pack-report.json', 'PACK_REPORT_INVALID');
     if (pr) {
       const mismatch = (detail) => bad('PACK_STATUS_MISMATCH', detail);
+      const missing = PACK_REPORT_KEYS.filter((k) => !(k in pr));
+      if (missing.length > 0) bad('PACK_REPORT_INVALID', `missing ${missing.join(', ')}`);
+      if (pr.not_covered_is_exhaustive !== false || !Array.isArray(pr.not_covered))
+        bad('PACK_REPORT_INVALID', 'not_covered must be a list marked not exhaustive');
+      for (const r of Array.isArray(pr.requirements) ? pr.requirements : [])
+        if (
+          !isObj(r) ||
+          typeof r.id !== 'string' ||
+          typeof r.theme !== 'string' ||
+          !Array.isArray(r.gaps)
+        )
+          bad('PACK_REPORT_INVALID', `requirement ${fmt(r?.id)}: id, theme and gaps are required`);
       if (pr.executor_mode !== meta.executorMode)
         mismatch(`report mode ${fmt(pr.executor_mode)} in a ${meta.executorMode} bundle`);
       if (pr.run_id !== meta.runId)
         bad('RUN_ID_MISMATCH', `pack-report.json names ${fmt(pr.run_id)}`);
       if (pr.harness_commit !== meta.harnessCommit)
         mismatch(`harness_commit ${fmt(pr.harness_commit)}`);
-      if (metricsDoc && canon(pr.batch_stopped ?? null) !== canon(metricsDoc.stopped ?? null))
+      if (metricsDoc && canon(pr.batch_stopped) !== canon(metricsDoc.stopped ?? null))
         mismatch(`batch_stopped ${fmt(pr.batch_stopped)} vs metrics ${fmt(metricsDoc.stopped)}`);
       if ('model' in pr) {
         const want = real ? metricsDoc?.model_id : null;
         const got = isObj(pr.model) ? pr.model.model_id : pr.model;
         if (got !== want) mismatch(`model ${fmt(got)} but the run's model is ${fmt(want)}`);
       }
+      if (metricsDoc && pr.harness_dirty !== metricsDoc.harness_dirty)
+        mismatch(
+          `harness_dirty ${fmt(pr.harness_dirty)} vs metrics ${fmt(metricsDoc.harness_dirty)}`,
+        );
       const selected = Array.isArray(metricsDoc?.selected_cases) ? metricsDoc.selected_cases : null;
       const verdictOf = new Map(per.map((e) => [e.id, e.result.verdict]));
       const reqs = Array.isArray(pr.requirements) ? pr.requirements : [];
@@ -506,7 +571,14 @@ function check(root, bad, gap) {
             mismatch(`${r.id}: ${c.case} reported ${fmt(c.verdict)}, the files say ${actual}`);
         }
         const allPass = cases.every((c) => verdictOf.get(c.case) === 'PASS');
-        const want = !real ? 'HARNESS_ONLY' : allPass ? 'COVERED' : 'NOT_COVERED';
+        const clean = metricsDoc?.harness_dirty === false;
+        const want = !real
+          ? 'HARNESS_ONLY'
+          : !allPass
+            ? 'NOT_COVERED'
+            : clean
+              ? 'COVERED'
+              : 'HARNESS_MODIFIED';
         if (want === 'COVERED') covered += 1;
         if (r.status !== want)
           mismatch(`${r.id}: report says ${fmt(r.status)}, the files say ${want}`);

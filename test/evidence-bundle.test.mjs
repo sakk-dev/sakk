@@ -72,6 +72,38 @@ const forge = (b, rel, fn) => {
   return codes(b);
 };
 const hasShasum = spawnSync('shasum', ['--version']).status === 0;
+/** A complete pack report (every key packReport writes); a test overrides what it forges. */
+const packReportDoc = (b, over = {}) => {
+  const meta = JSON.parse(readFileSync(join(b, 'bundle.json'), 'utf8'));
+  const metrics = JSON.parse(readFileSync(join(b, 'run/metrics.json'), 'utf8'));
+  return {
+    pack: 'p',
+    title: 't',
+    regulator: 'r',
+    clause_status: 'c',
+    executor_mode: meta.executorMode,
+    meaning: 'm',
+    model: null,
+    run_id: meta.runId,
+    harness_commit: meta.harnessCommit,
+    harness_dirty: metrics.harness_dirty,
+    batch_stopped: metrics.stopped,
+    covered: 0,
+    total: 1,
+    not_covered: [],
+    not_covered_is_exhaustive: false,
+    requirements: [
+      {
+        id: 'r',
+        theme: 't',
+        gaps: [],
+        status: 'HARNESS_ONLY',
+        cases: [{ case: 'G05', verdict: 'PASS' }],
+      },
+    ],
+    ...over,
+  };
+};
 
 before(() => {
   RUN = join(tdir(), 'run');
@@ -464,11 +496,25 @@ describe('verify pass N1: unresolved spend is never a PASS', () => {
     assert.match(cli.stdout, /VERIFY INCOMPLETE/);
   });
   test('a RESERVED entry left open is unresolved spend too', () => {
+    // a consistent fixture: the paid step exists in the trace too, so the
+    // ONLY thing wrong is the open reservation — INCOMPLETE, nothing else
     const b = copyOf(PRISTINE);
     editJson(b, 'run/G04/ledger.json', (l) =>
       l.entries.push({ callId: 'open', estimatedMaxUsd: 1, createdAt: 'x', status: 'RESERVED' }),
     );
+    editJson(b, 'run/G04/trace.json', (t) =>
+      t.tool_calls.push({
+        at: 'x',
+        kind: 'paid_step',
+        callId: 'open',
+        reservedUsd: 1,
+        capArgUsd: 1,
+      }),
+    );
     reManifest(b);
+    const v = verifyBundle(b);
+    assert.deepEqual(v.problems, []);
+    assert.equal(v.status, 'INCOMPLETE');
     assert.ok(gaps(b).includes('SPEND_UNRESOLVED'));
   });
   test('a stopped batch → BATCH_STOPPED; a selected case that never ran → CASES_NOT_RUN', () => {
@@ -538,10 +584,10 @@ describe('verify pass N3: the shipped verifier is pinned to a commit', () => {
   test('bundle.json and the README name the verifier commit', () => {
     const meta = JSON.parse(readFileSync(join(PRISTINE, 'bundle.json'), 'utf8'));
     assert.match(meta.verifierCommit, /^[0-9a-f]{40}$/);
-    assert.match(
-      readFileSync(join(PRISTINE, 'README.md'), 'utf8'),
-      new RegExp(`git show ${meta.verifierCommit}:eval/lib/bundle-verify.mjs`),
-    );
+    const readme = readFileSync(join(PRISTINE, 'README.md'), 'utf8');
+    assert.match(readme, new RegExp(`commit \`${meta.verifierCommit}\``));
+    // F-65: the check that counts runs the auditor's CURRENT verifier, not the shipped one
+    assert.match(readme, /node <your-sakk-clone>\/eval\/lib\/bundle-verify\.mjs \./);
   });
   test('a checkout with an uncommitted verifier refuses to build (BUNDLE_VERIFIER_DIRTY)', () => {
     const repo = join(tdir(), 'r');
@@ -769,22 +815,10 @@ describe('verify round 3', () => {
   });
   test('N5: stop records compare regardless of key order', () => {
     const b = copyOf(PRISTINE);
-    const meta = JSON.parse(readFileSync(join(b, 'bundle.json'), 'utf8'));
     editJson(b, 'run/metrics.json', (m) => (m.stopped = { at: 'G12', why: 'BUDGET' }));
     writeFileSync(
       join(b, 'run/pack-report.json'),
-      JSON.stringify({
-        executor_mode: 'FAKE',
-        run_id: meta.runId,
-        harness_commit: meta.harnessCommit,
-        batch_stopped: { why: 'BUDGET', at: 'G12' },
-        model: null,
-        covered: 0,
-        total: 1,
-        requirements: [
-          { id: 'r', status: 'HARNESS_ONLY', cases: [{ case: 'G05', verdict: 'PASS' }] },
-        ],
-      }),
+      JSON.stringify(packReportDoc(b, { batch_stopped: { why: 'BUDGET', at: 'G12' } })),
     );
     reManifest(b);
     assert.deepEqual(verifyBundle(b).problems, []);
@@ -793,6 +827,132 @@ describe('verify round 3', () => {
     assert.throws(
       () => buildBundle({ source: RUN, to: join(tdir(), '.tgz') }),
       (e) => e.code === 'BUNDLE_TARGET_INVALID',
+    );
+  });
+});
+
+describe('F-65: a missing key is a failure, never a skipped check', () => {
+  // A coherent REAL forgery of the FAKE run: every label, trace and metric
+  // agrees, so only the F-65 checks can tell what is missing.
+  const toReal = (b, opts = {}) => {
+    // `in`, not defaults: { model: undefined } must mean "no model"
+    const model = 'model' in opts ? opts.model : 'claude-x';
+    const dirty = 'dirty' in opts ? opts.dirty : false;
+    for (const id of readdirSync(join(b, 'run')).filter((x) => /^G\d+$/.test(x)))
+      editJson(b, `run/${id}/trace.json`, (t) => {
+        t.model_provider = 'anthropic';
+        t.model_id = 'claude-x';
+      });
+    editJson(b, 'run/metrics.json', (m) => {
+      m.mode = 'REAL';
+      if (model === undefined) delete m.model_id;
+      else m.model_id = model;
+      m.harness_dirty = dirty;
+      Object.assign(m.metrics, {
+        executor_mode: 'REAL',
+        fake_executor_case_pass_rate: null,
+        real_model_case_pass_rate: 1,
+        real_model_case_status: 'RUN',
+        real_model_called: true,
+      });
+    });
+    editJson(b, 'bundle.json', (x) => {
+      x.executorMode = 'REAL';
+      x.mode = 'REAL';
+    });
+    reManifest(b);
+    return verifyBundle(b);
+  };
+  test('control: the coherent REAL forgery passes (so the checks below are what fails)', () => {
+    const v = toReal(copyOf(PRISTINE));
+    assert.deepEqual([v.status, v.problems, v.incomplete], ['PASS', [], []]);
+  });
+  test('a REAL run whose metrics name no model → METRICS_UNVERIFIABLE, even with traces relabelled', () => {
+    for (const model of [undefined, '', '  ', null, 42]) {
+      const v = toReal(copyOf(PRISTINE), { model });
+      assert.equal(v.status, 'FAIL', String(model));
+      assert.ok(
+        v.problems.some(
+          (p) => p.code === 'METRICS_UNVERIFIABLE' && /names no model/.test(p.detail),
+        ),
+        JSON.stringify(v.problems),
+      );
+    }
+  });
+  test('a REAL run on a modified or uncheckable tree → INCOMPLETE (HARNESS_MODIFIED)', () => {
+    for (const dirty of [true, null]) {
+      const v = toReal(copyOf(PRISTINE), { dirty });
+      assert.equal(v.status, 'INCOMPLETE', String(dirty));
+      assert.deepEqual(
+        v.incomplete.map((g) => g.code),
+        ['HARNESS_MODIFIED'],
+      );
+    }
+  });
+  test('metrics.json without harness_dirty, or with a non-boolean → METRICS_UNVERIFIABLE', () => {
+    for (const set of [(m) => delete m.harness_dirty, (m) => (m.harness_dirty = 'false')]) {
+      const b = copyOf(PRISTINE);
+      assert.ok(forge(b, 'run/metrics.json', set).includes('METRICS_UNVERIFIABLE'));
+    }
+  });
+  test('a pack report without a model field, or disagreeing on harness_dirty, is caught', () => {
+    const b = copyOf(PRISTINE);
+    const dirty = JSON.parse(readFileSync(join(b, 'run/metrics.json'), 'utf8')).harness_dirty;
+    const report = (over) => {
+      writeFileSync(join(b, 'run/pack-report.json'), JSON.stringify(packReportDoc(b, over)));
+      reManifest(b);
+      return verifyBundle(b).problems;
+    };
+    assert.deepEqual(report({}), [], 'control');
+    const noModel = JSON.parse(readFileSync(join(b, 'run/pack-report.json'), 'utf8'));
+    delete noModel.model;
+    writeFileSync(join(b, 'run/pack-report.json'), JSON.stringify(noModel));
+    reManifest(b);
+    assert.ok(verifyBundle(b).problems.some((p) => p.code === 'PACK_REPORT_INVALID'));
+    assert.ok(
+      report({ harness_dirty: !dirty }).some(
+        (p) => p.code === 'PACK_STATUS_MISMATCH' && /harness_dirty/.test(p.detail),
+      ),
+    );
+  });
+  test('a REAL pack report claiming COVERED over a modified tree is caught', () => {
+    const b = copyOf(PRISTINE);
+    toReal(b, { dirty: true });
+    writeFileSync(
+      join(b, 'run/pack-report.json'),
+      JSON.stringify(
+        packReportDoc(b, {
+          model: { model_id: 'claude-x' },
+          covered: 1,
+          requirements: [
+            {
+              id: 'r',
+              theme: 't',
+              gaps: [],
+              status: 'COVERED',
+              cases: [{ case: 'G05', verdict: 'PASS' }],
+            },
+          ],
+        }),
+      ),
+    );
+    reManifest(b);
+    const p = verifyBundle(b).problems;
+    assert.ok(
+      p.some((x) => x.code === 'PACK_STATUS_MISMATCH' && /HARNESS_MODIFIED/.test(x.detail)),
+      JSON.stringify(p),
+    );
+  });
+  test('the builder refuses a REAL run that names no model', () => {
+    const src = join(tdir(), 'run');
+    cpSync(RUN, src, { recursive: true });
+    const m = JSON.parse(readFileSync(join(src, 'metrics.json'), 'utf8'));
+    m.metrics.executor_mode = 'REAL';
+    delete m.model_id;
+    writeFileSync(join(src, 'metrics.json'), JSON.stringify(m));
+    assert.throws(
+      () => buildBundle({ source: src, to: join(tdir(), 'x.tgz') }),
+      (e) => e.code === 'BUNDLE_SOURCE_INVALID' && /names no model/.test(e.message),
     );
   });
 });

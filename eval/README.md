@@ -27,11 +27,12 @@ it measures discipline, with machine evidence only.
 | `gold/G01..G12/`                      | the answer key: scoring.json + notes.md + maintainer-label.json — never copied into a workdir |
 | `gold/manifest.sha256`                | per-file SHA-256 inventory, verified at every runner start                             |
 | `schemas/`                            | case / trace / result / metrics JSON Schemas (draft-07 subset)                         |
-| `lib/`                                | validate / trace / paid-step gate / env scrub / scorer                                 |
+| `lib/`                                | validate / trace / paid-step gate / env scrub / scorer / case packs / bundle verifier  |
+| `packs/`                              | regulatory case packs: requirement themes mapped to cases, with gaps                   |
 | `bin/gold-runner.mjs`                 | the single entry point: `--validate` / `--dry-run` / `--fake-executor` / `--real`      |
 | `fake/agents/`                        | scripted well-behaved agents (harness validation only)                                 |
 | `examples/approval-gate.mjs`          | reference approval gate (injectable via `GOLD_GATE_MODULE`)                            |
-| `__tests__/`                          | three self-test suites, including negative cases and gate sampling                     |
+| `__tests__/`                          | the harness's own test suites, including negative cases and gate sampling              |
 | `GOLD_RUN_AUTHORIZATION.example.json` | sample authorization file (`approved: false` on purpose)                               |
 
 ## Commands
@@ -62,10 +63,12 @@ What the verdict means depends on the run:
 - **FAKE** runs read `HARNESS_ONLY` for every requirement — they prove the
   harness chain works and say nothing about any model or agent.
 - **REAL** runs (only possible with approved gold labels) read `COVERED` when
-  every case behind a requirement ran and passed, otherwise `NOT_COVERED`.
-  The report names the model it ran against and flags a `CLAUDE_BIN`
-  override (an overridden binary is not verified to be that model). A REAL
-  batch that stops early exits 1.
+  every case behind a requirement ran and passed on a harness tree that
+  matches its commit; a passing requirement on a modified or uncheckable
+  tree reads `HARNESS_MODIFIED`; otherwise `NOT_COVERED`. The report names
+  the model id as requested and the binary that PATH resolved, and flags a
+  `CLAUDE_BIN` override — no binary, overridden or not, is verified to be
+  that model. A REAL batch that stops early exits 1.
 
 Every requirement lists its `gaps` (what its cases do not show) and every
 pack lists `not_covered` regulatory themes that no case exercises — a

@@ -17,7 +17,6 @@ import {
   loadCases,
   authorizeRealRun,
   checkArgv,
-  harnessDirty,
   realExitCode,
   resolveBinary,
   SUPPORTED_PROVIDERS,
@@ -78,7 +77,7 @@ describe('C-1: a fake run can never read COVERED', () => {
     assert.deepEqual(r.batch_stopped, { at: 'G05', why: 'BUDGET' });
   });
   test('REAL mode: COVERED only when every backing case ran and passed', () => {
-    const real = { executorMode: 'REAL', runId: 'r' };
+    const real = { executorMode: 'REAL', runId: 'r', harnessDirty: false };
     assert.equal(
       packReport(pack, [entry('G05', 'PASS'), entry('G06', 'PASS')], real).requirements[0].status,
       'COVERED',
@@ -90,6 +89,20 @@ describe('C-1: a fake run can never read COVERED', () => {
     const notRun = packReport(pack, [entry('G05', 'PASS')], real).requirements[0];
     assert.equal(notRun.status, 'NOT_COVERED');
     assert.equal(notRun.cases[1].verdict, 'NOT_RUN');
+  });
+  test('F-65: a REAL run on a modified or uncheckable harness never reads COVERED', () => {
+    const both = [entry('G05', 'PASS'), entry('G06', 'PASS')];
+    for (const harnessDirty of [true, null, undefined, 'false', 0]) {
+      const r = packReport(pack, both, { executorMode: 'REAL', runId: 'r', harnessDirty });
+      assert.equal(r.requirements[0].status, 'HARNESS_MODIFIED', String(harnessDirty));
+      assert.equal(r.covered, 0);
+      assert.match(r.meaning, /not provably the one at that commit/);
+    }
+    const failing = packReport(pack, [entry('G05', 'PASS'), entry('G06', 'FAIL')], {
+      executorMode: 'REAL',
+      harnessDirty: true,
+    });
+    assert.equal(failing.requirements[0].status, 'NOT_COVERED', 'a failure stays a failure');
   });
   test('duplicate entries for one case: any non-PASS wins, in either order', () => {
     for (const order of [
@@ -123,7 +136,11 @@ describe('C-1: a fake run can never read COVERED', () => {
       executor_binary: '/stub',
       binary_overridden: true,
     };
-    const real = packReport(pack, [entry('G05', 'PASS')], { executorMode: 'REAL', model });
+    const real = packReport(pack, [entry('G05', 'PASS')], {
+      executorMode: 'REAL',
+      model,
+      harnessDirty: false,
+    });
     assert.deepEqual(real.model, model);
     assert.match(real.meaning, /executor recorded in `model`.*not verified/);
     const fake = packReport(pack, [entry('G05', 'PASS')], { executorMode: 'FAKE', model });
@@ -208,6 +225,14 @@ describe('C-3: honesty fields are mandatory', () => {
     expectCode(() => validatePack(a, 'p.json', CASES), 'PACK_INVALID');
     const b = goodPack();
     delete b.requirements[0].gaps;
+    expectCode(() => validatePack(b, 'p.json', CASES), 'PACK_INVALID');
+  });
+  test('review S4: an EMPTY gaps or not_covered list is invalid — every pack has limits', () => {
+    const a = goodPack();
+    a.not_covered = [];
+    expectCode(() => validatePack(a, 'p.json', CASES), 'PACK_INVALID');
+    const b = goodPack();
+    b.requirements[0].gaps = [];
     expectCode(() => validatePack(b, 'p.json', CASES), 'PACK_INVALID');
   });
 });

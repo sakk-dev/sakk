@@ -23,6 +23,7 @@ jobs:
         with:
           node-version: 22
       - run: npm run format:check
+      - run: npm run lint
   drill:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -36,3 +37,5 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm run drill
       - run: npm run fuzz
+      - run: npm run fuzz:policy
+      - run: npm run fuzz:l1

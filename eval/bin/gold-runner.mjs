@@ -268,23 +268,58 @@ export function authorizeRealRun({ authorizationPath, caseDefs, workRoot, goldDi
   return { ok: true, auth, plan: { capUsd, totalCap, caseIds: caseDefs.map((c) => c.id) } };
 }
 
+const realOr = (p) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+};
+
+/**
+ * The repository's top when it is sakk's own root, else null. Inside someone
+ * else's repository (a ZIP extracted into a project, a vendored copy) git
+ * answers for THAT repository: its commit, its eval/ (F-64).
+ */
+function ownRepoTop() {
+  try {
+    const top = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    return realOr(top) === realOr(join(ROOT, '..')) ? top : null;
+  } catch {
+    return null;
+  }
+}
+
 function gitRoot() {
   // Stranger-test finding: a ZIP/tarball download has no .git, and the raw
   // `git rev-parse` crash surfaced as eight scattered test failures. Refuse
   // once, with a name.
+  const refuse = (why) => {
+    const err = new Error(
+      `HARNESS_GIT_REQUIRED: gold runs record the harness commit as provenance; ${why} (--validate and --dry-run still work)`,
+    );
+    err.code = 'HARNESS_GIT_REQUIRED';
+    throw err;
+  };
+  let head;
   try {
-    return execFileSync('git', ['rev-parse', 'HEAD'], {
+    head = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
   } catch {
-    const err = new Error(
-      'HARNESS_GIT_REQUIRED: gold runs record the harness commit as provenance; run from a git clone — a ZIP/tarball download has no .git (--validate and --dry-run still work)',
-    );
-    err.code = 'HARNESS_GIT_REQUIRED';
-    throw err;
+    refuse('run from a git clone — a ZIP/tarball download has no .git');
   }
+  if (ownRepoTop() === null)
+    refuse(
+      'this copy of sakk is not the top of its own git repository — the commit would name the enclosing project; run from a clone of sakk',
+    );
+  return head;
 }
 
 function shIn(cwd, cmd, timeoutMs) {
@@ -729,13 +764,9 @@ export function checkArgv(args) {
  * out dir is excluded when it sits inside the repository.
  */
 export function harnessDirty(outDir) {
-  const real = (p) => {
-    try {
-      return realpathSync(p);
-    } catch {
-      return resolve(p);
-    }
-  };
+  const real = realOr;
+  // inside someone else's repository `:/eval` is THEIR eval/ — unknown, not clean (F-64)
+  if (ownRepoTop() === null) return null;
   const repo = real(join(ROOT, '..'));
   const spec = [':/eval', ':/src', ':/package.json'];
   // realpaths on both sides: /var vs /private/var (macOS) must not turn the
@@ -834,14 +865,14 @@ if (isMain) {
   const emitPackReport = (
     entries,
     outDir,
-    { executorMode, runId, stopped = null, model = null },
+    { executorMode, runId, dirty, stopped = null, model = null },
   ) => {
     if (!pack) return;
     const report = packReport(pack, entries, {
       executorMode,
       runId,
       harnessCommit: entries[0]?.trace?.git_commit ?? null,
-      harnessDirty: harnessDirty(outDir),
+      harnessDirty: dirty,
       model,
       stopped,
     });
@@ -852,9 +883,11 @@ if (isMain) {
       console.log(
         `  model ${report.model.provider}/${report.model.model_id} requested via ${report.model.executor_binary_resolved ?? report.model.executor_binary}${report.model.binary_overridden ? ' (CLAUDE_BIN override)' : ''} — the binary is recorded, not verified to be that model`,
       );
-    if (report.harness_dirty)
+    if (report.harness_dirty !== false)
       console.log(
-        '  harness tree differs from the recorded commit (uncommitted eval/ or src/ changes)',
+        report.harness_dirty
+          ? '  harness tree differs from the recorded commit (uncommitted eval/ or src/ changes)'
+          : '  harness tree could not be compared with the recorded commit',
       );
     if (stopped) console.log(`  BATCH STOPPED at ${stopped.at}: ${stopped.why}`);
     for (const r of report.requirements)
@@ -937,6 +970,9 @@ if (isMain) {
       );
     }
     const metrics = aggregateMetrics(entries, { executorMode: 'FAKE' });
+    // one reading for metrics and pack report: did the tree that judged this
+    // run match the commit the traces name? (true / false / null = unknown)
+    const dirty = harnessDirty(outDir);
     writeFileSync(
       join(outDir, 'metrics.json'),
       `${JSON.stringify(
@@ -945,6 +981,7 @@ if (isMain) {
           mode: 'FAKE_EXECUTOR (harness validation, not a model baseline)',
           selected_cases: cases.map((c) => c.id),
           stopped: null,
+          harness_dirty: dirty,
           metrics,
         },
         null,
@@ -960,7 +997,7 @@ if (isMain) {
       }),
     );
     console.log(JSON.stringify(metrics));
-    emitPackReport(entries, outDir, { executorMode: 'FAKE', runId });
+    emitPackReport(entries, outDir, { executorMode: 'FAKE', runId, dirty });
     process.exit(entries.every((e) => e.result.verdict === 'PASS') ? 0 : 1);
   } else if (flag('real')) {
     const workRoot = mkdtempSync(join(tmpdir(), 'gold-real-'));
@@ -1023,6 +1060,7 @@ if (isMain) {
       }
     }
     const metrics = aggregateMetrics(entries, { executorMode: 'REAL' });
+    const dirty = harnessDirty(outDir);
     writeFileSync(
       join(outDir, 'metrics.json'),
       `${JSON.stringify(
@@ -1034,6 +1072,7 @@ if (isMain) {
           // complete one: what was selected, and whether it stopped.
           selected_cases: cases.map((c) => c.id),
           stopped: stoppedInfo,
+          harness_dirty: dirty,
           metrics,
         },
         null,
@@ -1044,6 +1083,7 @@ if (isMain) {
     emitPackReport(entries, outDir, {
       executorMode: 'REAL',
       runId,
+      dirty,
       stopped: stoppedInfo,
       model: {
         provider: gate.auth.model_provider,

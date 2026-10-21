@@ -26,6 +26,7 @@ loop at the bottom; changing this file is an L1 review.
 | R-18 | Absence is never success: an unknown argument, missing/unreadable input or skipped check refuses or reads INCOMPLETE             | F-06…F-33, pattern fail-open-absence    | every CLI, scanner, verifier, report   | test/cli-strictness + claims-are-checked      |
 | R-19 | Every claim points at the check that backs it: emitted codes are tested, documented codes exist, reports carry evidence strength | F-02…F-37 (RC-10), F-39 (RC-07)         | docs, reports, refusal paths           | test/claims-are-checked                       |
 | R-20 | Every new check, flag or provenance field ships with a test that drives it BOTH ways (fires / does not fire)                     | F-15, F-24, F-41 (RC-12)                | any new check, refusal, report field   | review checklist + positive controls in tests |
+| R-21 | Independent review of L1 runs on a different model than the author's, from a fresh clone; the model is named in the PR           | F-59 (RC-12, standard principle 6)      | every L1 review                        | docs/testing-profile.md (Reviews)             |
 | R-13 | Second-bounce breaker: the same defect bounced twice stops the line for redesign                                                 | predecessor NO-WAKE-LOOP                | any fix loop                           | process                                       |
 
 ## Attribution log (evolution loop, round 1 — 2026-10-15)

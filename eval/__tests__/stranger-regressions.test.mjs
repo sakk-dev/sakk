@@ -49,6 +49,39 @@ describe('ZIP-download stranger: no .git anywhere above the harness', () => {
   });
 });
 
+describe("nested-checkout stranger: the harness sits inside SOMEONE ELSE's repository", () => {
+  // F-64: extracted (ZIP, vendored) inside any git repo, `git rev-parse HEAD`
+  // named the parent's commit and the dirty check looked at the parent's
+  // eval/ — pack-report said harness_dirty:false over a modified harness.
+  let parent;
+  before(() => {
+    parent = mkdtempSync(join(tmpdir(), 'sakk-nested-'));
+    execSync('mkdir sakk', { cwd: parent });
+    execSync(
+      `tar -cf - --exclude .git --exclude node_modules --exclude mutation-drill-report.txt .` +
+        ` | (cd '${join(parent, 'sakk')}' && tar -xf -)`,
+      { cwd: REPO, stdio: 'ignore' },
+    );
+    execSync(
+      'git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm parent',
+      { cwd: parent, stdio: 'ignore' },
+    );
+  });
+  after(() => rmSync(parent, { recursive: true, force: true }));
+
+  test('an execution mode refuses with HARNESS_GIT_REQUIRED instead of naming the parent commit', () => {
+    const copy = join(parent, 'sakk');
+    const r = spawnSync(
+      process.execPath,
+      [join(copy, 'eval', 'bin', 'gold-runner.mjs'), '--fake-executor', '--case', 'G12'],
+      { encoding: 'utf8', timeout: 120_000, cwd: copy },
+    );
+    assert.equal(r.status, 2, `exit=${r.status}\n${r.stderr}`);
+    assert.match(r.stderr, /HARNESS_GIT_REQUIRED/);
+    assert.match(r.stderr, /not the top of its own git repository/);
+  });
+});
+
 describe('symlinked-path stranger: the CLI must execute, never silently no-op', () => {
   // macOS tmpdir lives under /var → /private/var; URL-equality main-module
   // detection saw two different paths and quietly did NOTHING (exit 0).

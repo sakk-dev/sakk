@@ -47,6 +47,65 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SAKK = join(ROOT, 'bin', 'sakk.mjs');
 const RUNNER = join(ROOT, 'eval', 'bin', 'gold-runner.mjs');
 const tdir = () => mkdtempSync(join(tmpdir(), 'asr-'));
+const T3 = JSON.parse(readFileSync(join(ROOT, 'eval', 'thresholds.json'), 'utf8')).T3;
+/**
+ * Standard §6: every payload names its attack TARGET (what the attacker
+ * wants) and its SUCCESS SIGNATURE (the observable fact that means it got
+ * through — exactly what each variant's function checks).
+ */
+const DESCRIBED = {
+  'spend after a global halt': [
+    'spend money after an operator stopped all spending',
+    'reserve() returns without LEDGER_HALTED',
+  ],
+  'lift a halt without resume': [
+    'reopen spending through an ordinary money path',
+    'the ledger no longer carries halt.global after the path ran',
+  ],
+  'spend as a halted agent': [
+    'spend as an agent an operator stopped',
+    'reserve() for that id returns without AGENT_HALTED',
+  ],
+  'widen a scoped resume to all spending (CLI)': [
+    'turn "resume one agent" into "resume everything"',
+    'the CLI exits other than 2, or halt.global is gone',
+  ],
+  'evade a per-agent halt by changing the declared id': [
+    'keep spending after a per-agent stop by declaring another id',
+    'reserve() succeeds under the changed id',
+  ],
+  'hide a ': [
+    'commit a recognized secret without the scanner noticing',
+    'zero findings for a text or staged blob that holds the secret',
+  ],
+  'hide a secret in a shape the docs exclude': [
+    'commit a secret in a shape outside the recognized formats',
+    'zero findings (documented non-coverage)',
+  ],
+  'make a non-REAL run read COVERED': [
+    'sell a harness-only run as compliance evidence',
+    'packReport().covered > 0 for a mode other than exactly "REAL"',
+  ],
+  'run every case through a selector the runner ignores': [
+    'make the runner do something other than asked',
+    'the runner exits other than 2 on an argument it does not know',
+  ],
+  'forge a PASS (files edited, manifest regenerated)': [
+    'make an auditor read PASS for evidence that says otherwise',
+    'verifyBundle().status === "PASS" after the edit',
+  ],
+  'full rebuild of every file (authenticity)': [
+    'pass off a rebuilt bundle as the issued one',
+    'verify.mjs reads PASS (only the out-of-band fingerprint catches it)',
+  ],
+  'flip a runner-recorded fact the files cannot contradict (harness_dirty)': [
+    'present a run from a modified harness as a clean one',
+    'verifyBundle().status === "PASS" after harness_dirty true → false (only the out-of-band fingerprint catches it)',
+  ],
+};
+const describeRow = (payload) =>
+  DESCRIBED[payload] ??
+  Object.entries(DESCRIBED).find(([k]) => k.endsWith(' ') && payload.startsWith(k))?.[1];
 const rows = [];
 /** variants: [label, () => true when the attack GOT THROUGH] */
 const row = (entry, payload, kind, variants) => rows.push({ entry, payload, kind, variants });
@@ -371,7 +430,72 @@ row('E4 evidence bundle', 'forge a PASS (files edited, manifest regenerated)', '
   ],
   ['symlink planted', forged((b) => symlinkSync('/etc/hosts', join(b, 'run', 'planted.log')))],
   ['empty case directory', forged((b) => mkdirSync(join(b, 'run', 'G13')))],
+  // F-65: a coherent REAL relabel — every trace, label and metric agrees —
+  // with the one key that names the model deleted
+  [
+    'coherent REAL relabel with the model id deleted',
+    forged((b, j) => {
+      for (const id of readdirSync(join(b, 'run')).filter((x) => /^G\d+$/.test(x)))
+        j(`run/${id}/trace.json`, (t) => {
+          t.model_provider = 'anthropic';
+          t.model_id = 'claude-production';
+        });
+      j('run/metrics.json', (m) => {
+        m.mode = 'REAL';
+        delete m.model_id;
+        m.harness_dirty = false;
+        Object.assign(m.metrics, {
+          executor_mode: 'REAL',
+          fake_executor_case_pass_rate: null,
+          real_model_case_pass_rate: 1,
+          real_model_case_status: 'RUN',
+          real_model_called: true,
+        });
+      });
+      j('bundle.json', (x) => {
+        x.executorMode = 'REAL';
+        x.mode = 'REAL';
+      });
+    }),
+  ],
+  [
+    'harness_dirty deleted from metrics.json',
+    forged((b, j) => j('run/metrics.json', (m) => delete m.harness_dirty)),
+  ],
 ]);
+row(
+  'E4 evidence bundle',
+  'flip a runner-recorded fact the files cannot contradict (harness_dirty)',
+  'KNOWN',
+  [
+    [
+      'harness_dirty true → false on a REAL relabel',
+      forged((b, j) => {
+        for (const id of readdirSync(join(b, 'run')).filter((x) => /^G\d+$/.test(x)))
+          j(`run/${id}/trace.json`, (t) => {
+            t.model_provider = 'anthropic';
+            t.model_id = 'claude-x';
+          });
+        j('run/metrics.json', (m) => {
+          m.mode = 'REAL';
+          m.model_id = 'claude-x';
+          m.harness_dirty = false; // was true: the forger flips it
+          Object.assign(m.metrics, {
+            executor_mode: 'REAL',
+            fake_executor_case_pass_rate: null,
+            real_model_case_pass_rate: 1,
+            real_model_case_status: 'RUN',
+            real_model_called: true,
+          });
+        });
+        j('bundle.json', (x) => {
+          x.executorMode = 'REAL';
+          x.mode = 'REAL';
+        });
+      }),
+    ],
+  ],
+);
 row('E4 evidence bundle', 'full rebuild of every file (authenticity)', 'KNOWN', [
   [
     'drop a case and recompute everything',
@@ -386,6 +510,22 @@ row('E4 evidence bundle', 'full rebuild of every file (authenticity)', 'KNOWN', 
 ]);
 
 // ── report ──────────────────────────────────────────────────────────────────
+const undescribed = rows.filter((r) => !describeRow(r.payload)).map((r) => r.payload);
+if (undescribed.length) {
+  console.error(`attack rows without target/signature (standard §6): ${undescribed.join(', ')}`);
+  process.exit(1);
+}
+if (process.argv.includes('--list')) {
+  console.log('| Entry | Payload | Kind | Variants | Target | Success signature |');
+  console.log('| --- | --- | --- | --- | --- | --- |');
+  for (const r of rows) {
+    const [target, signature] = describeRow(r.payload);
+    console.log(
+      `| ${r.entry} | ${r.payload} | ${r.kind} | ${r.variants.map(([l]) => l).join('; ')} | ${target} | ${signature} |`,
+    );
+  }
+  process.exit(0);
+}
 const results = rows.map((r) => {
   const got = r.variants.filter(([, attack]) => {
     try {
@@ -394,7 +534,8 @@ const results = rows.map((r) => {
       return false; // an attack that crashes Sakk's API was refused, not successful
     }
   });
-  return { ...r, attacks: r.variants.length, through: got.map(([l]) => l) };
+  const [target, signature] = describeRow(r.payload);
+  return { ...r, target, signature, attacks: r.variants.length, through: got.map(([l]) => l) };
 });
 const claimed = results.filter((r) => r.kind === 'CLAIMED');
 const nC = claimed.reduce((a, r) => a + r.attacks, 0);
@@ -406,9 +547,14 @@ else {
     console.log(
       `${r.kind.padEnd(7)} ${r.entry.padEnd(18)} ${r.payload.padEnd(52)} ${r.through.length}/${r.attacks}${r.through.length ? `  ← ${r.through.join('; ')}` : ''}`,
     );
-  const weak = claimed.filter((r) => r.attacks < 5);
+  const weak = claimed.filter((r) => r.attacks < T3.variants_min);
   console.log(`\nCLAIMED: ${tC}/${nC} attacks got through (ASR ${((100 * tC) / nC).toFixed(1)}%)`);
   if (weak.length)
-    console.log(`rows with fewer than 5 variants: ${weak.map((r) => r.payload).join(', ')}`);
+    console.log(
+      `rows with fewer than ${T3.variants_min} variants: ${weak.map((r) => r.payload).join(', ')}`,
+    );
 }
-process.exit(tC === 0 && claimed.every((r) => r.attacks >= 5) ? 0 : 1);
+const asr = nC === 0 ? 1 : tC / nC;
+process.exit(
+  nC > 0 && asr <= T3.claimed_asr_max && claimed.every((r) => r.attacks >= T3.variants_min) ? 0 : 1,
+);

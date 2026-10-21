@@ -133,9 +133,38 @@ run_drill MUT-H src/ledger.mjs \
 
 # MUT-I: let a FAKE run read COVERED → the harness-only test must die red
 run_drill MUT-I eval/lib/packs.mjs \
-  "status: !real ? 'HARNESS_ONLY' : allPass ? 'COVERED' : 'NOT_COVERED'," \
-  "status: allPass ? 'COVERED' : 'NOT_COVERED'," \
+  "    if (!real) return 'HARNESS_ONLY';" \
+  "    if (false) return 'HARNESS_ONLY';" \
   "FAKE mode → HARNESS_ONLY for every requirement, even when every case passed"
+
+# MUT-T: let a REAL run on a modified harness read COVERED → its test must die red (F-65)
+run_drill MUT-T eval/lib/packs.mjs \
+  "    return clean ? 'COVERED' : 'HARNESS_MODIFIED';" \
+  "    return 'COVERED';" \
+  "F-65: a REAL run on a modified or uncheckable harness never reads COVERED"
+
+# MUT-U: make a REAL run's model optional again → a forger deletes one key
+# and the model cross-check is skipped; its test must die red (F-65)
+run_drill MUT-U eval/lib/bundle-verify.mjs \
+  "    if (real && !(typeof metricsDoc.model_id === 'string' && metricsDoc.model_id.trim() !== ''))" \
+  "    if (false)" \
+  "a REAL run whose metrics name no model" \
+  "test"
+
+# MUT-V: stop requiring pack-report keys → a deleted key reads PASS, and the
+# fail-open-absence class detector must die red (F-65 class fix)
+run_drill MUT-V eval/lib/bundle-verify.mjs \
+  "      if (missing.length > 0) bad('PACK_REPORT_INVALID', \`missing \${missing.join(', ')}\`);" \
+  "      if (false) bad('PACK_REPORT_INVALID', '');" \
+  "every silently deletable key is declared, and every declaration is still needed" \
+  "test"
+
+# MUT-W: a scoped resume also clears the global halt → its test must die red (kill-switch review S3)
+run_drill MUT-W src/ledger.mjs \
+  "    else h.global = null;" \
+  "    h.global = null;" \
+  "a scoped resume leaves the global halt in force" \
+  "test"
 
 # MUT-J: judge the fiction-token exemption on the WHOLE match → a token in a
 # username exempts a real password, and its test must die red
@@ -200,6 +229,14 @@ run_drill MUT-R eval/lib/paid-step.mjs \
   "if (capArgUsd !== estimateUsd) {" \
   "if (false) {" \
   "7: capArg disagreeing with the reserved amount → paidStep refuses on the spot"
+
+# MUT-S: let an exempt match cover its span again → the real DSN it
+# swallowed hides from the second pass, and its test must die red (F-63)
+run_drill MUT-S src/secret-scan.mjs \
+  "      exempted += 1; // counted, never silent" \
+  "      spans.push([h.index, h.end]); exempted += 1;" \
+  "F-63: an exempt match never hides a real secret it swallowed" \
+  "test"
 
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"

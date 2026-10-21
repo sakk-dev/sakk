@@ -93,48 +93,53 @@ it and exits 3 if the run ended in an unresolved reconciliation.
 
 ## 6. If you were handed an evidence bundle (.tgz)
 
-No clone needed. The bundle ships its own verifier (`verify.mjs`), which
-is exactly why you check the bundle WITHOUT it first — a forged bundle can
-ship a verifier that prints PASS. In this order:
+The bundle ships its own verifier (`verify.mjs`), which is exactly why the
+check that counts uses YOUR copy of the verifier — a forged bundle can ship
+a verifier that prints PASS, including an older genuine one, byte-identical
+to a real commit, that predates checks added since. In this order:
 
 ```bash
 tar -tzf bundle.tgz                         # one top-level sakk-evidence-<run>/ dir, no absolute or ../ paths
 mkdir fresh && tar -xzf bundle.tgz -C fresh && cd fresh/sakk-evidence-*
 shasum -a 256 MANIFEST.sha256               # = the fingerprint the issuer gave you SEPARATELY? if not: stop
 shasum -a 256 -c MANIFEST.sha256            # every file, verify.mjs included, matches
-node verify.mjs                             # only now: exit 0 PASS · 1 FAIL · 3 INCOMPLETE
+node <your-sakk-clone>/eval/lib/bundle-verify.mjs .   # the CURRENT verifier: exit 0 PASS · 1 FAIL · 3 INCOMPLETE
 ```
 
-(`sha256sum` works the same on Linux.) If `bundle.json`'s `verifierCommit`
-is in the public repository, `git show <verifierCommit>:eval/lib/bundle-verify.mjs
-| shasum -a 256` must equal `shasum -a 256 verify.mjs`; `cases/` can be
-compared the same way against `harnessCommit`. The builder refuses to ship
-a verifier with uncommitted changes, so that commit always exists in the
+(`sha256sum` works the same on Linux.) `node verify.mjs` runs the shipped
+copy — a convenience for a reader without a clone, which must agree with
+yours. `cases/` can be compared against `harnessCommit` with `git show
+<harnessCommit>:eval/cases/<id>.json`. The builder refuses to ship a
+verifier with uncommitted changes, so `verifierCommit` always exists in the
 issuer's clone.
 
 verify.mjs **PASS** means: only regular files, all matching the manifest,
 no empty directories; one run, one harness commit, one executor mode
 (cross-checked against every trace's provider and model id and against the
-mode labels); the case list equals the case directories and the cases the
+mode labels; a REAL run must name its model); the run states whether its
+harness tree matched the commit it names; the case list equals the case directories and the cases the
 run selected; verdicts agree with violations; each per-case ledger obeys
 sakk's ledger rules, belongs to this run, has the case's own budget as its
 cap, and settled exactly the trace's cost; metrics.json recomputes (all
 metrics except `trace_completeness_rate`, which is range-checked); the pack
 report recomputes, including the verdicts it quotes (a FAKE run can only
-read HARNESS_ONLY). Anything unreadable, ill-typed or with a duplicated
+read HARNESS_ONLY; a REAL run on a modified or uncheckable tree, at best
+HARNESS_MODIFIED). Anything unreadable, ill-typed or with a duplicated
 JSON key is a named failure, never a skipped check.
 
 **INCOMPLETE** (exit 3, like `sakk status` for a ledger awaiting
 reconciliation) means the files are intact and consistent, but the run is
 not final: some spend is unsettled or unreconciled, a trace's cost is
 unknown or estimated, a case overspent its cap (sakk flagged it), the batch
-stopped early, or selected cases never ran. Treat its
+stopped early, selected cases never ran, or a REAL run's harness tree
+differed from (or could not be compared with) its commit. Treat its
 results and costs as provisional. Such a bundle is still issued, labelled.
 
 It does NOT show who made the bundle: a full rebuild — verdicts edited, a
 failing case dropped, a FAKE run relabelled REAL in every file, metrics and
-manifest recomputed — passes verify.mjs. Only the out-of-band fingerprint
-catches that. Nor does it re-judge verdicts against the agent's workspace
+manifest recomputed — passes verify.mjs. So does editing a fact only the
+runner observed (`harness_dirty`, the requested model id). Only the
+out-of-band fingerprint catches that. Nor does it re-judge verdicts against the agent's workspace
 (see the boundary below). `run/` holds raw logs that can contain whatever
 the agent printed, secrets included — review before forwarding. Issuers
 build bundles with `node scripts/evidence-bundle.mjs <out-dir> --to
