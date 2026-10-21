@@ -3578,15 +3578,15 @@
       "dt": ["DT-FN"],
       "rc": ["RC-04"],
       "es": ["ES-04"],
-      "instance_fix": "open",
-      "guard": "",
+      "instance_fix": "this commit: the PreToolUse hook also matches Bash; a command that is not provably read-only must have answers for the files the tree has changed, the files it names, and — when its targets cannot be read — the watch list (specs/self-evolution/spec.md R1)",
+      "guard": "test/self-evolution.test.mjs::a shell command that may write is refused until the branch answers for what it changed",
       "class_fix": null,
-      "sweep": "Covered at commit and in CI: the pre-commit hook and the range check refuse unanswered changes whatever tool made them. Open question: block shell writes to tracked files, or accept commit-time enforcement.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Every route to a tracked file now meets a gate before or at the change: edit tools and shell commands in the hook, every staged file in pre-commit, every commit in CI. Sessions started in a parent folder are covered when the parent routes its tool calls to this hook (F-132).",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": [".claude/settings.json", "scripts/findings-check.mjs"],
       "mechanism_gap": "RC-04 detectors are secret-pattern tests; the edit hook enumerates tool names instead of the rule 'every write to a tracked file'.",
-      "mechanism_upgrade": "none: open — commit-time and CI enforcement cover it; a shell-write hook would be heuristic",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::a shell command that may write is refused until the branch answers for what it changed",
       "class": "C-02"
     },
     {
@@ -3825,6 +3825,121 @@
       "distinct_from": {
         "F-114": "F-114 collects low-impact ledger and release edges that touch ci.yml among other files; F-128 is the self-evolution job defaulting its base to main. Different job, different fix."
       }
+    },
+    {
+      "id": "F-129",
+      "date": "2026-10-21",
+      "introduced_in": "ece32d3",
+      "found_by": "human",
+      "class": "C-10",
+      "title": "Answers can be rewritten after review, so what was promised before the change is lost",
+      "symptom": "The gates read only the final answers file. In a second project running the same loop, about 70 existing answers were rewritten in place after review rounds (2026-10-17 to 10-21); the file still read as written before coding.",
+      "evidence": "transcript of the sessions that built that project, shell edits to findings/acks/*.yaml replacing answer values after each review round; this repository: findings-check --staged and --range compared nothing against an earlier version",
+      "direct_cause": "No check compared the committed answers with the ones being committed.",
+      "why": [
+        "Answering before the change was a rule in the docs, checked only as \"the file has answers now\".",
+        "Keeping answers true after a fix looked like hygiene, so rewriting them was the natural move."
+      ],
+      "root_cause": "A required step (answer before you build) was enforced only at one moment, not over time.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: answers files new on a branch are version 2; a committed answer and its guard never change; corrections are appended as revisions naming a finding; pre-commit compares with HEAD and CI walks every commit (R2)",
+      "guard": "test/self-evolution.test.mjs::an answer, once committed, is never rewritten: corrections are revisions naming a finding",
+      "class_fix": null,
+      "sweep": "Both enforcement points that read answers (pre-commit, CI range) now compare versions; the edit hook needs no comparison because it never accepts a commit.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/findings-check.mjs", "scripts/findings-lib.mjs"],
+      "mechanism_gap": "The RC-07 detectors check that gates pass exit codes through and that required steps run; none checks that an input the gate reads cannot be changed after the gate passed.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::an answer, once committed, is never rewritten: corrections are revisions naming a finding"
+    },
+    {
+      "id": "F-130",
+      "date": "2026-10-21",
+      "introduced_in": "ece32d3",
+      "found_by": "human",
+      "class": "C-03",
+      "title": "The answers check passes any 40 characters of prose, so a class recurs under the very question that was answered",
+      "symptom": "In the second project, all 91 findings logged since 2026-10-18 whose branch could be identified belong to a class whose question that branch had answered before coding; 73 of 80 upgraded no check. Nothing tied an answer to a check or recorded which answer failed.",
+      "evidence": "that project's ledger and answers files, counted 2026-10-21 (class of each new finding against the questions answered on its branch); this repository: missingAnswers checked length, placeholders and copies only",
+      "direct_cause": "An answer was free text; the check could only fail for its form, never for whether it prevents anything.",
+      "why": [
+        "The loop measured \"was it answered\", the only thing a text check can see.",
+        "A miss under an answered question was logged like any other finding, so the loop never learned which answers fail."
+      ],
+      "root_cause": "The check named \"the history was considered\" but could not fail when it was not applied.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-05"],
+      "instance_fix": "this commit: a version-2 answer names its guard (a test that must resolve at commit and in CI, or \"none: <reason>\"); a finding introduced on a branch in a class that branch answered must carry answer_failed {qid, why}; the report counts them (R3, R4)",
+      "guard": "test/self-evolution.test.mjs::every answer names a guard that resolves, or says none with a reason",
+      "class_fix": null,
+      "sweep": "Applied at all three points that read answers; the report shows the miss rate. Ceiling stated: a guard that resolves can still be too weak (mutation work).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/findings-lib.mjs", "scripts/findings-report.mjs"],
+      "mechanism_gap": "The RC-12 detectors check controls, refusal codes and timeouts of product checks; the loop's own answer rule was never asked to fail for its stated reason.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::a finding added under an answered class names the answer that failed"
+    },
+    {
+      "id": "F-131",
+      "date": "2026-10-21",
+      "introduced_in": "ece32d3",
+      "found_by": "human",
+      "class": "C-10",
+      "title": "Stop-the-line is satisfied by a review document; the next change in a stopped class proceeds as before",
+      "symptom": "C-02, C-03, C-04, C-13 and C-15 each had two latest escapes with mechanism_upgrade \"none\", and the gate was green: a review file naming the findings released them.",
+      "evidence": "test/findings-ledger.test.mjs stop-line test (per root-cause axis, satisfied by text in findings/reviews/); findings-report 2026-10-21: detector upgrade rate 45% (34/76)",
+      "direct_cause": "The stop-line rule checked for a document, not for a check or a decision.",
+      "why": [
+        "§15.4 was implemented as \"write the review\", the cheapest observable step.",
+        "Nothing refused work in the stopped class, so the review changed nothing downstream."
+      ],
+      "root_cause": "A required step (upgrade the check or stop) existed as a document requirement.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: a stopped class refuses every change that must answer it — hook, pre-commit, CI — until findings/classes.json records a stopline for its latest escape: a detector the class lists and that resolves, a waiver, or debt not yet due (R5)",
+      "guard": "test/self-evolution.test.mjs::a class whose last two escapes upgraded nothing stops changes that must answer it",
+      "class_fix": null,
+      "sweep": "The review requirement stays (it explains); release now needs a stopline record. Debt records proposed for C-04, C-13 and C-15 with dates for the owner to accept.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/findings-lib.mjs", "findings/classes.json"],
+      "distinct_from": {
+        "F-129": "F-129 is about answers changing after the gate; F-131 is about the stop-line releasing on a document. Different input, different gate."
+      },
+      "mechanism_gap": "The RC-07 detectors check that required steps run; the stop-line step was checked by its paperwork.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::a class whose last two escapes upgraded nothing stops changes that must answer it"
+    },
+    {
+      "id": "F-132",
+      "date": "2026-10-21",
+      "introduced_in": "ece32d3",
+      "found_by": "human",
+      "class": "C-09",
+      "title": "A repository's Claude Code hooks do not run for sessions started in a parent folder",
+      "symptom": "Claude Code reads .claude/settings.json from the folder a session starts in. Sessions that built the second project started in the parent folder: its pre-edit hook fired 0 times across 228 edit-tool writes to its files (2026-10-17 to 10-21). This repository's hook ran only because the parent folder's settings call it by path.",
+      "evidence": "hook records in the session transcripts (no PreToolUse output from that project's hook; Sakk hook refusals present); docs/SELF_EVOLUTION.md said \"Claude Code sessions also meet the edit hook (.claude/settings.json)\" without the condition",
+      "direct_cause": "The hook was configured where the repository is, and nobody checked where sessions start.",
+      "why": [
+        "The hook was tested by running it directly with a payload, never by observing it fire in a real session.",
+        "The loader rule (settings come from the start folder) was not in anyone's model."
+      ],
+      "root_cause": "An assumption about the environment (where hooks are loaded from) was never tried.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "instance_fix": "this commit: the docs state the loader rule; the Bash check finds this repository from its own location, so a parent folder can route tool calls to it; the parent folder of this workspace now routes PreToolUse and PostToolUse to each repository's own hooks",
+      "guard": "test/self-evolution.test.mjs::the hook works when the session started in a parent folder",
+      "class_fix": null,
+      "sweep": "Both repositories in this workspace with tool hooks are routed by the parent; the other repositories have only session hooks (Stop, Task), which carry no target to route.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["docs/SELF_EVOLUTION.md", ".claude/settings.json"],
+      "mechanism_gap": "The C-09 detectors vary layouts, git configuration and Node versions for Sakk's own runs; none observes a hook firing from the folder sessions really start in.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::the hook works when the session started in a parent folder"
     }
   ]
 }

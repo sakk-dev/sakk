@@ -50,8 +50,12 @@ export function watchList(ledger) {
     .map(([c]) => c);
 }
 
-/** Questions a change to `files` must answer: its classes' questions plus the watch list's. */
-export function required(ledger, registry, files) {
+/**
+ * Questions a change to `files` must answer: its classes' questions plus the
+ * watch list's. `watch` asks the watch list even with no file named — for a
+ * shell command whose targets cannot be read (R1).
+ */
+export function required(ledger, registry, files, { watch = false } = {}) {
   const byClass = Object.fromEntries(registry.classes.map((c) => [c.id, c]));
   const out = new Map(); // qid → { classId, ask, files:Set, findings:Set }
   const add = (cid, file, fid) => {
@@ -67,7 +71,7 @@ export function required(ledger, registry, files) {
   for (const file of live)
     for (const f of ledger.findings)
       if ((f.areas ?? []).some((a) => covers(a, file))) add(f.class, file, f.id);
-  if (live.length > 0) for (const c of watchList(ledger)) add(c, null, null);
+  if (live.length > 0 || watch) for (const c of watchList(ledger)) add(c, null, null);
   return out;
 }
 
@@ -97,9 +101,10 @@ const squash = (s) =>
  * Which required questions lack an acceptable answer. An answer is at least
  * 40 characters, is not a placeholder or the question itself, and is not a
  * copy of another answer — copy-pasting one sentence everywhere is the
- * bypass this exists to stop.
+ * bypass this exists to stop. In a version-2 answers file every answer also
+ * names its guard (R3); whether the guard resolves is checked at commit.
  */
-export function missingAnswers(ack, req) {
+export function missingAnswers(ack, req, { v2 = ack?.version === 2 } = {}) {
   const answers = ack?.answers ?? {};
   const seen = new Map();
   for (const [qid, a] of Object.entries(answers)) {
@@ -119,6 +124,7 @@ export function missingAnswers(ack, req) {
         .get(squash(a))
         .filter((x) => x !== qid)
         .join(', ')}`;
+    else if (v2) why = guardProblem(answers[qid]?.guard);
     if (why) missing.push({ qid, why, ...q });
   }
   return missing;
@@ -158,4 +164,539 @@ export function messageProblem(message, ledger) {
   const nf = /^No-finding:\s*(.{20,})$/m.exec(message);
   if (nf) return null;
   return 'a fix commit must name the finding it fixes (F-nn, logged in findings/ledger.json) or carry a "No-finding: <why there is none, 20+ characters>" line';
+}
+
+// ---------------------------------------------------------------------------
+// Closing the bypasses (specs/self-evolution/spec.md, R1–R5).
+
+const num = (id) => Number(String(id).slice(2));
+
+/** Answer files new on a branch are version 2: every answer names a guard (R3). */
+export const GUARD = /^(none: .{20,}|[\w.@/-]+\.\w+::.{3,})$/s;
+export function guardProblem(guard) {
+  if (typeof guard !== 'string' || guard.trim() === '')
+    return 'no guard — name the check: "path::test name", or "none: <why there is none, 20+ characters>"';
+  if (!GUARD.test(guard.trim()))
+    return 'guard is not "path::test name" or "none: <why there is none, 20+ characters>"';
+  return null;
+}
+
+/** `path::name` resolves when the file exists and contains the name. `read(path)` returns text or null. */
+export function resolveRef(ref, read) {
+  const i = ref.indexOf('::');
+  const path = i < 0 ? ref : ref.slice(0, i);
+  const name = i < 0 ? '' : ref.slice(i + 2);
+  const text = read(path);
+  if (text === null) return false;
+  return name === '' || text.includes(name);
+}
+
+/** Guards in an answers file (answers and revisions) that do not resolve. */
+export function guardResolution(ack, read) {
+  const out = [];
+  for (const [qid, a] of Object.entries(ack?.answers ?? {})) {
+    for (const [where, g] of [
+      [qid, a?.guard],
+      ...(a?.revisions ?? []).map((r, k) => [`${qid} revision ${k + 1}`, r?.guard]),
+    ]) {
+      if (typeof g !== 'string' || g.startsWith('none: ')) continue;
+      if (!resolveRef(g, read))
+        out.push(`${where}: guard ${g} does not resolve (no such file or name)`);
+    }
+  }
+  return out;
+}
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/**
+ * R2: once committed, an answer and its guard never change; corrections are
+ * appended as revisions that name a ledger finding. `prev` is the committed
+ * answers file (or null), `next` the one being committed.
+ */
+export function ackRewrites(prev, next, ledgerIds) {
+  const out = [];
+  if (!prev) return out;
+  if (prev.version === 2 && next?.version !== 2) out.push('the answers file dropped "version": 2');
+  const pa = prev.answers ?? {};
+  const na = next?.answers ?? {};
+  for (const [qid, p] of Object.entries(pa)) {
+    const n = na[qid];
+    if (!n) {
+      out.push(`${qid}: a committed answer was removed — answers are append-only`);
+      continue;
+    }
+    if (n.answer !== p.answer || (p.guard !== undefined && n.guard !== p.guard))
+      out.push(
+        `${qid}: a committed answer was rewritten — keep it and append {"finding": "F-nn", "answer": "…", "guard": "…"} to its "revisions"`,
+      );
+    const pr = p.revisions ?? [];
+    const nr = n.revisions ?? [];
+    if (!pr.every((r, k) => same(r, nr[k])))
+      out.push(`${qid}: a committed revision was changed or removed — revisions only grow`);
+  }
+  for (const [qid, n] of Object.entries(na))
+    for (const [k, r] of (n.revisions ?? []).entries()) {
+      if (!ledgerIds.has(r?.finding))
+        out.push(
+          `${qid} revision ${k + 1}: "finding" must name a finding in the ledger (got ${JSON.stringify(r?.finding)})`,
+        );
+      if (typeof r?.answer !== 'string' || r.answer.trim().length < 40)
+        out.push(`${qid} revision ${k + 1}: the corrected answer is shorter than 40 characters`);
+      const g = guardProblem(r?.guard);
+      if (g) out.push(`${qid} revision ${k + 1}: ${g}`);
+    }
+  return out;
+}
+
+/**
+ * R4: a finding introduced on this branch, in a class whose question this
+ * branch answered, names the answer that failed. `onBranch(f)` says whether
+ * the finding was introduced here ('worktree', or a commit in the range).
+ */
+export function answerFailedProblems(baseLedger, ledger, ack, onBranch) {
+  const out = [];
+  const before = new Set((baseLedger?.findings ?? []).map((f) => f.id));
+  const answered = Object.keys(ack?.answers ?? {});
+  for (const f of ledger.findings) {
+    if (before.has(f.id) || !onBranch(f)) continue;
+    const mine = answered.filter((q) => q.startsWith(`${f.class}.`));
+    if (mine.length === 0) continue;
+    const af = f.answer_failed;
+    if (!af || typeof af !== 'object')
+      out.push(
+        `${f.id} (${f.class}) was introduced on this branch after it answered ${mine.join(', ')}: add "answer_failed": {"qid": "<one of them>", "why": "why the answer and its guard did not prevent it"}`,
+      );
+    else if (!mine.includes(af.qid))
+      out.push(
+        `${f.id}: answer_failed.qid must be one of this branch's answers for ${f.class} (${mine.join(', ')})`,
+      );
+    else if (typeof af.why !== 'string' || af.why.trim().length < 20)
+      out.push(`${f.id}: answer_failed.why must say why the answer failed (20+ characters)`);
+  }
+  return out;
+}
+
+/**
+ * R5: a class whose two latest escapes (findings with a mechanism_gap) both
+ * upgraded nothing is stopped, until its registry entry carries a stopline
+ * record for the later escape: a detector the class lists and that resolves,
+ * a waiver, or debt not yet due. Returns Map classId → { escapes, why }.
+ */
+export function stoppedClasses(ledger, registry, { read, today }) {
+  const esc = {};
+  for (const f of ledger.findings) if (f.mechanism_gap) (esc[f.class] ??= []).push(f);
+  const out = new Map();
+  for (const [cid, list] of Object.entries(esc)) {
+    const last = list.sort((a, b) => num(a.id) - num(b.id)).slice(-2);
+    if (
+      last.length < 2 ||
+      !last.every((f) => String(f.mechanism_upgrade ?? '').startsWith('none:'))
+    )
+      continue;
+    const after = last[1].id;
+    const why = stoplineGap(
+      registry.classes.find((c) => c.id === cid),
+      after,
+      { read, today },
+    );
+    if (why) out.set(cid, { escapes: last.map((f) => f.id), after, why });
+  }
+  return out;
+}
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** Why a stopped class is not released, or null when its stopline record releases it. */
+export function stoplineGap(cls, after, { read, today }) {
+  const s = cls?.stopline;
+  if (!s) return 'no stopline record';
+  if (s.after !== after)
+    return `the stopline record is for ${s.after}, not the latest escape ${after}`;
+  if (s.detector !== undefined) {
+    if (!(cls.detectors ?? []).includes(s.detector))
+      return 'stopline.detector is not in the class detectors';
+    if (!resolveRef(s.detector, read)) return `stopline.detector ${s.detector} does not resolve`;
+    return null;
+  }
+  if (s.waiver !== undefined) {
+    const w = s.waiver;
+    if (
+      !w ||
+      typeof w.by !== 'string' ||
+      !w.by.trim() ||
+      !DAY.test(String(w.on)) ||
+      typeof w.record !== 'string' ||
+      w.record.trim().length < 20
+    )
+      return 'stopline.waiver needs {by, on: YYYY-MM-DD, record: 20+ characters}';
+    return null;
+  }
+  if (s.debt !== undefined) {
+    const d = s.debt;
+    if (!d || typeof d.plan !== 'string' || d.plan.trim().length < 20 || !DAY.test(String(d.until)))
+      return 'stopline.debt needs {plan: 20+ characters, until: YYYY-MM-DD}';
+    if (today > d.until) return `stopline.debt was due ${d.until}`;
+    return null;
+  }
+  return 'stopline needs one of detector, waiver or debt';
+}
+
+/** Refusal text for the stopped classes a change must answer. */
+export function stopProblems(req, stopped) {
+  const hit = [...new Set([...req.values()].map((q) => q.classId))].filter((c) => stopped.has(c));
+  return hit.map((c) => {
+    const s = stopped.get(c);
+    return `${c} is stopped: its last two escapes (${s.escapes.join(', ')}) upgraded no check, and ${s.why}. Before changing files that must answer ${c}, add a class detector to findings/classes.json and record {"stopline": {"after": "${s.after}", "detector": "<path::test name>"}} — or the owner's waiver, or dated debt (docs/SELF_EVOLUTION.md).`;
+  });
+}
+
+// --- R1: shell commands -----------------------------------------------------
+
+export const MAX_COMMAND = 64 * 1024;
+
+const READ_ONLY = new Set(
+  (
+    'cat head tail less more wc ls pwd grep egrep fgrep rg ag stat file du df which type whereis ' +
+    'diff cmp comm sort uniq cut tr jq column nl date true false test [ basename dirname realpath ' +
+    'readlink shasum sha256sum sha1sum md5 md5sum cksum xxd od hexdump strings tree printenv id ' +
+    'whoami uname hostname echo printf sleep say open cd'
+  ).split(' '),
+);
+const WRAPPERS = new Set(['sudo', 'command', 'nice', 'nohup', 'time', 'exec']);
+const TARGET_ALL = new Set([
+  'rm',
+  'rmdir',
+  'touch',
+  'mkdir',
+  'chmod',
+  'chown',
+  'truncate',
+  'tee',
+  'unlink',
+]);
+const TARGET_LAST = new Set(['cp', 'ln', 'install']);
+const GIT_READ = new Set(
+  (
+    'status diff log show rev-parse ls-files ls-tree blame grep describe shortlog cat-file ' +
+    'rev-list merge-base show-ref name-rev for-each-ref reflog whatchanged config remote'
+  ).split(' '),
+);
+// change which commit the tree shows, or record it; they author no content (commits meet pre-commit)
+const GIT_VCS = new Set(
+  (
+    'add commit push fetch pull merge rebase checkout switch branch stash tag reset worktree ' +
+    'cherry-pick revert clean init clone submodule restore bisect notes'
+  ).split(' '),
+);
+const NPM_READ =
+  /^(test|t|lint|format:check|gate|audit|brief|inbox|findings-report|findings:check|test:[\w:-]+)$/;
+const LOOP_TOOLS = /^scripts\/findings-(brief|check|inbox|report)\.mjs$/;
+
+/**
+ * Split a command into segments (arrays of words) outside quotes, collecting
+ * output-redirect targets and whether anything opaque (heredoc, command
+ * substitution) appears. Linear in the length; no backtracking.
+ */
+export function shellSegments(cmd) {
+  const segs = [];
+  const redirects = [];
+  let words = [];
+  let w = '';
+  let inWord = false;
+  let q = null;
+  let opaque = false;
+  let wantTarget = false;
+  let heredoc = null; // delimiter waiting for the end of the line
+  let hasRedirect = false;
+  const endWord = () => {
+    if (inWord) {
+      if (wantTarget) {
+        redirects.push({ seg: segs.length, target: w }); // resolved in its own segment's directory
+        wantTarget = false;
+        hasRedirect = true;
+      } else words.push(w);
+    }
+    w = '';
+    inWord = false;
+  };
+  const endSeg = () => {
+    endWord();
+    if (words.length || hasRedirect) segs.push(words);
+    words = [];
+    hasRedirect = false;
+  };
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q === "'") {
+      if (c === "'") q = null;
+      else w += c;
+      continue;
+    }
+    if (q === '"') {
+      if (c === '"') q = null;
+      else if (c === '\\' && i + 1 < cmd.length) w += cmd[++i];
+      else {
+        if (c === '`' || (c === '$' && cmd[i + 1] === '(')) opaque = true;
+        w += c;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      q = c;
+      inWord = true;
+      continue;
+    }
+    if (c === '\\') {
+      if (cmd[i + 1] === '\n') i++;
+      else if (i + 1 < cmd.length) {
+        w += cmd[++i];
+        inWord = true;
+      }
+      continue;
+    }
+    if (c === '#' && !inWord) {
+      while (i + 1 < cmd.length && cmd[i + 1] !== '\n') i++;
+      continue;
+    }
+    if (c === '`' || (c === '$' && cmd[i + 1] === '(')) {
+      opaque = true;
+      w += c;
+      inWord = true;
+      continue;
+    }
+    if (c === '\n') {
+      endSeg();
+      if (heredoc !== null) {
+        // skip the body up to the delimiter line
+        const { delim, strip } = heredoc;
+        heredoc = null;
+        let j = i + 1;
+        for (;;) {
+          const e = cmd.indexOf('\n', j);
+          const line = cmd.slice(j, e < 0 ? cmd.length : e);
+          if ((strip ? line.replace(/^\t+/, '') : line) === delim || e < 0) {
+            i = e < 0 ? cmd.length : e;
+            break;
+          }
+          j = e + 1;
+        }
+      }
+      continue;
+    }
+    if (c === '<') {
+      endWord();
+      if (cmd[i + 1] === '<' && cmd[i + 2] !== '<') {
+        opaque = true;
+        i += 2;
+        const strip = cmd[i] === '-';
+        if (strip) i++;
+        while (cmd[i] === ' ' || cmd[i] === '\t') i++;
+        const m = /^(?:'([^'\n]*)'|"([^"\n]*)"|([^\s;&|<>()]+))/.exec(cmd.slice(i, i + 256));
+        if (m) {
+          heredoc = { delim: m[1] ?? m[2] ?? m[3], strip };
+          i += m[0].length - 1;
+        } else i--;
+      } else if (cmd[i + 1] === '<') i += 2; // here-string
+      continue;
+    }
+    if (c === '>') {
+      if (inWord && /^\d+$/.test(w)) {
+        w = '';
+        inWord = false;
+      } else endWord();
+      if (cmd[i + 1] === '>' || cmd[i + 1] === '|') i++;
+      if (cmd[i + 1] === '&') {
+        i++;
+        if (/[\d-]/.test(cmd[i + 1] ?? '')) {
+          while (/[\d-]/.test(cmd[i + 1] ?? '')) i++;
+          continue;
+        }
+      }
+      wantTarget = true;
+      continue;
+    }
+    if (c === '&' && cmd[i + 1] === '>') {
+      endWord();
+      i++;
+      if (cmd[i + 1] === '>') i++;
+      wantTarget = true;
+      continue;
+    }
+    if (c === '|' || c === '&' || c === ';' || c === '(' || c === ')' || c === '{' || c === '}') {
+      if ((c === '{' || c === '}') && inWord) {
+        w += c;
+        continue;
+      }
+      endSeg();
+      continue;
+    }
+    if (c === ' ' || c === '\t') {
+      endWord();
+      continue;
+    }
+    w += c;
+    inWord = true;
+  }
+  endSeg();
+  if (q !== null) opaque = true; // unterminated quote: cannot be read
+  return { segs, redirects, opaque };
+}
+
+/**
+ * R1. What a shell command may write. kind: 'read' (provably read-only),
+ * 'write' (writes only the listed targets), 'opaque' (may write anything),
+ * 'unclassifiable' (too long to read). Targets are absolute paths.
+ */
+export function classifyShell(cmd, cwd, home = process.env.HOME ?? '') {
+  if (typeof cmd !== 'string') return { kind: 'unclassifiable', targets: [], why: 'no command' };
+  if (cmd.length > MAX_COMMAND)
+    return { kind: 'unclassifiable', targets: [], why: `longer than ${MAX_COMMAND} characters` };
+  const { segs, redirects, opaque } = shellSegments(cmd);
+  let here = cwd;
+  const abs = (p) => (p.startsWith('~/') ? join(home, p.slice(2)) : resolve(here, p));
+  const targets = [];
+  let kind = opaque ? 'opaque' : 'read';
+  const why = [];
+  if (opaque) why.push('heredoc or command substitution');
+  const write = (k, reason) => {
+    if (k === 'opaque') kind = 'opaque';
+    else if (kind === 'read') kind = 'write';
+    why.push(reason);
+  };
+  for (const [i, seg] of segs.entries()) {
+    for (const { target: r } of redirects.filter((x) => x.seg === i))
+      if (!/^\/dev\/(null|stdout|stderr|tty|fd\/\d+)$/.test(r)) {
+        targets.push(abs(r));
+        write('write', `writes ${r}`);
+      }
+    let k = 0;
+    for (;;) {
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(seg[k] ?? '')) k++;
+      else if (WRAPPERS.has(seg[k])) k++;
+      else if (seg[k] === 'env') {
+        k++;
+        while ((seg[k] ?? '').startsWith('-')) k++;
+      } else if (seg[k] === 'timeout') k += 2;
+      else break;
+    }
+    const words = seg.slice(k);
+    const name = (words[0] ?? '').split('/').pop();
+    const args = words.slice(1);
+    const plain = args.filter((a) => !a.startsWith('-'));
+    if (words.length === 0) continue;
+    if (name === 'cd') {
+      if (args[0] && args[0] !== '-') here = abs(args[0]);
+      continue;
+    }
+    if (READ_ONLY.has(name)) continue;
+    if (name === 'find') {
+      if (args.some((a) => /^-(delete|exec|execdir|ok|okdir|fprint|fprintf|fls)$/.test(a)))
+        write('opaque', 'find with -delete/-exec');
+      continue;
+    }
+    if (name === 'sed') {
+      let inPlace = false;
+      const scripts = [];
+      const files = [];
+      for (let x = 0; x < args.length; x++) {
+        const a = args[x];
+        if (a === '-e' || a === '-f' || a === '--expression' || a === '--file')
+          scripts.push(args[++x] ?? '');
+        else if (a === '--in-place' || a.startsWith('--in-place=') || /^-[a-zA-Z]*i/.test(a)) {
+          inPlace = true;
+          // BSD sed takes the backup suffix as its own word: -i '' or -i .bak
+          if (a === '-i' && (args[x + 1] === '' || /^\.[^/]*$/.test(args[x + 1] ?? ''))) x++;
+        } else if (!a.startsWith('-')) files.push(a);
+      }
+      if (scripts.length === 0) scripts.push(files.shift() ?? '');
+      const script = scripts.join(' ');
+      if (inPlace) {
+        for (const f of files) targets.push(abs(f));
+        write('write', 'sed -i');
+      } else if (/(^|[;}\s\d/])[wWe](\s|$)/.test(script))
+        write('opaque', 'sed script writes or executes');
+      continue;
+    }
+    if (name === 'awk' || name === 'gawk') {
+      if (/>|\|\s*"|system\s*\(/.test(args.join(' '))) write('opaque', 'awk writes or executes');
+      continue;
+    }
+    if (name === 'git') {
+      let j = 0;
+      while (j < args.length && args[j].startsWith('-'))
+        j += /^-(C|c)$|^--(git-dir|work-tree)$/.test(args[j]) ? 2 : 1;
+      const sub = args[j];
+      if (sub === undefined || GIT_READ.has(sub) || GIT_VCS.has(sub)) continue;
+      if (sub === 'mv' || sub === 'rm') {
+        for (const f of args.slice(j + 1).filter((a) => !a.startsWith('-'))) targets.push(abs(f));
+        write('write', `git ${sub}`);
+      } else write('opaque', `git ${sub}`);
+      continue;
+    }
+    if (name === 'npm') {
+      const sub = args[0];
+      if (
+        sub === 'test' ||
+        sub === 't' ||
+        ['ls', 'view', 'outdated', '--version', '-v'].includes(sub)
+      )
+        continue;
+      if (sub === 'run' && NPM_READ.test(args.find((a, x) => x > 0 && !a.startsWith('-')) ?? ''))
+        continue;
+      write('opaque', `npm ${sub ?? ''}`.trim());
+      continue;
+    }
+    if (name === 'node') {
+      if (args[0] === '--test' || args[0] === '--version' || args[0] === '-v') continue;
+      if (args[0] && LOOP_TOOLS.test(args[0].replace(/^\.\//, ''))) continue;
+      write('opaque', 'node');
+      continue;
+    }
+    if (name === 'gh') {
+      const two = `${args[0] ?? ''} ${args[1] ?? ''}`;
+      if (/^(pr checkout|repo clone|release download|run download|gist clone)$/.test(two))
+        write('opaque', `gh ${two}`);
+      continue;
+    }
+    if (name === 'curl') {
+      if (args.some((a) => /^-(o|O)$|^--output|^--remote-name|^-[a-zA-Z]*[oO]$/.test(a)))
+        write('opaque', 'curl -o');
+      continue;
+    }
+    if (TARGET_ALL.has(name)) {
+      for (const f of plain) targets.push(abs(f));
+      write('write', name);
+      continue;
+    }
+    if (TARGET_LAST.has(name) || name === 'mv') {
+      const files = name === 'mv' ? plain : plain.slice(-1);
+      for (const f of files) targets.push(abs(f));
+      write('write', name);
+      continue;
+    }
+    write('opaque', name);
+  }
+  return { kind, targets: [...new Set(targets)], why: [...new Set(why)].join('; ') };
+}
+
+/** Files the working tree has changed against HEAD, tracked or not (R1: wherever they came from). */
+export function pendingChanges(root) {
+  let out = '';
+  try {
+    out = execFileSync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    return null; // not readable: the caller refuses
+  }
+  const parts = out.split('\0');
+  const files = [];
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (p.length < 4) continue;
+    files.push(p.slice(3));
+    if (p[0] === 'R' || p[0] === 'C') i++; // the original path follows a rename or copy
+  }
+  return files;
 }

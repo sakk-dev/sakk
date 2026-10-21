@@ -111,7 +111,11 @@ describe('findings ledger gate', () => {
       assert.ok(SWEEP.includes(f.sweep_status), f.sweep_status);
       assert.ok(Array.isArray(f.why) && f.why.length >= 2, 'why-chain needs at least two steps');
       assert.doesNotMatch(f.root_cause, NOT_MECHANISM, 'the root cause stops at a person (§14.3)');
-      assert.ok(f.introduced_in === 'unknown' || /^[0-9a-f]{7,40}$/.test(f.introduced_in));
+      // worktree: caught before it was committed (by review or a gate) — standard §14.7
+      assert.ok(
+        ['unknown', 'worktree'].includes(f.introduced_in) ||
+          /^[0-9a-f]{7,40}$/.test(f.introduced_in),
+      );
       for (const [key, prefix] of [
         ['dt', 'DT-'],
         ['rc', 'RC-'],
@@ -322,6 +326,53 @@ describe('problem classes', () => {
           `${f.id} is in ${f.class} next to open ${g.id} (${g.title}): if it is the same problem, add the evidence to ${g.id} instead; if not, say why in distinct_from`,
         );
       }
+    }
+  });
+  test('a miss under an answered question names a question of its own class, and why (R4)', () => {
+    const qids = new Set(classes.flatMap((c) => c.questions.map((q) => q.id)));
+    for (const f of FINDINGS) {
+      if (f.answer_failed === undefined) continue;
+      const { qid, why } = f.answer_failed ?? {};
+      assert.ok(qids.has(qid), `${f.id}: answer_failed.qid ${qid} is not a registered question`);
+      assert.ok(
+        String(qid).startsWith(`${f.class}.`),
+        `${f.id}: ${qid} is not a question of ${f.class}`,
+      );
+      assert.ok(typeof why === 'string' && why.trim().length >= 20, `${f.id}: answer_failed.why`);
+    }
+  });
+  test('a stopline record releases only its own latest escape, by one named means (R5)', () => {
+    for (const c of classes) {
+      const s = c.stopline;
+      if (s === undefined) continue;
+      const esc = FINDINGS.filter((f) => f.class === c.id && f.mechanism_gap).map((f) => f.id);
+      assert.ok(
+        esc.includes(s.after),
+        `${c.id}: stopline.after ${s.after} is not an escape of ${c.id}`,
+      );
+      const means = ['detector', 'waiver', 'debt'].filter((k) => s[k] !== undefined);
+      assert.equal(
+        means.length,
+        1,
+        `${c.id}: stopline names exactly one of detector, waiver, debt`,
+      );
+      if (s.detector !== undefined) {
+        assert.ok(
+          (c.detectors ?? []).includes(s.detector),
+          `${c.id}: stopline.detector is a class detector`,
+        );
+        assert.ok(resolves(s.detector), `${c.id}: ${s.detector}`);
+      }
+      if (s.waiver !== undefined)
+        assert.ok(
+          s.waiver.by && /^\d{4}-\d{2}-\d{2}$/.test(s.waiver.on) && s.waiver.record?.length >= 20,
+          `${c.id}: waiver`,
+        );
+      if (s.debt !== undefined)
+        assert.ok(
+          s.debt.plan?.length >= 20 && /^\d{4}-\d{2}-\d{2}$/.test(s.debt.until),
+          `${c.id}: debt`,
+        );
     }
   });
   test('control: the same-problem rule fires on a planted duplicate', () => {

@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stoppedClasses } from './findings-lib.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let ledger;
@@ -84,5 +85,43 @@ console.log(
 console.log(
   `detector upgrade rate ↑ ${pct(upgraded.length, escapedPast.length)}   of those, escapes that upgraded a check (not only the instance)`,
 );
+// the pre-change check's own miss rate (R4): recurrences under a question the branch had answered
+const missed = F.filter((f) => f.answer_failed);
+console.log(
+  `answered, still missed ↓ ${missed.length}   findings introduced under a question their branch answered (answer_failed); by question: ${
+    Object.entries(
+      missed.reduce(
+        (m, f) => ({ ...m, [f.answer_failed.qid]: (m[f.answer_failed.qid] ?? 0) + 1 }),
+        {},
+      ),
+    )
+      .map(([q, n]) => `${q}×${n}`)
+      .join(' ') || 'none'
+  }`,
+);
+// stop-the-line (R5): classes whose last two escapes upgraded nothing, and what releases them
+const registry = JSON.parse(readFileSync(join(ROOT, 'findings', 'classes.json'), 'utf8'));
+const today = new Date().toISOString().slice(0, 10);
+const read = (p) => {
+  try {
+    return readFileSync(join(ROOT, p), 'utf8');
+  } catch {
+    return null;
+  }
+};
+const stopped = stoppedClasses(ledger, registry, { read, today });
+const held = registry.classes.filter((c) => c.stopline && !stopped.has(c.id));
+console.log(
+  `stopped classes       ${stopped.size ? [...stopped].map(([c, s]) => `${c} (${s.escapes.join(', ')}: ${s.why})`).join(' | ') : 'none'}`,
+);
+if (held.length)
+  console.log(
+    `released by record    ${held
+      .map(
+        (c) =>
+          `${c.id} ${c.stopline.detector ? 'detector' : c.stopline.waiver ? `waiver ${c.stopline.waiver.on}` : `debt until ${c.stopline.debt.until}`}`,
+      )
+      .join(' | ')}`,
+  );
 const open = F.filter((f) => f.status === 'open');
 if (open.length) console.log(`open: ${open.map((f) => `${f.id} ${f.title}`).join(' | ')}`);
