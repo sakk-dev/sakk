@@ -2,6 +2,10 @@
   "version": 2,
   "branch": "oss/m2-spend",
   "answers": {
+    "C-08.1": {
+      "answer": "The spend index and the ledger's cold/idx directories all derive from an already-canonical path (SAKK_HOME or the canonical ledger path, symlink- and hard-link-free), so each has exactly one name; the log folder is the one frozen in config.json, not a second alias read from the agent.",
+      "guard": "test/spend.test.mjs::the log folder is fixed at cap set, not read from the agent"
+    },
     "C-02.1": {
       "answer": "The usage fields and price kinds are each stated once (USAGE_FIELDS, KINDS) and applied everywhere they are parsed, merged and priced; the models are a data table, not a code list, and a model is priced only if the table names it or lists it as an alias — nothing is hardcoded or guessed.",
       "guard": "test/spend.test.mjs::each price rule matches a hand-computed case"

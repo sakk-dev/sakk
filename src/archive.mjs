@@ -119,6 +119,7 @@ export function verifyChain(ledgerPath, archive) {
   let prev = '';
   let settledCount = 0;
   let settledUsd = 0;
+  const expectedIndex = new Map(); // shard -> { callId: seq }, to check the index too
   for (let seq = 1; seq <= archive.segments; seq++) {
     const seg = readSegment(ledgerPath, seq);
     if (seg.prev !== prev)
@@ -138,9 +139,14 @@ export function verifyChain(ledgerPath, archive) {
           `cold segment ${seq} has a non-settled entry`,
           { seq },
         );
-      settledCount += 1;
-      settledUsd += e.actualUsd;
+      const s = shardOf(e.callId);
+      if (!expectedIndex.has(s)) expectedIndex.set(s, {});
+      expectedIndex.get(s)[e.callId] = seq;
     }
+    settledCount += seg.entries.length;
+    // sum per segment then add, exactly as maybeSeal accumulates archive.settledUsd,
+    // so float addition's non-associativity never makes an intact chain mismatch (F-105 review)
+    settledUsd += seg.entries.reduce((s, e) => s + e.actualUsd, 0);
     prev = seg.hash;
   }
   if (prev !== archive.tip)
@@ -155,7 +161,46 @@ export function verifyChain(ledgerPath, archive) {
       counted: settledUsd,
       summary: archive.settledUsd,
     });
+  // the index is the ONLY cross-history duplicate guard; a lost or wrong shard
+  // would silently re-admit a sealed call-id (double-spend), so verify checks
+  // every sealed call-id is in its shard pointing at its segment (F-105 review HIGH)
+  for (const [s, want] of expectedIndex) {
+    const p = join(idxDir(ledgerPath), `${s}.json`);
+    let have = {};
+    if (existsSync(p)) {
+      try {
+        have = JSON.parse(readFileSync(p, 'utf8'));
+      } catch (e) {
+        throw new ArchiveError('LEDGER_ARCHIVE_BROKEN', `index shard ${s} is unreadable`, {
+          why: e.code ?? String(e.message).slice(0, 80),
+        });
+      }
+    }
+    for (const [callId, seq] of Object.entries(want))
+      if (have[callId] !== seq)
+        throw new ArchiveError(
+          'LEDGER_ARCHIVE_BROKEN',
+          `the index is missing or wrong for a sealed call-id in shard ${s} — run sakk ledger reindex`,
+          { shard: s },
+        );
+  }
   return { segments: archive.segments, settledCount, settledUsd };
+}
+
+/** Rebuild the whole index from the cold trail (sakk ledger reindex): recovery after an index loss. */
+export function reindex(ledgerPath, archive) {
+  validateArchive(archive, ledgerPath);
+  const shards = new Map();
+  for (let seq = 1; seq <= archive.segments; seq++)
+    for (const e of readSegment(ledgerPath, seq).entries) {
+      const s = shardOf(e.callId);
+      if (!shards.has(s)) shards.set(s, {});
+      shards.get(s)[e.callId] = seq;
+    }
+  mkdirSync(idxDir(ledgerPath), { recursive: true });
+  for (const [s, map] of shards)
+    writeFileAtomic(join(idxDir(ledgerPath), `${s}.json`), `${JSON.stringify(map)}\n`);
+  return shards.size;
 }
 
 /** The segment a call-id was sealed into, or null if it was never sealed. One small shard read. */

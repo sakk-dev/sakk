@@ -430,6 +430,12 @@ const BOUNDS = {
       guard:
         "test/ledger-archive.test.mjs::export rebuilds one valid ledger with the same totals; verify's exit code is acted on",
     },
+    reindex: {
+      bounded:
+        'walks the whole cold trail to rebuild the index; the explicit recovery command (sakk ledger reindex), off the gate path',
+      guard:
+        'test/ledger-archive.test.mjs::verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id',
+    },
   },
   'mcp.mjs': {
     startMcpServer: {

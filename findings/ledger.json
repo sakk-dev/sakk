@@ -150,6 +150,11 @@
           "kind": "detector",
           "ref": "test/cost-bounds.test.mjs::max reservable is 0 when the headroom is below the floor",
           "since": "F-152"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/ledger-archive.test.mjs::verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id",
+          "since": "F-159"
         }
       ]
     },
@@ -4876,6 +4881,42 @@
       "mechanism_upgrade": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too",
       "distinct_from": {
         "F-116": "F-116 is that a red CI does not block a merge until main has branch protection (a GitHub setting); F-158 is that one CI check could be made to pass falsely by the PR's own earlier step — a workspace-isolation bug in the job graph, not branch protection."
+      }
+    },
+    {
+      "id": "F-159",
+      "date": "2026-10-22",
+      "introduced_in": "b4df6c8",
+      "found_by": "review",
+      "class": "C-03",
+      "title": "sakk ledger verify claimed an intact history but never checked the index, and false-failed on float drift",
+      "symptom": "The adversarial review of the F-105 archive found the cold trail's audit was not what it claimed: (1) HIGH — the call-id index is the only cross-history duplicate guard, but sakk ledger verify walked only the segment chain, so a lost index shard silently re-admitted a sealed call-id (a double-spend) and verify still reported SOUND; (2) the segment chain is an unkeyed sha256 with its tip in the writable hot file, so verify's 'intact and unaltered' wording over-claimed — it detects accidental corruption and loss, not a writer who recomputes the hashes; (3) LOW — verify folded the settled total per entry while maybeSeal accumulated it per segment, so float non-associativity could make an intact chain fail its own audit; (4) LOW — sakk ledger export --out failed with a raw Node stack instead of a typed code.",
+      "evidence": "independent adversarial review of oss/f105-archive, 2026-10-22 (HIGH index loss, MEDIUM unauthenticated chain, two LOW); reproductions r1-index-loss, r2-float-drift, r3-tamper, r4-export-out",
+      "direct_cause": "verify checked the chain but not the index, and recomputed the total in a different order than it was stored.",
+      "why": [
+        "The index was treated as a derived cache, so the audit that vouches for the history did not include it.",
+        "The recompute and the maintained summary used different float-summation orders with a fixed absolute tolerance.",
+        "The audit's wording promised tamper-evidence the unkeyed, hot-anchored chain cannot give."
+      ],
+      "root_cause": "An audit named a guarantee (intact, unaltered, no reused call-id) stronger than what it actually checked.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-03.1",
+        "why": "C-03.1 asks whether a check fails for the reason it names and only that; verify named integrity of the whole history but did not check the index (missed a double-spend), over-claimed tamper-evidence, and could false-fail on an intact chain from float order."
+      },
+      "instance_fix": "this commit: verify also rebuilds the expected index from cold and fails if any sealed call-id is missing or wrong; reserve refuses when segments are sealed but the whole index is gone; sakk ledger reindex rebuilds it; verify sums the total per segment exactly as maybeSeal does (no float false-fail); the spec states verify detects accidental corruption and loss, not tampering by a writer who can recompute the unkeyed hashes; export --out wraps its write error as a typed LEDGER_EXPORT_FAILED.",
+      "guard": "test/ledger-archive.test.mjs::verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id",
+      "class_fix": null,
+      "sweep": "verify now covers both the chain and the index; the reserve-time wholesale-loss guard and reindex give a fail-closed path and a recovery; the float summation matches in both places; the spec and CLI no longer claim tamper-evidence the design does not provide (out-of-band signing is a named later milestone).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/archive.mjs", "src/ledger.mjs", "bin/sakk.mjs", "specs/ledger/spec.md"],
+      "mechanism_gap": "The archive tests checked the chain (flipped byte, broken link, wrong tip) but never a lost index, and the integrity claim was not read back against what verify actually walked.",
+      "mechanism_upgrade": "test/ledger-archive.test.mjs::verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id",
+      "distinct_from": {
+        "F-113": "F-113 is the policy fuzz deciding pass/fail by a clock; F-159 is the ledger archive audit under-checking (no index check, wrong integrity claim, float false-fail) — a different check in a different module."
       }
     }
   ]

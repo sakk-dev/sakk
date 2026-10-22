@@ -21,7 +21,7 @@ import { startMcpServer } from '../src/mcp.mjs';
 import { display, scanPaths, scanStaged, ScanError } from '../src/secret-scan.mjs';
 import { evaluate, normalize, runHook } from '../src/hook.mjs';
 import { doctor, install, uninstall } from '../src/guard-install.mjs';
-import { readSegment, segmentsOnDisk, verifyChain } from '../src/archive.mjs';
+import { readSegment, reindex, segmentsOnDisk, verifyChain } from '../src/archive.mjs';
 
 /**
  * sakk CLI — the smallest useful surface over the ledger.
@@ -89,8 +89,9 @@ Usage:
   sakk halt --by <name> [--reason <t>] [--agent <id>]     kill switch: refuse all new spending (named)
   sakk resume --by <name> [--agent <id>]                  lift a halt (named)
   sakk mcp --ledger <path> [--policy <path>]              MCP stdio server: reserve/settle/status as tools
-  sakk ledger verify [--ledger <path>]                    walk the cold trail's hash chain (exit 1 if broken)
+  sakk ledger verify [--ledger <path>]                    walk the cold trail's chain and index (exit 1 if broken)
   sakk ledger export [--out <file>] [--ledger <path>]     rebuild one flat ledger from cold + hot
+  sakk ledger reindex [--ledger <path>]                   rebuild the call-id index from the cold trail
   sakk scan <paths...> | --staged | --install-hook        find secrets (fingerprints only; exit 1 on findings)
 
 The agent guard:
@@ -586,9 +587,9 @@ if (cmd === 'init') {
   process.exitCode = checks.every((c) => c.ok) ? 0 : 1;
 } else if (cmd === 'ledger') {
   const sub = argv[1];
-  if (sub !== 'verify' && sub !== 'export') {
+  if (sub !== 'verify' && sub !== 'export' && sub !== 'reindex') {
     console.error(
-      'USAGE_UNKNOWN_ARGUMENT: sakk ledger verify | export [--out <file>] [--ledger <path>] — see sakk --help',
+      'USAGE_UNKNOWN_ARGUMENT: sakk ledger verify | export [--out <file>] | reindex [--ledger <path>] — see sakk --help',
     );
     process.exit(2);
   }
@@ -651,10 +652,33 @@ if (cmd === 'init') {
     const out = `${JSON.stringify(flat, null, 1)}\n`;
     const dest = val('out');
     if (dest) {
-      writeFileSync(resolve(dest), out, { flag: 'wx' });
+      // wx: never overwrite an existing file or write through a planted symlink.
+      // Wrap it in the typed CLI error form, not a raw Node stack (F-105 review).
+      try {
+        writeFileSync(resolve(dest), out, { flag: 'wx' });
+      } catch (e) {
+        console.error(
+          `LEDGER_EXPORT_FAILED: cannot write ${resolve(dest)}: ${e.code ?? e.message}`,
+        );
+        process.exit(1);
+      }
       console.log(`ledger export: ${entries.length} entr(y|ies) written to ${resolve(dest)}`);
     } else process.stdout.write(out);
     process.exit(0);
+  } else if (sub === 'reindex') {
+    // rebuild the call-id index from the cold trail, for recovery after an index loss
+    try {
+      const n = reindex(p, archive);
+      console.log(
+        `ledger reindex: rebuilt ${n} index shard(s) from ${archive.segments} segment(s)`,
+      );
+      process.exit(0);
+    } catch (e) {
+      console.error(
+        `${e.code ?? 'LEDGER_ARCHIVE_BROKEN'}: ${String(e.message).replace(/^[A-Z_]+: /, '')}`,
+      );
+      process.exit(1);
+    }
   }
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);

@@ -15,6 +15,7 @@ import {
   SEAL_AT,
   archivedEntry,
   emptyArchive,
+  idxDir,
   indexLookup,
   sealSegment,
   validateArchive,
@@ -722,6 +723,16 @@ export function reserve({
         { callId, existingStatus: existing.status },
       );
     }
+    // the index is the only cross-history duplicate guard; if the cold trail has
+    // sealed segments but the whole index is gone, dedup would silently fail —
+    // refuse rather than re-admit a sealed callId (F-105 review HIGH). A partial
+    // loss is caught by sakk ledger verify; sakk ledger reindex rebuilds it.
+    if ((doc.archive?.segments ?? 0) > 0 && !existsSync(idxDir(ledgerPath)))
+      throw new LedgerError(
+        'LEDGER_ARCHIVE_BROKEN',
+        'the call-id index is missing but the cold trail has sealed segments — run sakk ledger reindex',
+        { ledgerPath },
+      );
     // a callId sealed into the cold trail is used too — uniqueness holds across
     // all history, not just the hot tail (F-105); one small index shard read
     if (indexLookup(ledgerPath, callId) !== null)
