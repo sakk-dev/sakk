@@ -25,9 +25,19 @@ const code = (fn) => {
   return 'NO_REFUSAL';
 };
 const long = (n) => 'x'.repeat(n);
+const META_TEST = 'every exported function shows how its work is bounded';
+/**
+ * A guard resolves only to a real `test('<name>'`/`"<name>"`/`` `<name>` ``
+ * declaration, never merely a string that appears in the file, and never the
+ * meta-test above — a guard that points at the listing that requires it is
+ * circular and can never fail (F-150 detector gap).
+ */
 const resolves = (ref) => {
   const [p, name] = ref.split('::');
-  return existsSync(join(ROOT, p)) && readFileSync(join(ROOT, p), 'utf8').includes(name);
+  if (!existsSync(join(ROOT, p))) return false;
+  if (name === META_TEST) return false;
+  const text = readFileSync(join(ROOT, p), 'utf8');
+  return [`test('${name}'`, `test("${name}"`, `test(\`${name}\``].some((d) => text.includes(d));
 };
 
 const ledger = await import(pathToFileURL(join(ROOT, 'src', 'ledger.mjs')));
@@ -62,10 +72,20 @@ const BOUNDS = {
       expect: 'INPUT_TOO_LONG',
     },
     settle: {
-      refuses: () =>
-        code(() =>
-          ledger.settle({ ledgerPath: fresh(), callId: long(LIMITS.idChars + 1), actualUsd: 1 }),
-        ),
+      // settle stores no new id (a long one must still settle, F-150); what it
+      // stores and bounds is the caller's tokens blob
+      refuses: () => {
+        const lp = fresh();
+        ledger.reserve({ ledgerPath: lp, callId: 'c', estimatedMaxUsd: 1 });
+        return code(() =>
+          ledger.settle({
+            ledgerPath: lp,
+            callId: 'c',
+            actualUsd: 1,
+            tokens: { blob: long(LIMITS.tokensBytes) },
+          }),
+        );
+      },
       expect: 'INPUT_TOO_LONG',
     },
     halt: {
@@ -107,20 +127,21 @@ const BOUNDS = {
         'one read of the whole file, which grows with use until the archive keeps the live books small',
     },
     markReconciliationRequired: {
-      bounded:
-        'called with a reason the caller composes from bounded fields; reads the ledger through readLedger (F-105 debt)',
+      bounded: 'stores a reason bounded by truncation (boundReason), whatever length it is given',
       guard:
-        'test/cost-bounds.test.mjs::the books growing with use is owed by F-105 while it is open',
+        'test/cost-bounds.test.mjs::a huge reconciliation reason is stored truncated, not whole',
     },
     totalsOf: {
-      bounded:
-        'a sum over the entries of a document readLedger returned (F-105 debt: the books grow with use)',
-      guard:
-        'test/cost-bounds.test.mjs::the books growing with use is owed by F-105 while it is open',
+      debt: 'F-105',
+      bounded: 'a sum over the entries readLedger returned, whose count grows with use',
+    },
+    maxReservableUsd: {
+      bounded: 'arithmetic on the totals totalsOf returned; no attacker-sized input',
+      guard: 'test/cost-bounds.test.mjs::max reservable is 0 when the headroom is below the floor',
     },
     defaultLedgerPath: {
       bounded: 'reads one environment variable; no attacker-sized input',
-      guard: 'test/cost-bounds.test.mjs::every exported function shows how its work is bounded',
+      guard: 'test/cost-bounds.test.mjs::defaultLedgerPath reads only the environment',
     },
   },
   'classify.mjs': {
@@ -339,7 +360,8 @@ const BOUNDS = {
     appendNoFollow: {
       bounded:
         'writes text its callers bounded (decision lines from decide(), alerts from the ledger)',
-      guard: 'test/cost-bounds.test.mjs::every exported function shows how its work is bounded',
+      guard:
+        'test/policy.test.mjs::appends one JSONL line carrying verdict, ruleId, policyHash and context',
     },
   },
   'mcp.mjs': {
@@ -382,7 +404,89 @@ describe('C-04: every exported function is bounded on attacker-shaped input', ()
       });
   test('the books growing with use is owed by F-105 while it is open', () => {
     assert.equal(BOUNDS['ledger.mjs'].readLedger.debt, 'F-105');
+    assert.equal(BOUNDS['ledger.mjs'].totalsOf.debt, 'F-105');
     assert.equal(FINDINGS.find((f) => f.id === 'F-105')?.status, 'open');
+  });
+  test('a non-string runId, taskId or tokens is refused, not stored whole (F-150)', () => {
+    assert.equal(
+      code(() =>
+        ledger.reserve({
+          ledgerPath: fresh(),
+          callId: 'c',
+          estimatedMaxUsd: 1,
+          runId: [long(1e6)],
+        }),
+      ),
+      'INPUT_INVALID',
+    );
+    assert.equal(
+      code(() =>
+        ledger.reserve({ ledgerPath: fresh(), callId: 'c', estimatedMaxUsd: 1, taskId: { k: 1 } }),
+      ),
+      'INPUT_INVALID',
+    );
+    assert.equal(
+      code(() =>
+        ledger.reserve({
+          ledgerPath: fresh(),
+          callId: 'c',
+          estimatedMaxUsd: 1,
+          runId: long(LIMITS.idChars + 1),
+        }),
+      ),
+      'INPUT_TOO_LONG',
+    );
+    // tokens: an object over the byte bound, and a non-object, both refused
+    const lp = fresh();
+    ledger.reserve({ ledgerPath: lp, callId: 'c', estimatedMaxUsd: 1 });
+    assert.equal(
+      code(() => ledger.settle({ ledgerPath: lp, callId: 'c', actualUsd: 1, tokens: long(1e6) })),
+      'INPUT_INVALID',
+    );
+    assert.equal(
+      code(() =>
+        ledger.settle({ ledgerPath: lp, callId: 'c', actualUsd: 1, tokens: { blob: long(5000) } }),
+      ),
+      'INPUT_TOO_LONG',
+    );
+  });
+  test('a huge reconciliation reason is stored truncated, not whole', () => {
+    const lp = fresh();
+    ledger.markReconciliationRequired({ ledgerPath: lp, reason: long(1e6) });
+    const doc = ledger.readLedger({ ledgerPath: lp, maxAgeMs: Number.POSITIVE_INFINITY });
+    assert.ok(doc.flags.reason.length <= LIMITS.reasonChars, 'the stored reason is bounded');
+  });
+  test('max reservable is 0 when the headroom is below the floor', () => {
+    const lp = fresh();
+    // cap 100, reserve almost all of it: the sliver left is under the floor
+    ledger.reserve({
+      ledgerPath: lp,
+      callId: 'c',
+      estimatedMaxUsd: 100 - LIMITS.minEstimateUsd / 2,
+    });
+    const doc = ledger.readLedger({ ledgerPath: lp, maxAgeMs: Number.POSITIVE_INFINITY });
+    const m = ledger.maxReservableUsd(ledger.totalsOf(doc));
+    assert.equal(m, 0, 'nothing the floor accepts fits, so report 0');
+    // and when room remains, the reported amount is one reserve() actually takes
+    const lp2 = fresh();
+    const room = ledger.maxReservableUsd(
+      ledger.totalsOf(ledger.readLedger({ ledgerPath: lp2, maxAgeMs: Number.POSITIVE_INFINITY })),
+    );
+    assert.ok(room > 0);
+    assert.equal(
+      code(() => ledger.reserve({ ledgerPath: lp2, callId: 'c', estimatedMaxUsd: room })),
+      'NO_REFUSAL',
+    );
+  });
+  test('defaultLedgerPath reads only the environment', () => {
+    const was = process.env.SAKK_LEDGER_PATH;
+    try {
+      process.env.SAKK_LEDGER_PATH = '/tmp/sakk-env-probe.json';
+      assert.equal(ledger.defaultLedgerPath(), '/tmp/sakk-env-probe.json');
+    } finally {
+      if (was === undefined) delete process.env.SAKK_LEDGER_PATH;
+      else process.env.SAKK_LEDGER_PATH = was;
+    }
   });
   test('an estimate below the floor is refused (F-105: 1e-300 estimates)', () => {
     assert.equal(

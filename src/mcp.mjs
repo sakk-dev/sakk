@@ -8,7 +8,7 @@
 // yields byte-identical books. Transport is hand-rolled newline-delimited
 // JSON-RPC 2.0 over stdio — zero dependencies, like everything here.
 
-import { reserve, settle, readLedger, totalsOf, LedgerError } from './ledger.mjs';
+import { reserve, settle, readLedger, totalsOf, maxReservableUsd, LedgerError } from './ledger.mjs';
 import { decide, logDecision, PolicyError } from './policy.mjs';
 
 const MAX_FRAME = 1 << 20; // 1 MiB per line (contract adversary #8)
@@ -162,7 +162,7 @@ function callTool({ name, args, ledgerPath, loaded, decisionLogPath }) {
         settled_usd: t.settledUsd,
         outstanding_usd: t.outstandingUsd,
         committed_usd: t.committedUsd,
-        max_reservable_usd: Math.max(0, t.capUsd - t.committedUsd - 1e-6),
+        max_reservable_usd: maxReservableUsd(t),
         entries: doc.entries.length,
         reconciliation_required: doc.flags?.reconciliationRequired === true,
         halted: doc.halt?.global ?? null,

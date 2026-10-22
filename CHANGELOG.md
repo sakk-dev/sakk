@@ -62,6 +62,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - F-148: the guard spec's rule table is compared with the shipped policy.
 - F-149: every mutation-drill anchor is checked by `npm test`, not only by
   the hour-long drill.
+- F-150: the F-105 input bounds no longer lock settled money — a reservation
+  made before ids were bounded still settles — and a non-string `runId`,
+  `taskId` or `tokens` is now refused (`INPUT_INVALID`) instead of stored
+  whole; reconciliation reasons are truncated so a long id cannot jam the
+  books.
+- F-151: the cost-bounds detector now accepts only a real test as a guard,
+  never a circular self-reference, and covers the non-string inputs.
+- F-152: `max_reservable_usd` is computed once in the ledger and reports 0
+  when the headroom is below the estimate floor, so the figure `status`
+  shows is one `reserve` actually accepts.
 
 ### Changed (release preparation)
 

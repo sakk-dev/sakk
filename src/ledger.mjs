@@ -91,15 +91,32 @@ export const LIMITS = Object.freeze({
   idChars: 256,
   nameChars: 256,
   reasonChars: 1024,
+  tokensBytes: 4096,
   minEstimateUsd: 1e-6,
 });
+/**
+ * A field that is stored: nullish is kept as null, a string is bounded by
+ * length, anything else is refused by type (F-150: an array runId or an
+ * object taskId skipped the old string-only check and was stored whole).
+ */
 function checkLength(field, value, max) {
-  if (typeof value === 'string' && value.length > max)
+  if (value === undefined || value === null) return;
+  if (typeof value !== 'string')
+    throw new LedgerError('INPUT_INVALID', `${field} must be a string when given`, {
+      field,
+      type: typeof value,
+    });
+  if (value.length > max)
     throw new LedgerError('INPUT_TOO_LONG', `${field} is longer than ${max} characters`, {
       field,
       length: value.length,
     });
 }
+/** A reason kept for a human: bounded by truncation, never refused (it may quote a long callId). */
+const boundReason = (s) => {
+  const t = String(s ?? 'unspecified');
+  return t.length > LIMITS.reasonChars ? `${t.slice(0, LIMITS.reasonChars - 1)}…` : t;
+};
 const LOCK_WAIT_MS = 5;
 const LOCK_TRIES = 400; // ~2s of spinning, then a structured error — never proceed lockless
 /**
@@ -480,13 +497,15 @@ const setAgentHalt = (h, id, record) =>
  * only undefined means "everyone" — a null from a failed id lookup must
  * never widen a stop or a resume to all spending.
  */
-function checkAgentId(agentId, { scope = false } = {}) {
+function checkAgentId(agentId, { scope = false, stored = true } = {}) {
   if (agentId === undefined || (agentId === null && !scope)) return;
   if (typeof agentId !== 'string' || agentId === '')
     throw new LedgerError('AGENT_ID_INVALID', 'agentId must be a non-empty string when given', {
       agentId: typeof agentId === 'string' ? agentId : typeof agentId,
     });
-  checkLength('agentId', agentId, LIMITS.idChars);
+  // only an id that will be stored is bounded; one that is looked up (resume) is
+  // not, or a halt recorded before ids were bounded could never be lifted (F-150)
+  if (stored) checkLength('agentId', agentId, LIMITS.idChars);
 }
 
 export function totalsOf(doc) {
@@ -502,6 +521,17 @@ export function totalsOf(doc) {
     committedUsd: settledUsd + outstandingUsd,
     capUsd: doc.capUsd,
   };
+}
+
+/**
+ * The largest amount `reserve` would accept right now, reported by `status`
+ * and the MCP totals. It is the headroom under the cap (less the epsilon the
+ * cap check uses), but 0 whenever that headroom is below the estimate floor —
+ * reporting a number the floor would refuse was a false promise (F-150).
+ */
+export function maxReservableUsd(totals) {
+  const headroom = totals.capUsd - totals.committedUsd - 2 * CAP_EPSILON_USD;
+  return headroom >= LIMITS.minEstimateUsd ? headroom : 0;
 }
 
 function writeLedger(ledgerPath, doc, { keepUpdatedAt = false } = {}) {
@@ -736,7 +766,9 @@ export function settle({
   // for and echoed back (F-82 — an echoed nested value crashed the MCP gate)
   if (typeof callId !== 'string' || callId === '')
     throw new LedgerError('CALL_ID_REQUIRED', 'Settling needs the callId the reservation used');
-  checkLength('callId', callId, LIMITS.idChars);
+  // no length bound here (F-150): settle stores no new id, it looks one up, and a
+  // reservation made before ids were bounded must still be settled, or its
+  // estimate holds the cap for ever
   const lock = acquireLock(ledgerPath);
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
@@ -776,7 +808,7 @@ export function settle({
       e.status = 'RECONCILIATION_REQUIRED';
       doc.flags = {
         reconciliationRequired: true,
-        reason: `call ${callId} failed with unknowable actual cost`,
+        reason: boundReason(`call ${callId} failed with unknowable actual cost`),
       };
       emitAlert(ledgerPath, { kind: 'RECONCILIATION_REQUIRED', callId });
       writeLedger(ledgerPath, doc, { keepUpdatedAt: true });
@@ -788,9 +820,23 @@ export function settle({
         'actualUsd must be a non-negative number (if unknowable, use failedUnknownCost)',
         { callId },
       );
+    // tokens is telemetry the caller supplies; bound its stored size (F-150) and
+    // keep only a plain object or null, never an attacker-sized blob
+    if (tokens !== null && tokens !== undefined) {
+      if (typeof tokens !== 'object' || Array.isArray(tokens))
+        throw new LedgerError('INPUT_INVALID', 'tokens must be an object or null', { callId });
+      if (JSON.stringify(tokens).length > LIMITS.tokensBytes)
+        throw new LedgerError(
+          'INPUT_TOO_LONG',
+          `tokens is larger than ${LIMITS.tokensBytes} bytes`,
+          {
+            callId,
+          },
+        );
+    }
     e.status = 'SETTLED';
     e.actualUsd = actualUsd;
-    e.tokens = tokens;
+    e.tokens = tokens ?? null;
     e.settledAt = new Date().toISOString();
     if (actualUsd > e.estimatedMaxUsd + 1e-9) {
       /*
@@ -809,7 +855,9 @@ export function settle({
       });
       doc.flags = {
         reconciliationRequired: true,
-        reason: `call ${callId} settled ${actualUsd} against a ${e.estimatedMaxUsd} reservation`,
+        reason: boundReason(
+          `call ${callId} settled ${actualUsd} against a ${e.estimatedMaxUsd} reservation`,
+        ),
       };
     }
     // a settle confirms nothing about the books: an agent settling an old
@@ -827,7 +875,7 @@ export function markReconciliationRequired({ ledgerPath = defaultLedgerPath(), r
   const lock = acquireLock(ledgerPath);
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
-    doc.flags = { reconciliationRequired: true, reason: String(reason ?? 'unspecified') };
+    doc.flags = { reconciliationRequired: true, reason: boundReason(reason) };
     emitAlert(ledgerPath, { kind: 'RECONCILIATION_REQUIRED', reason: doc.flags.reason });
     writeLedger(ledgerPath, doc);
     return { ok: true };
@@ -888,7 +936,7 @@ export function resume({ ledgerPath = defaultLedgerPath(), by, agentId }) {
   if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('RESUME_BY_REQUIRED', 'Resuming requires a name');
   checkLength('by', by, LIMITS.nameChars);
-  checkAgentId(agentId, { scope: true });
+  checkAgentId(agentId, { scope: true, stored: false });
   const scoped = typeof agentId === 'string';
   const lock = acquireLock(ledgerPath);
   try {

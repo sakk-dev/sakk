@@ -8,6 +8,7 @@ import {
   initLedger,
   readLedger,
   totalsOf,
+  maxReservableUsd,
   clearReconciliation,
   forceUnlock,
   halt,
@@ -187,12 +188,10 @@ if (cmd === 'init') {
     outstanding_usd: t.outstandingUsd,
     committed_usd: t.committedUsd,
     remaining_usd: Math.max(0, t.capUsd - t.committedUsd),
-    // Review finding E6: remaining is cap-committed, but the cap is a WALL —
-    // reserving exactly remaining always refuses. This is the largest
-    // amount a reserve() will actually accept.
-    // review S2: a figure that does not work when acted on is wrong — when
-    // every reserve refuses, nothing is reservable
-    max_reservable_usd: blocked ? 0 : Math.max(0, t.capUsd - t.committedUsd - 1e-6),
+    // the largest amount a reserve() actually accepts: the cap is a wall, and
+    // an amount below the estimate floor is refused too (F-150). review S2: a
+    // figure that does not work when acted on is wrong
+    max_reservable_usd: blocked ? 0 : maxReservableUsd(t),
     entries: byStatus,
     reconciliation_required: reco,
     reconciliation_reason: doc.flags?.reason ?? null,

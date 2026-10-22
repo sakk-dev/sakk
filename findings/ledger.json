@@ -25,6 +25,11 @@
           "kind": "detector",
           "ref": "test/ci-honesty.test.mjs::no workflow turns a skip or a failure into a green check",
           "since": "F-142"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/cost-bounds.test.mjs::a non-string runId, taskId or tokens is refused, not stored whole (F-150)",
+          "since": "F-150"
         }
       ]
     },
@@ -130,6 +135,11 @@
           "kind": "detector",
           "ref": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
           "since": "F-83"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/cost-bounds.test.mjs::max reservable is 0 when the headroom is below the floor",
+          "since": "F-152"
         }
       ]
     },
@@ -200,6 +210,11 @@
           "kind": "detector",
           "ref": "test/bounded-spawn.test.mjs::every node --test run loads the bound",
           "since": "F-143"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/cost-bounds.test.mjs::a huge reconciliation reason is stored truncated, not whole",
+          "since": "F-151"
         }
       ]
     },
@@ -4501,6 +4516,109 @@
       "areas": ["scripts/mutation-drill.sh"],
       "mechanism_gap": "The C-10 detectors turn rule text into checks for the product; the drill's anchors were checked only by the drill itself.",
       "mechanism_upgrade": "test/core-specs.test.mjs::every drill anchor is found exactly once in its file, without running the drill (F-149)"
+    },
+    {
+      "id": "F-150",
+      "date": "2026-10-22",
+      "introduced_in": "294f391",
+      "found_by": "review",
+      "class": "C-04",
+      "title": "The F-105 input bounds locked settled money and missed non-string inputs",
+      "symptom": "A reservation made before ids were bounded (the old MCP allowed 4096-char callIds) could never be settled: settle refused the long callId with INPUT_TOO_LONG, so its estimate held the cap for ever, and a failedUnknownCost one jammed the ledger with no way out but hand-editing. Separately, a non-string runId (array) or taskId (object), and the tokens and reconciliation reason, skipped the string-only length check and were stored whole, so the growth F-105 is about was still open to direct library callers.",
+      "evidence": "adversarial review of oss/m1-guard, 2026-10-22, scripts in scratchpad/rev (r1.mjs, r2.mjs)",
+      "direct_cause": "checkLength only bounded strings and ran on a looked-up id, not just stored ones.",
+      "why": [
+        "The bound was written for ids as they are stored, and settle/resume also pass an id that is only looked up.",
+        "checkLength skipped any value that was not a string, so a non-string was neither bounded nor refused.",
+        "Old ledgers with long ids were never replayed against the new bound."
+      ],
+      "root_cause": "A bound for newly stored input was assumed to be safe on every id, including ones only looked up and ones not yet proven to be strings.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-04.1",
+        "why": "C-04.1 bounded the hook's payload and command; it did not cover the ledger's own stored fields, so a length check added for them was applied too broadly (a looked-up id) and too narrowly (strings only)."
+      },
+      "instance_fix": "this commit: settle and resume no longer length-bound a looked-up id (a long reservation still settles); checkLength refuses a non-string stored field (INPUT_INVALID) as well as an over-long one; tokens is bounded (object, <=4096 bytes); reconciliation reasons are truncated, never refused, so a long id cannot jam the books.",
+      "guard": "test/cost-bounds.test.mjs::a non-string runId, taskId or tokens is refused, not stored whole (F-150)",
+      "class_fix": null,
+      "sweep": "Every stored field of the ledger was checked: ids and names bounded or refused by type; tokens bounded; reasons truncated; looked-up ids (settle callId, resume agentId) left unbounded on purpose so old entries still resolve.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/ledger.mjs"],
+      "mechanism_gap": "The C-04 detector listed reserve with one over-long-string case; it never fed a non-string field or an old long id.",
+      "mechanism_upgrade": "test/cost-bounds.test.mjs::a non-string runId, taskId or tokens is refused, not stored whole (F-150)",
+      "distinct_from": {
+        "F-105": "F-105 is the books growing O(n) with use (the archive fixes that, still open); F-150 is that the input bounds added for F-105 first part were applied wrongly — to a looked-up id and to strings only — a correctness bug in those bounds, not the growth itself."
+      }
+    },
+    {
+      "id": "F-151",
+      "date": "2026-10-22",
+      "introduced_in": "294f391",
+      "found_by": "review",
+      "class": "C-03",
+      "title": "The C-04 cost-bounds detector had guards that could never fail",
+      "symptom": "Three BOUNDS entries (markReconciliationRequired, totalsOf, defaultLedgerPath) named a guard that was a test inside cost-bounds.test.mjs itself, and resolves() only checked the name was a substring of the file, so deleting the real bound left the suite green. No test covered runId or taskId at all.",
+      "evidence": "adversarial review of oss/m1-guard, 2026-10-22: deleting the runId/taskId checks kept ledger-bounds and cost-bounds green",
+      "direct_cause": "resolves() matched any substring, and a guard could point at the listing that requires it.",
+      "why": [
+        "A guard was allowed to name the meta-test that only checks the function is listed.",
+        "A substring match accepted a comment or the entry text itself as if it were a test."
+      ],
+      "root_cause": "The detector checked that a guard was named, not that it was a real test that fails when the bound is gone.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-06"],
+      "answer_failed": {
+        "qid": "C-03.1",
+        "why": "C-03.1 asks whether a check fails for the reason it names; the cost-bounds detector itself had guards that pass whatever the code does, so the question was answered for the product checks but not for this detector."
+      },
+      "instance_fix": "this commit: resolves() accepts only a real test('<name>') declaration and refuses the circular meta-test; the three circular entries now point at real tests (a truncation test, an env test) or are marked F-105 debt; new tests cover non-string runId/taskId/tokens.",
+      "guard": "test/cost-bounds.test.mjs::a huge reconciliation reason is stored truncated, not whole",
+      "class_fix": null,
+      "sweep": "Every bounded entry re-checked: each now names a real falsifiable test or an open-finding debt; the meta-test can no longer be used as a guard.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["test/cost-bounds.test.mjs"],
+      "mechanism_gap": "A self-check (the detector that proves functions are bounded) was not itself checked for the C-03 shape.",
+      "mechanism_upgrade": "test/cost-bounds.test.mjs::a huge reconciliation reason is stored truncated, not whole"
+    },
+    {
+      "id": "F-152",
+      "date": "2026-10-22",
+      "introduced_in": "294f391",
+      "found_by": "review",
+      "class": "C-05",
+      "title": "status reported a max reservable amount the estimate floor refuses",
+      "symptom": "sakk status and the MCP totals reported max_reservable_usd = cap - committed - 1e-6, which could be a positive amount below the new estimate floor (1e-6); reserving exactly that figure returned ESTIMATE_INVALID, so the number the tool promised did not work when acted on.",
+      "evidence": "adversarial review of oss/m1-guard, 2026-10-22 (r3.mjs): cap 1, committed 0.9999985, reported ~5e-7, reserve refused",
+      "direct_cause": "The figure subtracted a hair for the cap but ignored the estimate floor.",
+      "why": [
+        "The floor was added to reserve but the status figure was not revisited.",
+        "The figure was computed in two places by hand, so neither matched reserve exactly."
+      ],
+      "root_cause": "A reported figure was not derived from the same rule that acts on it.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-10"],
+      "es": ["ES-05"],
+      "answer_failed": {
+        "qid": "C-05.2",
+        "why": "C-05.2 asks whether every figure the tool reports works when acted on; the floor made a small positive max_reservable unreservable, and the figure was not rechecked against reserve."
+      },
+      "instance_fix": "this commit: maxReservableUsd() in the ledger is the single source, used by status and MCP; it returns 0 whenever the headroom is below the floor, and otherwise an amount reserve() accepts.",
+      "guard": "test/cost-bounds.test.mjs::max reservable is 0 when the headroom is below the floor",
+      "class_fix": null,
+      "sweep": "The figure is computed once in the ledger and reused; both call sites (bin/sakk.mjs, src/mcp.mjs) import it instead of recomputing.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/ledger.mjs", "bin/sakk.mjs", "src/mcp.mjs"],
+      "mechanism_gap": "No test reserved the exact amount status reported.",
+      "mechanism_upgrade": "test/cost-bounds.test.mjs::max reservable is 0 when the headroom is below the floor",
+      "distinct_from": {
+        "F-104": "F-104 is the lock/crash/fsync durability promises in the ledger; F-152 is a reported status figure (max_reservable) that did not match what reserve accepts — a reporting bug, unrelated to locking."
+      }
     }
   ]
 }
