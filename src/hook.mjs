@@ -33,6 +33,28 @@ import { decide, loadPolicy, logDecision } from './policy.mjs';
 import { appendNoFollow } from './append.mjs';
 import { loadPrices } from './prices.mjs';
 import { capCheck as spendCap } from './spend.mjs';
+import { scanText } from './secret-scan.mjs';
+
+/**
+ * The guard's step 3 (specs/secret-guard): a write whose content is a secret,
+ * or a shell command (or patch) whose text contains a literal secret, is
+ * denied. Returns the first finding { rule, fingerprint } (never the value),
+ * or null. A scan error is surfaced as a HookError, so it fails closed.
+ */
+export function secretHit(ev) {
+  for (const surface of [ev.content, ev.command, ev.patch]) {
+    if (typeof surface !== 'string' || surface === '') continue;
+    let r;
+    try {
+      r = scanText(surface);
+    } catch (e) {
+      throw new HookError('HOOK_SECRET_SCAN_FAILED', e.message);
+    }
+    if (r.findings.length)
+      return { rule: r.findings[0].rule, fingerprint: r.findings[0].fingerprint };
+  }
+  return null;
+}
 import { readLedger } from './ledger.mjs';
 import { patchActions, shellActions, toDecisions } from './classify.mjs';
 
@@ -117,6 +139,7 @@ export function normalize(agent, p) {
     } else if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(ev.tool)) {
       ev.kind = 'write';
       ev.paths = [text(ti.file_path ?? ti.notebook_path, 'tool_input.file_path')];
+      ev.content = writeContent(ti); // the new bytes, for the secret scan (M3)
     } else if (ev.tool === 'Read') {
       ev.kind = 'read';
       ev.paths = [text(ti.file_path, 'tool_input.file_path')];
@@ -160,6 +183,7 @@ export function normalize(agent, p) {
       } else if (ev.tool === 'Write') {
         ev.kind = 'write';
         ev.paths = [path()];
+        ev.content = writeContent(ti);
       } else if (ev.tool === 'Delete') {
         ev.kind = 'delete';
         ev.paths = [path()];
@@ -171,6 +195,26 @@ export function normalize(agent, p) {
     return ev;
   }
   throw new HookError('HOOK_USAGE', `unknown agent ${agent}`);
+}
+
+/**
+ * The new bytes a write would put on disk, for the secret scan (M3): Write's
+ * content, Edit's new_string, MultiEdit's edits joined, NotebookEdit's
+ * new_source. Best-effort and string-only — a shape we do not know scans as
+ * empty (no secret found), never throws; the guard still judges the path.
+ */
+function writeContent(ti) {
+  const parts = [];
+  for (const k of ['content', 'new_string', 'new_str', 'new_source', 'contents']) {
+    const v = ti[k];
+    if (typeof v === 'string') parts.push(v);
+  }
+  if (Array.isArray(ti.edits))
+    for (const e of ti.edits) {
+      const v = e?.new_string ?? e?.new_str;
+      if (typeof v === 'string') parts.push(v);
+    }
+  return parts.join('\n');
 }
 
 const MCP_NAME = /[^A-Za-z0-9_.-]/g;
@@ -373,6 +417,16 @@ export function evaluate(
     } catch (e) {
       unknown = e; // a cap that cannot be read refuses every call but the project read
     }
+  // 3. the secret guard (specs/secret-guard): a write whose content, or a
+  // command/patch whose text, contains a literal secret is denied — scanned
+  // once for the whole call. A scan error fails closed via unknown.
+  let secret = null;
+  if (unknown === null)
+    try {
+      secret = secretHit(ev);
+    } catch (e) {
+      unknown = e;
+    }
   for (const a of actions) {
     const context = {
       agent: ev.agent,
@@ -407,6 +461,14 @@ export function evaluate(
         policyHash: loaded.policyHash,
         context,
         why: cap.reason,
+      };
+    else if (secret)
+      d = {
+        verdict: 'deny',
+        ruleId: 'secret',
+        policyHash: loaded.policyHash,
+        context,
+        why: `a secret (${secret.rule}, fingerprint ${secret.fingerprint}) is in this ${ev.kind === 'shell' ? 'command' : 'content'}; the value is never logged. Remove it or use a reference a person approves. ${DISPUTE}`,
       };
     else {
       try {
@@ -456,7 +518,7 @@ const DISPUTE = 'If this is wrong, tell the person you work for and stop; do not
 
 function reasonOf(d, policyPath, fallback) {
   const what = `${d.context.action}${d.context.scope ? ` ${d.context.scope}` : ''}`;
-  if (['halt', 'spend-cap', 'rules-unknown'].includes(d.ruleId))
+  if (['halt', 'spend-cap', 'rules-unknown', 'secret'].includes(d.ruleId))
     return `Sakk: ${what} refused — ${d.why}. ${DISPUTE}`;
   if (fallback)
     return `${reasonOf(d, policyPath)} The project policy ${fallback.local} is not in effect (${fallback.broken.message}); Sakk is using the last policy that loaded, kept ${fallback.savedAt}.`;

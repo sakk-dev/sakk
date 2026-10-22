@@ -338,6 +338,13 @@ run_drill MUT-AJ src/archive.mjs \
   "verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id" \
   "test"
 
+# MUT-AK: skip the secret scan in the hook → a written or printed secret must die red
+run_drill MUT-AK src/hook.mjs \
+  "      secret = secretHit(ev);" \
+  "      secret = null;" \
+  "an Edit or Write whose content is a secret is denied" \
+  "test"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"

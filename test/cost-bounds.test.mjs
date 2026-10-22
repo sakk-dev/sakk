@@ -206,6 +206,12 @@ const BOUNDS = {
       bounded: 'formats one reason built from bounded fields',
       guard: 'test/guard.test.mjs::every malformed payload is a deny with a code',
     },
+    secretHit: {
+      bounded:
+        "scans ev.content/command/patch — each a field of a payload runHook caps at 1 MiB — through scanText, which bounds its own work (MAX_SCAN_BYTES, per-line cap, rules without the u flag that don't backtrack); a scan error fails closed as HOOK_SECRET_SCAN_FAILED",
+      guard:
+        'test/secret-scan.test.mjs::200KB adversarial lines for every rule scan without catastrophic backtracking',
+    },
     haltFor: {
       bounded: 'reads the ledger through readLedger, now bounded by the hot size (F-105 archive)',
       guard:

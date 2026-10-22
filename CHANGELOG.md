@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the secret guard in the hook (open-source v1, M3)
+
+- A write whose content is a secret, and a shell command (or `apply_patch`
+  body) whose text contains a literal secret, are now denied inside the hook
+  (`evaluate` step 3), scanned once per call through the existing eight-rule
+  `scanText`. This runs for every agent (claude-code, cursor, codex) and over
+  every write surface (Write `content`, Edit/MultiEdit new text, NotebookEdit,
+  `apply_patch`). Reading a secret file was already denied by the `secret.read`
+  rule and is unchanged.
+- The deny names the matched rule and a keyed fingerprint, never the secret
+  value; the decision-log line drops the reason text and the content, so the
+  value reaches neither the agent nor `~/.sakk/decisions.jsonl`. A scan that
+  cannot run fails closed as `HOOK_SECRET_SCAN_FAILED` (a deny, via the
+  guard's rules-unknown path). New refusal code: `HOOK_SECRET_SCAN_FAILED`.
+- Deferred: the gitleaks 222-rule port (`specs/secret-guard/`, "Status") needs
+  the upstream rule file fetched at a pinned commit (a network download) and
+  waits on approval; the hook ships the eight rules until then.
+
 ### Added — spend and the daily cap (open-source v1, M2)
 
 - `sakk spend` reads Claude Code's local transcripts

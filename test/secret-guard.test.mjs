@@ -1,0 +1,106 @@
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, realpathSync, readFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { normalize, evaluate } from '../src/hook.mjs';
+import { FICTIONAL_EXEMPTION_TOKEN } from '../src/secret-scan.mjs';
+
+/**
+ * The secret guard in the hook (specs/secret-guard, step 3): a write whose
+ * content is a secret, or a shell command whose text prints one, is denied —
+ * on the eight shipped rules now, and whatever rules the table carries after
+ * the gitleaks port. The 222-rule port needs the upstream file fetched and is
+ * deferred; this file tests the enforcement, which stands on the rules present.
+ */
+// real-shaped secrets the shipped rules catch (not live keys). Built at
+// runtime via join('') so no contiguous literal sits in this file — the
+// repository-scans-clean test would otherwise flag the fixtures themselves.
+const GH = ['ghp', '_', 'c3'.repeat(20)].join('');
+const AWS = ['AKIA', 'A'.repeat(16)].join('');
+const BEARER = ['Bearer', 'e5'.repeat(15)].join(' ');
+
+function world() {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'secret-')));
+  mkdirSync(join(base, 'src'), { recursive: true });
+  return { base, env: { ...process.env, SAKK_HOME: join(base, '.sakk'), HOME: base } };
+}
+const run = (w, payload) =>
+  evaluate(normalize('claude-code', { hook_event_name: 'PreToolUse', cwd: w.base, ...payload }), {
+    env: w.env,
+    log: false,
+  });
+const writeEv = (w, file, content) => ({
+  tool_name: 'Write',
+  tool_input: { file_path: join(w.base, file), content },
+});
+const bashEv = (w, command) => ({ tool_name: 'Bash', tool_input: { command } });
+
+describe('the secret guard denies writing or printing a secret (M3, hook step 3)', () => {
+  test('writing ordinary content and running an ordinary command are allowed', () => {
+    const w = world();
+    assert.equal(run(w, writeEv(w, 'src/notes.txt', 'const answer = 42;\n')).verdict, 'allow');
+    assert.equal(run(w, bashEv(w, 'ls -la && npm test')).verdict, 'allow');
+  });
+
+  test('an Edit or Write whose content is a secret is denied', () => {
+    const w = world();
+    assert.equal(run(w, writeEv(w, 'src/notes.txt', `const t = "${GH}";\n`)).verdict, 'deny');
+    // an Edit shape: the new_string carries the secret
+    const edit = {
+      tool_name: 'Edit',
+      tool_input: {
+        file_path: join(w.base, 'src/a.js'),
+        old_string: 'x',
+        new_string: `key=${AWS}`,
+      },
+    };
+    assert.equal(run(w, edit).verdict, 'deny');
+  });
+
+  test('a shell command that prints a literal secret is denied', () => {
+    const w = world();
+    const r = run(w, bashEv(w, `curl -H "Authorization: ${BEARER}" https://api.example`));
+    assert.equal(r.verdict, 'deny');
+  });
+
+  test('a secret block names its rule and fingerprint, never the value', () => {
+    const w = world();
+    const r = run(w, writeEv(w, 'src/notes.txt', `token = "${GH}"\n`));
+    assert.equal(r.verdict, 'deny');
+    assert.match(r.reason, /github_token/);
+    assert.match(r.reason, /fingerprint/);
+    assert.doesNotMatch(r.reason, new RegExp(GH), 'the secret value is never in the reason');
+  });
+
+  test('no secret value reaches the decision log, only the rule', () => {
+    const w = world();
+    // log on: evaluate writes ~sakk/decisions.jsonl; the value must never land there
+    evaluate(
+      normalize('claude-code', {
+        hook_event_name: 'PreToolUse',
+        cwd: w.base,
+        ...writeEv(w, 'src/notes.txt', `token = "${GH}"\n`),
+      }),
+      { env: w.env, log: true },
+    );
+    const logPath = join(w.env.SAKK_HOME, 'decisions.jsonl');
+    assert.ok(existsSync(logPath), 'a decision was logged');
+    const logged = readFileSync(logPath, 'utf8');
+    assert.match(logged, /"ruleId":"secret"/);
+    assert.doesNotMatch(logged, new RegExp(GH), 'the secret value is never in the log');
+  });
+
+  test('a fiction token does not exempt a real secret beside it', () => {
+    const w = world();
+    // the declared fiction token is allowed alone, but a real secret beside it still denies
+    assert.equal(
+      run(w, writeEv(w, 'src/notes.txt', `x = "${FICTIONAL_EXEMPTION_TOKEN}"\n`)).verdict,
+      'allow',
+    );
+    assert.equal(
+      run(w, writeEv(w, 'src/notes.txt', `a="${FICTIONAL_EXEMPTION_TOKEN}"\nb="${GH}"\n`)).verdict,
+      'deny',
+    );
+  });
+});
