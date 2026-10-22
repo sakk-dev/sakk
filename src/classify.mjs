@@ -435,6 +435,14 @@ export function shellActions(cmd, cwd, { home = process.env.HOME ?? '', depth = 
       continue;
     }
     if (['cp', 'install', 'ln', 'rsync'].includes(name)) {
+      // A link (ln, or cp -s/-l) created mid-chain defeats static path
+      // resolution: a later write/read through the new name resolves to the cwd
+      // at classify time but to the link's target at run time — the symlink/
+      // hard-link TOCTOU that let an agent reach ~/.sakk in one command (F-163).
+      // The guard cannot follow a link that does not exist yet, so a chained
+      // link-create is treated as constructed (a person approves it).
+      const makesLink = name === 'ln' || (name === 'cp' && has(/^-[a-z]*[sl]|^--(symbolic|link)/));
+      if (makesLink && segs.length > 1) add('shell.constructed');
       for (const f of plain.slice(0, -1)) add('file.read', abs(f));
       if (plain.length) add('file.write', abs(plain.at(-1)));
       continue;

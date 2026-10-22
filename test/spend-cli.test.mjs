@@ -157,20 +157,42 @@ describe('spend / cap / prices CLI (F-161)', () => {
     assert.match(j.source, /snapshot\.json$/);
   });
 
-  test('sakk spend refuses a malformed --day', () => {
+  test('sakk spend refuses a malformed or impossible --day', () => {
     const w = world();
-    const r = sakk(w, ['spend', '--day', '10-22-2026']);
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, /SPEND_USAGE/);
+    for (const bad of ['10-22-2026', '2026-13-40', '2026-02-30', 'abcd-ef-gh']) {
+      const r = sakk(w, ['spend', '--day', bad]);
+      assert.equal(r.status, 2, bad);
+      assert.match(r.stderr, /SPEND_USAGE/, bad);
+    }
+  });
+
+  test('sakk cap set reports a typed error on an unreadable config, not a stack', () => {
+    const w = world();
+    writeFileSync(join(w.home, 'config.json'), '{ this is not json');
+    const r = sakk(w, ['cap', 'set', '5']);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /HOOK_CONFIG_UNREADABLE/);
+    assert.doesNotMatch(r.stderr, /at Object\.|node:internal/); // no raw stack
   });
 
   test('the agent cannot set its own cap (writing ~/.sakk is denied)', () => {
     const w = world();
-    const answer = hookAnswer(w, {
+    // direct write to the config → denied outright
+    const direct = hookAnswer(w, {
       tool_name: 'Write',
       tool_input: { file_path: join(w.home, 'config.json'), content: '{"capUsd":999999}' },
     });
-    assert.match(answer, /"permissionDecision":"deny"/);
-    assert.match(answer, /protect-guard-state/);
+    assert.match(direct, /"permissionDecision":"deny"/);
+    assert.match(direct, /protect-guard-state/);
+    // a one-command symlink/hard-link chain into ~/.sakk cannot resolve statically,
+    // so it is never a silent allow — it needs a person's approval (F-163)
+    for (const command of [
+      `ln -s ${w.home} lnk && echo '{"capUsd":999999}' > lnk/config.json`,
+      `ln ${join(w.home, 'config.json')} y && echo x > y`,
+    ]) {
+      const a = hookAnswer(w, { tool_name: 'Bash', tool_input: { command } });
+      assert.notEqual(a, '', `not a silent allow: ${command}`);
+      assert.doesNotMatch(a, /"permissionDecision":"allow"/, command);
+    }
   });
 });

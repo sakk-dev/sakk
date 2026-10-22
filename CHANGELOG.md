@@ -11,9 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `sakk cap set <usd> [--zone <IANA>]` / `sakk cap off`: set or lift the daily
   cap the hook enforces at the next call. A person runs it; the agent is denied
-  writing `~/.sakk` by the guard (rule `protect-guard-state`), so it cannot
-  raise its own cap. The amount must be a positive plain decimal (`CAP_USAGE`)
-  and the zone a real IANA name (`CAP_ZONE_INVALID`).
+  writing `~/.sakk` directly by the guard (rule `protect-guard-state`), and a
+  one-command symlink/hard-link chain that would reach it is not silently
+  allowed (it is treated as constructed and needs a person's approval, F-163),
+  so the agent cannot silently raise its own cap. The amount must be a positive
+  plain decimal (`CAP_USAGE`) and the zone a real IANA name (`CAP_ZONE_INVALID`).
 - `sakk spend [--day <YYYY-MM-DD>] [--json]`: a day's spend by model and what
   could not be priced, read from Claude Code's local logs and labelled an
   estimate, not the invoice; the day boundary follows the configured zone. A
@@ -104,7 +106,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (5m/1h); the whole request billed at the long-context rate past a model's
   threshold. The cap, zone and log folder live in `~/.sakk/config.json`, read
   by a person's configuration — not from the agent's environment — and writing
-  `~/.sakk/` is denied by the guard, so an agent cannot raise its own cap.
+  `~/.sakk/` is denied by the guard (directly, or via a chained link that needs
+  approval, F-163), so an agent cannot silently raise its own cap.
   Fail-closed: a model with no price (`PRICE_UNKNOWN`) or an unreadable log
   line (`SPEND_UNREADABLE`) is a deny while a cap is set.
 - A small, approximate starter price snapshot ships in `prices/` (schema

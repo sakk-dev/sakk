@@ -5027,6 +5027,42 @@
       "distinct_from": {
         "F-143": "F-143 is the mutation drill's synchronous child that --test-timeout cannot interrupt; F-162 is a read-only HTTP GET firing subprocesses and blocking the event loop — a different surface (the console, not the drill) and a different trigger (composition into a route, not a hung test)."
       }
+    },
+    {
+      "id": "F-163",
+      "date": "2026-10-22",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-08",
+      "title": "A one-command symlink/hard-link chain let an agent reach ~/.sakk, defeating the static path guard",
+      "symptom": "The spend/cap CLI review found that the shipped claim 'the agent cannot raise its own cap' was false: a single Bash command 'ln -s $SAKK_HOME lnk && echo {\"capUsd\":999999} > lnk/config.json' was silently allowed and raised the cap. The guard classifies paths by resolving the nearest existing parent at classify time; the symlink does not exist yet, so lnk/config.json resolves to the cwd (allowed), and the link is only followed at run time (a TOCTOU). The same route let the agent clobber any ~/.sakk state (the decision log, the kept-good policy), not just the cap. A hard link (ln target y) and cp -s/-l do the same; the two-command form was already denied (the link exists on the second call), and direct Write/Edit/redirect/cp/mv to ~/.sakk were all denied.",
+      "evidence": "independent review of oss/spend-cli at b5030a6, 2026-10-22: the chained symlink command returned a silent allow and config.json read capUsd 999999 after run; the two-call form and all direct routes were denied.",
+      "direct_cause": "The classifier resolves a path through the nearest EXISTING parent; a link created earlier in the same command does not exist at classify time, so the write through it resolves to a safe scope instead of the link's real target.",
+      "why": [
+        "Path scoping is a static resolution of what exists now; a symlink or hard link created mid-command is a future alias the static resolver cannot follow.",
+        "The guard's C-08 tests covered a link to an existing target (the ledger path), never a link CREATED and then used within one command.",
+        "The spend/cap test exercised only the Write tool for the 'cannot set its own cap' claim, so the shell/link route was never driven and the gap shipped as an absolute claim."
+      ],
+      "root_cause": "A path-based guard resolved a name to a scope using the filesystem state at classify time, so a name aliased at run time by a link the same command creates reached a different, protected target than the one judged.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-08.1",
+        "why": "C-08.1 asks whether the same thing can be reached by two names and requires one name to be the only one; a chained link gave ~/.sakk a second name the static resolver did not follow, so a protected path was reached under an unjudged alias."
+      },
+      "instance_fix": "this commit: a command that creates a link (ln, or cp -s/-l) AND has more than one segment is treated as shell.constructed — it needs a person's approval, never a silent allow, because the guard cannot follow a link that does not exist yet. A standalone link-create is unchanged (a later separate command re-resolves the now-existing link and is denied). The claim is softened to 'cannot silently raise its own cap', and the test now drives the symlink and hard-link routes, not only Write.",
+      "guard": "test/spend-cli.test.mjs::the agent cannot set its own cap (writing ~/.sakk is denied)",
+      "class_fix": null,
+      "sweep": "the fix covers both link kinds (symbolic and hard) and cp's link flags, chained via && ; | or newlines; a standalone link-create stays allowed and its later use is caught on the next call. Residual (accepted, documented): a person can still approve the chained command — human-in-loop, not a silent agent bypass. No follow-up finding needed.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/classify.mjs", "test/spend-cli.test.mjs"],
+      "mechanism_gap": "The C-08 symlink/hard-link detectors resolved a link to an EXISTING target at classify time (F-85, the ledger path); none considered a link created earlier in the SAME command, whose target does not exist yet, so the static resolver scoped the alias as safe.",
+      "mechanism_upgrade": "test/spend-cli.test.mjs::the agent cannot set its own cap (writing ~/.sakk is denied)",
+      "distinct_from": {
+        "F-85": "F-85 is a ledger reached through a symlink/hard link that ALREADY EXISTS (resolved and refused at classify time); F-163 is a link the command CREATES before using it, which the static resolver cannot follow — a run-time TOCTOU, closed by treating a chained link-create as constructed."
+      }
     }
   ]
 }

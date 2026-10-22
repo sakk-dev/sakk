@@ -706,19 +706,20 @@ if (cmd === 'init') {
   // agent is denied writing ~/.sakk, so it cannot raise its own cap.
   const sub = argv[1];
   const home = sakkHome();
-  if (sub === 'off') {
-    writeConfig(home, { capUsd: undefined });
-    console.log(
-      `cap off: ${join(home, 'config.json')} — no daily cap; spend no longer gates paid calls`,
-    );
-  } else if (sub === 'set') {
+  if (sub !== 'off' && sub !== 'set') {
+    console.error('CAP_USAGE: sakk cap set <usd> [--zone <IANA>] | sakk cap off');
+    process.exit(2);
+  }
+  let cap;
+  let zone;
+  if (sub === 'set') {
     const amt = argv[2];
-    const cap = /^\d+(\.\d+)?$/.test(amt ?? '') ? Number(amt) : NaN;
+    cap = /^\d+(\.\d+)?$/.test(amt ?? '') ? Number(amt) : NaN;
     if (!Number.isFinite(cap) || cap <= 0) {
       console.error('CAP_USAGE: sakk cap set <usd> — a positive number (e.g. sakk cap set 5)');
       process.exit(2);
     }
-    const zone = val('zone');
+    zone = val('zone');
     if (zone !== undefined) {
       try {
         new Intl.DateTimeFormat('en-CA', { timeZone: zone });
@@ -727,20 +728,40 @@ if (cmd === 'init') {
         process.exit(2);
       }
     }
-    writeConfig(home, { capUsd: cap, ...(zone !== undefined ? { timeZone: zone } : {}) });
-    console.log(
-      `cap set: $${cap}/day${zone ? ` (${zone})` : ''} in ${join(home, 'config.json')} — the hook denies paid calls once today's spend from local logs reaches it`,
-    );
-  } else {
-    console.error('CAP_USAGE: sakk cap set <usd> [--zone <IANA>] | sakk cap off');
-    process.exit(2);
+  }
+  // a pre-existing malformed/symlinked config.json makes writeConfig's merge
+  // read throw; report it as a typed error, not an uncaught stack (spend/cap review)
+  try {
+    if (sub === 'off') {
+      writeConfig(home, { capUsd: undefined });
+      console.log(
+        `cap off: ${join(home, 'config.json')} — no daily cap; spend no longer gates paid calls`,
+      );
+    } else {
+      writeConfig(home, { capUsd: cap, ...(zone !== undefined ? { timeZone: zone } : {}) });
+      console.log(
+        `cap set: $${cap}/day${zone ? ` (${zone})` : ''} in ${join(home, 'config.json')} — the hook denies paid calls once today's spend from local logs reaches it`,
+      );
+    }
+  } catch (e) {
+    fail(e);
   }
 } else if (cmd === 'spend') {
   const home = sakkHome();
   const dayArg = val('day');
-  if (dayArg !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(dayArg)) {
-    console.error('SPEND_USAGE: --day must be YYYY-MM-DD');
-    process.exit(2);
+  if (dayArg !== undefined) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayArg);
+    const d = m && new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    // reject an impossible date (2026-13-40, 2026-02-30): the parts must round-trip
+    const real =
+      d &&
+      d.getUTCFullYear() === +m[1] &&
+      d.getUTCMonth() === +m[2] - 1 &&
+      d.getUTCDate() === +m[3];
+    if (!real) {
+      console.error('SPEND_USAGE: --day must be a real calendar date, YYYY-MM-DD');
+      process.exit(2);
+    }
   }
   let config;
   try {
@@ -754,7 +775,14 @@ if (cmd === 'init') {
   const logDir = config.claudeLogDir || claudeLogDir(process.env);
   let indexNote = '';
   try {
-    updateIndex({ home, logDir, zone, since: Date.now() - 36 * 3600 * 1000 });
+    // an explicit historical --day scans all files (their mtime is old); today
+    // only needs files touched in the last 36 h (spend/cap review: no false $0)
+    updateIndex({
+      home,
+      logDir,
+      zone,
+      since: dayArg !== undefined ? 0 : Date.now() - 36 * 3600 * 1000,
+    });
   } catch (e) {
     if (!(e instanceof SpendError)) throw e;
     indexNote = ` (index not refreshed: ${e.code})`;

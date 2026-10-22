@@ -64,7 +64,7 @@ recent decisions, the policy with a try box, and secret blocks:
 sakk ui        # prints http://127.0.0.1:<port>/?t=… — read-only; Ctrl+C to stop
 ```
 
-Cap the day's spend (read from Claude Code's local logs — an estimate, not the invoice). A person sets it; the agent is denied writing `~/.sakk`, so it cannot raise its own cap:
+Cap the day's spend (read from Claude Code's local logs — an estimate, not the invoice). A person sets it; the agent is denied writing `~/.sakk` directly, and a one-command symlink chain that would reach it is not silently allowed (it needs a person's approval), so the agent cannot silently raise its own cap:
 
 ```bash
 sakk cap set 5 --zone Asia/Dubai   # deny paid calls once today's spend reaches $5
