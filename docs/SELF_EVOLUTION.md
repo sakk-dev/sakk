@@ -29,6 +29,39 @@ folder a session **starts** in. A session started in a parent folder meets
 the hook only if the parent's own settings route tool calls to it (F-132).
 `--no-verify` skips the local hooks, not CI.
 
+## When the gate itself breaks (RC-09 review, 2026-10-22)
+
+A broken gate must not lock the repository it guards (F-141).
+
+- **Run from a copy.** `scripts/gate-files.json` lists the gate: the files it
+  runs from, the hooks that run it, and self-test cases. The parent-folder
+  dispatcher (`.claude/hooks/repo-hooks.mjs` beside the repositories) runs
+  those hooks from a copy of the listed files taken from HEAD. The copy is
+  kept outside the working tree, in `~/.cache/sakk-gate`. The working copy,
+  and its `.claude/settings.json`, never judge.
+- **Adopt only after a self-test.** A copy is adopted only once it passes the
+  self-test cases of the copy it replaces, and then its own. The cases run
+  through the hooks the list declares, the path a real call takes. A commit
+  that breaks or empties the gate does not take effect, and every call says
+  so until a commit passes.
+- **One self-test, two places.**
+  `test/self-evolution-cli.test.mjs::the committed gate passes its own
+self-test from a copy, as the dispatcher runs it` runs the same cases on
+  every change, so a gate the dispatcher would refuse fails `npm test` first.
+- **Which repository a copy judges.** A copy judges the repository the
+  dispatcher names in `SAKK_GATE_REPO`. A named folder without
+  `findings/classes.json` is refused. A copy that is not told which
+  repository cannot place a shell write, so it refuses.
+- **Repair from inside a session.** For a session started in the repository
+  itself, while the checker cannot load:
+  - `findings/` stays editable;
+  - the gate's code can be restored to what is committed, from the
+    repository's top folder (`git restore scripts/findings-lib.mjs`);
+  - it can never be rewritten unjudged.
+- **Where the copy and its record live.** Incidents go to
+  `~/.cache/sakk-gate/<repository>/incidents.jsonl`, one line per distinct
+  failure.
+
 ## The answers
 
 `npm run brief -- <paths>` lists, for the files a change touches, the

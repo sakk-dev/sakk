@@ -61,8 +61,31 @@ const {
 const args = process.argv.slice(2);
 const mode = args[0];
 
-/** The gate's own files: what may be repaired while the checker cannot load. */
-const REPAIRABLE = /^(scripts\/findings-[\w-]+\.mjs|src\/classify\.mjs|findings\/.*)$/;
+/**
+ * The repository this gate guards: the one the dispatcher names when it runs
+ * a copy of the gate from outside the working tree (SAKK_GATE_REPO; the last
+ * known good gate, RC-09 review), else the one this file lives in. A named
+ * folder that keeps no ledger is refused, never read as "nothing to check".
+ */
+function gateRepo() {
+  const named = process.env.SAKK_GATE_REPO;
+  if (named === undefined || named === '')
+    return realpathSync(join(dirname(fileURLToPath(import.meta.url)), '..'));
+  try {
+    const r = realpathSync(named);
+    if (existsSync(join(r, 'findings', 'classes.json'))) return r;
+  } catch {
+    // refused below
+  }
+  console.error(
+    `self-evolution: SAKK_GATE_REPO (${named}) is not a repository that keeps findings/classes.json — refused`,
+  );
+  process.exit(2);
+}
+/** What stays open while the checker cannot load: the answers and findings, never the gate's code. */
+const OPEN_WHILE_BROKEN = /^findings\/.*$/;
+/** The gate's own code: restored from git while the checker cannot load, never rewritten (RC-09 review). */
+const GATE_CODE = '(?:scripts/findings-[\\w-]+\\.mjs|src/classify\\.mjs)';
 if (libError !== null) {
   const why = `self-evolution: the checker cannot load (${libError.message.split('\n')[0]})`;
   if (mode !== '--edit') {
@@ -75,7 +98,7 @@ if (libError !== null) {
   } catch {
     process.exit(0); // not a hook payload: nothing to check
   }
-  const repo = realpathSync(join(dirname(fileURLToPath(import.meta.url)), '..'));
+  const repo = gateRepo();
   const file = hook?.tool_input?.file_path ?? hook?.tool_input?.notebook_path;
   if (typeof file === 'string' && file !== '') {
     // one spelling per place (/var and /private/var): resolve the nearest existing parent
@@ -91,19 +114,26 @@ if (libError !== null) {
       }
     }
     const rel = relative(repo, abs);
-    if (rel.startsWith('..') || isAbsolute(rel) || REPAIRABLE.test(rel)) process.exit(0);
+    if (rel.startsWith('..') || isAbsolute(rel) || OPEN_WHILE_BROKEN.test(rel)) process.exit(0);
   }
   const cmd = hook?.tool_input?.command;
-  // the one shell repair: restore the gate's own files from git, nothing chained
+  const here = (() => {
+    try {
+      return relative(repo, realpathSync(typeof hook?.cwd === 'string' ? hook.cwd : repo));
+    } catch {
+      return '..';
+    }
+  })();
+  // the one shell repair: restore the gate's own code to what is committed, from the
+  // repository's top folder, nothing chained and no other source
   if (
     typeof cmd === 'string' &&
-    /^git (-C \S+ )?(checkout|restore)( --)? (scripts\/findings-[\w-]+\.mjs|src\/classify\.mjs)( (scripts\/findings-[\w-]+\.mjs|src\/classify\.mjs))*$/.test(
-      cmd.trim(),
-    )
+    here === '' &&
+    new RegExp(`^git (?:checkout|restore)(?: --)? ${GATE_CODE}(?: ${GATE_CODE})*$`).test(cmd.trim())
   )
     process.exit(0);
   console.error(
-    `${why}. Only the gate's own files can be repaired now (Edit/Write on scripts/findings-*.mjs, src/classify.mjs, findings/, or: git restore <those files>).`,
+    `${why}. The gate's code is restored, not rewritten, while it cannot load: from the repository's top folder run git restore <the file> (scripts/findings-*.mjs, src/classify.mjs); findings/ stays editable.`,
   );
   process.exit(2);
 }
@@ -195,8 +225,14 @@ if (mode === '--edit') {
   try {
     if (tool === 'Bash') {
       // R1: the repository this hook belongs to, wherever the session started
-      const root = findRoot(real(join(dirname(fileURLToPath(import.meta.url)), '..')));
-      if (!root) process.exit(0);
+      const root = findRoot(gateRepo());
+      // the gate always lives in the repository it guards; a copy that is not told
+      // which one (SAKK_GATE_REPO) cannot place a shell write, so it refuses
+      if (!root)
+        fail(
+          'self-evolution: this copy of the gate was not given SAKK_GATE_REPO, so it cannot tell what a shell command writes — refused',
+          2,
+        );
       const skip = hookBypass(hook?.tool_input?.command);
       if (skip)
         fail(
@@ -273,10 +309,10 @@ if (mode === '--edit') {
     if (problems.length) fail([...problems, DISPUTE].join('\n\n'), 2);
     process.exit(0);
   } catch (e) {
-    // fail closed — but leave the way to repair the checker itself open
-    if (rel !== null && /^scripts\/findings-[\w-]+\.mjs$/.test(rel)) process.exit(0);
+    // fail closed; findings/ was let through before any of this ran, so the data the
+    // check reads can always be fixed — the gate's own code is never rewritten unjudged
     fail(
-      `self-evolution: the check could not run (${e.message}). Fix the input it names; findings/ and scripts/findings-*.mjs stay editable with the Edit tool.`,
+      `self-evolution: the check could not run (${e.message}). Fix the input it names; findings/ stays editable.`,
       2,
     );
   }

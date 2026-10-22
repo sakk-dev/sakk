@@ -77,7 +77,15 @@ lines recur:
 can be edited while the checker cannot load` and its counterpart
   `F-141: everything else is denied, with the way to repair, not a crash`.
 
-## Class-level mechanism — proposed, waiting for the owner's go
+## Class-level mechanism — the owner's go, 2026-10-22
+
+Points 1 to 5 landed in the gate-isolation change: the dispatcher runs the
+last known good copy and self-tests a new one before adopting it (its
+tests are beside it); the checker judges the repository it is given and is
+restore-only while it cannot load; the product hook keeps the last policy
+that loaded. Point 6 (break-glass) waits for the owner.
+
+The plan as approved:
 
 Ordered so that the first five keep the gate fail-closed:
 

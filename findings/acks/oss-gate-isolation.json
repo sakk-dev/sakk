@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "branch": "oss/gate-isolation",
+  "answers": {
+    "C-06.1": {
+      "answer": "Every call judged while a gate change is not in effect says so in its own answer (which commit judges, which cases failed), and the incident record names the commit and the failed cases; nothing reports the new gate as active until the dispatcher adopted it.",
+      "guard": "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it"
+    },
+    "C-03.1": {
+      "answer": "The narrowing test puts the old exemption's cases back as attacks (an Edit of the gate code, a restore from another source or folder) and expects each denied; the copy test feeds a folder without a ledger and expects the refusal by its message, not just any exit 2.",
+      "guard": "test/self-evolution-cli.test.mjs::F-141: while the checker cannot load, its code is restored from git, never rewritten"
+    },
+    "C-03.2": {
+      "answer": "The self-test test runs the listed hooks as /bin/sh commands with the dispatcher's environment against the real repository, so it observes the exit code the dispatcher reads; its control is the dispatcher's own suite, where an emptied gate fails the same cases.",
+      "guard": "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it"
+    },
+    "C-03.3": {
+      "answer": "The self-test is tied to what runs: a case passes only if the listed hook, run from the copy, answers as listed; a gate list without hooks or cases fails before any case, so the paperwork alone cannot pass.",
+      "guard": "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it"
+    },
+    "C-09.1": {
+      "answer": "The copy runs from a folder outside the repository, with cwd the repository and SAKK_GATE_REPO set, which is the state the dispatcher creates; the test builds exactly that folder, and the restore rule is tried from a subfolder, where it is refused.",
+      "guard": "test/self-evolution-cli.test.mjs::a gate run from a copy judges the repository it is given, and refuses a folder without a ledger"
+    },
+    "C-09.2": {
+      "answer": "It runs from the parent-folder dispatcher for sessions started in the parent workspace, and from .claude/settings.json for sessions started in the repository; both are exercised: the dispatcher's suite drives a real git repository through dispatch(), and these tests drive the checker as both routes call it.",
+      "guard": "test/self-evolution-cli.test.mjs::a gate run from a copy judges the repository it is given, and refuses a folder without a ledger"
+    },
+    "C-04.1": {
+      "answer": "Every child the new tests start carries its own 60 s timeout, and the preload bounds any that does not; the dispatcher's self-test runs each case with the hook's own timeout and only when the gate at HEAD changed, never on every call, and its cases are fixed short commands, not sized by input.",
+      "guard": "test/bounded-spawn.test.mjs::every node --test run loads the bound"
+    },
+    "C-02.1": {
+      "answer": "The set of files the gate runs from is stated once, in scripts/gate-files.json, and checked against the checker's real import closure; what stays open while it cannot load is a rule (findings/, plus restoring the listed gate code), not a second list of paths.",
+      "guard": "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)"
+    },
+    "C-02.2": {
+      "answer": "The same narrowing applies on every route the checker has: the lazy-load path (Edit, Write, NotebookEdit and Bash) and the catch-all after a check error, which no longer lets an edit of the gate code through; the dispatcher side runs a committed copy, so neither route depends on the working copy.",
+      "guard": "test/self-evolution-cli.test.mjs::F-141: while the checker cannot load, its code is restored from git, never rewritten"
+    },
+    "C-14.1": {
+      "answer": "A gate that cannot load or cannot run is one failed unit: the dispatcher keeps judging with the last good copy, and the checker itself leaves the answers and restoring its committed code open with a named reason; nothing else in the repository depends on the working copy of the gate.",
+      "guard": "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it"
+    },
+    "C-01.1": {
+      "answer": "A missing SAKK_GATE_REPO means the gate guards the repository its own file lives in, as before; a SAKK_GATE_REPO that is set but names a folder without findings/classes.json is refused (exit 2), never read as a repository with nothing to check. A gate list without hooks or self-test cases does not parse, so the dispatcher keeps the last good gate instead of running none.",
+      "guard": "test/self-evolution-cli.test.mjs::a gate run from a copy judges the repository it is given, and refuses a folder without a ledger"
+    },
+    "C-01.2": {
+      "answer": "The tests remove each input: no SAKK_GATE_REPO (the copy then refuses Bash writes it cannot place), a SAKK_GATE_REPO without a ledger (refused), and the gate list's self-test run from a copy (every case must come out as listed).",
+      "guard": "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it"
+    },
+    "C-10.1": {
+      "answer": "The dispatcher adopts a new gate only after its self-test passes, and the self-test is in the repository: a test runs every listed case through the listed hooks from a copy outside the working tree, so a gate that would fail the dispatcher fails npm test first.",
+      "guard": "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it"
+    },
+    "C-10.2": {
+      "answer": "While the checker cannot load, the only routes left are the answers and findings under findings/ and restoring the gate's code to what is committed from the repository's top folder; an Edit or Write of the gate's code, a restore from another source or another folder, and anything chained are denied.",
+      "guard": "test/self-evolution-cli.test.mjs::F-141: while the checker cannot load, its code is restored from git, never rewritten"
+    },
+    "C-05.1": {
+      "answer": "docs/SELF_EVOLUTION.md and the RC-09 review name only what the tests check: the copy is judged by the named repository, its self-test cases pass as listed, and the repair window is restore-only.",
+      "guard": "test/self-evolution-cli.test.mjs::F-141: while the checker cannot load, its code is restored from git, never rewritten"
+    },
+    "C-05.2": {
+      "answer": "The exit codes are the hook's: 2 is a deny the agent reads with its reason, 0 passes; the tests read them from the real child process, and the self-test compares each case's outcome as the dispatcher sees it.",
+      "guard": "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it"
+    }
+  }
+}

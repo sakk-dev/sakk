@@ -265,6 +265,11 @@
           "kind": "detector",
           "ref": "eval/__tests__/scorer-rules.test.mjs::SCORER_ERROR: a judge that cannot score",
           "since": "F-95"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it",
+          "since": "F-141"
         }
       ]
     }
@@ -4254,14 +4259,26 @@
       "rc": ["RC-09"],
       "es": ["ES-07"],
       "instance_fix": "this commit: findings-check loads its library lazily; while it cannot load, edits to scripts/findings-*.mjs, src/classify.mjs and findings/ pass, and so does git restore of exactly those files; everything else is denied with the way to repair",
-      "guard": "test/self-evolution-cli.test.mjs::F-141: the gate's own files can be edited while the checker cannot load",
-      "class_fix": null,
-      "sweep": "The parent dispatcher and the managed install keep failing closed; the repair path lives in the checker, the one component that knows its own files. Pre-commit and CI still fail while the checker cannot load.",
+      "guard": "test/self-evolution-cli.test.mjs::F-141: while the checker cannot load, its code is restored from git, never rewritten",
+      "class_fix": "RC-09 stop-line review: the parent-folder dispatcher runs the gate from a copy taken from HEAD and kept outside the working tree, adopted only once it passes the self-test of the copy it replaces (scripts/gate-files.json lists the files, hooks and cases); the checker judges the repository the dispatcher names (SAKK_GATE_REPO), and while it cannot load only findings/ and restoring its committed code stay open.",
+      "sweep": "The parent dispatcher and the managed install keep failing closed; the repair path lives in the checker, the one component that knows its own files. Pre-commit and CI still fail while the checker cannot load. Narrowed after the RC-09 research: the catch-all after a check error no longer lets an edit of the gate code through either.",
       "sweep_status": "done",
       "status": "fixed",
       "areas": ["scripts/findings-check.mjs"],
       "mechanism_gap": "The RC-09 detectors isolate failures on product paths and in scripts; none fed the loop's own checker a library that cannot load.",
-      "mechanism_upgrade": "test/self-evolution-cli.test.mjs::F-141: the gate's own files can be edited while the checker cannot load"
+      "mechanism_upgrade": "test/self-evolution-cli.test.mjs::F-141: while the checker cannot load, its code is restored from git, never rewritten",
+      "corrections": [
+        {
+          "field": "mechanism_upgrade",
+          "from": "test/self-evolution-cli.test.mjs::F-141: the gate's own files can be edited while the checker cannot load",
+          "why": "The research behind the RC-09 review: a blanket exemption for the gate's own files lets a broken gate be rewritten unjudged, so the repair window is now restore-only and the guard test says so."
+        },
+        {
+          "field": "guard",
+          "from": "test/self-evolution-cli.test.mjs::F-141: the gate's own files can be edited while the checker cannot load",
+          "why": "The same test, renamed for what it now proves: the gate code is restored from git, never rewritten, while the checker cannot load."
+        }
+      ]
     },
     {
       "id": "F-142",
