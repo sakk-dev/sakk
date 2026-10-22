@@ -24,8 +24,16 @@ const SRC = new URL('../src/', import.meta.url);
 const ledger = await import(new URL('ledger.mjs', SRC));
 const archive = await import(new URL('archive.mjs', SRC));
 const { initLedger, reserve, settle, readLedger, totalsOf } = ledger;
-const { SEAL_AT, MAX_INFLIGHT, coldDir, idxDir, segmentsOnDisk, verifyChain, segmentHash } =
-  archive;
+const {
+  SEAL_AT,
+  MAX_INFLIGHT,
+  coldDir,
+  idxDir,
+  reindex,
+  segmentsOnDisk,
+  verifyChain,
+  segmentHash,
+} = archive;
 
 const fresh = (capUsd = 1e12) => {
   const p = join(mkdtempSync(join(tmpdir(), 'ledger-arch-')), 'ledger.json');
@@ -363,5 +371,77 @@ describe('F-105 the hot/cold split: settled entries seal into a bounded, verifia
       code(() => reserve({ ledgerPath: p, callId: 'one-more', estimatedMaxUsd: 1e-6 })),
       'NO_ERROR',
     );
+  });
+});
+
+describe('F-105 review fixes: the index is checked and recoverable, verify is float-safe', () => {
+  test('verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id', () => {
+    const p = fresh();
+    seed(p, SEAL_AT + 1, 0.01, 0.002); // seals segment 1; c0..c39 archived
+    // the index intact: a sealed id is a duplicate
+    assert.equal(
+      code(() => reserve({ ledgerPath: p, callId: 'c0', estimatedMaxUsd: 0.01 })),
+      'DUPLICATE_CALL_ID',
+    );
+    const doc = () => readLedger({ ledgerPath: p, maxAgeMs: Infinity });
+    // lose the whole index
+    fs.rmSync(idxDir(p), { recursive: true, force: true });
+    // verify now catches it (it did not before the fix)
+    assert.equal(
+      code(() => verifyChain(p, doc().archive)),
+      'LEDGER_ARCHIVE_BROKEN',
+    );
+    // and a reserve refuses rather than silently treat the sealed id as new (double-spend)
+    assert.equal(
+      code(() => reserve({ ledgerPath: p, callId: 'c0', estimatedMaxUsd: 0.01 })),
+      'LEDGER_ARCHIVE_BROKEN',
+    );
+    assert.equal(
+      code(() => reserve({ ledgerPath: p, callId: 'brand-new', estimatedMaxUsd: 0.01 })),
+      'LEDGER_ARCHIVE_BROKEN',
+    );
+    // reindex rebuilds it from cold; dedup and verify are restored
+    reindex(p, doc().archive);
+    assert.equal(
+      code(() => verifyChain(p, doc().archive)),
+      'NO_ERROR',
+    );
+    assert.equal(
+      code(() => reserve({ ledgerPath: p, callId: 'c0', estimatedMaxUsd: 0.01 })),
+      'DUPLICATE_CALL_ID',
+    );
+    assert.equal(
+      code(() => reserve({ ledgerPath: p, callId: 'brand-new', estimatedMaxUsd: 0.01 })),
+      'NO_ERROR',
+    );
+  });
+  test('verify catches a single altered index entry', () => {
+    const p = fresh();
+    seed(p, SEAL_AT + 1, 0.01, 0.002);
+    const doc = readLedger({ ledgerPath: p, maxAgeMs: Infinity });
+    // point one sealed call-id at the wrong segment in its shard
+    const shardFile = readdirSync(idxDir(p)).find((f) => f.endsWith('.json'));
+    const sp = join(idxDir(p), shardFile);
+    const shard = JSON.parse(readFileSync(sp, 'utf8'));
+    const anId = Object.keys(shard)[0];
+    shard[anId] = 999;
+    writeFileSync(sp, JSON.stringify(shard));
+    assert.equal(
+      code(() => verifyChain(p, doc.archive)),
+      'LEDGER_ARCHIVE_BROKEN',
+    );
+  });
+  test('verify does not false-fail on an intact chain with varied amounts (float-safe)', () => {
+    const p = fresh();
+    // varied amounts across several segments, including large then small, so a
+    // per-entry fold would drift from the per-segment maintained summary
+    for (let i = 0; i < SEAL_AT * 3; i++) {
+      const act = i < 5 ? 1234.5678 : 0.0001 + (i % 9) * 0.00003;
+      paid(p, `c${i}`, 2000, act);
+    }
+    const doc = readLedger({ ledgerPath: p, maxAgeMs: Infinity });
+    const walked = verifyChain(p, doc.archive); // must not throw
+    // same summation order in both places → exact equality, no tolerance fudge
+    assert.equal(walked.settledUsd, doc.archive.settledUsd);
   });
 });

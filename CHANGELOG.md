@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — F-105 archive, from the independent review (F-159)
+
+- `sakk ledger verify` now checks the call-id index as well as the segment
+  chain, so a lost or wrong index (which silently re-admitted a sealed
+  call-id — a double-spend) is caught; `reserve` refuses when the whole index
+  is gone but segments are sealed, and `sakk ledger reindex` rebuilds it from
+  cold.
+- verify sums the sealed total per segment exactly as it is stored, so an
+  intact chain never false-fails on float order.
+- `sakk ledger export --out` reports a typed `LEDGER_EXPORT_FAILED` instead of
+  a raw stack. The spec now states verify detects accidental corruption and
+  loss, not tampering by a writer who can recompute the unkeyed hashes.
+
 ### Added — the ledger's hot/cold split (F-105, schema v3)
 
 - Settled entries are sealed into an append-only, hash-chained cold trail

@@ -317,6 +317,13 @@ run_drill MUT-AG src/archive.mjs \
   "verify catches a flipped byte, a broken link and a wrong tip" \
   "test"
 
+# MUT-AJ: stop checking the index against the cold trail → the lost-index test must die red
+run_drill MUT-AJ src/archive.mjs \
+  "      if (have[callId] !== seq)" \
+  "      if (false)" \
+  "verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id" \
+  "test"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"
