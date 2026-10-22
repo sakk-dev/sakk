@@ -23,7 +23,7 @@ The pages and their data, as in v10:
 | Guard rules              | the policy in use, its hash and the try box (calls the same code as `sakk try`)                                         |
 | Secret guard             | commit-scan hook status and the "agent touched a secret" card (M3 log lines)                                            |
 | Agents                   | connections per agent (from `sakk doctor`'s checks) and per-agent stop (`sakk halt --agent`) when `--allow-halt` is set |
-| Records & export         | decision log, spend index, evidence bundles; export as CSV, FOCUS, JSONL                                                |
+| Records & export         | decision log and spend index; export as CSV and JSONL (FOCUS and evidence bundles are the enterprise edition)           |
 | Model prices             | the table in use, its source and hash                                                                                   |
 | Enterprise · coming soon | static                                                                                                                  |
 

@@ -241,6 +241,53 @@ const BOUNDS = {
       guard: 'test/guard.test.mjs::every malformed payload is a deny with a code',
     },
   },
+  'console.mjs': {
+    tokenOk: {
+      bounded:
+        'a constant-time compare of a fixed 128-bit token; a wrong-length input is rejected without comparing attacker-sized data',
+      guard: 'test/console.test.mjs::token compare is constant-time and failures are counted',
+    },
+    tailDecisions: {
+      bounded:
+        'reads at most TAIL_BYTES from the end of the log and returns scannedBytes; a 5 GB file is never loaded whole',
+      guard: 'test/console.test.mjs::a huge decision log is paged, never loaded whole',
+    },
+    policyInUse: {
+      bounded:
+        'one repoRootOf git call and one loadPolicy, which refuses a policy over 4 MiB — the same resolution the hook bounds',
+      guard: 'test/console.test.mjs::every page data endpoint answers on fixture data',
+    },
+    overviewData: {
+      bounded:
+        "M2's updateIndex/daySpend (bounded by MAX_LINE and MAX_FILES) plus the bounded decision-log tail; no unbounded read",
+      guard: 'test/console.test.mjs::with no data the pages say nothing yet, not an error',
+    },
+    secretData: {
+      bounded: 'filters the bounded decision-log tail for secret blocks; no read beyond TAIL_BYTES',
+      guard: 'test/console.test.mjs::every page data endpoint answers on fixture data',
+    },
+    pricesData: {
+      bounded:
+        'loadPrices refuses a table over 256 KiB; the model list is the table it already read',
+      guard: 'test/console.test.mjs::every page data endpoint answers on fixture data',
+    },
+    tryData: {
+      bounded:
+        'one evaluate with log:false on a command the request line caps at MAX_QUERY; the same bound as the hook',
+      guard: 'test/console.test.mjs::the console and the CLI report the same numbers',
+    },
+    startConsole: {
+      bounded:
+        'binds one loopback socket; per-request work is bounded by MAX_QUERY (request line), a 4 KiB POST body cap and the bounded tail',
+      guard: 'test/console.test.mjs::a request without the token gets nothing',
+    },
+    renderPage: {
+      bounded:
+        'returns a constant HTML template with one nonce interpolated; no attacker-sized input',
+      guard:
+        'test/console.test.mjs::every open-source page is in the nav and the coming-soon window is present',
+    },
+  },
   'guard-install.mjs': {
     hookCommand: {
       bounded: "run by a person against the agent's own config file, never on the hook path",

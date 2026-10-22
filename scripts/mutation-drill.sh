@@ -345,6 +345,13 @@ run_drill MUT-AK src/hook.mjs \
   "an Edit or Write whose content is a secret is denied" \
   "test"
 
+# MUT-AL: drop the console's token gate → a request without the token must die red
+run_drill MUT-AL src/console.mjs \
+  "if (!tokenOk(fromQuery, tok) && !tokenOk(cookie, tok)) return forbid(res);" \
+  "if (false) return forbid(res);" \
+  "a request without the token gets nothing" \
+  "test"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"

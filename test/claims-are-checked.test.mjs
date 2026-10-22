@@ -56,6 +56,12 @@ const DEFENSIVE = {
   VERIFIER_ERROR: 'a bug inside the verifier itself (it must still fail closed)',
   HOOK_SECRET_SCAN_FAILED:
     'scanText threw on a string the hook already bounded — only reachable if the scanner dependency is broken; caught so the hook fails closed (a deny via the rules-unknown branch, which other triggers do exercise) instead of crashing. The throw itself cannot be provoked by hook input, so there is no unit for this specific trigger.',
+  CONSOLE_HALT_FAILED:
+    "the console's halt catch-all for a non-LedgerError — halt() raises a typed LedgerError on every reachable path, so this only fires if the ledger dependency throws something else; it still answers a typed 409, never a crash",
+  CONSOLE_TRY_FAILED:
+    'the console try-box catch-all for a non-ConsoleError from evaluate — evaluate answers rather than throws on reachable input, so this only fires on an unexpected internal error; it still answers a typed 400',
+  UI_FAILED:
+    'the sakk ui catch-all for a startConsole rejection other than EADDRINUSE — no reachable input produces one, but the CLI still exits with a typed message instead of a bare stack',
   SPEND_TOO_MANY_LOGS:
     'more than 50,000 transcript files under the log dir — a readdir counter, not reproducible as a cheap unit test (would need 50k files)',
 };

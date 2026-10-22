@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the local console `sakk ui` (open-source v1, M4)
+
+- `sakk ui [--port N] [--allow-halt] [--ledger <path>]` starts a read-only web
+  console on `127.0.0.1` (never `0.0.0.0`) and prints one address carrying a
+  fresh 128-bit token. It shows only what M1–M3 recorded, through the same
+  functions the CLI uses: today's spend and cap, recent guard decisions, the
+  policy in use with a try box, secret blocks, `sakk doctor`'s checks, and the
+  model prices — plus an "Enterprise · coming soon" panel.
+- Security: the server binds loopback only; every request carries the token
+  (first in the query, then a `SameSite=Strict; HttpOnly` cookie) and is
+  checked against the `Host`; a write (stopping an agent, behind
+  `--allow-halt`) also needs the `Origin` and a token header; the token
+  compare is constant-time and refusals are counted and shown. Responses carry
+  a strict CSP (`default-src 'none'`), `nosniff` and `no-referrer`, and never a
+  CORS header. The page is one HTML file with inline, nonce'd script and style,
+  no external origin, and renders every value with `textContent` so a log
+  string is never HTML. The decision log is read in a bounded tail, so a 5 GB
+  log is never loaded whole.
+- Read-only by default. The one write stops an agent via the ledger's `halt()`,
+  recorded with the OS user name and labelled self-declared; resume stays on
+  the command line. New refusal codes: `UI_PORT_INVALID`, `UI_PORT_PRIVILEGED`,
+  `UI_PORT_IN_USE`, `CONSOLE_NO_LEDGER`, `CONSOLE_BAD_BODY`, `CONSOLE_BAD_AGENT`,
+  `CONSOLE_TRY_EMPTY`. Export is CSV and JSONL; FOCUS and evidence bundles are
+  the enterprise edition.
+
 ### Added — the secret guard in the hook (open-source v1, M3)
 
 - A write whose content is a secret, and a shell command (or `apply_patch`

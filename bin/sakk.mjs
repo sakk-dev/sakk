@@ -22,6 +22,7 @@ import { display, scanPaths, scanStaged, ScanError } from '../src/secret-scan.mj
 import { evaluate, normalize, runHook } from '../src/hook.mjs';
 import { doctor, install, uninstall } from '../src/guard-install.mjs';
 import { readSegment, reindex, segmentsOnDisk, verifyChain } from '../src/archive.mjs';
+import { startConsole } from '../src/console.mjs';
 
 /**
  * sakk CLI — the smallest useful surface over the ledger.
@@ -99,6 +100,7 @@ The agent guard:
   sakk try "<command>" [--read <path>] [--json]           how the guard would judge a command (nothing runs)
   sakk doctor [--json]                                    check the guard really fires where you work
   sakk hook --agent <agent>                               the hook itself: payload on stdin (installed for you)
+  sakk ui [--port N] [--allow-halt] [--ledger <path>]     a local, read-only console on 127.0.0.1 (token in the URL)
 
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status) · 4 halted (status; wins over 3, both shown)
@@ -132,6 +134,7 @@ const COMMANDS = {
   try: { values: ['read'], bools: ['json'], positional: true },
   guard: { values: [], bools: ['user'], positional: true },
   doctor: { values: [], bools: ['json'] },
+  ui: { values: ['port', 'ledger'], bools: ['allow-halt'] },
 };
 if (Object.hasOwn(COMMANDS, cmd)) {
   const spec = COMMANDS[cmd];
@@ -680,6 +683,42 @@ if (cmd === 'init') {
       process.exit(1);
     }
   }
+} else if (cmd === 'ui') {
+  const portArg = val('port');
+  let port = 0;
+  if (portArg !== undefined) {
+    if (!/^\d+$/.test(portArg) || Number(portArg) > 65535) {
+      console.error('UI_PORT_INVALID: --port must be a number 1024-65535 (0 = a free port)');
+      process.exit(2);
+    }
+    port = Number(portArg);
+    if (port > 0 && port < 1024) {
+      console.error(
+        'UI_PORT_PRIVILEGED: choose a port 1024 or higher; privileged ports are refused',
+      );
+      process.exit(2);
+    }
+  }
+  const rawLedger = val('ledger') ?? (process.env.SAKK_LEDGER_PATH || undefined);
+  const lp = typeof rawLedger === 'string' && rawLedger !== '' ? resolve(rawLedger) : null;
+  const allowHalt = flag('allow-halt');
+  startConsole({ port, allowHalt, cwd: process.cwd(), ledgerPath: lp }).then(
+    (c) => {
+      console.log(
+        `Sakk console: ${c.url}  (read-only${allowHalt ? '; stop enabled' : ''}; Ctrl+C to stop)`,
+      );
+      process.on('SIGINT', () => c.close().then(() => process.exit(0)));
+    },
+    (e) => {
+      if (e && e.code === 'EADDRINUSE') {
+        console.error(`UI_PORT_IN_USE: port ${port} is already in use — choose another --port`);
+        process.exit(2);
+      }
+      const uiCode = 'UI_FAILED';
+      console.error(`${uiCode}: ${String(e?.message ?? e)}`);
+      process.exit(1);
+    },
+  );
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);
 } else {
