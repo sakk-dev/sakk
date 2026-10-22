@@ -40,8 +40,10 @@ The prior art is Playwright's `show-report` and UK AISI's Inspect view.
 2. **Token.**
    - Every start makes a fresh 128-bit token.
    - Each request must carry it: the first page load in the query string,
-     after that in a `SameSite=Strict`, `HttpOnly` cookie scoped to that
-     port.
+     after that in a `SameSite=Strict`, `HttpOnly` cookie. HTTP cookies are
+     not isolated by port, so the token itself — a fresh 128-bit secret per
+     start — and the `Host` check are the protection, not the cookie's scope;
+     the cookie only spares the token from the address bar after the first load.
    - A request without it gets 403 and no data.
 3. **Host check.** `Host` must be `127.0.0.1:<port>` or
    `localhost:<port>`, which blocks DNS rebinding.
@@ -63,9 +65,12 @@ img-src 'self' data:; frame-ancestors 'none'`
 7. **Output.** Every string from the logs is escaped before it reaches the
    page, and no log text is ever used as HTML. Commands and file contents
    are not in the logs in the first place (M1).
-8. **Bounded reads.** The decision log is read in pages of 500 lines from
-   the end, and the spend index through M2's functions. A 5 GB log never
-   loads whole.
+8. **Bounded reads, and no writes.** The decision log is read in pages of 500
+   lines from the end, and the spend index M2's hook maintains is read, not
+   updated — a GET writes nothing and spawns nothing. The Agents page reports
+   the installed state of each hook without firing it (`doctor({probe:false})`),
+   so a read-only request never runs a subprocess or blocks on one. A 5 GB log
+   never loads whole.
 
 ## Adversary table
 
@@ -81,7 +86,7 @@ process, or a prompt-injected agent that wants the console to lie or to act.
 | 5   | A log line carrying `<script>` (a tool name, a path, an MCP server name) | escaped and shown as text                                                  | `test/console.test.mjs::log text is escaped everywhere it is shown`              |
 | 6   | Guessing the token                                                       | 128 bits; constant-time compare; 403s are counted and shown                | `test/console.test.mjs::token compare is constant-time and failures are counted` |
 | 7   | A huge log to hang the server                                            | paged reads; a request finishes in bounded work                            | `test/console.test.mjs::a huge decision log is paged, never loaded whole`        |
-| 8   | The console shows spend as billed, or a self-declared stop as signed     | labels "from local logs" and "name typed by the user" (F-126)              | `test/console.test.mjs::evidence is labelled by its source`                      |
+| 8   | The console shows spend as billed, or a self-declared stop as signed     | labels "from local logs" and "self-declared (the OS account name)" (F-126) | `test/console.test.mjs::evidence is labelled by its source`                      |
 | 9   | The page loads anything from the network (a CDN font)                    | CSP `default-src 'none'`; a test lists every URL in the HTML               | `test/console.test.mjs::the page makes no request to another origin`             |
 
 ## Input-space table
