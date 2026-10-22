@@ -525,12 +525,13 @@ export function totalsOf(doc) {
 
 /**
  * The largest amount `reserve` would accept right now, reported by `status`
- * and the MCP totals. It is the headroom under the cap (less the epsilon the
- * cap check uses), but 0 whenever that headroom is below the estimate floor —
- * reporting a number the floor would refuse was a false promise (F-150).
+ * and the MCP totals. Headroom under the cap less the estimate floor: at that
+ * amount the cap check passes (the floor exceeds the cap epsilon by far) and
+ * the floor check passes. It is 0 whenever the headroom is below the floor —
+ * reporting a number the floor would refuse was a false promise (F-152).
  */
 export function maxReservableUsd(totals) {
-  const headroom = totals.capUsd - totals.committedUsd - 2 * CAP_EPSILON_USD;
+  const headroom = totals.capUsd - totals.committedUsd - LIMITS.minEstimateUsd;
   return headroom >= LIMITS.minEstimateUsd ? headroom : 0;
 }
 

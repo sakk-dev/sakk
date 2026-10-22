@@ -357,15 +357,76 @@ export function shellActions(cmd, cwd, { home = process.env.HOME ?? '', depth = 
       for (const f of plain) add('file.delete', abs(f));
       continue;
     }
+    if (name === 'dd') {
+      // dd names its files by if=/of=, not as positional words (F-153)
+      for (const a of args)
+        if (a.startsWith('of=')) add('file.write', abs(a.slice(3)));
+        else if (a.startsWith('if=')) add('file.read', abs(a.slice(3)));
+      continue;
+    }
+    if (name === 'tar') {
+      // an extraction writes into its directory; otherwise the archive is written
+      // and its members read; --remove-files deletes the members (F-153)
+      const extract = has(/^-?[a-zA-Z]*x[a-zA-Z]*$|^--extract$|^--get$/);
+      const fi = args.findIndex((a) => /^-?[a-zA-Z]*f$|^--file$/.test(a));
+      const archive = fi >= 0 ? args[fi + 1] : undefined;
+      const ci = args.findIndex((a) => a === '-C' || a === '--directory');
+      const into = ci >= 0 ? args[ci + 1] : '.';
+      const members = plain.filter((a) => a !== archive && a !== into);
+      if (extract) add('file.write', abs(into));
+      else if (archive && archive !== '-') add('file.write', abs(archive));
+      const remove = has(/^--remove-files$/);
+      for (const m of members) add(remove ? 'file.delete' : 'file.read', abs(m));
+      continue;
+    }
+    if (name === 'rsync') {
+      // --delete removes dest files missing from source; --remove-source-files
+      // deletes what it sent — both destroy, so name them (F-153)
+      const dest = plain.at(-1);
+      for (const f of plain.slice(0, -1)) add('file.read', abs(f));
+      if (dest) add(has(/^--delete/) ? 'file.delete' : 'file.write', abs(dest));
+      if (has(/^--remove-source-files$/))
+        for (const f of plain.slice(0, -1)) add('file.delete', abs(f));
+      continue;
+    }
     if (name === 'find') {
       const roots = [];
       for (const a of args) {
         if (a.startsWith('-') || a === '(' || a === '!') break;
         roots.push(a);
       }
-      if (has(/^-delete$/))
-        for (const r of roots.length ? roots : ['.']) add('file.delete', abs(r));
-      else if (has(/^-(exec|execdir|ok|okdir)$/)) add('shell.run');
+      const over = roots.length ? roots : ['.'];
+      if (has(/^-delete$/)) for (const r of over) add('file.delete', abs(r));
+      const ex = args.findIndex((a) => /^-(exec|execdir|ok|okdir)$/.test(a));
+      if (ex >= 0) {
+        // what find runs on each match is judged as if run on each root (F-154)
+        const inner = unwrap(
+          args.slice(ex + 1).filter((a) => a !== ';' && a !== '+' && a !== '{}'),
+        );
+        if (['rm', 'rmdir', 'unlink', 'shred'].includes(inner.name))
+          for (const r of over) add('file.delete', abs(r));
+        else if (READERS.has(inner.name) || GREPS.has(inner.name))
+          for (const r of over) add('file.read', abs(r));
+        else for (const r of over) add('file.write', abs(r));
+      } else if (!has(/^-delete$/)) add('shell.run');
+      continue;
+    }
+    if (name === 'xargs') {
+      // the words come from stdin, so the real command is built at run time;
+      // only a reader is safe to treat as read, anything else is constructed (F-154)
+      let k = 0;
+      while ((args[k] ?? '').startsWith('-')) k += /^-[IdLnPsE]$/.test(args[k]) ? 2 : 1;
+      const inner = basename(args[k] ?? '');
+      add(
+        READERS.has(inner) || GREPS.has(inner) || inner === 'echo'
+          ? 'shell.run'
+          : 'shell.constructed',
+      );
+      continue;
+    }
+    if (/^(perl|ruby)$/.test(name) && has(/^-[a-zA-Z]*i/)) {
+      // in-place edit: the operand files are written (F-153, like sed -i)
+      for (const f of plain) add('file.write', abs(f));
       continue;
     }
     if (name === 'mv') {
@@ -458,15 +519,45 @@ export function shellActions(cmd, cwd, { home = process.env.HOME ?? '', depth = 
       add('net.download');
     else if (name === 'wget') add('net.download');
     else if (INTERPRETERS.test(name) && has(/^-(c|e)$|^--eval$/)) add('shell.constructed');
-    else add('shell.run');
+    // a command the classifier does not model, reading a secret file by name, is
+    // still a secret read — the reader list is not the whole world (F-155)
+    else if (plain.some((a) => isSecretPath(a))) {
+      for (const a of plain) if (isSecretPath(a)) add('secret.read', abs(a));
+    } else add('shell.run');
   }
   return dedupe(out);
 }
 
+/** The git subcommands gitActions judges; everything else is shell.run. */
+const GIT_JUDGED = new Set([
+  'push',
+  'reset',
+  'branch',
+  'filter-branch',
+  'filter-repo',
+  'clean',
+  'rm',
+  'mv',
+  'checkout',
+  'restore',
+  'clone',
+]);
+
 function gitActions(args, here, abs, add) {
   let j = 0;
+  // git's own options, some taking the next word as a value; an unregistered
+  // value option must not let its value be read as the subcommand (F-156), so
+  // if the word we land on is not a judged subcommand we scan on for one
   while (j < args.length && args[j].startsWith('-'))
-    j += /^-(C|c)$|^--(git-dir|work-tree)$/.test(args[j]) ? 2 : 1;
+    j += /^-(C|c)$|^--(git-dir|work-tree|namespace|super-prefix|config-env|exec-path)$/.test(
+      args[j],
+    )
+      ? 2
+      : 1;
+  if (!GIT_JUDGED.has(args[j])) {
+    const k = args.findIndex((a, i) => i > j && GIT_JUDGED.has(a));
+    if (k >= 0) j = k;
+  }
   const sub = args[j];
   const rest = args.slice(j + 1);
   const plain = rest.filter((a) => !a.startsWith('-'));

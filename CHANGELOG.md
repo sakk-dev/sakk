@@ -76,6 +76,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - F-152: `max_reservable_usd` is computed once in the ledger and reports 0
   when the headroom is below the estimate floor, so the figure `status`
   shows is one `reserve` actually accepts.
+- F-153: commands that move or destroy files but were not in the classifier's
+  set — `dd`, `tar --remove-files`, `rsync --delete`, in-place `perl`/`ruby` —
+  are now modelled as the writes and deletes they perform instead of being
+  waved through as `shell.run`.
+- F-154: `find -exec`/`-ok` and `xargs` are judged by the command they run
+  (a remover deletes, a reader reads), not by the runner's name.
+- F-155: reading a secret file through a command outside the reader list
+  (`base64`, `openssl`, `dd if=`) is still a `secret.read`.
+- F-156: a git value-option (e.g. `--namespace x`) can no longer shift the
+  subcommand so a `push --force` reads as ordinary work.
 
 ### Changed (release preparation)
 

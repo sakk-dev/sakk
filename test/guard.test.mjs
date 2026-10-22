@@ -92,6 +92,51 @@ const run = (w, command, agent = 'claude-code') => {
 describe('the classifier', () => {
   const ctx = { repoRoot: '/r', sakkHome: '/h/.sakk', homeDir: '/h', real: (p) => p };
   const act = (cmd) => toDecisions(shellActions(cmd, '/r', { home: '/h' }), ctx);
+  const acts = (cmd) => act(cmd).map((a) => `${a.action}${a.scope ? ' ' + a.scope : ''}`);
+  const does = (cmd, action, scope) =>
+    act(cmd).some((a) => a.action === action && (scope === undefined || a.scope === scope));
+  test('commands that move or destroy files are modelled, not waved through (F-153)', () => {
+    // overwrite the guard's own policy, or a protected file, by a command not in the write list
+    assert.ok(does('dd if=/dev/zero of=.sakk/policy.json', 'file.write', '.sakk/policy.json'));
+    assert.ok(
+      does('dd of=.github/workflows/ci.yml if=x', 'file.write', '.github/workflows/ci.yml'),
+    );
+    assert.ok(
+      does('perl -i -pe 1 .github/workflows/ci.yml', 'file.write', '.github/workflows/ci.yml'),
+    );
+    // destroy files outside the repository by overwrite or by rsync --delete
+    assert.ok(
+      does('dd if=/dev/zero of=/h/sub/important.db', 'file.write', '~home/sub/important.db'),
+    );
+    assert.ok(does('rsync -a --delete e/ /h/docs/', 'file.delete', '~home/docs'));
+    assert.ok(does('tar --remove-files -cf a.tar /h/docs', 'file.delete', '~home/docs'));
+  });
+  test('find -exec and xargs running a remover are modelled (F-154)', () => {
+    // the delete lands on the search root, wherever it is
+    assert.ok(does('find /h/work -name x -exec rm {} +', 'file.delete', '~home/work'));
+    assert.ok(does('find /h/work -name x -exec rm -rf {} ;', 'file.delete', '~home/work'));
+    // xargs builds its command from stdin, so it cannot be judged as plain work
+    assert.deepEqual(acts('xargs rm'), ['shell.constructed']);
+    assert.deepEqual(acts('xargs grep foo'), ['shell.run']);
+  });
+  test('a git value-option before a destructive subcommand does not hide it (F-156)', () => {
+    for (const cmd of [
+      'git --namespace x push --force origin main',
+      'git --namespace x reset --hard HEAD',
+      'git --super-prefix p/ branch -D main',
+    ])
+      assert.ok(
+        act(cmd).some((a) => a.action === 'git.destructive'),
+        `${cmd} -> ${JSON.stringify(acts(cmd))}`,
+      );
+  });
+  test('a secret read by a command not in the reader list is still a secret read (F-155)', () => {
+    for (const cmd of ['base64 /r/.env', 'openssl base64 -in /r/.env', 'dd if=/r/.env'])
+      assert.ok(
+        act(cmd).some((a) => a.action === 'secret.read'),
+        `${cmd} -> ${JSON.stringify(acts(cmd))}`,
+      );
+  });
   test('the classifier table: destructive forms caught, ordinary work untouched', () => {
     const named = (cmd) => act(cmd).map((a) => a.action);
     const ordinary = {

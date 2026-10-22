@@ -165,6 +165,21 @@
           "kind": "detector",
           "ref": "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)",
           "since": "F-144"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/guard.test.mjs::commands that move or destroy files are modelled, not waved through (F-153)",
+          "since": "F-153"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/guard.test.mjs::find -exec and xargs running a remover are modelled (F-154)",
+          "since": "F-154"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/guard.test.mjs::a secret read by a command not in the reader list is still a secret read (F-155)",
+          "since": "F-155"
         }
       ]
     },
@@ -240,6 +255,11 @@
           "kind": "detector",
           "ref": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)",
           "since": "F-146"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/guard.test.mjs::a git value-option before a destructive subcommand does not hide it (F-156)",
+          "since": "F-156"
         }
       ]
     },
@@ -4636,6 +4656,135 @@
       "distinct_from": {
         "F-104": "F-104 is the lock/crash/fsync durability promises in the ledger; F-152 is a reported status figure (max_reservable) that did not match what reserve accepts — a reporting bug, unrelated to locking."
       }
+    },
+    {
+      "id": "F-153",
+      "title": "The classifier waved through any command it did not model",
+      "symptom": "A command not in the classifier's recognised set fell to shell.run and was allowed whatever it touched. dd overwrote files (including the guard's own policy and .github/workflows/), rsync --delete and tar --remove-files destroyed files outside the repository, and perl/ruby in-place edits wrote files — none were classified as writing or deleting.",
+      "evidence": "adversarial review of oss/m1-guard guard surface, 2026-10-22 (findings 1 and 3)",
+      "direct_cause": "The write and delete handling was a fixed list of command names; the default for the rest was shell.run.",
+      "why": [
+        "The classifier enumerated the commands it knew rather than deriving write/delete from the arguments.",
+        "An unmodelled command was assumed to touch nothing."
+      ],
+      "root_cause": "A list of recognised commands stood in for the rule \"what writes or deletes files\".",
+      "dt": ["DT-FN"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-02.1",
+        "why": "C-02.1 said an unrecognised form becomes shell.run and reaches the policy's later rules; but shell.run names no path, so the destructive-write and destructive-delete rules had nothing to match, and the call was allowed."
+      },
+      "instance_fix": "this commit: dd (if=/of=), tar (archive/members/extract/--remove-files), rsync (--delete, --remove-source-files) and perl/ruby -i are modelled as the writes and deletes they perform.",
+      "guard": "test/guard.test.mjs::commands that move or destroy files are modelled, not waved through (F-153)",
+      "class_fix": "A command the classifier does not model, whose arguments name a path, is no longer assumed to touch nothing: a secret file in them is a secret.read (F-155), and the modelled movers/destroyers above name their writes and deletes.",
+      "sweep": "The reviewer-named writers/destroyers (dd, tar, rsync, perl/ruby -i) are modelled; overwrite-to-destroy outside the repo is now a file.write that ask-write-outside catches.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/classify.mjs"],
+      "mechanism_gap": "The classifier table test checked known destructive forms and ordinary work; it never fed a destructive command outside the known set.",
+      "mechanism_upgrade": "test/guard.test.mjs::commands that move or destroy files are modelled, not waved through (F-153)",
+      "date": "2026-10-22",
+      "introduced_in": "294f391",
+      "found_by": "review",
+      "class": "C-02"
+    },
+    {
+      "id": "F-154",
+      "title": "find -exec and xargs running a remover were waved through",
+      "symptom": "find with -exec/-execdir/-ok ran a command on each match but was classified shell.run, so `find <path> -exec rm {} +` deleted outside the repository while `find -delete` was correctly caught. xargs feeding a remover was shell.run too.",
+      "evidence": "adversarial review of oss/m1-guard, 2026-10-22 (finding 4)",
+      "direct_cause": "find -exec and xargs were not inspected for the command they run.",
+      "why": [
+        "Only find -delete was modelled; -exec was left as shell.run.",
+        "xargs' command is built from stdin and was treated as ordinary work."
+      ],
+      "root_cause": "The delete path through a runner (find -exec, xargs) was not enumerated, so it was assumed harmless.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-02.2",
+        "why": "C-02.2 asks where else the same rule applies; -delete was modelled but the equivalent -exec rm and xargs rm were not, so the rule 'a delete is a delete' was fixed in one place only."
+      },
+      "instance_fix": "this commit: find -exec/-ok inspects the inner command (a remover deletes the roots, a reader reads them, anything else writes them); xargs feeding anything but a reader is shell.constructed (built at run time).",
+      "guard": "test/guard.test.mjs::find -exec and xargs running a remover are modelled (F-154)",
+      "class_fix": null,
+      "sweep": "Both runners (find -exec/-execdir/-ok/-okdir and xargs) are covered; the inner command is classified, not the runner name.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/classify.mjs"],
+      "mechanism_gap": "find was tested only with -delete.",
+      "mechanism_upgrade": "test/guard.test.mjs::find -exec and xargs running a remover are modelled (F-154)",
+      "date": "2026-10-22",
+      "introduced_in": "294f391",
+      "found_by": "review",
+      "class": "C-02"
+    },
+    {
+      "id": "F-155",
+      "title": "A secret read by a command not in the reader list was allowed",
+      "symptom": "secret.read is the guard's first line, but reading a secret file through a command outside the reader list (base64, openssl, dd if=) was shell.run and allowed.",
+      "evidence": "adversarial review of oss/m1-guard, 2026-10-22 (finding 5)",
+      "direct_cause": "Secret reads were recognised only for a fixed set of reader commands.",
+      "why": [
+        "The reader list enumerated cat/head/grep and friends; anything else reading a secret was not seen.",
+        "The classifier never checked a command's path arguments against the secret-file pattern once the command was unrecognised."
+      ],
+      "root_cause": "A list of reader commands stood in for the rule \"reading a secret file\".",
+      "dt": ["DT-FN"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-02.1",
+        "why": "C-02.1 routed unknown commands to shell.run; a shell.run that happens to read a secret file by name was then allowed, because the secret-read rule only fired for named readers."
+      },
+      "instance_fix": "this commit: any unmodelled command whose argument names a secret file is a secret.read, so the first line holds whatever command does the reading.",
+      "guard": "test/guard.test.mjs::a secret read by a command not in the reader list is still a secret read (F-155)",
+      "class_fix": null,
+      "sweep": "The secret-file catch runs for every command that reaches the fallthrough, not a fixed reader list.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/classify.mjs"],
+      "mechanism_gap": "The secret-read tests used cat/grep/cp; none used an unlisted reader.",
+      "mechanism_upgrade": "test/guard.test.mjs::a secret read by a command not in the reader list is still a secret read (F-155)",
+      "date": "2026-10-22",
+      "introduced_in": "294f391",
+      "found_by": "review",
+      "class": "C-02"
+    },
+    {
+      "id": "F-156",
+      "title": "A git value-option read its value as the subcommand, hiding a force push",
+      "symptom": "git's own options that take a separate-word value (for example --namespace x) were not all registered, so the value word was read as the subcommand and the real push --force / reset --hard / branch -D was never classified — allowed as shell.run.",
+      "evidence": "adversarial review of oss/m1-guard, 2026-10-22 (finding 2)",
+      "direct_cause": "The git global-option skip listed only -C, -c, --git-dir, --work-tree as value-taking.",
+      "why": [
+        "Which git options take a value was a short list, not the full set.",
+        "The token after the options was taken as the subcommand without checking it is one."
+      ],
+      "root_cause": "A list of value-taking options stood in for git's option grammar — the same shape as the wrapper flags in F-145.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-03"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-02.1",
+        "why": "C-02.1 relies on recognising a call's form; a recognised git form was misparsed because an unlisted value-option shifted the subcommand, so a destructive git command was read as ordinary and allowed."
+      },
+      "instance_fix": "this commit: more value-taking git options are registered, and if the word after the options is not a judged subcommand the scan continues to the first one that is, so a value cannot stand in for the subcommand.",
+      "guard": "test/guard.test.mjs::a git value-option before a destructive subcommand does not hide it (F-156)",
+      "class_fix": null,
+      "sweep": "git option parsing joins the wrapper-flag fix (F-145): both skip value words, and git additionally falls back to finding a real subcommand.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/classify.mjs"],
+      "mechanism_gap": "The wrapper-flag fix (F-145) covered sudo/env/nice; git's own options were not revisited.",
+      "mechanism_upgrade": "test/guard.test.mjs::a git value-option before a destructive subcommand does not hide it (F-156)",
+      "distinct_from": {},
+      "date": "2026-10-22",
+      "introduced_in": "294f391",
+      "found_by": "review",
+      "class": "C-02"
     }
   ]
 }
