@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the ledger's hot/cold split (F-105, schema v3)
+
+- Settled entries are sealed into an append-only, hash-chained cold trail
+  (`<ledger>.cold/`), with a call-id index (`<ledger>.idx/`), so the live
+  `ledger.json` stays small and `reserve`/`settle`/`status` cost the same
+  whatever the history — 2万 entries used to cost 96 ms a call, 10万 539 ms;
+  now a call is flat. No entry is dropped and nothing is capped.
+- The gate reads only the hot file; its total is `archive.settledUsd` plus the
+  hot entries. Cold integrity is on demand: `sakk ledger verify` walks the
+  hash chain (exit 1 if a segment is lost or altered), `sakk ledger export`
+  rebuilds one flat ledger from cold + hot.
+- Schema `sakk-ledger.v3` (adds the `archive` summary; a ledger becomes v3 the
+  first time it seals and an older binary refuses it by schema name). v1/v2
+  ledgers read and migrate on first seal.
+- In-flight cap (public API): at most 10,000 reservations may be outstanding
+  at once (`LEDGER_FULL`); settling what is open always works. New refusal
+  code `LEDGER_ARCHIVE_BROKEN`. `SEAL_AT` (settled kept hot before sealing) is
+  a tuning knob via `SAKK_SEAL_AT`, default 1000.
+- The ledger's durable write now uses one shared hardened writer
+  (`writeFileAtomic` in `append.mjs`), used for the hot file and the cold
+  segments and index shards.
+
 ### Added — the agent guard (open-source v1, M1)
 
 - `sakk hook --agent claude-code|cursor|codex`: one hook for all three

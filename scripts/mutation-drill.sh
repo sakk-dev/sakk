@@ -310,6 +310,13 @@ run_drill MUT-AF src/hook.mjs \
   "with no good policy to fall back to, only reading the project goes on" \
   "test"
 
+# MUT-AG: stop checking the cold trail's hash-chain link → a broken link must die red
+run_drill MUT-AG src/archive.mjs \
+  "    if (seg.prev !== prev)" \
+  "    if (false)" \
+  "verify catches a flipped byte, a broken link and a wrong tip" \
+  "test"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"

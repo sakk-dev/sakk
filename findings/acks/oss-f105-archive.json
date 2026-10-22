@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "branch": "oss/f105-archive",
+  "answers": {
+    "C-01.1": {
+      "answer": "A missing or malformed archive summary refuses on read (LEDGER_ARCHIVE_BROKEN) — never read as zero settled. The gate's total lives in that hot summary and never reads cold, so a lost cold segment cannot read as freed cap: it leaves the total unchanged and is caught by sakk ledger verify, not silently treated as no spend.",
+      "guard": "test/ledger-archive.test.mjs::a corrupt archive summary refuses; a lost segment fails verify, never freeing cap"
+    },
+    "C-01.2": {
+      "answer": "The test drops a field from the summary and asserts the next read refuses, then removes a sealed segment and asserts the gate's total is unchanged (no freed cap) while verify fails — so a missing input is never the quiet success of a lower total.",
+      "guard": "test/ledger-archive.test.mjs::a corrupt archive summary refuses; a lost segment fails verify, never freeing cap"
+    },
+    "C-02.1": {
+      "answer": "The segments and shards are enumerated from archive.segments and from sha256(callId)'s first two hex, never a hand-written list; the single rule 'seal the oldest settled when hot settled reaches SEAL_AT' is applied in one place that settle calls, and totals read the summary the same way everywhere.",
+      "guard": "test/ledger-archive.test.mjs::totals equal a flat ledger of the same calls, hot and cold"
+    },
+    "C-02.2": {
+      "answer": "The same summary is the single source for totalsOf, reserve's cap check and status; reserve, settle and status all go through it, and readLedger migrates a v2 ledger to v3 on first write so an old book is not a second code path.",
+      "guard": "test/ledger-archive.test.mjs::a v2 ledger still reads, settles and seals after migration"
+    },
+    "C-03.1": {
+      "answer": "The tamper tests put the bug back: a flipped byte in a sealed segment, a re-linked prev, and a wrong archive.tip each make sakk ledger verify (and the per-call tip check) go red; removing the tamper makes it green, so the check fails for that reason and only that.",
+      "guard": "test/ledger-archive.test.mjs::verify catches a flipped byte, a broken link and a wrong tip"
+    },
+    "C-03.2": {
+      "answer": "The crash-replay test really interrupts a seal between the segment write, the index write and the hot commit (by invoking the seal steps directly and stopping between them), then runs a real read and reserve, so it observes recovery, not a mock of it.",
+      "guard": "test/ledger-archive.test.mjs::a seal interrupted before the hot commit is a redoable prefix, no entry lost"
+    },
+    "C-03.3": {
+      "answer": "The per-call tip check compares archive.tip against sha256 of the actual last segment on disk, not a stored flag, so it fails when the segment is missing or changed, not only when a record is absent; verify walks the real chain end to end.",
+      "guard": "test/ledger-archive.test.mjs::verify catches a flipped byte, a broken link and a wrong tip"
+    },
+    "C-04.1": {
+      "answer": "Per call the work is bounded by the hot size (outstanding capped at MAX_INFLIGHT=10,000) plus one index shard and at most one segment read on a settle of an archived id; a seal touches one segment and the shards of its SEAL_AT ids. The bound is asserted by counting file reads/entries scanned, never a stopwatch, and a ledger of 100k settled calls is shown to cost the same per call as 1k.",
+      "guard": "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)"
+    },
+    "C-05.1": {
+      "answer": "Each spec sentence has a test: hot-only reads for the gate decision, seal at SEAL_AT, tip-only per-call verification, the full-chain verify, and export rebuilding a flat ledger — a test fails if any is not kept.",
+      "guard": "test/ledger-archive.test.mjs::the spec's claims each have a test that fails without them"
+    },
+    "C-05.2": {
+      "answer": "status and --json totals are the cold summary plus hot, checked equal to a flat recomputation; sakk ledger verify exits non-zero on a broken chain and zero on a sound one, and export writes a file that reads back as one valid ledger with the same totals.",
+      "guard": "test/ledger-archive.test.mjs::export rebuilds one valid ledger with the same totals; verify's exit code is acted on"
+    },
+    "C-06.1": {
+      "answer": "The README's per-call figures (2万→96ms, 10万→539ms) are the pre-fix measurement, shown as the problem that motivated the split, not a post-fix benchmark claim; the flatness it promises is backed by the structural test (the gate reads only the hot file, zero cold reads), not by a number, and verify/export are backed by their own tests.",
+      "guard": "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)"
+    },
+    "C-07.1": {
+      "answer": "The cold segments and index shards are repository files an operator could hand-edit; they are never trusted blindly — the chain hash and the tip check detect a changed or lost segment, and the gate's go/no-go uses the hot file's atomic summary, not a figure recomputed from untrusted cold entries.",
+      "guard": "test/ledger-archive.test.mjs::verify catches a flipped byte, a broken link and a wrong tip"
+    },
+    "C-07.2": {
+      "answer": "Archiving never settles or clears anything: a reconciliation-required entry stays in hot until a person clears it, and an archived SETTLED entry is read only to compare a re-settle for idempotency, so the agent cannot use the cold path to clear what only a person may.",
+      "guard": "test/ledger-archive.test.mjs::a reconciliation entry is never sealed; re-settling an archived id checks the amount"
+    },
+    "C-08.1": {
+      "answer": "The cold and index directories derive from the ledger file's already-canonical path (the same symlink/hard-link-free canonicalization reserve uses), so one ledger has exactly one cold trail and one index, reachable by one name.",
+      "guard": "test/ledger-archive.test.mjs::the cold and index paths are canonical, one per ledger"
+    },
+    "C-09.1": {
+      "answer": "The read path is tried with no cold directory (a fresh v3), with a v2 ledger that must migrate, mid-seal crash states, and a sound multi-segment history, so the states a real run reaches are each exercised, not only the happy one.",
+      "guard": "test/ledger-archive.test.mjs::a v2 ledger still reads, settles and seals after migration"
+    },
+    "C-09.2": {
+      "answer": "The tests drive the real reserve/settle/seal through the library and through bin/sakk.mjs status/verify/export, so the archive fires on the path a caller and the CLI actually take, not only in a unit stub.",
+      "guard": "test/ledger-archive.test.mjs::export rebuilds one valid ledger with the same totals; verify's exit code is acted on"
+    },
+    "C-10.1": {
+      "answer": "The seal is a step inside settle, run under the lock, not a rule in a doc; a test fails if settled entries in hot ever exceed SEAL_AT after a settle, so the step cannot be quietly dropped.",
+      "guard": "test/ledger-archive.test.mjs::settling past the seal threshold always seals, never leaves hot unbounded"
+    },
+    "C-10.2": {
+      "answer": "Every mutation (reserve, settle, halt, reconcile) goes through readLedger+lock, and migration happens on the first write through that path, so there is no second route that writes the books without sealing or without the summary; what the gate read is the hot file it just locked.",
+      "guard": "test/ledger-archive.test.mjs::settling past the seal threshold always seals, never leaves hot unbounded"
+    },
+    "C-11.1": {
+      "answer": "archive.settledUsd and archive.tip are confirmed running state: only the seal step, under the lock, adds a segment's actuals to settledUsd and advances the tip, and only after the segment and its shards are on disk, so the summary's meaning never outruns what is sealed.",
+      "guard": "test/ledger-archive.test.mjs::a seal interrupted before the hot commit is a redoable prefix, no entry lost"
+    },
+    "C-15.1": {
+      "answer": "The tests use real segment files, real index shards and the real recovery on a real interrupted seal — no stand-in that writes its own evidence; the per-call cost test seals a real 100k-entry history.",
+      "guard": "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)"
+    }
+  }
+}

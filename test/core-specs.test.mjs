@@ -16,6 +16,7 @@ const read = (f) => readFileSync(join(ROOT, f), 'utf8');
 
 const CORE = {
   'src/ledger.mjs': ['specs/ledger/spec.md', 'specs/kill-switch/spec.md'],
+  'src/archive.mjs': 'specs/ledger/spec.md',
   'src/policy.mjs': 'specs/policy-engine/spec.md',
   'src/match.mjs': 'specs/policy-engine/spec.md',
   'src/mcp.mjs': 'specs/mcp-server/spec.md',

@@ -54,11 +54,18 @@ refused or asked by a policy you can read and change. See
 npx sakk init --cap 25          # create ./sakk-ledger.json (refuses to overwrite)
 npx sakk status                 # totals, entries, reconciliation state (--json for machines)
 npx sakk reconcile --by alice   # clear a reconciliation halt — takes a name
+npx sakk ledger verify          # check the sealed history's hash chain (exit 1 if broken)
 ```
 
 The ledger commands (`init`, `status`, `reconcile`, `halt`, `resume`,
-`unlock`, `mcp`) accept `--ledger <path>` (default: `./sakk-ledger.json`, or
-`SAKK_LEDGER_PATH`; set-but-empty refuses).
+`unlock`, `mcp`, `ledger verify|export`) accept `--ledger <path>` (default:
+`./sakk-ledger.json`, or `SAKK_LEDGER_PATH`; set-but-empty refuses).
+
+Settled entries are sealed into an append-only, hash-chained cold trail
+(`<ledger>.cold/`) so the live file stays small and a call costs the same
+whatever the history; nothing is capped and no entry is dropped.
+`sakk ledger verify` walks the chain, `sakk ledger export` rebuilds one flat
+ledger. At most 10,000 reservations may be outstanding at once.
 
 `sakk status` exits 3 while a person must act before spending resumes —
 reconciliation required (flag or entry), or a stale ledger — and 4 while

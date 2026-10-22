@@ -122,9 +122,10 @@ const BOUNDS = {
       expect: 'INPUT_TOO_LONG',
     },
     readLedger: {
-      debt: 'F-105',
       bounded:
-        'one read of the whole file, which grows with use until the archive keeps the live books small',
+        'reads only the hot file, bounded by SEAL_AT settled plus MAX_INFLIGHT outstanding (F-105 archive); never a cold segment',
+      guard:
+        'test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)',
     },
     markReconciliationRequired: {
       bounded: 'stores a reason bounded by truncation (boundReason), whatever length it is given',
@@ -132,8 +133,10 @@ const BOUNDS = {
         'test/cost-bounds.test.mjs::a huge reconciliation reason is stored truncated, not whole',
     },
     totalsOf: {
-      debt: 'F-105',
-      bounded: 'a sum over the entries readLedger returned, whose count grows with use',
+      bounded:
+        'adds the cold summary to a sum over the hot entries readLedger returned (bounded by SEAL_AT + MAX_INFLIGHT); the cold trail is one number, not a scan',
+      guard:
+        'test/ledger-archive.test.mjs::totals equal a flat ledger of the same calls, hot and cold',
     },
     maxReservableUsd: {
       bounded: 'arithmetic on the totals totalsOf returned; no attacker-sized input',
@@ -204,9 +207,9 @@ const BOUNDS = {
       guard: 'test/guard.test.mjs::every malformed payload is a deny with a code',
     },
     haltFor: {
-      bounded: 'reads the ledger through readLedger (F-105 debt: the books grow with use)',
+      bounded: 'reads the ledger through readLedger, now bounded by the hot size (F-105 archive)',
       guard:
-        'test/cost-bounds.test.mjs::the books growing with use is owed by F-105 while it is open',
+        'test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)',
     },
     choosePolicy: {
       bounded:
@@ -363,6 +366,70 @@ const BOUNDS = {
       guard:
         'test/policy.test.mjs::appends one JSONL line carrying verdict, ruleId, policyHash and context',
     },
+    writeFileAtomic: {
+      bounded:
+        'writes a buffer its callers bounded (a ledger within its bounds, a cold segment of SEAL_AT entries, an index shard)',
+      guard:
+        'test/ledger.test.mjs::writes past the wall refuse LEDGER_WRITE_FAILED and the ledger stays readable',
+    },
+  },
+  'archive.mjs': {
+    coldDir: {
+      bounded: 'derives a directory name from the ledger path; no attacker-sized input',
+      guard: 'test/ledger-archive.test.mjs::the cold and index paths are canonical, one per ledger',
+    },
+    idxDir: {
+      bounded: 'derives a directory name from the ledger path; no attacker-sized input',
+      guard: 'test/ledger-archive.test.mjs::the cold and index paths are canonical, one per ledger',
+    },
+    segmentHash: {
+      bounded: 'hashes one segment of at most SEAL_AT entries',
+      guard:
+        'test/ledger-archive.test.mjs::verify catches a flipped byte, a broken link and a wrong tip',
+    },
+    emptyArchive: {
+      bounded: 'returns a fixed-shape zero summary; no input',
+      guard:
+        'test/ledger-archive.test.mjs::a v2 ledger still reads, settles and seals after migration',
+    },
+    validateArchive: {
+      bounded: 'checks a fixed set of keys on one summary object; no attacker-sized input',
+      guard:
+        'test/ledger-archive.test.mjs::a corrupt archive summary refuses; a lost segment fails verify, never freeing cap',
+    },
+    readSegment: {
+      bounded: 'reads one segment file of at most SEAL_AT entries and checks its hash',
+      guard:
+        'test/ledger-archive.test.mjs::verify catches a flipped byte, a broken link and a wrong tip',
+    },
+    verifyChain: {
+      bounded:
+        'the explicit full audit walk (sakk ledger verify), bounded by the sealed history it reads; off the gate path',
+      guard:
+        'test/ledger-archive.test.mjs::verify catches a flipped byte, a broken link and a wrong tip',
+    },
+    indexLookup: {
+      bounded:
+        'reads one index shard (about sealed-call-ids / 4096); the one sub-linear term, off the flat hot-file totals',
+      guard:
+        'test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)',
+    },
+    archivedEntry: {
+      bounded: 'one index-shard read plus one segment read of at most SEAL_AT entries',
+      guard:
+        'test/ledger-archive.test.mjs::a reconciliation entry is never sealed; re-settling an archived id checks the amount',
+    },
+    sealSegment: {
+      bounded: 'writes one segment of SEAL_AT entries and the shards of their call-ids',
+      guard:
+        'test/ledger-archive.test.mjs::a seal interrupted before the hot commit is a redoable prefix, no entry lost',
+    },
+    segmentsOnDisk: {
+      bounded:
+        'counts segment files, which grow with history; used only by verify and export, off the gate path',
+      guard:
+        "test/ledger-archive.test.mjs::export rebuilds one valid ledger with the same totals; verify's exit code is acted on",
+    },
   },
   'mcp.mjs': {
     startMcpServer: {
@@ -402,10 +469,16 @@ describe('C-04: every exported function is bounded on attacker-shaped input', ()
           assert.ok(resolves(b.guard), `${b.guard} must resolve`);
         }
       });
-  test('the books growing with use is owed by F-105 while it is open', () => {
-    assert.equal(BOUNDS['ledger.mjs'].readLedger.debt, 'F-105');
-    assert.equal(BOUNDS['ledger.mjs'].totalsOf.debt, 'F-105');
-    assert.equal(FINDINGS.find((f) => f.id === 'F-105')?.status, 'open');
+  test('F-105 is closed by the archive: the gate reads only the bounded hot file', () => {
+    // the archive (src/archive.mjs) keeps the live books small, so readLedger
+    // and totalsOf are bounded by SEAL_AT + MAX_INFLIGHT, not by history — the
+    // debt is paid, not deferred
+    assert.equal(FINDINGS.find((f) => f.id === 'F-105')?.status, 'fixed');
+    assert.ok(
+      !('debt' in BOUNDS['ledger.mjs'].readLedger),
+      'readLedger is bounded, not F-105 debt',
+    );
+    assert.ok(!('debt' in BOUNDS['ledger.mjs'].totalsOf), 'totalsOf is bounded, not F-105 debt');
   });
   test('a non-string runId, taskId or tokens is refused, not stored whole (F-150)', () => {
     assert.equal(

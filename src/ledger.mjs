@@ -1,21 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 the Sakk authors. Commercial licensing available — see README.
 import {
-  closeSync,
   existsSync,
-  fsyncSync,
   lstatSync,
   mkdirSync,
-  openSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   writeFileSync,
-  writeSync,
 } from 'node:fs';
-import { randomBytes } from 'node:crypto';
-import { appendNoFollow } from './append.mjs';
+import { appendNoFollow, writeFileAtomic } from './append.mjs';
+import {
+  MAX_INFLIGHT,
+  SEAL_AT,
+  archivedEntry,
+  emptyArchive,
+  indexLookup,
+  sealSegment,
+  validateArchive,
+} from './archive.mjs';
 import { hostname } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 
@@ -64,6 +67,15 @@ export const LEDGER_SCHEMA = 'sakk-ledger.v1';
  * through a halt it cannot see. Genesis ledgers stay v1 (no `halt` key).
  */
 export const LEDGER_SCHEMA_V2 = 'sakk-ledger.v2';
+/**
+ * v3 = + a REQUIRED top-level `archive` summary of the sealed cold trail
+ * (F-105, specs/ledger "The hot/cold split"). A ledger becomes v3 the first
+ * time settled entries are sealed and stays v3. `halt` is optional in v3
+ * (present iff it has ever been halted); a binary that does not know the
+ * cold trail refuses v3 by schema name instead of reading its summary as a
+ * full ledger and double-spending the cap.
+ */
+export const LEDGER_SCHEMA_V3 = 'sakk-ledger.v3';
 
 const LEDGER_TOP_KEYS_V1 = [
   'schema',
@@ -77,6 +89,8 @@ const LEDGER_TOP_KEYS_V1 = [
 // `halt` is TOP-LEVEL on purpose: four code paths rewrite `flags`
 // wholesale, so a halt stored there would be silently lifted by a settle.
 const LEDGER_TOP_KEYS_V2 = [...LEDGER_TOP_KEYS_V1, 'halt'];
+// v3 adds `archive`; `halt` is allowed but not required.
+const LEDGER_TOP_KEYS_V3 = [...LEDGER_TOP_KEYS_V1, 'halt', 'archive'];
 /** Freshness bound: older than this is refused (every write refreshes updatedAt). */
 export const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -359,7 +373,9 @@ export function readLedger({
   if (
     doc === null ||
     typeof doc !== 'object' ||
-    (doc.schema !== LEDGER_SCHEMA && doc.schema !== LEDGER_SCHEMA_V2)
+    (doc.schema !== LEDGER_SCHEMA &&
+      doc.schema !== LEDGER_SCHEMA_V2 &&
+      doc.schema !== LEDGER_SCHEMA_V3)
   )
     throw new LedgerError(
       'LEDGER_SCHEMA_INVALID',
@@ -401,8 +417,36 @@ export function readLedger({
   // JSON.parse) are refused, not carried. Future fields mean a schema
   // version bump, never silent extras.
   // v2 REQUIRES the halt record: deleting it must not read as "not halted".
+  // v3 allows halt (present iff ever halted) and REQUIRES the archive summary,
+  // whose tip must match the real last cold segment (F-105) — a lost or
+  // altered cold trail is caught here, not read as freed cap.
   if (doc.schema === LEDGER_SCHEMA_V2) validateHalt(doc.halt, ledgerPath);
-  const topKeys = doc.schema === LEDGER_SCHEMA_V2 ? LEDGER_TOP_KEYS_V2 : LEDGER_TOP_KEYS_V1;
+  if (doc.schema === LEDGER_SCHEMA_V3) {
+    if (doc.halt !== undefined) validateHalt(doc.halt, ledgerPath);
+    // the gate reads ONLY the hot file (F-105): the archive summary is checked
+    // for shape here — a corrupt or missing summary refuses, never reads as
+    // zero settled — but the cold segments are not read on the gate path, so a
+    // call costs the same whatever the history. Cold integrity (a lost or
+    // altered segment) is `sakk ledger verify`, on demand.
+    try {
+      validateArchive(doc.archive, ledgerPath);
+    } catch (e) {
+      throw new LedgerError(
+        e.code ?? 'LEDGER_ARCHIVE_BROKEN',
+        e.message.replace(/^[A-Z_]+: /, ''),
+        {
+          ledgerPath,
+          ...(e.details ?? {}),
+        },
+      );
+    }
+  }
+  const topKeys =
+    doc.schema === LEDGER_SCHEMA_V3
+      ? LEDGER_TOP_KEYS_V3
+      : doc.schema === LEDGER_SCHEMA_V2
+        ? LEDGER_TOP_KEYS_V2
+        : LEDGER_TOP_KEYS_V1;
   for (const k of Object.keys(doc))
     if (!topKeys.includes(k))
       throw new LedgerError('LEDGER_SCHEMA_INVALID', `unknown top-level key "${k}"`, {
@@ -509,7 +553,9 @@ function checkAgentId(agentId, { scope = false, stored = true } = {}) {
 }
 
 export function totalsOf(doc) {
-  let settledUsd = 0;
+  // the sealed cold trail counts at its summary; the gate never re-reads cold
+  // (F-105), so a long history costs no more than its hot tail
+  let settledUsd = doc.archive?.settledUsd ?? 0;
   let outstandingUsd = 0;
   for (const e of doc.entries) {
     if (e.status === 'SETTLED') settledUsd += e.actualUsd;
@@ -540,64 +586,18 @@ function writeLedger(ledgerPath, doc, { keepUpdatedAt = false } = {}) {
   // confirms nothing, so it keeps the stamp — a stop must never reopen
   // spending on a stale ledger (kill-switch review S1)
   if (!keepUpdatedAt) doc.updatedAt = new Date().toISOString();
-  // Unpredictable name + O_EXCL ('wx'): a pre-planted symlink at a guessable
-  // tmp path would otherwise let openSync('w') write THROUGH it onto any
-  // file the caller can touch (audit finding F15, PoC-confirmed). 'wx'
-  // refuses to open an existing path — symlinks included — and the random
-  // suffix makes planting one impossible in the first place.
-  const tmp = `${ledgerPath}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
-  // fsync before rename: the gate's decision must survive power loss — a
-  // reservation that vanishes after the paid call launched is the one
-  // corruption this module cannot tolerate.
-  // Campaign finding C-4 (ENOSPC probe): writeSync can SHORT-WRITE without
-  // throwing, and an unchecked return meant a truncated temp file could be
-  // fsynced and renamed into place — atomically installing broken books.
-  // Every byte is now accounted for; zero forward progress refuses typed;
-  // any failure cleans the temp and surfaces as LEDGER_WRITE_FAILED.
+  // The books must survive power loss and never install partial: the shared
+  // hardened writer (append.mjs) does the O_EXCL temp, short-write check,
+  // fsync and atomic rename; a reservation that vanishes after the paid call
+  // launched is the one corruption this module cannot tolerate. Its plain
+  // error becomes the typed LEDGER_WRITE_FAILED here.
   try {
-    const fd = openSync(tmp, 'wx');
-    try {
-      const buf = Buffer.from(`${JSON.stringify(doc, null, 1)}\n`);
-      let written = 0;
-      while (written < buf.length) {
-        const w = writeSync(fd, buf, written, buf.length - written);
-        if (!(w > 0))
-          throw new LedgerError(
-            'LEDGER_WRITE_FAILED',
-            'write made no progress — refusing to install partial books',
-            { ledgerPath, written, total: buf.length },
-          );
-        written += w;
-      }
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
-    renameSync(tmp, ledgerPath);
+    writeFileAtomic(ledgerPath, `${JSON.stringify(doc, null, 1)}\n`);
   } catch (e) {
-    try {
-      rmSync(tmp, { force: true }); // never leave a half-written tmp behind
-    } catch {
-      // best-effort by design (review L-1): a dying disk must not let the
-      // cleanup REPLACE the original, typed error with an untyped one
-    }
-    if (e instanceof LedgerError) throw e;
     throw new LedgerError('LEDGER_WRITE_FAILED', `ledger write failed: ${e.code ?? e.message}`, {
       ledgerPath,
       cause: e.code ?? String(e.message).slice(0, 80),
     });
-  }
-  try {
-    // Directory fsync makes the rename itself durable (best effort — not
-    // every platform allows fsync on a directory fd).
-    const dfd = openSync(dirname(ledgerPath), 'r');
-    try {
-      fsyncSync(dfd);
-    } finally {
-      closeSync(dfd);
-    }
-  } catch {
-    /* never fatal */
   }
 }
 
@@ -722,6 +722,25 @@ export function reserve({
         { callId, existingStatus: existing.status },
       );
     }
+    // a callId sealed into the cold trail is used too — uniqueness holds across
+    // all history, not just the hot tail (F-105); one small index shard read
+    if (indexLookup(ledgerPath, callId) !== null)
+      throw new LedgerError(
+        'DUPLICATE_CALL_ID',
+        `callId already exists (status=SETTLED, sealed) — a repeated call must not trigger the paid action again`,
+        { callId, existingStatus: 'SETTLED' },
+      );
+    // the only thing that can grow the hot file without bound: reservations that
+    // are never settled. Cap the outstanding count (F-105); settling still works.
+    const inflight = doc.entries.filter(
+      (e) => e.status === 'RESERVED' || e.status === 'RECONCILIATION_REQUIRED',
+    ).length;
+    if (inflight >= MAX_INFLIGHT)
+      throw new LedgerError(
+        'LEDGER_FULL',
+        `${MAX_INFLIGHT} reservations are outstanding — settle what is open before reserving more`,
+        { ledgerPath, inflight },
+      );
     const t = totalsOf(doc);
     if (t.committedUsd + estimatedMaxUsd >= doc.capUsd - CAP_EPSILON_USD) {
       emitAlert(ledgerPath, { kind: 'BUDGET_REFUSED', callId, estimatedMaxUsd, ...t });
@@ -774,10 +793,34 @@ export function settle({
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
     const e = doc.entries.find((x) => x.callId === callId);
-    if (e === undefined)
+    if (e === undefined) {
+      // a callId already sealed into the cold trail is a settled entry: a
+      // re-settle is idempotent for the identical amount, a mismatch otherwise,
+      // and it is never un-sealed back into the hot file (F-105)
+      const sealed = archivedEntry(ledgerPath, callId);
+      if (sealed !== null) {
+        if (
+          failedUnknownCost === true ||
+          (actualUsd !== undefined && actualUsd !== sealed.actualUsd)
+        ) {
+          emitAlert(ledgerPath, {
+            kind: 'SETTLE_MISMATCH',
+            callId,
+            recordedUsd: sealed.actualUsd,
+            attemptedUsd: failedUnknownCost ? null : actualUsd,
+          });
+          throw new LedgerError(
+            'SETTLE_MISMATCH',
+            'Re-settling a sealed entry with a different outcome than recorded — refused',
+            { callId, recordedUsd: sealed.actualUsd },
+          );
+        }
+        return { ok: true, duplicate: true, callId };
+      }
       throw new LedgerError('SETTLE_UNKNOWN_CALL', 'Settling a callId that was never reserved', {
         callId,
       });
+    }
     if (e.status === 'SETTLED') {
       // Idempotent ONLY for the identical outcome. A different amount (or a
       // late failedUnknownCost) silently swallowed would mask an accounting
@@ -861,6 +904,11 @@ export function settle({
         ),
       };
     }
+    // once settled entries fill the hot tail, seal the oldest into the cold
+    // trail so the live file stays bounded (F-105). The seal writes the
+    // segment and index first, then this write commits the smaller hot file:
+    // a crash before it leaves a redoable prefix, not a lost entry.
+    maybeSeal(ledgerPath, doc);
     // a settle confirms nothing about the books: an agent settling an old
     // reservation must not make a stale ledger fresh (review S1, F-67 class)
     writeLedger(ledgerPath, doc, { keepUpdatedAt: true });
@@ -868,6 +916,30 @@ export function settle({
   } finally {
     releaseLock(lock);
   }
+}
+
+/**
+ * Seal the oldest settled entries when the hot tail reaches SEAL_AT, in place
+ * on `doc` (the caller writes it). Runs under the ledger lock, so there is no
+ * concurrent sealer. Upgrades a v1/v2 ledger to v3 the first time.
+ */
+function maybeSeal(ledgerPath, doc) {
+  const settled = doc.entries.filter((e) => e.status === 'SETTLED');
+  if (settled.length < SEAL_AT) return;
+  const archive = doc.archive ?? emptyArchive();
+  // seal exactly SEAL_AT oldest settled (array order is reservation order),
+  // leaving the rest hot; segments are uniform at SEAL_AT entries
+  const toSeal = settled.slice(0, SEAL_AT);
+  const sealedIds = new Set(toSeal.map((e) => e.callId));
+  const { seq, hash } = sealSegment(ledgerPath, archive.segments, archive.tip, toSeal);
+  doc.schema = LEDGER_SCHEMA_V3;
+  doc.archive = {
+    segments: seq,
+    settledCount: archive.settledCount + toSeal.length,
+    settledUsd: archive.settledUsd + toSeal.reduce((s, e) => s + e.actualUsd, 0),
+    tip: hash,
+  };
+  doc.entries = doc.entries.filter((e) => !(e.status === 'SETTLED' && sealedIds.has(e.callId)));
 }
 
 /** For out-of-band accounting failures: completed work stands, but the flag + alert block all further paid calls. */
@@ -911,7 +983,9 @@ export function halt({ ledgerPath = defaultLedgerPath(), by, reason = '', agentI
     const record = { by, at: new Date().toISOString(), reason: String(reason) };
     if (scoped) setAgentHalt(h, agentId, record);
     else h.global = record;
-    doc.schema = LEDGER_SCHEMA_V2;
+    // a halt makes the ledger at least v2; a ledger that already seals to the
+    // cold trail stays v3 (never downgrade and strand its archive key)
+    doc.schema = doc.archive ? LEDGER_SCHEMA_V3 : LEDGER_SCHEMA_V2;
     doc.halt = h;
     writeLedger(ledgerPath, doc, { keepUpdatedAt: true });
     emitAlert(ledgerPath, {

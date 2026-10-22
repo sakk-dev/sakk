@@ -112,7 +112,8 @@
         "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
         "test/claims-are-checked.test.mjs::every node --test script carries --test-timeout",
         "test/cost-bounds.test.mjs::every exported function shows how its work is bounded",
-        "test/bounded-spawn.test.mjs::every node --test run loads the bound"
+        "test/bounded-spawn.test.mjs::every node --test run loads the bound",
+        "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)"
       ],
       "stopline": {
         "after": "F-107",

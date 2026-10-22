@@ -21,6 +21,7 @@ import { startMcpServer } from '../src/mcp.mjs';
 import { display, scanPaths, scanStaged, ScanError } from '../src/secret-scan.mjs';
 import { evaluate, normalize, runHook } from '../src/hook.mjs';
 import { doctor, install, uninstall } from '../src/guard-install.mjs';
+import { readSegment, segmentsOnDisk, verifyChain } from '../src/archive.mjs';
 
 /**
  * sakk CLI — the smallest useful surface over the ledger.
@@ -70,6 +71,14 @@ function ledgerPath() {
 /** A name, not whitespace: self-declared and never verified (ledger review N1; F-70; F-126). */
 const named = (by) => typeof by === 'string' && by.trim() !== '';
 
+// Human display only — JSON keeps raw numbers. 6 decimals, trailing zeros
+// trimmed, so the 1e-6 reserve guard never prints a float tail.
+const usd = (n) =>
+  `$${Number(n)
+    .toFixed(6)
+    .replace(/(\.\d*?)0+$/, '$1')
+    .replace(/\.$/, '')}`;
+
 const USAGE = `sakk ${pkg.version} — fail-closed spend ledger for AI agents
 
 Usage:
@@ -80,6 +89,8 @@ Usage:
   sakk halt --by <name> [--reason <t>] [--agent <id>]     kill switch: refuse all new spending (named)
   sakk resume --by <name> [--agent <id>]                  lift a halt (named)
   sakk mcp --ledger <path> [--policy <path>]              MCP stdio server: reserve/settle/status as tools
+  sakk ledger verify [--ledger <path>]                    walk the cold trail's hash chain (exit 1 if broken)
+  sakk ledger export [--out <file>] [--ledger <path>]     rebuild one flat ledger from cold + hot
   sakk scan <paths...> | --staged | --install-hook        find secrets (fingerprints only; exit 1 on findings)
 
 The agent guard:
@@ -114,6 +125,7 @@ const COMMANDS = {
   halt: { values: ['by', 'reason', 'agent', 'ledger'], bools: [] },
   resume: { values: ['by', 'agent', 'ledger'], bools: [] },
   mcp: { values: ['ledger', 'policy'], bools: [] },
+  ledger: { values: ['ledger', 'out'], bools: [], positional: true },
   scan: { values: [], bools: ['staged', 'install-hook'], positional: true },
   hook: { values: ['agent'], bools: [] },
   try: { values: ['read'], bools: ['json'], positional: true },
@@ -203,13 +215,6 @@ if (cmd === 'init') {
   if (flag('json')) {
     console.log(JSON.stringify(out, null, 1));
   } else {
-    // Human display only — JSON keeps raw numbers. 6 decimals, trailing
-    // zeros trimmed, so the 1e-6 reserve guard never prints a float tail.
-    const usd = (n) =>
-      `$${Number(n)
-        .toFixed(6)
-        .replace(/(\.\d*?)0+$/, '$1')
-        .replace(/\.$/, '')}`;
     console.log(`ledger      ${p}`);
     console.log(`cap         ${usd(t.capUsd)}`);
     console.log(`settled     ${usd(t.settledUsd)}`);
@@ -579,6 +584,78 @@ if (cmd === 'init') {
     for (const c of checks)
       console.log(`${c.ok ? (c.warn ? '!' : '✓') : '✗'} ${c.name} — ${c.detail}`);
   process.exitCode = checks.every((c) => c.ok) ? 0 : 1;
+} else if (cmd === 'ledger') {
+  const sub = argv[1];
+  if (sub !== 'verify' && sub !== 'export') {
+    console.error(
+      'USAGE_UNKNOWN_ARGUMENT: sakk ledger verify | export [--out <file>] [--ledger <path>] — see sakk --help',
+    );
+    process.exit(2);
+  }
+  const p = ledgerPath();
+  let doc;
+  try {
+    doc = readLedger({ ledgerPath: p, maxAgeMs: Number.POSITIVE_INFINITY });
+  } catch (e) {
+    fail(e);
+  }
+  const archive = doc.archive ?? { segments: 0, settledCount: 0, settledUsd: 0, tip: '' };
+  if (sub === 'verify') {
+    // walk the whole cold chain; a broken or lost segment exits non-zero so CI can gate on it
+    try {
+      const got = verifyChain(p, archive);
+      const onDisk = segmentsOnDisk(p);
+      // fewer segments than the summary claims is a lost segment (broken); more
+      // is a harmless crash orphan (a seal wrote a segment, then the hot commit
+      // did not land, so the summary never counted it) — the chain is still sound
+      if (onDisk < got.segments) {
+        console.error(
+          `LEDGER_ARCHIVE_BROKEN: ${onDisk} cold segment file(s) on disk, summary says ${got.segments}`,
+        );
+        process.exit(1);
+      }
+      console.log(
+        `ledger verify: sound — ${got.segments} segment(s), ${got.settledCount} sealed call(s), ${usd(got.settledUsd)} sealed; chain tip matches`,
+      );
+      process.exit(0);
+    } catch (e) {
+      console.error(
+        `${e.code ?? 'LEDGER_ARCHIVE_BROKEN'}: ${String(e.message).replace(/^[A-Z_]+: /, '')}`,
+      );
+      process.exit(1);
+    }
+  } else if (sub === 'export') {
+    // rebuild one flat ledger from cold + hot: the whole history as it would
+    // read before the hot/cold split, for audit or portability
+    let entries = [];
+    try {
+      for (let seq = 1; seq <= archive.segments; seq++)
+        entries.push(...readSegment(p, seq).entries);
+    } catch (e) {
+      console.error(
+        `${e.code ?? 'LEDGER_ARCHIVE_BROKEN'}: ${String(e.message).replace(/^[A-Z_]+: /, '')}`,
+      );
+      process.exit(1);
+    }
+    entries.push(...doc.entries);
+    const flat = {
+      schema: doc.halt ? 'sakk-ledger.v2' : 'sakk-ledger.v1',
+      initializedAt: doc.initializedAt,
+      initializedBy: doc.initializedBy,
+      capUsd: doc.capUsd,
+      flags: doc.flags,
+      entries,
+      updatedAt: doc.updatedAt,
+      ...(doc.halt ? { halt: doc.halt } : {}),
+    };
+    const out = `${JSON.stringify(flat, null, 1)}\n`;
+    const dest = val('out');
+    if (dest) {
+      writeFileSync(resolve(dest), out, { flag: 'wx' });
+      console.log(`ledger export: ${entries.length} entr(y|ies) written to ${resolve(dest)}`);
+    } else process.stdout.write(out);
+    process.exit(0);
+  }
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);
 } else {

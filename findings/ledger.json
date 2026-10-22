@@ -30,6 +30,11 @@
           "kind": "detector",
           "ref": "test/cost-bounds.test.mjs::a non-string runId, taskId or tokens is refused, not stored whole (F-150)",
           "since": "F-150"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)",
+          "since": "F-105"
         }
       ]
     },
@@ -3240,15 +3245,15 @@
       "dt": ["DT-LOGIC"],
       "rc": ["RC-01"],
       "es": ["ES-04"],
-      "instance_fix": "open",
-      "class_fix": null,
-      "guard": "",
-      "sweep": "Owner's decision 2026-10-22: no entry cap and no history dropped — the live books stay small through an append-only, hash-chained archive with a call-id index, so a call costs the same at any age; that is the fix this finding waits for. Already landed (open-source M1): every stored input is bounded (INPUT_TOO_LONG at 256/1024 characters, an estimate floor of 1e-6, POLICY_TOO_LARGE at 4 MiB).",
-      "sweep_status": "not_done",
-      "status": "open",
+      "instance_fix": "this commit: the hot/cold split (src/archive.mjs) keeps the live ledger bounded (SEAL_AT settled + MAX_INFLIGHT outstanding) and seals settled entries into a hash-chained cold trail, so reserve/settle/totals cost the same at any history size; the first part (bounded stored inputs) landed in open-source M1.",
+      "class_fix": "The books no longer grow with use: the archive keeps the live file bounded, so a call costs the same at any age; cost-bounds lists readLedger and totalsOf as bounded by the hot size, not as F-105 debt.",
+      "guard": "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)",
+      "sweep": "The second part of F-105 is closed by the hot/cold split (src/archive.mjs, specs/ledger \"The hot/cold split\"): settled entries seal into append-only hash-chained cold segments, the hot file keeps only the outstanding reservations, a bounded settled tail and a summary, and the gate reads only the hot file — so reserve, settle and totals are bounded by SEAL_AT + MAX_INFLIGHT whatever the history, not by total entry count. No entry is dropped (sakk ledger export rebuilds the whole book) and a lost or altered segment is caught (sakk ledger verify). The first part (bounded stored inputs) landed in open-source M1.",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": ["src/ledger.mjs", "src/mcp.mjs"],
       "mechanism_gap": "RC-01 detectors cover inputs one call at a time; growth across many valid calls was never measured.",
-      "mechanism_upgrade": "none: open — the archive closes it; test/cost-bounds.test.mjs holds the gap as F-105 debt until then",
+      "mechanism_upgrade": "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)",
       "class": "C-04"
     },
     {
