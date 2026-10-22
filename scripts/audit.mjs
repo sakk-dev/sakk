@@ -73,6 +73,9 @@ STEPS.forEach(([name, cmd, args], i) => {
     encoding: 'utf8',
     env: { ...process.env, CI: 'true' },
     maxBuffer: 1 << 28,
+    // a hung step blocks the audit; --test-timeout cannot interrupt it (F-143)
+    timeout: 600_000,
+    killSignal: 'SIGKILL',
   });
   const code = r.status ?? `signal ${r.signal}`;
   const log = join(logdir, `${String(i + 1).padStart(2, '0')}.log`);

@@ -91,6 +91,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stray `file_path` key, and denies instead of crashing when the library
   throws a non-error; the loop's shell classifier treats `node --test` as
   read-only only when it injects no module.
+  The same review's own detectors are strengthened too: the bounded-spawn
+  preload now bounds an explicit null/undefined options slot and the scripts
+  that spawn `node --test`, and the ci-honesty detector catches more
+  skip/failure-to-green shapes.
+- F-158: the CI base checker runs in its own job with a fresh checkout, so the
+  pull request's own checker can no longer move HEAD or write the environment
+  to leave the base checker an empty range.
 
 ### Changed (release preparation)
 

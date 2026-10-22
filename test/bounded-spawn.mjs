@@ -18,6 +18,10 @@ const isOptions = (x) => x !== null && typeof x === 'object' && !Array.isArray(x
 
 function bounded(name, original) {
   return function (...args) {
+    // a trailing null/undefined options (or args) slot would otherwise make the
+    // bound an ignored extra argument (F-157); drop it so the bound takes effect
+    while (args.length > 1 && (args.at(-1) === null || args.at(-1) === undefined))
+      args = args.slice(0, -1);
     const last = args.at(-1);
     const hasOptions = args.length > 1 && isOptions(last);
     const options = hasOptions ? last : {};

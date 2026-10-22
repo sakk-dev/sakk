@@ -987,8 +987,12 @@ describe('R6: the data the gate reads only moves forward', () => {
   });
   test("the base branch's checker judges the pull request too", () => {
     const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
-    const start = ci.indexOf('\n  self-evolution:\n');
+    // the base checker runs in its OWN job (F-158): a fresh runner the PR's own
+    // checker never ran in, so it cannot be left an empty range
+    const start = ci.indexOf('\n  base-checker:\n');
+    assert.ok(start > 0, 'base-checker job not found');
     const job = ci.slice(start + 1).split(/\n {2}[a-z][\w-]*:\n/)[0];
+    assert.match(job, /\n {4}if: github\.event_name == 'pull_request'\n/);
     assert.match(
       job,
       /git show "origin\/\$base:\$f"/,
@@ -998,6 +1002,9 @@ describe('R6: the data the gate reads only moves forward', () => {
       job,
       /node "\$RUNNER_TEMP\/base-checker\/scripts\/findings-check\.mjs" --range "origin\/\$base"/,
     );
+    // and the PR's own checker job does not also carry the base checker
+    const evo = ci.slice(ci.indexOf('\n  self-evolution:\n') + 1).split(/\n {2}[a-z][\w-]*:\n/)[0];
+    assert.doesNotMatch(evo, /RUNNER_TEMP\/base-checker/, 'the base checker is isolated');
     // functionally: a branch that guts its own checker is still judged by the base's
     const { d, git } = repo();
     writeFileSync(join(d, 'scripts', 'findings-check.mjs'), 'process.exit(0);\n');

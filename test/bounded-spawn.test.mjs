@@ -54,11 +54,49 @@ describe('C-04: every synchronous child a test starts is bounded (F-143)', () =>
     );
     assert.deepEqual(missing, [], `add --import ${PRELOAD} to each`);
   });
+  test('every non-test script that spawns node --test bounds it with a timeout (F-157)', () => {
+    // scripts spawn node --test with an argv array (not a shell string), so they
+    // carry the bound as a spawn `timeout`, not the --import preload; test files
+    // are excluded because the preload above already bounds their spawns
+    const files = [];
+    const walk = (dir) => {
+      for (const e of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+        const rel = `${dir}/${e.name}`;
+        if (e.isDirectory()) walk(rel);
+        else if (e.name.endsWith('.mjs') && !e.name.endsWith('.test.mjs')) files.push(rel);
+      }
+    };
+    walk('scripts');
+    walk('eval');
+    // the text of a spawnSync/execFileSync call, by balanced parentheses
+    const calls = (text) => {
+      const out = [];
+      for (const m of text.matchAll(/\b(?:spawnSync|execFileSync)\(/g)) {
+        let depth = 0;
+        let i = m.index + m[0].length - 1;
+        for (; i < text.length; i++) {
+          if (text[i] === '(') depth++;
+          else if (text[i] === ')' && --depth === 0) break;
+        }
+        out.push(text.slice(m.index, i + 1));
+      }
+      return out;
+    };
+    const unbounded = [];
+    for (const rel of files)
+      for (const call of calls(readFileSync(join(ROOT, rel), 'utf8')))
+        if (/['"]--test['"]/.test(call) && !/\btimeout\b/.test(call)) unbounded.push(rel);
+    assert.deepEqual([...new Set(unbounded)], [], 'give the spawnSync a timeout option');
+  });
   for (const [name, call] of [
     ['spawnSync', 'cp.spawnSync(...forever)'],
     ['spawnSync with options but no timeout', "cp.spawnSync(...forever, { encoding: 'utf8' })"],
     ['execFileSync', 'cp.execFileSync(...forever)'],
     ['execSync', `cp.execSync(\`"\${process.execPath}" -e "setInterval(() => {}, 1000)"\`)`],
+    // an explicit nullish options slot must still be bounded, not appended past (F-157)
+    ['spawnSync with explicit undefined options', 'cp.spawnSync(...forever, undefined)'],
+    ['spawnSync with explicit null options', 'cp.spawnSync(forever[0], forever[1], null)'],
+    ['execFileSync with explicit undefined options', 'cp.execFileSync(...forever, undefined)'],
   ])
     test(`${name} without a timeout is killed by the default bound`, () => {
       const r = hang(call);

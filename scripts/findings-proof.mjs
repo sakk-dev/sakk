@@ -76,7 +76,15 @@ function runTest(cwd, file, name) {
       '--test-timeout=120000',
       file,
     ],
-    { cwd, encoding: 'utf8', env: { ...ENV, CI: 'true' }, maxBuffer: 64 * 1024 * 1024 },
+    {
+      cwd,
+      encoding: 'utf8',
+      env: { ...ENV, CI: 'true' },
+      maxBuffer: 64 * 1024 * 1024,
+      // a hung child blocks this script; --test-timeout cannot interrupt it (F-143)
+      timeout: 300_000,
+      killSignal: 'SIGKILL',
+    },
   );
   const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
   const pass = Number(/^# pass (\d+)/m.exec(out)?.[1] ?? 0);
