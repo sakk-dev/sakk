@@ -104,3 +104,68 @@ describe('the secret guard denies writing or printing a secret (M3, hook step 3)
     );
   });
 });
+
+/** Drive the real hook as any agent (the deny the agent would read). */
+const runAs = (agent, w, payload) =>
+  evaluate(normalize(agent, { cwd: w.base, ...payload }), { env: w.env, log: false });
+
+describe('every write surface and agent is covered, and zero actions cannot smuggle a secret (F-160)', () => {
+  test('a secret written through MultiEdit or NotebookEdit is denied, not only Write/Edit', () => {
+    const w = world();
+    const multi = {
+      tool_name: 'MultiEdit',
+      tool_input: {
+        file_path: join(w.base, 'src/a.js'),
+        edits: [
+          { old_string: 'a', new_string: 'b' },
+          { old_string: 'x', new_string: `k=${GH}` },
+        ],
+      },
+    };
+    assert.equal(runAs('claude-code', w, multi).verdict, 'deny');
+    const nb = {
+      tool_name: 'NotebookEdit',
+      tool_input: { notebook_path: join(w.base, 'n.ipynb'), new_source: `token=${AWS}` },
+    };
+    assert.equal(runAs('claude-code', w, nb).verdict, 'deny');
+  });
+
+  test('a codex apply_patch whose body adds a secret line is denied', () => {
+    const w = world();
+    const patch = {
+      tool_name: 'apply_patch',
+      tool_input: {
+        command: `*** Begin Patch\n*** Update File: src/config.js\n@@\n+const key = "${GH}";\n*** End Patch\n`,
+      },
+    };
+    assert.equal(runAs('codex', w, patch).verdict, 'deny');
+  });
+
+  test('a cursor Edit (not just cursor Write) whose new content is a secret is denied', () => {
+    const w = world();
+    const edit = {
+      hook_event_name: 'preToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: join(w.base, 'src/a.js'), old_string: 'x', new_string: `k=${GH}` },
+    };
+    assert.equal(runAs('cursor', w, edit).verdict, 'deny');
+    // control: a cursor Edit with ordinary content is allowed
+    const ok = {
+      hook_event_name: 'preToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: join(w.base, 'src/a.js'), old_string: 'x', new_string: 'y = 1' },
+    };
+    assert.equal(runAs('cursor', w, ok).verdict, 'allow');
+  });
+
+  test('a command that tokenizes to zero actions still cannot carry a secret', () => {
+    const w = world();
+    // a bare NAME=<secret> assignment and a comment-only command both classify
+    // to no action; the call-level floor must still deny when a secret is present
+    assert.equal(run(w, bashEv(w, `TOKEN=${GH}`)).verdict, 'deny');
+    assert.equal(run(w, bashEv(w, `# deploy with ${AWS}`)).verdict, 'deny');
+    // control: the same zero-action shapes without a secret are allowed
+    assert.equal(run(w, bashEv(w, 'TOKEN=abc')).verdict, 'allow');
+    assert.equal(run(w, bashEv(w, '# just a comment')).verdict, 'allow');
+  });
+});

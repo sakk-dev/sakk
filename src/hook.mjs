@@ -180,10 +180,15 @@ export function normalize(agent, p) {
       } else if (ev.tool === 'Read') {
         ev.kind = 'read';
         ev.paths = [path()];
-      } else if (ev.tool === 'Write') {
+      } else if (['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(ev.tool)) {
         ev.kind = 'write';
-        ev.paths = [path()];
-        ev.content = writeContent(ti);
+        ev.paths = [
+          text(
+            ti.file_path ?? ti.notebook_path ?? ti.path ?? ti.target_file,
+            'tool_input.file_path',
+          ),
+        ];
+        ev.content = writeContent(ti); // every write surface is scanned, not just Write (F-160)
       } else if (ev.tool === 'Delete') {
         ev.kind = 'delete';
         ev.paths = [path()];
@@ -427,6 +432,9 @@ export function evaluate(
     } catch (e) {
       unknown = e;
     }
+  const secretWhy =
+    secret &&
+    `a secret (${secret.rule}, fingerprint ${secret.fingerprint}) is in this ${ev.kind === 'shell' ? 'command' : 'content'}; the value is never logged. Remove it or use a reference a person approves. ${DISPUTE}`;
   for (const a of actions) {
     const context = {
       agent: ev.agent,
@@ -468,7 +476,7 @@ export function evaluate(
         ruleId: 'secret',
         policyHash: loaded.policyHash,
         context,
-        why: `a secret (${secret.rule}, fingerprint ${secret.fingerprint}) is in this ${ev.kind === 'shell' ? 'command' : 'content'}; the value is never logged. Remove it or use a reference a person approves. ${DISPUTE}`,
+        why: secretWhy,
       };
     else {
       try {
@@ -479,6 +487,17 @@ export function evaluate(
     }
     decisions.push(d);
   }
+  // "A secret is always a deny" is a call-level floor, not a per-action rule: a
+  // comment-only or bare `NAME=<secret>` command tokenizes to zero actions, so
+  // the loop above emits nothing and the call would default to allow (F-160).
+  if (secretWhy && decisions.length === 0)
+    decisions.push({
+      verdict: 'deny',
+      ruleId: 'secret',
+      policyHash: loaded.policyHash,
+      context: { agent: ev.agent, action: ev.kind, callId, estimatedUsd: 0 },
+      why: secretWhy,
+    });
   overdue();
   if (log) {
     const decisionLogPath = join(home, 'decisions.jsonl');

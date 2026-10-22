@@ -4918,6 +4918,43 @@
       "distinct_from": {
         "F-113": "F-113 is the policy fuzz deciding pass/fail by a clock; F-159 is the ledger archive audit under-checking (no index check, wrong integrity claim, float false-fail) — a different check in a different module."
       }
+    },
+    {
+      "id": "F-160",
+      "date": "2026-10-22",
+      "introduced_in": "7d0ea44",
+      "found_by": "review",
+      "class": "C-01",
+      "title": "The M3 secret guard fell open on a zero-action command and on cursor's non-Write write surfaces",
+      "symptom": "The independent adversarial review of the M3 secret guard found two fail-open gaps and a test-matrix hole: (1) MEDIUM — the secret deny was emitted only inside the per-action loop, so a command that tokenizes to zero actions (a comment-only command, or a bare NAME=<secret> assignment) produced no decision and the call defaulted to allow, contradicting the stated invariant 'a secret found is always a deny'; (2) MEDIUM — write content was captured for claude-code's Write/Edit/MultiEdit/NotebookEdit and for cursor's Write, but not cursor's Edit/MultiEdit/NotebookEdit, which fell through to kind 'other' with no content, so a secret written through those cursor tools was never scanned; (3) MEDIUM — the ack claimed each write surface and agent was 'exercised', but the tests drove only Write/Edit/Bash under claude-code, and MUT-AK mutated only the secretHit call-site, not the loop placement or the normalize surface capture; (4) LOW — the ceiling text did not name the MultiEdit-join and Edit-old/new seams, and a DEFENSIVE note over-stated that the scan-error trigger was tested.",
+      "evidence": "independent adversarial review of oss/m3-secret-guard at 7d0ea44, 2026-10-22; probes: a zero-action command carrying a secret allowed (before), a cursor Edit carrying a secret allowed (before); no HIGH — no live secret written to disk or sent to the network was allowed in normal operation.",
+      "direct_cause": "The guarantee 'a secret is always denied' was emitted per action, so an empty action set emitted nothing; and content capture was wired per known (agent, tool) pair, so the cursor non-Write write tools had no capture.",
+      "why": [
+        "The secret deny was written as one more branch inside the per-action loop, inheriting the loop's 'no action -> no decision -> allow' default.",
+        "The write surfaces were added one (agent, tool) pair at a time rather than as one 'every write surface, every agent' rule, so a cell was left empty.",
+        "The tests and the drill mirrored the pairs that were wired, so the empty cells and the zero-action shape were never driven and the gap stayed invisible until review."
+      ],
+      "root_cause": "A call-level invariant — a secret is always denied, on every write surface and every agent — was implemented as scattered per-route checks and exercised only on the routes that happened to be wired.",
+      "dt": ["DT-LOGIC", "DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04", "ES-01"],
+      "answer_failed": {
+        "qid": "C-01.1",
+        "why": "C-01.1 asks that absence never read as a pass; a zero-action command (absence of a classified action) and an unwired cursor write surface (absence of captured content) both read as allow although a secret was present."
+      },
+      "instance_fix": "this commit: the secret deny is now a call-level floor — if a secret is found and the per-action loop emitted no decision, a deny is recorded anyway; cursor's Edit/MultiEdit/NotebookEdit capture content exactly as Write does; new tests drive every write surface (MultiEdit, NotebookEdit), the codex apply_patch body, the cursor Edit surface, and the zero-action command, each with a no-secret control; the ack's C-09 wording now matches what the tests exercise; the spec names the split-across-seams ceiling and the DEFENSIVE note no longer claims the scan-error trigger is unit-tested.",
+      "guard": "test/secret-guard.test.mjs::a command that tokenizes to zero actions still cannot carry a secret",
+      "class_fix": null,
+      "sweep": "the floor denies any zero-action secret-bearing call for every agent, and the surface tests now cover every write tool and the codex and cursor agents, so a future regression that drops a surface or the normalize capture goes red. No follow-up needed: both gaps and the test-matrix hole are closed in this commit.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/hook.mjs", "test/secret-guard.test.mjs", "specs/secret-guard/spec.md"],
+      "mechanism_gap": "RC-01's detectors catch unknown-argument fail-open (cli-strictness) and absent/unreachable checks (claims-are-checked), but none drove the secret guard with a zero-action command or a cursor edit, and MUT-AK mutated only the secretHit call-site, not its placement inside the per-action loop or the normalize surface capture.",
+      "mechanism_upgrade": "test/secret-guard.test.mjs::a command that tokenizes to zero actions still cannot carry a secret",
+      "distinct_from": {
+        "F-124": "F-124 is an empty ledger requiring no acks (absence in the self-evolution gate); F-160 is the secret guard allowing a zero-action or unwired-surface call (absence in the hook's per-action enforcement) — a different mechanism in a different module.",
+        "F-159": "F-159 is the F-105 ledger-archive audit under-checking; F-160 is the M3 secret guard falling open on untested routes — a different feature found by a different review."
+      }
     }
   ]
 }

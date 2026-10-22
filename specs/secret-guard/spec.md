@@ -113,7 +113,12 @@ disabled by default and listed as such, never shipped noisy.
 
 ## Ceilings
 
-1. **Split, encoded and computed secrets** are not caught by patterns.
+1. **Split, encoded and computed secrets** are not caught by patterns. This
+   includes a secret split across the seams this increment scans at: a
+   MultiEdit whose pieces join across two edits, or an Edit whose old and new
+   strings each hold a benign half. Each surface is scanned on its own new
+   text; the whole-file result is not reconstructed. The commit scan catches
+   such a secret if it is ever committed whole.
 2. **Secrets in tool output.** A secret that reaches the agent through a
    tool's output is already in its context; PreToolUse cannot unsee it.
    Reads are blocked before they happen, which is why the read routes

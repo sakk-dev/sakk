@@ -55,7 +55,7 @@ const DEFENSIVE = {
   SCAN_FAILED: 'git produced output the scanner cannot parse, or an unexpected I/O error',
   VERIFIER_ERROR: 'a bug inside the verifier itself (it must still fail closed)',
   HOOK_SECRET_SCAN_FAILED:
-    'scanText threw on a string the hook already bounded — only reachable if the scanner dependency is broken; caught so the hook fails closed (a deny) instead of crashing. The fail-closed outcome is tested; the throw cannot be provoked by hook input.',
+    'scanText threw on a string the hook already bounded — only reachable if the scanner dependency is broken; caught so the hook fails closed (a deny via the rules-unknown branch, which other triggers do exercise) instead of crashing. The throw itself cannot be provoked by hook input, so there is no unit for this specific trigger.',
   SPEND_TOO_MANY_LOGS:
     'more than 50,000 transcript files under the log dir — a readdir counter, not reproducible as a cheap unit test (would need 50k files)',
 };
