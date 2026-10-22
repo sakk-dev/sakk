@@ -232,6 +232,11 @@ const BOUNDS = {
       bounded: "reads Sakk's own config file, written by sakk commands, not by the agent",
       guard: 'test/guard.test.mjs::every malformed payload is a deny with a code',
     },
+    writeConfig: {
+      bounded:
+        "merges a small patch onto Sakk's config and writes it atomically; run only by a person's CLI (sakk cap set/off), never on the hook path — the agent is denied writing ~/.sakk",
+      guard: 'test/spend-cli.test.mjs::sakk cap set writes the cap the hook then enforces',
+    },
     repoRootOf: {
       bounded: 'one git rev-parse call',
       guard: 'test/guard.test.mjs::every malformed payload is a deny with a code',

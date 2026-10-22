@@ -93,7 +93,7 @@ describe('release packaging (M5)', () => {
     // Real commands come from the source; a few are explicitly PLANNED and the
     // docs mark them not-shipped — anything else that is named fails.
     const real = cliCommands();
-    const PLANNED = new Set(['spend', 'cap', 'prices', 'settle']); // README roadmap / CHANGELOG "not shipped"
+    const PLANNED = new Set(['settle']); // the one command still on the roadmap (cap/spend/prices now ship)
     // scan only command contexts (backticks / fenced blocks), never prose
     const docs = codeSpans(read('README.md')) + '\n' + codeSpans(read('CHANGELOG.md'));
     const named = [...new Set([...docs.matchAll(/\bsakk ([a-z][a-z-]+)/g)].map((m) => m[1]))];

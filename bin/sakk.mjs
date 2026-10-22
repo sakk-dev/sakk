@@ -19,7 +19,16 @@ import {
 import { loadPolicy } from '../src/policy.mjs';
 import { startMcpServer } from '../src/mcp.mjs';
 import { display, scanPaths, scanStaged, ScanError } from '../src/secret-scan.mjs';
-import { evaluate, normalize, runHook } from '../src/hook.mjs';
+import { evaluate, normalize, runHook, readConfig, writeConfig, sakkHome } from '../src/hook.mjs';
+import { loadPrices } from '../src/prices.mjs';
+import {
+  daySpend,
+  updateIndex,
+  systemZone,
+  dayOf,
+  claudeLogDir,
+  SpendError,
+} from '../src/spend.mjs';
 import { doctor, install, uninstall } from '../src/guard-install.mjs';
 import { readSegment, reindex, segmentsOnDisk, verifyChain } from '../src/archive.mjs';
 import { startConsole } from '../src/console.mjs';
@@ -102,6 +111,12 @@ The agent guard:
   sakk hook --agent <agent>                               the hook itself: payload on stdin (installed for you)
   sakk ui [--port N] [--allow-halt] [--ledger <path>]     a local, read-only console on 127.0.0.1 (token in the URL)
 
+Spend and the daily cap (from Claude Code's local logs; an estimate, not the invoice):
+  sakk cap set <usd> [--zone <IANA>]                      a daily cap the hook enforces at the next call (a person sets it)
+  sakk cap off                                            lift the cap
+  sakk spend [--day <YYYY-MM-DD>] [--json]                today's spend by model, and what could not be priced
+  sakk prices [--json]                                    the price table in use and its source
+
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status) · 4 halted (status; wins over 3, both shown)
 max_reservable_usd of 0 means nothing fits under the cap (reserve requires a positive amount)
@@ -135,6 +150,9 @@ const COMMANDS = {
   guard: { values: [], bools: ['user'], positional: true },
   doctor: { values: [], bools: ['json'] },
   ui: { values: ['port', 'ledger'], bools: ['allow-halt'] },
+  cap: { values: ['zone'], bools: [], positional: true },
+  spend: { values: ['day'], bools: ['json'] },
+  prices: { values: [], bools: ['json'] },
 };
 if (Object.hasOwn(COMMANDS, cmd)) {
   const spec = COMMANDS[cmd];
@@ -682,6 +700,119 @@ if (cmd === 'init') {
       );
       process.exit(1);
     }
+  }
+} else if (cmd === 'cap') {
+  // set or lift the daily spend cap the hook enforces; a person runs this, the
+  // agent is denied writing ~/.sakk, so it cannot raise its own cap.
+  const sub = argv[1];
+  const home = sakkHome();
+  if (sub === 'off') {
+    writeConfig(home, { capUsd: undefined });
+    console.log(
+      `cap off: ${join(home, 'config.json')} — no daily cap; spend no longer gates paid calls`,
+    );
+  } else if (sub === 'set') {
+    const amt = argv[2];
+    const cap = /^\d+(\.\d+)?$/.test(amt ?? '') ? Number(amt) : NaN;
+    if (!Number.isFinite(cap) || cap <= 0) {
+      console.error('CAP_USAGE: sakk cap set <usd> — a positive number (e.g. sakk cap set 5)');
+      process.exit(2);
+    }
+    const zone = val('zone');
+    if (zone !== undefined) {
+      try {
+        new Intl.DateTimeFormat('en-CA', { timeZone: zone });
+      } catch {
+        console.error(`CAP_ZONE_INVALID: ${zone} is not an IANA time zone (e.g. Asia/Dubai)`);
+        process.exit(2);
+      }
+    }
+    writeConfig(home, { capUsd: cap, ...(zone !== undefined ? { timeZone: zone } : {}) });
+    console.log(
+      `cap set: $${cap}/day${zone ? ` (${zone})` : ''} in ${join(home, 'config.json')} — the hook denies paid calls once today's spend from local logs reaches it`,
+    );
+  } else {
+    console.error('CAP_USAGE: sakk cap set <usd> [--zone <IANA>] | sakk cap off');
+    process.exit(2);
+  }
+} else if (cmd === 'spend') {
+  const home = sakkHome();
+  const dayArg = val('day');
+  if (dayArg !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(dayArg)) {
+    console.error('SPEND_USAGE: --day must be YYYY-MM-DD');
+    process.exit(2);
+  }
+  let config;
+  try {
+    config = readConfig(home);
+  } catch (e) {
+    fail(e);
+  }
+  const { table } = loadPrices({ home });
+  const zone = config.timeZone || systemZone();
+  const day = dayArg ?? dayOf(Date.now(), zone);
+  const logDir = config.claudeLogDir || claudeLogDir(process.env);
+  let indexNote = '';
+  try {
+    updateIndex({ home, logDir, zone, since: Date.now() - 36 * 3600 * 1000 });
+  } catch (e) {
+    if (!(e instanceof SpendError)) throw e;
+    indexNote = ` (index not refreshed: ${e.code})`;
+  }
+  const s = daySpend({ home, day, table });
+  const unpriced = Object.keys(s.unpriced);
+  const out = {
+    day,
+    zone,
+    cap_usd: config.capUsd ?? null,
+    spend_usd: s.usd,
+    calls: s.calls,
+    by_model: s.byModel,
+    unpriced: s.unpriced,
+    unreadable: s.unreadable,
+    source: 'from local logs',
+  };
+  if (flag('json')) console.log(JSON.stringify(out, null, 1));
+  else {
+    console.log(
+      `spend ${day} (${zone}, from local logs): ${usd(s.usd)}${config.capUsd !== undefined ? ` of ${usd(config.capUsd)} cap` : ' (no cap set)'}${indexNote}`,
+    );
+    for (const [m, c] of Object.entries(s.byModel)) console.log(`  ${display(m)}  ${usd(c)}`);
+    if (unpriced.length)
+      console.log(
+        `  unpriced: ${unpriced.map(display).join(', ')} — add it to ${join(home, 'prices.json')}`,
+      );
+    if (s.unreadable) console.log(`  ${s.unreadable} log line(s) unreadable today`);
+  }
+} else if (cmd === 'prices') {
+  const home = sakkHome();
+  let loaded;
+  try {
+    loaded = loadPrices({ home });
+  } catch (e) {
+    console.error(
+      `${e.code ?? 'PRICES_UNREADABLE'}: ${String(e.message).replace(/^[A-Z_]+: /, '')}`,
+    );
+    process.exit(1);
+  }
+  const models = Object.entries(loaded.table.models ?? loaded.table);
+  if (flag('json'))
+    console.log(
+      JSON.stringify(
+        {
+          source: loaded.path,
+          approximate: Boolean(loaded.table.approximate),
+          models: Object.fromEntries(models),
+        },
+        null,
+        1,
+      ),
+    );
+  else {
+    console.log(
+      `prices: ${models.length} model(s) from ${loaded.path}${loaded.table.approximate ? ' (approximate)' : ''}`,
+    );
+    for (const [id, m] of models) console.log(`  ${display(id)}  in ${m.input} / out ${m.output}`);
   }
 } else if (cmd === 'ui') {
   const portArg = val('port');

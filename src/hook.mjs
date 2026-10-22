@@ -30,7 +30,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decide, loadPolicy, logDecision } from './policy.mjs';
-import { appendNoFollow } from './append.mjs';
+import { appendNoFollow, writeFileAtomic } from './append.mjs';
 import { loadPrices } from './prices.mjs';
 import { capCheck as spendCap } from './spend.mjs';
 import { scanText } from './secret-scan.mjs';
@@ -90,6 +90,24 @@ export function readConfig(home) {
     if (e.code === 'ENOENT') return {};
     throw new HookError('HOOK_CONFIG_UNREADABLE', `${p}: ${e.message}`);
   }
+}
+
+/**
+ * Write Sakk's config atomically — only a person's CLI commands call this
+ * (sakk cap set/off); the agent is denied writing ~/.sakk by the guard, so it
+ * cannot set its own cap. Merges onto the current config so one key's change
+ * never drops another (the log folder a cap was set with, say).
+ */
+export function writeConfig(home, patch) {
+  const current = readConfig(home);
+  const next = { ...current };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) delete next[k];
+    else next[k] = v;
+  }
+  mkdirSync(home, { recursive: true });
+  writeFileAtomic(join(home, 'config.json'), `${JSON.stringify(next, null, 2)}\n`);
+  return next;
 }
 
 /** The git top level of `cwd`, or null outside a repository. */

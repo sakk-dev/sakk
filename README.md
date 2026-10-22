@@ -64,6 +64,14 @@ recent decisions, the policy with a try box, and secret blocks:
 sakk ui        # prints http://127.0.0.1:<port>/?t=… — read-only; Ctrl+C to stop
 ```
 
+Cap the day's spend (read from Claude Code's local logs — an estimate, not the invoice). A person sets it; the agent is denied writing `~/.sakk`, so it cannot raise its own cap:
+
+```bash
+sakk cap set 5 --zone Asia/Dubai   # deny paid calls once today's spend reaches $5
+sakk spend                         # today's spend by model
+sakk cap off                       # lift it
+```
+
 ## Quickstart
 
 ```bash
@@ -332,10 +340,10 @@ count reservations from the books, not allows from the decision log.
 - [x] Kill switch (`sakk halt / resume`): named (self-declared `--by`), global or per agent; stop state provable from the books
 - [x] Secret scanning (`sakk scan`, pre-commit hook): eight recognized formats, fingerprints only
 - [x] Secret guard in the hook: a write whose content is a secret, or a command that prints one, is denied (open-source v1 M3; the gitleaks 222-rule port is pending)
-- [x] Daily spend cap enforced by the hook from local transcripts, an estimate not the invoice (open-source v1 M2); set in `~/.sakk/config.json`
+- [x] Daily spend cap enforced by the hook from local transcripts, an estimate not the invoice (open-source v1 M2); set with `sakk cap set`
 - [x] Local, read-only console `sakk ui`: spend, decisions, policy, secret blocks (open-source v1 M4)
 - [x] Ships as a Claude Code plugin (`.claude-plugin/`) (open-source v1 M5)
-- [ ] `sakk spend` / `sakk cap` / `sakk prices` CLI commands — library and enforcement shipped, CLI planned (F-161)
+- [x] `sakk cap set/off`, `sakk spend`, `sakk prices` — set the cap, see the day's spend, show the price table (F-161)
 - [x] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts
 - [ ] `sakk settle` CLI command (late settlement without writing code)
 - [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6)

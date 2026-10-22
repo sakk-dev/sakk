@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the spend and cap CLI (F-161 follow-up)
+
+- `sakk cap set <usd> [--zone <IANA>]` / `sakk cap off`: set or lift the daily
+  cap the hook enforces at the next call. A person runs it; the agent is denied
+  writing `~/.sakk` by the guard (rule `protect-guard-state`), so it cannot
+  raise its own cap. The amount must be a positive plain decimal (`CAP_USAGE`)
+  and the zone a real IANA name (`CAP_ZONE_INVALID`).
+- `sakk spend [--day <YYYY-MM-DD>] [--json]`: a day's spend by model and what
+  could not be priced, read from Claude Code's local logs and labelled an
+  estimate, not the invoice; the day boundary follows the configured zone. A
+  malformed `--day` is `SPEND_USAGE`.
+- `sakk prices [--json]`: the price table in use and its source file.
+- These complete M2's documented surface (the library and the hook's
+  enforcement already shipped; see F-161). `sakk prices update` — the one
+  network fetch — lands with the gitleaks rule port.
+
 ### Added — release packaging (open-source v1, M5)
 
 - Ships as a **Claude Code plugin**: `.claude-plugin/plugin.json` wires a
@@ -100,11 +116,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New refusal codes: `PRICES_INVALID`, `PRICES_UNREADABLE`, `PRICE_UNKNOWN`,
   `USAGE_INVALID`, `SPEND_UNREADABLE`, `SPEND_CAP_REACHED`,
   `SPEND_TOO_MANY_LOGS`.
-- Not shipped in M2: the dedicated `sakk spend` / `sakk cap` / `sakk prices`
-  CLI commands. The library and the enforcement are in place and the console
-  shows the figures; wiring those CLI commands is a planned follow-up (F-161),
-  pending a product decision (`sakk prices update` needs the one network
-  fetch). Until then the cap is set by writing `~/.sakk/config.json`.
+- M2 itself shipped the library and the hook's enforcement, not the CLI; the
+  `sakk cap set/off`, `sakk spend` and `sakk prices` commands followed (see the
+  F-161 section above). `sakk prices update` — the one network fetch — lands
+  with the gitleaks rule port.
 
 ### Fixed — F-105 archive, from the independent review (F-159)
 
