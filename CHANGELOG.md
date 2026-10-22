@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sakk guard install|uninstall <agent> [--user]`, `sakk try "<command>"`,
   `sakk doctor` (checks the hook really fires).
 - `policies/guard-default.json`: the shipped policy (docs/GUARD.md).
+- Writing outside the project (your home folder and elsewhere, temporary
+  folders excepted) now asks first (`ask-write-outside`): the home folder is
+  where a manipulated agent would otherwise leave a shell profile or an SSH
+  key to persist, so an outbound write is a confirmation, not a silent allow.
 - Scopes (public API): repo-relative, `~sakk/…`, `~home/…`,
   `~outside/<absolute>`, and `~protected/repo|home|sakk` for a delete that
   would take the repository, the home folder or Sakk's state with it

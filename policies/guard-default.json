@@ -110,6 +110,28 @@
       "approvers_min": 1
     },
     {
+      "id": "allow-temp-write",
+      "match": {
+        "action": "file.write",
+        "scope": [
+          "~outside/tmp/",
+          "~outside/private/tmp/",
+          "~outside/var/folders/",
+          "~outside/private/var/folders/"
+        ]
+      },
+      "verdict": "allow"
+    },
+    {
+      "id": "ask-write-outside",
+      "match": {
+        "action": "file.write",
+        "scope": ["~outside/", "~home/"]
+      },
+      "verdict": "require_approval",
+      "approvers_min": 1
+    },
+    {
       "id": "allow-in-repo",
       "match": {},
       "verdict": "allow"

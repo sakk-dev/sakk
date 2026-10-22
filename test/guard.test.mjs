@@ -285,6 +285,16 @@ describe('the hook as an agent runs it', () => {
       assert.equal(run(w, cmd).v, 'deny', cmd);
     assert.equal(run(w, 'rm -rf src').v, 'allow');
   });
+  test('writing outside the project asks first, but a temp file and an in-repo write do not (decision 2)', () => {
+    const w = world();
+    // home and elsewhere outside the repo: ask (Codex reads ask as deny, which is stricter)
+    assert.equal(run(w, 'echo hi > ~/.zshrc').v, 'ask', 'writing the shell profile asks');
+    assert.equal(run(w, `echo hi > ${w.home}/notes.txt`).v, 'ask', 'any home write asks');
+    assert.equal(run(w, 'echo hi > /etc/hosts').v, 'ask', 'anywhere outside asks');
+    // temporary folders and the project itself: no interruption
+    assert.equal(run(w, 'echo hi > /tmp/scratch').v, 'allow', 'a temp file is not interrupted');
+    assert.equal(run(w, 'echo hi > notes.txt').v, 'allow', 'an in-repo write is allowed');
+  });
   test('secret files are denied on every read route', () => {
     const w = world();
     for (const cmd of [

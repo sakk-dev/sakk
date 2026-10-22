@@ -26,19 +26,20 @@ your home folder instead. `sakk doctor` tells you which applies.
 
 The shipped policy (`policies/guard-default.json`):
 
-| Rule                       | What                                                                  | Answer  |
-| -------------------------- | --------------------------------------------------------------------- | ------- |
-| `protect-secret-files`     | reading `.env`, keys and credential files; dumping the environment    | deny    |
-| `shell-destructive`        | `git push --force`, `reset --hard`, deleting `main`, history rewrites | deny    |
-| `deny-prod-delete`         | `kubectl delete`, `terraform destroy`, dropping tables or databases   | deny    |
-| `deny-rm-outside-repo`     | deleting anything outside the repository (temporary folders excepted) | deny    |
-| `protect-guard-state`      | writing Sakk's own policy and state                                   | deny    |
-| `protect-ci-files`         | writing `.github/workflows/`                                          | deny    |
-| `protect-migrations`       | deleting database migrations                                          | deny    |
-| `ask-agent-config`         | writing `.claude/`, `.cursor/`, `.codex/`                             | ask you |
-| `high-risk-deploy`         | deploys and publishing                                                | ask you |
-| `ask-constructed-commands` | commands built at run time (`eval`, `curl … \| sh`, `bash -c "$X"`)   | ask you |
-| `allow-in-repo`            | everything else                                                       | allow   |
+| Rule                       | What                                                                                      | Answer  |
+| -------------------------- | ----------------------------------------------------------------------------------------- | ------- |
+| `protect-secret-files`     | reading `.env`, keys and credential files; dumping the environment                        | deny    |
+| `shell-destructive`        | `git push --force`, `reset --hard`, deleting `main`, history rewrites                     | deny    |
+| `deny-prod-delete`         | `kubectl delete`, `terraform destroy`, dropping tables or databases                       | deny    |
+| `deny-rm-outside-repo`     | deleting anything outside the repository (temporary folders excepted)                     | deny    |
+| `protect-guard-state`      | writing Sakk's own policy and state                                                       | deny    |
+| `protect-ci-files`         | writing `.github/workflows/`                                                              | deny    |
+| `protect-migrations`       | deleting database migrations                                                              | deny    |
+| `ask-agent-config`         | writing `.claude/`, `.cursor/`, `.codex/`                                                 | ask you |
+| `high-risk-deploy`         | deploys and publishing                                                                    | ask you |
+| `ask-constructed-commands` | commands built at run time (`eval`, `curl … \| sh`, `bash -c "$X"`)                       | ask you |
+| `ask-write-outside`        | writing outside the project — your home folder and elsewhere (temporary folders excepted) | ask you |
+| `allow-in-repo`            | everything else                                                                           | allow   |
 
 Codex runs a call when a hook asks, so for Codex "ask you" is a deny.
 

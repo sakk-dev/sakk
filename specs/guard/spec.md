@@ -184,6 +184,8 @@ load. A failure to read the rules is isolated, never a refusal of every call
 | `ask-agent-config`           | action `file.write`, scope `.claude/`, `.cursor/`, `.codex/`                                                                   | require_approval |
 | `high-risk-deploy`           | action `deploy`                                                                                                                | require_approval |
 | `ask-constructed-commands`   | action `shell.constructed`                                                                                                     | require_approval |
+| `allow-temp-write`           | action `file.write`, scope `~outside/tmp/`, `~outside/private/tmp/`, `~outside/var/folders/`, `~outside/private/var/folders/`  | allow            |
+| `ask-write-outside`          | action `file.write`, scope `~outside/`, `~home/`                                                                               | require_approval |
 | `allow-in-repo`              | `{}` — everything the rules above did not stop                                                                                 | allow            |
 | default                      | —                                                                                                                              | deny             |
 
