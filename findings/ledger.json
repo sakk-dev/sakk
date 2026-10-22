@@ -4955,6 +4955,42 @@
         "F-124": "F-124 is an empty ledger requiring no acks (absence in the self-evolution gate); F-160 is the secret guard allowing a zero-action or unwired-surface call (absence in the hook's per-action enforcement) — a different mechanism in a different module.",
         "F-159": "F-159 is the F-105 ledger-archive audit under-checking; F-160 is the M3 secret guard falling open on untested routes — a different feature found by a different review."
       }
+    },
+    {
+      "id": "F-161",
+      "date": "2026-10-22",
+      "introduced_in": "0dd328d",
+      "found_by": "T0",
+      "class": "C-05",
+      "title": "M2's CHANGELOG documented sakk spend / cap / prices CLI commands that the binary never implemented",
+      "symptom": "Preparing the M5 release, a docs-vs-code cross-check found that M2's CHANGELOG describes `sakk spend`, `sakk cap set` / `sakk cap off`, `sakk prices` and `sakk prices update` as shipped commands, but bin/sakk.mjs has no such commands — M2 shipped the spend/prices libraries (src/spend.mjs, src/prices.mjs) and the hook's cap enforcement (reading ~/.sakk/config.json), not the CLI surface. A user who followed the CHANGELOG to run `sakk cap set` would get a usage error, and there is no shipped way to set the cap except hand-editing config.json. No check compared a documented `sakk <command>` against the commands the CLI actually implements, so the overclaim passed the gate.",
+      "evidence": "M2 commit 0dd328d touched src/spend.mjs and src/prices.mjs but not bin/sakk.mjs's command table; grep of bin on the M2 branch tip and on this branch finds no spend/cap/prices command; the CHANGELOG lists them as shipped.",
+      "direct_cause": "The CHANGELOG was written to the intended spend/cap CLI surface rather than to what bin/sakk.mjs actually implemented, and the claims-check only compared backticked error codes and file names, never command names.",
+      "why": [
+        "The spend/cap feature was split — the library and the hook enforcement shipped, the CLI surface did not — and the CHANGELOG described the whole intended feature as done.",
+        "The C-05 detectors (claims-are-checked) verify that named error codes and backticked file names exist, but no detector asked whether a documented `sakk <command>` is a real subcommand.",
+        "So a release note could promise a command the binary did not have, and nothing failed."
+      ],
+      "root_cause": "The docs stated a capability (a CLI command) the code did not provide, and the honesty detectors did not cover documented commands, only codes and file names.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-01"],
+      "answer_failed": {
+        "qid": "C-05.1",
+        "why": "C-05.1 asks that every sentence added to docs is backed by something that fails without it; the M2 CHANGELOG's command sentences were backed by nothing — the commands did not exist and no test checked that they did."
+      },
+      "instance_fix": "this commit: the M2 CHANGELOG section is rewritten to shipped reality (the daily cap is enforced by the hook from ~/.sakk/config.json, spend is viewable in sakk ui, and the dedicated spend/cap/prices CLI is marked not shipped and pending a product decision); test/release.test.mjs adds a detector that every `sakk <command>` named in a code span of the README or CHANGELOG is a real subcommand (read from bin) or an explicitly declared PLANNED one.",
+      "guard": "test/release.test.mjs::every command the README shows is a real sakk subcommand",
+      "class_fix": null,
+      "sweep": "the detector scans both the README and the CHANGELOG, so the same overclaim cannot recur in either; wiring the spend/cap/prices CLI itself is a separate product decision put to the owner (the library and enforcement already exist). No follow-up finding needed for the docs honesty; the CLI gap is tracked as that decision.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["CHANGELOG.md", "test/release.test.mjs", "bin/sakk.mjs"],
+      "mechanism_gap": "The RC-10 detectors (claims-are-checked) checked that backticked error codes and backticked file names in the docs exist in the code, but never that a documented sakk subcommand exists — so a CHANGELOG naming a command the CLI lacks slipped past.",
+      "mechanism_upgrade": "test/release.test.mjs::every command the README shows is a real sakk subcommand",
+      "distinct_from": {
+        "F-83": "F-83 is a backticked FILE NAME in the README that did not exist; F-161 is a documented CLI COMMAND that the binary does not implement — the same class (docs name something absent) but a different surface, and the new detector covers commands where F-83's covered file names."
+      }
     }
   ]
 }

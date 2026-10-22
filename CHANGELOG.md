@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — release packaging (open-source v1, M5)
+
+- Ships as a **Claude Code plugin**: `.claude-plugin/plugin.json` wires a
+  `PreToolUse` hook that runs `node ${CLAUDE_PLUGIN_ROOT}/bin/sakk.mjs hook
+--agent claude-code` on every tool call, `onFailure: block` (fail-closed).
+  Installable with `claude plugin install --plugin-dir <path>`; the manifest is
+  the only file a local/npm install needs (no marketplace file).
+- The npm package `files` list now ships `.claude-plugin` alongside `src`,
+  `bin`, `policies` and `prices`; `test/release.test.mjs` runs the real
+  `npm pack` and asserts the tarball excludes `test`, `specs`, `findings`,
+  `eval` and `scripts`, so dev-only files never leak into the package.
+- A detector closes a gate blind spot (F-161): every `sakk <command>` named in
+  the README or the CHANGELOG must be a real CLI subcommand, so the docs can no
+  longer promise a command the binary does not implement. The package version
+  is checked to be one source of truth across the binary and the plugin.
+- Publishing itself (npm publish, making the repository public, a marketplace
+  listing) stays a person's action.
+
 ### Added — the local console `sakk ui` (open-source v1, M4)
 
 - `sakk ui [--port N] [--allow-halt] [--ledger <path>]` starts a read-only web
@@ -52,27 +70,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — spend and the daily cap (open-source v1, M2)
 
-- `sakk spend` reads Claude Code's local transcripts
-  (`~/.claude/projects/**/*.jsonl`), prices them, and shows a day's spend by
-  model and what could not be priced. Each call is counted once at its
-  largest recorded usage (dedup by `message.id`+`requestId`, max-merge);
-  cache writes are priced per duration (5m/1h) and the whole request bills at
-  the long-context rate past a model's threshold.
-- `sakk cap set <usd> [--zone <IANA>]` / `sakk cap off`: a daily cap the guard
-  enforces at the next tool call. The cap, zone and log folder are frozen in
-  `~/.sakk/config.json` by a person — not read from the agent's environment —
-  and writing `~/.sakk/` is denied by the guard, so an agent cannot raise its
-  own cap. Fail-closed: a model with no price (`PRICE_UNKNOWN`) or an
-  unreadable log line (`SPEND_UNREADABLE`) is a deny while a cap is set.
-- `sakk prices` shows the table in use; `sakk prices update` fetches a newer
-  list from LiteLLM (the only network call). A small, approximate starter
-  snapshot ships in `prices/` (schema `sakk-prices.v1`); unlisted models fail
-  closed until refreshed.
-- The spend index (`~/.sakk/spend/`) is incremental and only grows — a
-  deleted or rewritten log keeps what was counted. The figures are an
-  estimate from local logs, not the provider's invoice. New refusal codes:
-  `PRICES_INVALID`, `PRICES_UNREADABLE`, `PRICE_UNKNOWN`, `USAGE_INVALID`,
-  `SPEND_UNREADABLE`, `SPEND_CAP_REACHED`, `SPEND_TOO_MANY_LOGS`.
+- A daily spend cap the guard enforces at the next tool call. Spend is read
+  from Claude Code's local transcripts (`~/.claude/projects/**/*.jsonl`) and
+  priced: each call counted once at its largest recorded usage (dedup by
+  `message.id`+`requestId`, max-merge); cache writes priced per duration
+  (5m/1h); the whole request billed at the long-context rate past a model's
+  threshold. The cap, zone and log folder live in `~/.sakk/config.json`, read
+  by a person's configuration — not from the agent's environment — and writing
+  `~/.sakk/` is denied by the guard, so an agent cannot raise its own cap.
+  Fail-closed: a model with no price (`PRICE_UNKNOWN`) or an unreadable log
+  line (`SPEND_UNREADABLE`) is a deny while a cap is set.
+- A small, approximate starter price snapshot ships in `prices/` (schema
+  `sakk-prices.v1`); unlisted models fail closed until a newer table is placed
+  at `~/.sakk/prices.json`. Today's spend and the cap are viewable in the
+  console (`sakk ui`, M4). The spend index (`~/.sakk/spend/`) is incremental
+  and only grows — a deleted or rewritten log keeps what was counted. The
+  figures are an estimate from local logs, not the provider's invoice.
+- New refusal codes: `PRICES_INVALID`, `PRICES_UNREADABLE`, `PRICE_UNKNOWN`,
+  `USAGE_INVALID`, `SPEND_UNREADABLE`, `SPEND_CAP_REACHED`,
+  `SPEND_TOO_MANY_LOGS`.
+- Not shipped in M2: the dedicated `sakk spend` / `sakk cap` / `sakk prices`
+  CLI commands. The library and the enforcement are in place and the console
+  shows the figures; wiring those CLI commands is a planned follow-up (F-161),
+  pending a product decision (`sakk prices update` needs the one network
+  fetch). Until then the cap is set by writing `~/.sakk/config.json`.
 
 ### Fixed — F-105 archive, from the independent review (F-159)
 

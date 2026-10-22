@@ -1,0 +1,78 @@
+{
+  "version": 2,
+  "branch": "oss/m5-release",
+  "answers": {
+    "C-01.1": {
+      "answer": "A file named in package.json 'files' but absent on disk would ship nothing for that path; the release test enumerates the files list and asserts each entry exists, so an absent shipped file fails rather than passing silently. An absent plugin manifest fails the plugin test; an absent LICENSE/bin fails too.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    },
+    "C-01.2": {
+      "answer": "Delete a required shipped path (bin, a src file, the plugin manifest) and the release test goes red: it checks the real files on disk and the real packed set, so removing one is not a silent pass. Remove the plugin's hook command and the plugin test fails.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    },
+    "C-02.1": {
+      "answer": "The ship list is not a hand-kept allowlist checked by eye: the test derives the dev-only directories that must NOT ship (test, specs, findings, eval, scripts, node_modules) from the repository itself and asserts the packed tarball contains none of them, so a new dev directory cannot leak into the package unnoticed.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    },
+    "C-02.2": {
+      "answer": "The version has one source — package.json — and the test asserts sakk --version prints exactly that, so a release never ships two version numbers; the plugin manifest's version is read back against package.json too.",
+      "guard": "test/release.test.mjs::the version is one source of truth across the binary and the plugin"
+    },
+    "C-03.1": {
+      "answer": "Put the bug back and it goes red: add a test/ path to the shipped set and the exclude assertion fails; break the plugin hook command so it no longer runs the installed sakk and the plugin test fails — each for the reason it names.",
+      "guard": "test/release.test.mjs::the Claude Code plugin manifest is valid and its hook runs the installed sakk"
+    },
+    "C-03.2": {
+      "answer": "The release test observes the real artefacts: it runs the real npm pack to get the actual file list (not a guess from the files array), parses the real plugin.json, and runs the real sakk --version — so it checks what ships, not an intention.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    },
+    "C-03.3": {
+      "answer": "The plugin test fails when the plugin would not actually guard: it asserts the manifest's PreToolUse hook command invokes sakk hook (the real entry point), not merely that a manifest file is present — a manifest that wires nothing fails.",
+      "guard": "test/release.test.mjs::the Claude Code plugin manifest is valid and its hook runs the installed sakk"
+    },
+    "C-04.1": {
+      "answer": "Packaging has no attacker-sized input: the files list is finite and fixed, npm pack walks the repository once, and the README-commands test reads one bounded file. The work is bounded by the repository's own size, asserted by the test completing over the real tree, not by a clock.",
+      "guard": "test/release.test.mjs::every command the README shows is a real sakk subcommand"
+    },
+    "C-05.1": {
+      "answer": "Every command the README quick start shows is asserted to be a real sakk subcommand (extracted from the doc and checked against the CLI's command set), so a documented command that does not exist fails the build; the plugin and install claims are backed by the plugin and files tests.",
+      "guard": "test/release.test.mjs::every command the README shows is a real sakk subcommand"
+    },
+    "C-05.2": {
+      "answer": "The figures the release reports work when acted on: sakk --version prints the package version a user would install, and the README's install and guard commands are the real ones the CLI implements, checked by the commands test.",
+      "guard": "test/release.test.mjs::the version is one source of truth across the binary and the plugin"
+    },
+    "C-06.1": {
+      "answer": "The version and the shipped set are read from their real source (package.json and npm pack), and the README states what is shipped versus on the roadmap, so no reader is shown a stronger claim than what the package actually contains.",
+      "guard": "test/release.test.mjs::the version is one source of truth across the binary and the plugin"
+    },
+    "C-07.1": {
+      "answer": "The packaging inputs are the repository's own files and the hand-authored plugin manifest, not agent or network input; the manifest is static JSON validated by the test, and npm pack reads only tracked project files.",
+      "guard": "test/release.test.mjs::the Claude Code plugin manifest is valid and its hook runs the installed sakk"
+    },
+    "C-07.2": {
+      "answer": "The party a release constrains is whoever publishes: publishing (npm publish, making the repository public, a marketplace listing) stays a person's action and is not performed by the agent or any gate — the branch only prepares the package and says so.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    },
+    "C-08.1": {
+      "answer": "There is one entry point: the single bin 'sakk' -> bin/sakk.mjs, and the plugin hook runs that same installed binary (via the plugin root), never a second copy; the version likewise has one name (package.json), so nothing is reachable under two names.",
+      "guard": "test/release.test.mjs::the version is one source of truth across the binary and the plugin"
+    },
+    "C-09.1": {
+      "answer": "The plugin hook does not assume a working directory: it resolves the installed sakk through the plugin root (or the node on PATH) so it fires from whatever folder the session starts in; the test checks the command is not a bare relative path that only works from one cwd.",
+      "guard": "test/release.test.mjs::the Claude Code plugin manifest is valid and its hook runs the installed sakk"
+    },
+    "C-09.2": {
+      "answer": "The plugin hook runs sakk hook --agent claude-code — the same entry point and payload contract the installed-hook path already exercises in the guard tests — so it fires where a real session runs it, not only where it is declared.",
+      "guard": "test/release.test.mjs::the Claude Code plugin manifest is valid and its hook runs the installed sakk"
+    },
+    "C-10.1": {
+      "answer": "The ship boundary is enforced by a test, not a rule in the docs: a shipped tests/specs/findings path fails the exclude assertion, so the required 'do not ship dev-only files' step cannot be quietly dropped.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    },
+    "C-10.2": {
+      "answer": "The files array is the one route into the tarball, and the test derives the forbidden set from the repository so a new dev directory added later still fails the exclude check — there is no second route that ships files the check did not see.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    }
+  }
+}

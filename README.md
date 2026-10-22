@@ -45,8 +45,24 @@ sakk try 'git push --force origin main'   # what the guard would answer
 
 Every Edit, Write and shell call of the agent is judged before it runs:
 force pushes, deletes outside the project, reading secrets and deploys are
-refused or asked by a policy you can read and change. See
+refused or asked by a policy you can read and change. A write whose content is
+a secret, or a command that prints one, is denied too. See
 [docs/GUARD.md](docs/GUARD.md).
+
+Or add Sakk to Claude Code as a **plugin** — it bundles the same hook,
+fail-closed (`onFailure: block`):
+
+```bash
+npm install -g sakk
+claude plugin install --plugin-dir "$(npm root -g)/sakk"
+```
+
+See what the guard did in a local, read-only console — today's spend and cap,
+recent decisions, the policy with a try box, and secret blocks:
+
+```bash
+sakk ui        # prints http://127.0.0.1:<port>/?t=… — read-only; Ctrl+C to stop
+```
 
 ## Quickstart
 
@@ -315,12 +331,17 @@ count reservations from the books, not allows from the decision log.
 - [x] MCP server enforcer (`sakk mcp`): reserve/settle/status as tools, policy-gated
 - [x] Kill switch (`sakk halt / resume`): named (self-declared `--by`), global or per agent; stop state provable from the books
 - [x] Secret scanning (`sakk scan`, pre-commit hook): eight recognized formats, fingerprints only
+- [x] Secret guard in the hook: a write whose content is a secret, or a command that prints one, is denied (open-source v1 M3; the gitleaks 222-rule port is pending)
+- [x] Daily spend cap enforced by the hook from local transcripts, an estimate not the invoice (open-source v1 M2); set in `~/.sakk/config.json`
+- [x] Local, read-only console `sakk ui`: spend, decisions, policy, secret blocks (open-source v1 M4)
+- [x] Ships as a Claude Code plugin (`.claude-plugin/`) (open-source v1 M5)
+- [ ] `sakk spend` / `sakk cap` / `sakk prices` CLI commands — library and enforcement shipped, CLI planned (F-161)
 - [x] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts
 - [ ] `sakk settle` CLI command (late settlement without writing code)
 - [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6)
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
 - [ ] Named-approver identity, SSO — enterprise
-- [ ] Web console: approvals, roles, audit export — enterprise
+- [ ] Team console: approvals, roles, audit export, outbound metering — enterprise (the local read-only `sakk ui` above is the open-source edition)
 
 Not planned: orchestration frameworks, model-level safety (prompt-injection detection). Sakk is the change-control and evidence layer, not another agent platform.
 

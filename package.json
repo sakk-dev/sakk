@@ -68,6 +68,7 @@
     "bin",
     "policies",
     "prices",
+    ".claude-plugin",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

@@ -1,0 +1,27 @@
+{
+  "name": "sakk",
+  "version": "0.1.0",
+  "displayName": "Sakk",
+  "description": "A fail-closed guard for Claude Code: a daily spend cap, a secret guard, and policy rules — no proof, no pass.",
+  "author": { "name": "sakk-dev", "url": "https://github.com/sakk-dev" },
+  "homepage": "https://github.com/sakk-dev/sakk#readme",
+  "repository": "https://github.com/sakk-dev/sakk.git",
+  "license": "AGPL-3.0-only",
+  "keywords": ["security", "spend-cap", "secret-guard", "fail-closed", "ai-agents"],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/bin/sakk.mjs", "hook", "--agent", "claude-code"],
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}
