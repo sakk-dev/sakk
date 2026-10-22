@@ -317,6 +317,20 @@ run_drill MUT-AG src/archive.mjs \
   "verify catches a flipped byte, a broken link and a wrong tip" \
   "test"
 
+# MUT-AH: let spend at the cap through → the cap test must die red
+run_drill MUT-AH src/spend.mjs \
+  "  if (s.usd >= cap)" \
+  "  if (false)" \
+  "at the cap the next call is denied, below it nothing is" \
+  "test"
+
+# MUT-AI: stop switching to long-context rates → the long-context price case must die red
+run_drill MUT-AI src/prices.mjs \
+  "entry.longContext && prompt > entry.longContext.thresholdTokens ? entry.longContext : entry" \
+  "entry" \
+  "each price rule matches a hand-computed case" \
+  "test"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"

@@ -67,6 +67,7 @@
     "src",
     "bin",
     "policies",
+    "prices",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

@@ -31,6 +31,8 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decide, loadPolicy, logDecision } from './policy.mjs';
 import { appendNoFollow } from './append.mjs';
+import { loadPrices } from './prices.mjs';
+import { capCheck as spendCap } from './spend.mjs';
 import { readLedger } from './ledger.mjs';
 import { patchActions, shellActions, toDecisions } from './classify.mjs';
 
@@ -359,8 +361,18 @@ export function evaluate(
       unknown = e;
     }
   const readsProject = (a) => a.action === 'file.read' && a.scope && !a.scope.startsWith('~');
-  // 2. the spend cap (M2) applies to every call once reached
-  const cap = capCheck ? capCheck({ home, config, env }) : null;
+  // 2. the spend cap (M2) applies to every call once reached. A cap that
+  // cannot be checked (unpriced or unreadable spend) is itself a deny, never a
+  // pass (spec "Cap": fail closed). Skipped when the rules are already unknown.
+  let cap = null;
+  if (unknown === null)
+    try {
+      if (capCheck) cap = capCheck({ home, config, env });
+      else if (config.capUsd !== undefined && config.capUsd !== null)
+        cap = spendCap({ home, config, table: loadPrices({ home }).table, env, now: now() });
+    } catch (e) {
+      unknown = e; // a cap that cannot be read refuses every call but the project read
+    }
   for (const a of actions) {
     const context = {
       agent: ev.agent,

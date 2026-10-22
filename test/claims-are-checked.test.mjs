@@ -54,6 +54,8 @@ const EMIT =
 const DEFENSIVE = {
   SCAN_FAILED: 'git produced output the scanner cannot parse, or an unexpected I/O error',
   VERIFIER_ERROR: 'a bug inside the verifier itself (it must still fail closed)',
+  SPEND_TOO_MANY_LOGS:
+    'more than 50,000 transcript files under the log dir — a readdir counter, not reproducible as a cheap unit test (would need 50k files)',
 };
 
 describe('claims are checked', () => {

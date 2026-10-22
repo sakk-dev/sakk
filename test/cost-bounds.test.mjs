@@ -438,6 +438,65 @@ const BOUNDS = {
       guard: 'test/mcp.test.mjs::an oversized frame answers -32600 and the next call still works',
     },
   },
+  'prices.mjs': {
+    validateTable: {
+      bounded:
+        'iterates a table loadPrices caps at 256 KiB; any non-price entry refuses the whole table',
+      guard: 'test/spend.test.mjs::the price snapshot is small, sourced and never edited in place',
+    },
+    loadPrices: {
+      bounded: 'reads one price file, refused above 256 KiB (MAX_PRICES_BYTES)',
+      guard: 'test/spend.test.mjs::the price snapshot is small, sourced and never edited in place',
+    },
+    priceOf: {
+      bounded: 'one lookup over the capped table by id or listed alias; nothing guessed',
+      guard: 'test/spend.test.mjs::each price rule matches a hand-computed case',
+    },
+    costOf: {
+      bounded:
+        "arithmetic over a fixed set of token kinds and the model's multipliers; a non-integer count refuses USAGE_INVALID",
+      guard: 'test/spend.test.mjs::each price rule matches a hand-computed case',
+    },
+  },
+  'spend.mjs': {
+    claudeLogDir: {
+      bounded: 'joins two environment variables; no attacker-sized input',
+      guard: 'test/spend.test.mjs::the log folder is fixed at cap set, not read from the agent',
+    },
+    dayOf: {
+      bounded: 'formats one timestamp in one zone',
+      guard: 'test/spend.test.mjs::the day boundary follows the configured zone',
+    },
+    systemZone: {
+      bounded: 'reads the system time zone; no input',
+      guard: 'test/spend.test.mjs::the day boundary follows the configured zone',
+    },
+    listLogs: {
+      bounded: 'walks the log tree, refusing past MAX_FILES (50,000)',
+      guard: 'test/spend.test.mjs::hostile lines are bounded and fail closed',
+    },
+    parseLine: {
+      bounded: 'a line over MAX_LINE (1 MiB) is unreadable before it is parsed',
+      guard: 'test/spend.test.mjs::hostile lines are bounded and fail closed',
+    },
+    mergeCall: {
+      bounded: 'takes the maximum over a fixed set of usage fields; no growth with history',
+      guard: 'test/spend.test.mjs::streamed and duplicated lines count once, at their maximum',
+    },
+    updateIndex: {
+      bounded:
+        'reads each changed file incrementally from a stored offset, bounded by MAX_FILES and MAX_LINE; unchanged files are skipped',
+      guard: 'test/spend.test.mjs::a hook check reads only what changed today',
+    },
+    daySpend: {
+      bounded: "sums over one day's recorded calls, each priced once",
+      guard: 'test/spend.test.mjs::at the cap the next call is denied, below it nothing is',
+    },
+    capCheck: {
+      bounded: "updates the bounded index and sums today's calls; unpriced or unreadable is a deny",
+      guard: 'test/spend.test.mjs::at the cap the next call is denied, below it nothing is',
+    },
+  },
 };
 
 describe('C-04: every exported function is bounded on attacker-shaped input', () => {

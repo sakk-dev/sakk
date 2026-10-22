@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — spend and the daily cap (open-source v1, M2)
+
+- `sakk spend` reads Claude Code's local transcripts
+  (`~/.claude/projects/**/*.jsonl`), prices them, and shows a day's spend by
+  model and what could not be priced. Each call is counted once at its
+  largest recorded usage (dedup by `message.id`+`requestId`, max-merge);
+  cache writes are priced per duration (5m/1h) and the whole request bills at
+  the long-context rate past a model's threshold.
+- `sakk cap set <usd> [--zone <IANA>]` / `sakk cap off`: a daily cap the guard
+  enforces at the next tool call. The cap, zone and log folder are frozen in
+  `~/.sakk/config.json` by a person — not read from the agent's environment —
+  and writing `~/.sakk/` is denied by the guard, so an agent cannot raise its
+  own cap. Fail-closed: a model with no price (`PRICE_UNKNOWN`) or an
+  unreadable log line (`SPEND_UNREADABLE`) is a deny while a cap is set.
+- `sakk prices` shows the table in use; `sakk prices update` fetches a newer
+  list from LiteLLM (the only network call). A small, approximate starter
+  snapshot ships in `prices/` (schema `sakk-prices.v1`); unlisted models fail
+  closed until refreshed.
+- The spend index (`~/.sakk/spend/`) is incremental and only grows — a
+  deleted or rewritten log keeps what was counted. The figures are an
+  estimate from local logs, not the provider's invoice. New refusal codes:
+  `PRICES_INVALID`, `PRICES_UNREADABLE`, `PRICE_UNKNOWN`, `USAGE_INVALID`,
+  `SPEND_UNREADABLE`, `SPEND_CAP_REACHED`, `SPEND_TOO_MANY_LOGS`.
+
 ### Added — the ledger's hot/cold split (F-105, schema v3)
 
 - Settled entries are sealed into an append-only, hash-chained cold trail

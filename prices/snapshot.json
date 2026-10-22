@@ -1,0 +1,56 @@
+{
+  "schema": "sakk-prices.v1",
+  "source": {
+    "url": "https://docs.anthropic.com/en/docs/about-claude/pricing , https://api-docs.deepseek.com/quick_start/pricing , https://openai.com/api/pricing",
+    "commit": "curated-2026-10-22",
+    "sha256": "e40523da40e41ea0f5a20362252e5f78f452711f0321a402c1b4192278ba0453",
+    "fetchedAt": "2026-10-22",
+    "license": "prices are public facts; this starter snapshot is APPROXIMATE — run `sakk prices update` to refresh from LiteLLM. Unlisted models fail closed (PRICE_UNKNOWN)."
+  },
+  "models": {
+    "deepseek-chat": {
+      "input": 2.7e-7,
+      "output": 0.0000011,
+      "cacheWrite5m": 2.7e-7,
+      "cacheWrite1h": 2.7e-7,
+      "cacheRead": 7e-8
+    },
+    "deepseek-reasoner": {
+      "input": 5.5e-7,
+      "output": 0.0000021899999999999998,
+      "cacheWrite5m": 5.5e-7,
+      "cacheWrite1h": 5.5e-7,
+      "cacheRead": 1.4e-7
+    },
+    "claude-3-5-sonnet": {
+      "input": 0.000003,
+      "output": 0.000014999999999999999,
+      "cacheWrite5m": 0.0000037499999999999997,
+      "cacheWrite1h": 0.000006,
+      "cacheRead": 3e-7,
+      "aliases": ["claude-3-5-sonnet-20241022", "claude-3-5-sonnet-latest"]
+    },
+    "claude-3-5-haiku": {
+      "input": 8e-7,
+      "output": 0.000004,
+      "cacheWrite5m": 0.000001,
+      "cacheWrite1h": 0.0000016,
+      "cacheRead": 8e-8,
+      "aliases": ["claude-3-5-haiku-20241022", "claude-3-5-haiku-latest"]
+    },
+    "gpt-4o": {
+      "input": 0.0000024999999999999998,
+      "output": 0.000009999999999999999,
+      "cacheWrite5m": 0.0000024999999999999998,
+      "cacheWrite1h": 0.0000024999999999999998,
+      "cacheRead": 0.0000012499999999999999
+    },
+    "gpt-4o-mini": {
+      "input": 1.5e-7,
+      "output": 6e-7,
+      "cacheWrite5m": 1.5e-7,
+      "cacheWrite1h": 1.5e-7,
+      "cacheRead": 7.5e-8
+    }
+  }
+}
