@@ -35,6 +35,19 @@ Two concurrent agents cannot jointly overspend: read-modify-write runs under an 
 npm install sakk        # or call the CLI without installing: npx sakk …
 ```
 
+## Guard a coding agent
+
+```bash
+sakk guard install claude-code   # or: cursor, codex
+sakk doctor                      # checks the hook really fires
+sakk try 'git push --force origin main'   # what the guard would answer
+```
+
+Every Edit, Write and shell call of the agent is judged before it runs:
+force pushes, deletes outside the project, reading secrets and deploys are
+refused or asked by a policy you can read and change. See
+[docs/GUARD.md](docs/GUARD.md).
+
 ## Quickstart
 
 ```bash

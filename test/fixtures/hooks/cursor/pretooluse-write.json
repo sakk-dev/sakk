@@ -1,0 +1,16 @@
+{
+  "conversation_id": "00000000-0000-4000-8000-0000000000c1",
+  "generation_id": "00000000-0000-4000-8000-0000000000c4",
+  "model": "claude-opus-4-7-thinking-max",
+  "hook_event_name": "preToolUse",
+  "cursor_version": "3.21.0",
+  "workspace_roots": ["/work/repo"],
+  "user_email": null,
+  "transcript_path": null,
+  "tool_name": "Write",
+  "tool_input": { "file_path": "/work/repo/src/a.js", "content": "export const a = 2;\n" },
+  "tool_use_id": "abc123",
+  "cwd": "/work/repo",
+  "agent_message": "Updating a.js",
+  "expect": "allow"
+}

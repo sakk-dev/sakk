@@ -1,0 +1,4 @@
+{
+  "why": "The files the self-evolution checker runs from, listed once (F-144). Everything that copies, snapshots or repairs the gate reads this list; test/self-evolution.test.mjs fails when it differs from what scripts/findings-check.mjs actually imports.",
+  "files": ["scripts/findings-check.mjs", "scripts/findings-lib.mjs", "src/classify.mjs"]
+}

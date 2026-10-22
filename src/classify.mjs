@@ -1,0 +1,572 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The guard's classifier (specs/guard/spec.md, "Actions"): what a tool call
+// will do, named in a fixed vocabulary the policy matches on. Action names are
+// public API. The shell tokenizer here is also the one the self-evolution loop
+// uses for its own shell gate (scripts/findings-lib.mjs), so there is one
+// parser, measured in both places (F-133).
+//
+// No I/O except resolving real paths (symlinks), which callers may replace.
+
+import { realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+
+/** Input over this many characters is refused as unclassifiable (C-04). */
+export const MAX_COMMAND = 64 * 1024;
+
+export class ClassifyError extends Error {
+  constructor(code, message) {
+    super(`${code}: ${message}`);
+    this.code = code;
+  }
+}
+
+/**
+ * Split a command into segments (arrays of words) outside quotes, collecting
+ * output-redirect targets and whether anything opaque (heredoc, command
+ * substitution) appears. Linear in the length; no backtracking.
+ */
+export function shellSegments(cmd) {
+  const segs = [];
+  const redirects = [];
+  let words = [];
+  let w = '';
+  let inWord = false;
+  let q = null;
+  let opaque = false;
+  let wantTarget = false;
+  let heredoc = null; // delimiter waiting for the end of the line
+  let hasRedirect = false;
+  const endWord = () => {
+    if (inWord) {
+      if (wantTarget) {
+        redirects.push({ seg: segs.length, target: w }); // resolved in its own segment's directory
+        wantTarget = false;
+        hasRedirect = true;
+      } else words.push(w);
+    }
+    w = '';
+    inWord = false;
+  };
+  const endSeg = () => {
+    endWord();
+    if (words.length || hasRedirect) segs.push(words);
+    words = [];
+    hasRedirect = false;
+  };
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q === "'") {
+      if (c === "'") q = null;
+      else w += c;
+      continue;
+    }
+    if (q === '"') {
+      if (c === '"') q = null;
+      else if (c === '\\' && i + 1 < cmd.length) w += cmd[++i];
+      else {
+        if (c === '`' || (c === '$' && cmd[i + 1] === '(')) opaque = true;
+        w += c;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      q = c;
+      inWord = true;
+      continue;
+    }
+    if (c === '\\') {
+      if (cmd[i + 1] === '\n') i++;
+      else if (i + 1 < cmd.length) {
+        w += cmd[++i];
+        inWord = true;
+      }
+      continue;
+    }
+    if (c === '#' && !inWord) {
+      while (i + 1 < cmd.length && cmd[i + 1] !== '\n') i++;
+      continue;
+    }
+    if (c === '`' || (c === '$' && cmd[i + 1] === '(')) {
+      opaque = true;
+      w += c;
+      inWord = true;
+      continue;
+    }
+    if (c === '\n') {
+      endSeg();
+      if (heredoc !== null) {
+        // skip the body up to the delimiter line
+        const { delim, strip } = heredoc;
+        heredoc = null;
+        let j = i + 1;
+        for (;;) {
+          const e = cmd.indexOf('\n', j);
+          const line = cmd.slice(j, e < 0 ? cmd.length : e);
+          if ((strip ? line.replace(/^\t+/, '') : line) === delim || e < 0) {
+            i = e < 0 ? cmd.length : e;
+            break;
+          }
+          j = e + 1;
+        }
+      }
+      continue;
+    }
+    if (c === '<') {
+      endWord();
+      if (cmd[i + 1] === '<' && cmd[i + 2] !== '<') {
+        opaque = true;
+        i += 2;
+        const strip = cmd[i] === '-';
+        if (strip) i++;
+        while (cmd[i] === ' ' || cmd[i] === '\t') i++;
+        const m = /^(?:'([^'\n]*)'|"([^"\n]*)"|([^\s;&|<>()]+))/.exec(cmd.slice(i, i + 256));
+        if (m) {
+          heredoc = { delim: m[1] ?? m[2] ?? m[3], strip };
+          i += m[0].length - 1;
+        } else i--;
+      } else if (cmd[i + 1] === '<') i += 2; // here-string
+      continue;
+    }
+    if (c === '>') {
+      if (inWord && /^\d+$/.test(w)) {
+        w = '';
+        inWord = false;
+      } else endWord();
+      if (cmd[i + 1] === '>' || cmd[i + 1] === '|') i++;
+      if (cmd[i + 1] === '&') {
+        i++;
+        if (/[\d-]/.test(cmd[i + 1] ?? '')) {
+          while (/[\d-]/.test(cmd[i + 1] ?? '')) i++;
+          continue;
+        }
+      }
+      wantTarget = true;
+      continue;
+    }
+    if (c === '&' && cmd[i + 1] === '>') {
+      endWord();
+      i++;
+      if (cmd[i + 1] === '>') i++;
+      wantTarget = true;
+      continue;
+    }
+    if (c === '|' || c === '&' || c === ';' || c === '(' || c === ')' || c === '{' || c === '}') {
+      if ((c === '{' || c === '}') && inWord) {
+        w += c;
+        continue;
+      }
+      endSeg();
+      continue;
+    }
+    if (c === ' ' || c === '\t') {
+      endWord();
+      continue;
+    }
+    w += c;
+    inWord = true;
+  }
+  endSeg();
+  if (q !== null) opaque = true; // unterminated quote: cannot be read
+  return { segs, redirects, opaque };
+}
+
+// --- scopes -------------------------------------------------------------------
+
+/** The real path of the nearest existing part, plus the rest: symlinks resolved, `..` gone. */
+export function realOf(p) {
+  const tail = [];
+  let d = resolve(p);
+  for (;;) {
+    try {
+      return join(realpathSync.native(d), ...tail);
+    } catch {
+      const up = dirname(d);
+      if (up === d) return resolve(p);
+      tail.unshift(basename(d));
+      d = up;
+    }
+  }
+}
+
+/**
+ * Canonical scope of a path (spec "Scopes"): repo-relative inside the
+ * repository, `~sakk/…` under SAKK_HOME, `~home/…` under the home folder,
+ * otherwise `~outside/<absolute>`. The home folder is named before the
+ * absolute path so that an allow written for a folder (a temp folder) never
+ * covers it, wherever HOME lives (`HOME=/tmp` in containers; F-146). The
+ * kernel matches canonical relative paths only, so these are the only shapes.
+ */
+export function scopeOf(path, { repoRoot, sakkHome, homeDir, real = realOf }) {
+  const abs = real(path);
+  const under = (base) => {
+    if (!base) return null;
+    const r = relative(real(base), abs);
+    if (r === '') return '.';
+    return r.startsWith('..') || isAbsolute(r) ? null : r.split(sep).join('/');
+  };
+  const inSakk = under(sakkHome);
+  if (inSakk !== null) return inSakk === '.' ? '~sakk' : `~sakk/${inSakk}`;
+  const inRepo = under(repoRoot);
+  if (inRepo !== null) {
+    if (inRepo === '.') return null; // the repository itself: no canonical relative name, so no scope
+
+    if (inRepo.startsWith('~'))
+      throw new ClassifyError(
+        'HOOK_PATH_UNREADABLE',
+        `a repository path may not start with ~: ${inRepo}`,
+      );
+    return inRepo;
+  }
+  const inHome = under(homeDir);
+  if (inHome !== null) return inHome === '.' ? '~home' : `~home/${inHome}`;
+  const parts = abs.split(sep).filter(Boolean);
+  return parts.length ? `~outside/${parts.join('/')}` : '~outside';
+}
+
+// --- secret files (the guard's first line; M3 adds content checks) ---------
+
+const SECRET_NAME =
+  /^(\.env(\..+)?|.*\.pem|.*\.key|id_(rsa|dsa|ecdsa|ed25519)(\.old)?|.*\.p12|.*\.pfx|.*\.keystore|\.npmrc|\.pypirc|\.netrc|\.pgpass|\.git-credentials|credentials|\.htpasswd)$/i;
+const NOT_SECRET = /^\.env\.(example|sample|template|defaults?|dist)$/i;
+export const isSecretPath = (p) => {
+  const b = basename(p);
+  return SECRET_NAME.test(b) && !NOT_SECRET.test(b);
+};
+
+// --- shell --------------------------------------------------------------------
+
+/**
+ * Wrapper commands, the flags of each that take a value (`sudo -u root`) and
+ * one sample of such a flag: the value is skipped with its flag, or it would
+ * be read as the command's name (F-145). A wrapper is added here with its
+ * value flags and a sample, never alone; the guard tests run every sample.
+ */
+export const WRAPPERS = new Map([
+  [
+    'sudo',
+    {
+      values: /^-[ugCDhprtUT]$|^--(user|group|close-from|chdir|host|prompt|role|type|other-user)$/,
+      sample: '-u root',
+    },
+  ],
+  ['doas', { values: /^-[uC]$/, sample: '-u root' }],
+  ['nice', { values: /^-n$|^--adjustment$/, sample: '-n 5' }],
+  ['time', { values: /^-[fo]$|^--(format|output)$/, sample: '-o /dev/null' }],
+  ['timeout', { values: /^-[sk]$|^--(signal|kill-after)$/, sample: '-s KILL 30' }],
+  ['exec', { values: /^-a$/, sample: '-a name' }],
+  ['nohup', { values: null, sample: '' }],
+  ['command', { values: null, sample: '-p' }],
+  ['builtin', { values: null, sample: '' }],
+]);
+const READERS = new Set(
+  'cat head tail less more bat nl od xxd hexdump strings tac wc file stat cut sort uniq diff cmp'.split(
+    ' ',
+  ),
+);
+const GREPS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack']);
+const INTERPRETERS = /^(python[\d.]*|node|deno|bun|ruby|perl|php)$/;
+const SHELLS = /^(sh|bash|zsh|dash|ksh|fish)$/;
+const DEFAULT_BRANCHES = /^(main|master|trunk|develop)$/;
+
+/** Strip environment assignments and wrapper commands; the word that remains names the command. */
+function unwrap(seg) {
+  let k = 0;
+  for (;;) {
+    const w = seg[k] ?? '';
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w)) k++;
+    else if (WRAPPERS.has(basename(w))) {
+      const { values } = WRAPPERS.get(basename(w));
+      k++;
+      // the wrapper's own flags, and the value of each flag that takes one
+      while ((seg[k] ?? '').startsWith('-')) k += values?.test(seg[k]) ? 2 : 1;
+      if (basename(w) === 'timeout') k++; // the duration
+    } else if (basename(w) === 'env') {
+      k++;
+      while ((seg[k] ?? '').startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(seg[k] ?? ''))
+        k += /^-[uSC]$|^--(unset|chdir|split-string)$/.test(seg[k]) ? 2 : 1;
+      if (k >= seg.length) return { name: 'env', args: [] }; // bare env prints the environment
+    } else break;
+  }
+  const words = seg.slice(k);
+  return { name: basename(words[0] ?? ''), args: words.slice(1) };
+}
+
+const dedupe = (list) => {
+  const seen = new Set();
+  return list.filter((a) => {
+    const k = `${a.action}\u0000${a.path ?? ''}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+};
+
+/**
+ * Actions a shell command takes: [{ action, path? }]. Paths are absolute,
+ * resolved against the command's own `cd`s; the caller turns them into
+ * scopes. A form the classifier does not know is `shell.run`.
+ */
+export function shellActions(cmd, cwd, { home = process.env.HOME ?? '', depth = 0 } = {}) {
+  if (typeof cmd !== 'string')
+    throw new ClassifyError('HOOK_PAYLOAD_INVALID', 'the command is not text');
+  if (cmd.length > MAX_COMMAND)
+    throw new ClassifyError(
+      'HOOK_INPUT_TOO_LARGE',
+      `the command is longer than ${MAX_COMMAND} characters`,
+    );
+  const out = [];
+  const add = (action, path) => out.push(path === undefined ? { action } : { action, path });
+  const { segs, redirects, opaque } = shellSegments(cmd);
+  if (opaque) add('shell.constructed'); // command substitution, a heredoc or an unterminated quote
+  // curl … | sh, base64 -d | bash: the text that runs is built at run time
+  if (/\|\s*(sudo\s+)?(sh|bash|zsh|dash|python[\d.]*|node|perl|ruby)\b/.test(cmd))
+    add('shell.constructed');
+  let here = cwd;
+  const abs = (p) =>
+    p === '~' ? home : p.startsWith('~/') ? join(home, p.slice(2)) : resolve(here, p);
+  for (const [i, seg] of segs.entries()) {
+    for (const r of redirects.filter((x) => x.seg === i))
+      if (!/^\/dev\/(null|stdout|stderr|tty|fd\/\d+)$/.test(r.target))
+        add('file.write', abs(r.target));
+    const { name, args } = unwrap(seg);
+    if (!name) continue;
+    const plain = args.filter((a) => !a.startsWith('-'));
+    const has = (re) => args.some((a) => re.test(a));
+    if (name === 'cd') {
+      if (plain[0] && plain[0] !== '-') here = abs(plain[0]);
+      continue;
+    }
+    if (name === 'eval' || name === 'source' || name === '.') {
+      add('shell.constructed');
+      continue;
+    }
+    if (SHELLS.test(name)) {
+      const ci = args.findIndex((a) => /^-[a-z]*c[a-z]*$/.test(a));
+      const script = ci >= 0 ? args[ci + 1] : undefined;
+      if (script === undefined) add('shell.run');
+      else if (/[$`]/.test(script) || depth >= 3) add('shell.constructed');
+      else out.push(...shellActions(script, here, { home, depth: depth + 1 }));
+      continue;
+    }
+    if (name === 'git') {
+      gitActions(args, here, abs, add);
+      continue;
+    }
+    if (['rm', 'rmdir', 'unlink', 'shred'].includes(name)) {
+      for (const f of plain) add('file.delete', abs(f));
+      continue;
+    }
+    if (name === 'find') {
+      const roots = [];
+      for (const a of args) {
+        if (a.startsWith('-') || a === '(' || a === '!') break;
+        roots.push(a);
+      }
+      if (has(/^-delete$/))
+        for (const r of roots.length ? roots : ['.']) add('file.delete', abs(r));
+      else if (has(/^-(exec|execdir|ok|okdir)$/)) add('shell.run');
+      continue;
+    }
+    if (name === 'mv') {
+      for (const f of plain.slice(0, -1)) add('file.delete', abs(f));
+      if (plain.length) add('file.write', abs(plain.at(-1)));
+      continue;
+    }
+    if (['cp', 'install', 'ln', 'rsync'].includes(name)) {
+      for (const f of plain.slice(0, -1)) add('file.read', abs(f));
+      if (plain.length) add('file.write', abs(plain.at(-1)));
+      continue;
+    }
+    if (['tee', 'touch', 'mkdir', 'truncate'].includes(name)) {
+      for (const f of plain) add('file.write', abs(f));
+      continue;
+    }
+    if (name === 'chmod' || name === 'chown') {
+      for (const f of plain.slice(1)) add('file.write', abs(f));
+      continue;
+    }
+    if (name === 'sed' && has(/^-[a-zA-Z]*i|^--in-place/)) {
+      for (const f of plain.slice(1)) add('file.write', abs(f));
+      continue;
+    }
+    if (READERS.has(name)) {
+      for (const f of plain) add('file.read', abs(f));
+      continue;
+    }
+    if (name === 'sed' || name === 'awk' || name === 'jq') {
+      for (const f of plain.slice(1)) add('file.read', abs(f));
+      continue;
+    }
+    if (GREPS.has(name)) {
+      const skip = args.includes('-e') || args.includes('-f') ? 0 : 1;
+      for (const f of plain.slice(skip)) add('file.read', abs(f));
+      continue;
+    }
+    if (
+      name === 'printenv' ||
+      (name === 'env' && args.length === 0) ||
+      (name === 'set' && args.length === 0) ||
+      (name === 'export' && args.includes('-p')) ||
+      (name === 'declare' && has(/^-[a-z]*x/))
+    ) {
+      add('secret.read');
+      continue;
+    }
+    const verb = plain[0];
+    const joined = args.join(' ');
+    if (name === 'kubectl' && verb === 'delete') add('prod.delete');
+    else if (name === 'kubectl' && ['apply', 'replace', 'rollout', 'create'].includes(verb))
+      add('deploy');
+    else if (name === 'terraform' && verb === 'destroy') add('prod.delete');
+    else if (name === 'terraform' && verb === 'apply') add('deploy');
+    else if (
+      name === 'aws' &&
+      verb === 's3' &&
+      (plain[1] === 'rb' || (plain[1] === 'rm' && has(/^--recursive$/)))
+    )
+      add('prod.delete');
+    else if (name === 'gcloud' && plain.includes('delete')) add('prod.delete');
+    else if (['dropdb', 'dropuser'].includes(name)) add('prod.delete');
+    else if (
+      ['psql', 'mysql', 'sqlite3', 'mongosh', 'mongo', 'redis-cli'].includes(name) &&
+      /\b(drop\s+(table|database|schema)|truncate\s+table|flushall|flushdb|dropDatabase)\b/i.test(
+        joined,
+      )
+    )
+      add('prod.delete');
+    else if (['vercel', 'netlify'].includes(name) && (has(/^--prod$/) || verb === 'deploy'))
+      add('deploy');
+    else if (['fly', 'flyctl'].includes(name) && verb === 'deploy') add('deploy');
+    else if (name === 'railway' && verb === 'up') add('deploy');
+    else if (name === 'npm' && verb === 'publish') add('deploy');
+    else if (name === 'gh' && verb === 'release' && plain[1] === 'create') add('deploy');
+    else if (
+      ['npm', 'pnpm', 'yarn', 'bun'].includes(name) &&
+      ['install', 'i', 'add'].includes(verb) &&
+      plain.length > 1
+    )
+      add('package.install');
+    else if (
+      ['pip', 'pip3', 'brew', 'gem', 'apt', 'apt-get', 'cargo', 'go'].includes(name) &&
+      ['install', 'add'].includes(verb)
+    )
+      add('package.install');
+    else if (name === 'uv' && (verb === 'add' || (verb === 'pip' && plain[1] === 'install')))
+      add('package.install');
+    else if (name === 'curl' && has(/^-(o|O)$|^--output|^--remote-name|^-[a-zA-Z]*[oO]$/))
+      add('net.download');
+    else if (name === 'wget') add('net.download');
+    else if (INTERPRETERS.test(name) && has(/^-(c|e)$|^--eval$/)) add('shell.constructed');
+    else add('shell.run');
+  }
+  return dedupe(out);
+}
+
+function gitActions(args, here, abs, add) {
+  let j = 0;
+  while (j < args.length && args[j].startsWith('-'))
+    j += /^-(C|c)$|^--(git-dir|work-tree)$/.test(args[j]) ? 2 : 1;
+  const sub = args[j];
+  const rest = args.slice(j + 1);
+  const plain = rest.filter((a) => !a.startsWith('-'));
+  const has = (re) => rest.some((a) => re.test(a));
+  const dd = rest.indexOf('--');
+  const paths = dd >= 0 ? rest.slice(dd + 1) : [];
+  switch (sub) {
+    case 'push':
+      if (
+        has(/^(-f|--force|--force-with-lease(=.*)?|--force-if-includes|--mirror|--delete|-d)$/) ||
+        plain.slice(1).some((r) => r.startsWith('+') || r.startsWith(':'))
+      )
+        add('git.destructive');
+      else add('shell.run');
+      return;
+    case 'reset':
+      add(has(/^--(hard|merge|keep)$/) ? 'git.destructive' : 'shell.run');
+      return;
+    case 'branch':
+      if (has(/^(-D|-d|--delete)$/) && plain.some((b) => DEFAULT_BRANCHES.test(b)))
+        add('git.destructive');
+      else add('shell.run');
+      return;
+    case 'filter-branch':
+    case 'filter-repo':
+      add('git.destructive');
+      return;
+    case 'clean':
+      add(has(/^-[a-zA-Z]*f|^--force$/) ? 'file.delete' : 'shell.run', here);
+      return;
+    case 'rm':
+      if (rest.includes('--cached')) add('shell.run');
+      else for (const f of plain) add('file.delete', abs(f));
+      return;
+    case 'mv':
+      for (const f of plain.slice(0, -1)) add('file.delete', abs(f));
+      if (plain.length) add('file.write', abs(plain.at(-1)));
+      return;
+    case 'checkout':
+    case 'restore':
+      if (paths.length) for (const f of paths) add('file.write', abs(f));
+      else if (sub === 'restore')
+        for (const f of plain.length ? plain : ['.']) add('file.write', abs(f));
+      else add('shell.run');
+      return;
+    case 'clone':
+      add('net.download');
+      return;
+    default:
+      add('shell.run');
+  }
+}
+
+// --- patches (Codex apply_patch) ------------------------------------------
+
+/** Files an apply_patch body touches: `*** Add|Update|Delete File: p` and `*** Move to: p`. */
+export function patchActions(patch, cwd) {
+  if (typeof patch !== 'string')
+    throw new ClassifyError('HOOK_PAYLOAD_INVALID', 'the patch is not text');
+  if (patch.length > 8 * MAX_COMMAND)
+    throw new ClassifyError('HOOK_INPUT_TOO_LARGE', 'the patch is too large to classify');
+  const out = [];
+  for (const m of patch.matchAll(/^\*\*\* (Add File|Update File|Delete File|Move to): (.+)$/gm))
+    out.push({
+      action: m[1] === 'Delete File' ? 'file.delete' : 'file.write',
+      path: resolve(cwd, m[2].trim()),
+    });
+  if (out.length === 0) out.push({ action: 'shell.constructed' }); // a patch whose files cannot be read
+  return dedupe(out);
+}
+
+/** Final step: paths become scopes; reads of secret files become secret.read. */
+/**
+ * What a delete would take with it (F-146): a target that contains the
+ * repository, the home folder or Sakk's state is named `~protected/<what>`,
+ * so no allow written for a folder (a temp folder, the repository) can match
+ * it — deleting a parent deletes everything under it.
+ */
+function protectedBy(path, { repoRoot, sakkHome, homeDir, real = realOf }) {
+  const abs = real(path);
+  const contains = (base) => {
+    if (!base) return false;
+    const r = relative(abs, real(base));
+    return r === '' || !(r.startsWith('..') || isAbsolute(r));
+  };
+  if (contains(repoRoot)) return 'repo';
+  if (contains(homeDir)) return 'home';
+  if (contains(sakkHome)) return 'sakk';
+  return null;
+}
+
+export function toDecisions(actions, ctx) {
+  return actions.map(({ action, path }) => {
+    if (path === undefined) return { action };
+    if (action === 'file.delete') {
+      const what = protectedBy(path, ctx);
+      if (what !== null) return { action, scope: `~protected/${what}` };
+    }
+    const scope = scopeOf(path, ctx);
+    const named = action === 'file.read' && isSecretPath(path) ? 'secret.read' : action;
+    return scope === null ? { action: named } : { action: named, scope };
+  });
+}

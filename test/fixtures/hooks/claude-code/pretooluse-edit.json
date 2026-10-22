@@ -1,0 +1,20 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "/home/user/.claude/projects/-work-repo/00000000-0000-4000-8000-000000000001.jsonl",
+  "cwd": "/work/repo",
+  "scratchpad_dir": "/tmp/claude-scratchpad",
+  "prompt_id": "prompt-fixture",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/work/repo/sample.txt",
+    "old_string": "probe write",
+    "new_string": "probe edit",
+    "replace_all": false
+  },
+  "tool_use_id": "toolu_fixture_edit"
+}

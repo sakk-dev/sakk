@@ -79,6 +79,27 @@ const LEDGER_TOP_KEYS_V1 = [
 const LEDGER_TOP_KEYS_V2 = [...LEDGER_TOP_KEYS_V1, 'halt'];
 /** Freshness bound: older than this is refused (every write refreshes updatedAt). */
 export const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * F-105 (C-04), first part: every stored input is bounded — 1,500
+ * reservations with 4 KB call ids and 1e-300 estimates once grew a ledger to
+ * 6 MB and each call to 58 ms. The second part, the books growing with use
+ * (each call reads and rewrites the whole file), is the archive's job: no
+ * entry cap, nothing dropped (owner's decision, 2026-10-22).
+ */
+export const LIMITS = Object.freeze({
+  idChars: 256,
+  nameChars: 256,
+  reasonChars: 1024,
+  minEstimateUsd: 1e-6,
+});
+function checkLength(field, value, max) {
+  if (typeof value === 'string' && value.length > max)
+    throw new LedgerError('INPUT_TOO_LONG', `${field} is longer than ${max} characters`, {
+      field,
+      length: value.length,
+    });
+}
 const LOCK_WAIT_MS = 5;
 const LOCK_TRIES = 400; // ~2s of spinning, then a structured error — never proceed lockless
 /**
@@ -208,6 +229,7 @@ export function forceUnlock({ ledgerPath = defaultLedgerPath(), by }) {
   ledgerPath = canonicalLedgerPath(ledgerPath);
   if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('UNLOCK_BY_REQUIRED', 'Breaking a lock by hand requires a name');
+  checkLength('by', by, LIMITS.nameChars);
   const lock = `${ledgerPath}.lock`;
   rmSync(`${lock}.breaklock`, { recursive: true, force: true }); // a crashed breaker parks here
   if (!existsSync(lock)) return { ok: true, removed: false };
@@ -464,6 +486,7 @@ function checkAgentId(agentId, { scope = false } = {}) {
     throw new LedgerError('AGENT_ID_INVALID', 'agentId must be a non-empty string when given', {
       agentId: typeof agentId === 'string' ? agentId : typeof agentId,
     });
+  checkLength('agentId', agentId, LIMITS.idChars);
 }
 
 export function totalsOf(doc) {
@@ -557,6 +580,7 @@ export function initLedger({
   capUsd,
   initializedBy = 'explicit-init',
 }) {
+  checkLength('initializedBy', initializedBy, LIMITS.nameChars);
   ledgerPath = canonicalLedgerPath(ledgerPath);
   if (!isFiniteNonNeg(capUsd) || capUsd <= 0)
     throw new LedgerError('LEDGER_INIT_INVALID', 'capUsd must be a positive number', { capUsd });
@@ -601,10 +625,15 @@ export function reserve({
   ledgerPath = canonicalLedgerPath(ledgerPath);
   if (typeof callId !== 'string' || callId === '')
     throw new LedgerError('CALL_ID_REQUIRED', 'Every potentially paid call needs a unique callId');
-  if (!isFiniteNonNeg(estimatedMaxUsd) || estimatedMaxUsd <= 0)
-    throw new LedgerError('ESTIMATE_INVALID', 'estimatedMaxUsd must be a positive number', {
-      callId,
-    });
+  checkLength('callId', callId, LIMITS.idChars);
+  checkLength('runId', runId, LIMITS.idChars);
+  checkLength('taskId', taskId, LIMITS.idChars);
+  if (!isFiniteNonNeg(estimatedMaxUsd) || estimatedMaxUsd < LIMITS.minEstimateUsd)
+    throw new LedgerError(
+      'ESTIMATE_INVALID',
+      `estimatedMaxUsd must be a number of at least ${LIMITS.minEstimateUsd}`,
+      { callId },
+    );
   checkAgentId(agentId);
   const lock = acquireLock(ledgerPath);
   try {
@@ -707,6 +736,7 @@ export function settle({
   // for and echoed back (F-82 — an echoed nested value crashed the MCP gate)
   if (typeof callId !== 'string' || callId === '')
     throw new LedgerError('CALL_ID_REQUIRED', 'Settling needs the callId the reservation used');
+  checkLength('callId', callId, LIMITS.idChars);
   const lock = acquireLock(ledgerPath);
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
@@ -819,6 +849,8 @@ export function halt({ ledgerPath = defaultLedgerPath(), by, reason = '', agentI
   // blank names refused here, or the record would fail its own read check
   if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('HALT_BY_REQUIRED', 'Halting requires a name');
+  checkLength('by', by, LIMITS.nameChars);
+  checkLength('reason', typeof reason === 'string' ? reason : String(reason), LIMITS.reasonChars);
   checkAgentId(agentId, { scope: true });
   const scoped = typeof agentId === 'string';
   const lock = acquireLock(ledgerPath);
@@ -855,6 +887,7 @@ export function resume({ ledgerPath = defaultLedgerPath(), by, agentId }) {
   // blank names refused here, or the record would fail its own read check
   if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('RESUME_BY_REQUIRED', 'Resuming requires a name');
+  checkLength('by', by, LIMITS.nameChars);
   checkAgentId(agentId, { scope: true });
   const scoped = typeof agentId === 'string';
   const lock = acquireLock(ledgerPath);
@@ -894,6 +927,7 @@ export function clearReconciliation({ ledgerPath = defaultLedgerPath(), by }) {
   ledgerPath = canonicalLedgerPath(ledgerPath);
   if (typeof by !== 'string' || by.trim() === '')
     throw new LedgerError('RECONCILE_BY_REQUIRED', 'Clearing the flag requires a name');
+  checkLength('by', by, LIMITS.nameChars);
   const lock = acquireLock(ledgerPath);
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });

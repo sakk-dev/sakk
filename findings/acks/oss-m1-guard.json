@@ -1,0 +1,140 @@
+{
+  "version": 2,
+  "branch": "oss/m1-guard",
+  "answers": {
+    "C-16.1": {
+      "answer": "The CI change only adds the base's src/classify.mjs to what the base-checker step copies, so the version already merged keeps judging the branch with its own parser; the branch's checker still runs too, and both must pass.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    },
+    "C-01.1": {
+      "answer": "Every absent input of the hook is a deny with a code, never a pass: no payload, a payload without tool_name or tool_input, no policy file, an unreadable policy, no git repository (stated in the reason), an unwritable decision log. The halt check with no ledger configured says so in the decision line instead of silently skipping.",
+      "guard": "test/guard.test.mjs::every malformed payload is a deny with a code",
+      "revisions": [
+        {
+          "finding": "F-141",
+          "answer": "Every absent input of the hook ends in a deny with a code, never a pass: no payload, a payload without tool_name or tool_input, no git repository (stated in the reason), an unwritable decision log. An unreadable project policy gives way to the last one that loaded, which still judges every call; with no copy, an unreadable config or ledger, the rules are unknown and only reading the project goes on, everything else denied with the code.",
+          "guard": "test/guard.test.mjs::with no good policy to fall back to, only reading the project goes on"
+        }
+      ]
+    },
+    "C-01.2": {
+      "answer": "Each absent-input case has a test that deletes the input and expects the deny code, and the shipped-policy test deletes the policy file and expects HOOK_POLICY_UNREADABLE, so none of these inputs is optional.",
+      "guard": "test/guard.test.mjs::every malformed payload is a deny with a code",
+      "revisions": [
+        {
+          "finding": "F-141",
+          "answer": "Each absent-input case has a test that removes the input and expects the deny code; the policy cases expect the kept policy to keep denying (a force push stays denied) and, with no copy, only an in-repo read to pass while a test run is denied with HOOK_POLICY_UNREADABLE.",
+          "guard": "test/guard.test.mjs::with no good policy to fall back to, only reading the project goes on"
+        }
+      ]
+    },
+    "C-02.1": {
+      "answer": "The classifier states one rule: a call is a named action only when its form is recognised; anything else is shell.run (no scope) and reaches the policy's later rules. The destructive forms are a measured table with both sides, not a list the rule depends on for safety of unknown commands.",
+      "guard": "test/guard.test.mjs::the classifier table: destructive forms caught, ordinary work untouched",
+      "revisions": [
+        {
+          "finding": "F-145",
+          "answer": "A call is a named action only when its form is recognised, and a recognised wrapper is read with its own grammar: each wrapper in WRAPPERS declares which flags take a value and a sample, the value is skipped with its flag, and the guard tests run every sample in front of a force push.",
+          "guard": "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)"
+        }
+      ]
+    },
+    "C-02.2": {
+      "answer": "The same normalization runs for every agent and every tool: Claude Code Bash, Edit and Write, Cursor shell, read and write, Codex Bash and apply_patch all become one Event before classification, so a rule written once applies to every route.",
+      "guard": "test/guard.test.mjs::each agent gets its own answer shape"
+    },
+    "C-03.1": {
+      "answer": "Each adversary row has a test that runs the bad call and checks the deny names the right rule; a control runs the same call with the rule removed from a copy of the policy and expects allow, so the deny comes from that rule and nothing else.",
+      "guard": "test/guard.test.mjs::the shipped policy denies the headline cases"
+    },
+    "C-03.2": {
+      "answer": "The hook tests run bin/sakk.mjs hook as a child process with real payload shapes recorded from Claude Code, so they observe the exact stdout and exit code the agent acts on, not a function return.",
+      "guard": "test/guard.test.mjs::real recorded payloads of each agent are understood"
+    },
+    "C-03.3": {
+      "answer": "The doctor's fire test sends a synthetic forced push through the installed command line and requires a deny, so 'installed' means the hook actually decides, not that a config entry exists.",
+      "guard": "test/guard.test.mjs::doctor fails when the hook would not fire"
+    },
+    "C-04.1": {
+      "answer": "The hook bounds its input (1 MiB payload, 64 KiB command) and refuses above it, keeps a 2 s internal deadline that answers deny, and the class detector for C-04 feeds attacker-shaped inputs to every exported matcher and ledger operation and asserts a counter of work, never a stopwatch.",
+      "guard": "test/cost-bounds.test.mjs::every exported function shows how its work is bounded"
+    },
+    "C-05.1": {
+      "answer": "docs/GUARD.md and the README quick start name only behaviour that a guard test checks; the spec's adversary rows each name their test, and test/core-specs.test.mjs fails if a named test does not exist once src/hook.mjs and src/classify.mjs are registered as core.",
+      "guard": "test/core-specs.test.mjs::every guard test a three-tables spec names exists",
+      "revisions": [
+        {
+          "finding": "F-148",
+          "answer": "The docs, the README quick start and every table in the spec state only what a test compares with the code: the adversary rows name their tests, and the shipped-policy table must list the policy file's rules in their order with their verdicts.",
+          "guard": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)"
+        }
+      ]
+    },
+    "C-05.2": {
+      "answer": "Every deny reason names the rule, the action and the way out (edit the policy, sakk resume, the dispute path), and a test follows each way out and expects the next call to pass.",
+      "guard": "test/guard.test.mjs::each refusal names its rule and a way forward"
+    },
+    "C-06.1": {
+      "answer": "The decision log records the agent name as passed by the installed config and says it is self-declared; the console and docs never present it as a verified identity, and the policy hash is the strong part of the record.",
+      "guard": "test/guard.test.mjs::the decision log is appended, never rewritten"
+    },
+    "C-07.1": {
+      "answer": "The payload, the command text and file paths come from the agent: sizes are bounded, nothing from them is executed or passed to a shell, paths are canonicalized after resolving symlinks and refused when they cannot be, and control characters never reach the log or a terminal.",
+      "guard": "test/guard.test.mjs::every malformed payload is a deny with a code"
+    },
+    "C-07.2": {
+      "answer": "The agent cannot clear what stops it: writes to .sakk/ and to Sakk's state under SAKK_HOME are denied by the shipped policy, resume after a halt is a CLI step by a person, and the hook never answers allow on its own so the agent's permission prompts still apply.",
+      "guard": "test/guard.test.mjs::the agent cannot write the policy it is judged by"
+    },
+    "C-08.1": {
+      "answer": "A path reaches one canonical name only: symlinks and .. are resolved, repository paths become repo-relative, outside paths become ~outside/<absolute>, Sakk state becomes ~sakk/<relative>; a name that cannot be made canonical is refused rather than matched loosely.",
+      "guard": "test/guard.test.mjs::deletes outside the repository are denied through every alias",
+      "revisions": [
+        {
+          "finding": "F-146",
+          "answer": "A path reaches one canonical name, and that name does not depend on where a folder happens to live: the home folder is ~home/…, Sakk state ~sakk/…, and a delete whose target contains the repository, the home folder or Sakk state is named ~protected/<what> and denied before any folder allow.",
+          "guard": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)"
+        }
+      ]
+    },
+    "C-09.1": {
+      "answer": "The hook is tested with no git repository, a detached HEAD, a cwd outside the repository, Node 20 and 22 in CI, and the real payload of each agent; the install writes an absolute node path so PATH at hook time does not matter.",
+      "guard": "test/guard.test.mjs::real recorded payloads of each agent are understood",
+      "revisions": [
+        {
+          "finding": "F-147",
+          "answer": "Besides the environments (no repository, detached HEAD, Node 20 and 22, each agent's real payload), the registries this branch adds to are tried past the size they were written at: drill ids of any length, rules in any number.",
+          "guard": "test/core-specs.test.mjs::every drill entry is recognised, however many letters its id has (F-147)"
+        }
+      ]
+    },
+    "C-09.2": {
+      "answer": "The doctor checks where each agent really loads hooks from (start folder, user and managed settings, Cursor's import of Claude Code hooks) and runs the installed command line once; a guard configured where no session loads it fails the doctor.",
+      "guard": "test/guard.test.mjs::doctor fails when the hook would not fire"
+    },
+    "C-10.1": {
+      "answer": "The guard's required steps are in the hook itself: halt, cap and rules are decided on every call, the decision is logged before the answer is returned, and a failure to log is a deny; nothing relies on the agent following a written rule.",
+      "guard": "test/guard.test.mjs::an unwritable decision log is a deny"
+    },
+    "C-10.2": {
+      "answer": "Routes are listed in the spec's adversary table: other agents get their own installed hook, a session started elsewhere is caught by the doctor's start-folder check, and @-mentions and agents without hooks are stated ceilings; the hook's own config files are asked before any write.",
+      "guard": "test/guard.test.mjs::writes to agent hook configs are asked"
+    },
+    "C-11.1": {
+      "answer": "An allow from the hook is never written as allow to the agent (it stays silent), so a Sakk allow cannot widen Claude Code's own permissions; each decision line says which check produced it (halt, cap, rule id), so no line means more than the check that wrote it.",
+      "guard": "test/guard.test.mjs::each agent gets its own answer shape"
+    },
+    "C-13.1": {
+      "answer": "The classifier is measured on both sides with one table: ordinary work (tests, builds, git reads, in-repo edits) must stay allowed and every destructive form (force push, reset --hard, rm outside, prod deletes) must be caught, including wrapped and quoted forms.",
+      "guard": "test/guard.test.mjs::the classifier table: destructive forms caught, ordinary work untouched"
+    },
+    "C-15.1": {
+      "answer": "Real payloads recorded from a running Claude Code are fixtures the tests feed to the real hook binary; Cursor and Codex payloads come from their official docs until they can be recorded, and the fixtures say which kind they are.",
+      "guard": "test/guard.test.mjs::real recorded payloads of each agent are understood"
+    },
+    "C-14.1": {
+      "answer": "The hook's failures are isolated from the agent's work and from their own repair: any error inside the hook is a deny with a code, never a crash the agent reads as a pass, and the loop's checker keeps a repair path that works even when its library cannot load (F-141).",
+      "guard": "test/self-evolution-cli.test.mjs::F-141: the gate's own files can be edited while the checker cannot load"
+    }
+  }
+}

@@ -12,8 +12,8 @@
     "sakk": "bin/sakk.mjs"
   },
   "scripts": {
-    "test": "node --test --test-timeout=300000 test/*.test.mjs",
-    "test:eval": "node eval/bin/gold-runner.mjs --validate && node --test --test-timeout=300000 eval/__tests__/*.test.mjs",
+    "test": "node --test --import ./test/bounded-spawn.mjs --test-timeout=300000 test/*.test.mjs",
+    "test:eval": "node eval/bin/gold-runner.mjs --validate && node --test --import ./test/bounded-spawn.mjs --test-timeout=300000 eval/__tests__/*.test.mjs",
     "test:all": "npm test && npm run test:eval",
     "drill": "sh scripts/mutation-drill.sh",
     "format": "npx -y prettier@3.9.10 --write .",

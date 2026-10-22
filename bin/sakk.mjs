@@ -18,6 +18,8 @@ import {
 import { loadPolicy } from '../src/policy.mjs';
 import { startMcpServer } from '../src/mcp.mjs';
 import { display, scanPaths, scanStaged, ScanError } from '../src/secret-scan.mjs';
+import { evaluate, normalize, runHook } from '../src/hook.mjs';
+import { doctor, install, uninstall } from '../src/guard-install.mjs';
 
 /**
  * sakk CLI — the smallest useful surface over the ledger.
@@ -79,6 +81,12 @@ Usage:
   sakk mcp --ledger <path> [--policy <path>]              MCP stdio server: reserve/settle/status as tools
   sakk scan <paths...> | --staged | --install-hook        find secrets (fingerprints only; exit 1 on findings)
 
+The agent guard:
+  sakk guard install|uninstall <agent> [--user]          add or remove the hook (claude-code | cursor | codex)
+  sakk try "<command>" [--read <path>] [--json]           how the guard would judge a command (nothing runs)
+  sakk doctor [--json]                                    check the guard really fires where you work
+  sakk hook --agent <agent>                               the hook itself: payload on stdin (installed for you)
+
 Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status) · 4 halted (status; wins over 3, both shown)
 max_reservable_usd of 0 means nothing fits under the cap (reserve requires a positive amount)
@@ -106,6 +114,10 @@ const COMMANDS = {
   resume: { values: ['by', 'agent', 'ledger'], bools: [] },
   mcp: { values: ['ledger', 'policy'], bools: [] },
   scan: { values: [], bools: ['staged', 'install-hook'], positional: true },
+  hook: { values: ['agent'], bools: [] },
+  try: { values: ['read'], bools: ['json'], positional: true },
+  guard: { values: [], bools: ['user'], positional: true },
+  doctor: { values: [], bools: ['json'] },
 };
 if (Object.hasOwn(COMMANDS, cmd)) {
   const spec = COMMANDS[cmd];
@@ -475,6 +487,99 @@ if (cmd === 'init') {
       process.exitCode = 2;
     }
   }
+} else if (cmd === 'hook') {
+  // never a crash, never a prompt: whatever happens, the agent gets an answer
+  let raw = '';
+  try {
+    raw = readFileSync(0, 'utf8');
+  } catch {
+    /* an unreadable stdin is an empty payload: runHook denies it */
+  }
+  const out = runHook(val('agent'), raw);
+  if (out) process.stdout.write(out);
+} else if (cmd === 'try') {
+  const words = argv.slice(1).filter((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--read');
+  const read = val('read');
+  if ((words.length === 0) === (read === undefined)) {
+    console.error(
+      'TRY_USAGE: give one command in quotes, or --read <path> — e.g. sakk try "git push --force"',
+    );
+    process.exit(2);
+  }
+  const payload = {
+    hook_event_name: 'PreToolUse',
+    cwd: process.cwd(),
+    session_id: 'sakk-try',
+    tool_use_id: `try-${Date.now()}`,
+    ...(read === undefined
+      ? { tool_name: 'Bash', tool_input: { command: words.join(' ') } }
+      : { tool_name: 'Read', tool_input: { file_path: resolve(read) } }),
+  };
+  let r;
+  try {
+    r = evaluate(normalize('claude-code', payload), { log: false });
+  } catch (e) {
+    console.error(String(e?.message ?? e));
+    process.exit(1);
+  }
+  if (flag('json')) {
+    console.log(
+      JSON.stringify(
+        {
+          verdict: r.verdict,
+          reason: r.reason,
+          policy: r.policyPath,
+          policyHash: r.policyHash,
+          decisions: r.decisions.map((d) => ({
+            action: d.context.action,
+            scope: d.context.scope ?? null,
+            verdict: d.verdict,
+            rule: d.ruleId,
+          })),
+        },
+        null,
+        1,
+      ),
+    );
+  } else {
+    for (const d of r.decisions)
+      console.log(
+        `${d.verdict.padEnd(16)} ${d.context.action}${d.context.scope ? ` ${display(d.context.scope)}` : ''}  (rule ${d.ruleId ?? 'default'})`,
+      );
+    console.log(
+      `→ ${r.verdict === 'require_approval' ? 'ask you first' : r.verdict}${r.reason ? `\n${r.reason}` : ''}`,
+    );
+    console.log(`policy ${r.policyPath} (sha256 ${r.policyHash.slice(0, 12)}…)`);
+  }
+} else if (cmd === 'guard') {
+  const [action, agent] = argv.slice(1).filter((a) => !a.startsWith('--'));
+  if (
+    !['install', 'uninstall'].includes(action) ||
+    !['claude-code', 'cursor', 'codex'].includes(agent)
+  ) {
+    console.error('GUARD_USAGE: sakk guard install|uninstall claude-code|cursor|codex [--user]');
+    process.exit(2);
+  }
+  let r;
+  try {
+    r = (action === 'install' ? install : uninstall)(agent, { user: flag('user') });
+  } catch (e) {
+    console.error(String(e?.message ?? e));
+    process.exit(1);
+  }
+  if (!r.changed) console.log(`${agent}: nothing to change in ${r.path}`);
+  else
+    console.log(
+      `${agent}: ${action === 'install' ? 'guard added to' : 'guard removed from'} ${r.path}${r.backup ? ` (previous file kept at ${r.backup})` : ''}${r.onFailure ? '; a hook that fails to run blocks the call (onFailure: block)' : ''}`,
+    );
+  if (action === 'install') console.log('next: sakk doctor — it checks the hook really fires');
+} else if (cmd === 'doctor') {
+  const checks = doctor();
+  if (flag('json')) console.log(JSON.stringify(checks, null, 1));
+  else
+    for (const c of checks)
+      console.log(`${c.ok ? (c.warn ? '!' : '✓') : '✗'} ${c.name} — ${c.detail}`);
+  process.exitCode = checks.every((c) => c.ok) ? 0 : 1;
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);
 } else {

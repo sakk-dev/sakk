@@ -260,6 +260,56 @@ run_drill MUT-S src/secret-scan.mjs \
   "F-63: an exempt match never hides a real secret it swallowed" \
   "test"
 
+# ── The guard (open-source v1, M1; specs/guard/) ──
+
+# MUT-AA: switch off the halt check → the halt test must die red
+run_drill MUT-AA src/hook.mjs \
+  "    else if (halt && !readsProject(a))" \
+  "    else if (false)" \
+  "a halt set between two calls stops the second" \
+  "test"
+
+# MUT-AB: answer with the first action instead of the strictest → a chained
+# force push behind an allowed command must die red
+run_drill MUT-AB src/hook.mjs \
+  "(RANK[d.verdict] > RANK[w.verdict] ? d : w)" \
+  "(w.context ? w : d)" \
+  "every destructive git form is denied" \
+  "test"
+
+# MUT-AC: let an error answer allow → the malformed-payload test must die red
+run_drill MUT-AC src/hook.mjs \
+  "      'deny',
+      \`Sakk: refused" \
+  "      'allow',
+      \`Sakk: refused" \
+  "every malformed payload is a deny with a code" \
+  "test"
+
+# MUT-AD: stop resolving symlinks → a delete outside the repository through a
+# link inside it must die red
+run_drill MUT-AD src/classify.mjs \
+  "export function scopeOf(path, { repoRoot, sakkHome, homeDir, real = realOf }) {
+  const abs = real(path);" \
+  "export function scopeOf(path, { repoRoot, sakkHome, homeDir, real = realOf }) {
+  const abs = resolve(path);" \
+  "deletes outside the repository are denied through every alias" \
+  "test"
+
+# MUT-AE: add the hook on every install → the idempotence test must die red
+run_drill MUT-AE src/guard-install.mjs \
+  "    if (!present) {" \
+  "    if (true) {" \
+  "install merges, repeats cleanly and uninstalls only itself" \
+  "test"
+
+# MUT-AF: trust a kept policy copy that changed → the tampered-copy test must die red
+run_drill MUT-AF src/hook.mjs \
+  "if (loaded.policyHash !== meta.policyHash) throw new Error('the kept copy changed');" \
+  "if (false) throw new Error('the kept copy changed');" \
+  "with no good policy to fall back to, only reading the project goes on" \
+  "test"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"

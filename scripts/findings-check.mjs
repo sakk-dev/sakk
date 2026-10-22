@@ -26,7 +26,16 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
+// Loaded lazily (F-141): if the library itself cannot load, the edit hook can
+// still let the repair of the gate's own files through — and nothing else.
+let lib;
+let libError = null;
+try {
+  lib = await import('./findings-lib.mjs');
+} catch (e) {
+  libError = e;
+}
+const {
   EXEMPT,
   ackPath,
   ackRewrites,
@@ -47,10 +56,57 @@ import {
   slug,
   stopProblems,
   stoppedClasses,
-} from './findings-lib.mjs';
+} = lib ?? {};
 
 const args = process.argv.slice(2);
 const mode = args[0];
+
+/** The gate's own files: what may be repaired while the checker cannot load. */
+const REPAIRABLE = /^(scripts\/findings-[\w-]+\.mjs|src\/classify\.mjs|findings\/.*)$/;
+if (libError !== null) {
+  const why = `self-evolution: the checker cannot load (${libError.message.split('\n')[0]})`;
+  if (mode !== '--edit') {
+    console.error(`${why} — fix scripts/findings-*.mjs or src/classify.mjs`);
+    process.exit(mode === undefined ? 2 : 1);
+  }
+  let hook = null;
+  try {
+    hook = JSON.parse(readFileSync(0, 'utf8'));
+  } catch {
+    process.exit(0); // not a hook payload: nothing to check
+  }
+  const repo = realpathSync(join(dirname(fileURLToPath(import.meta.url)), '..'));
+  const file = hook?.tool_input?.file_path ?? hook?.tool_input?.notebook_path;
+  if (typeof file === 'string' && file !== '') {
+    // one spelling per place (/var and /private/var): resolve the nearest existing parent
+    let abs = resolve(typeof hook.cwd === 'string' ? hook.cwd : repo, file);
+    for (let d = dirname(abs), tail = [abs.slice(dirname(abs).length + 1)]; ;) {
+      try {
+        abs = join(realpathSync(d), ...tail);
+        break;
+      } catch {
+        if (dirname(d) === d) break;
+        tail.unshift(d.slice(dirname(d).length + 1));
+        d = dirname(d);
+      }
+    }
+    const rel = relative(repo, abs);
+    if (rel.startsWith('..') || isAbsolute(rel) || REPAIRABLE.test(rel)) process.exit(0);
+  }
+  const cmd = hook?.tool_input?.command;
+  // the one shell repair: restore the gate's own files from git, nothing chained
+  if (
+    typeof cmd === 'string' &&
+    /^git (-C \S+ )?(checkout|restore)( --)? (scripts\/findings-[\w-]+\.mjs|src\/classify\.mjs)( (scripts\/findings-[\w-]+\.mjs|src\/classify\.mjs))*$/.test(
+      cmd.trim(),
+    )
+  )
+    process.exit(0);
+  console.error(
+    `${why}. Only the gate's own files can be repaired now (Edit/Write on scripts/findings-*.mjs, src/classify.mjs, findings/, or: git restore <those files>).`,
+  );
+  process.exit(2);
+}
 const git = (root, ...a) =>
   execFileSync('git', a, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 const fail = (msg, code = 1) => {

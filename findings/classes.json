@@ -39,7 +39,8 @@
       ],
       "detectors": [
         "test/cli-strictness.test.mjs::every CLI refuses what it does not understand",
-        "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed"
+        "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
+        "test/ci-honesty.test.mjs::no workflow turns a skip or a failure into a green check"
       ]
     },
     {
@@ -62,7 +63,9 @@
       "detectors": [
         "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
         "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
-        "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has"
+        "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has",
+        "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)",
+        "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)"
       ]
     },
     {
@@ -107,14 +110,13 @@
       ],
       "detectors": [
         "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock",
-        "test/claims-are-checked.test.mjs::every node --test script carries --test-timeout"
+        "test/claims-are-checked.test.mjs::every node --test script carries --test-timeout",
+        "test/cost-bounds.test.mjs::every exported function shows how its work is bounded",
+        "test/bounded-spawn.test.mjs::every node --test run loads the bound"
       ],
       "stopline": {
         "after": "F-107",
-        "debt": {
-          "plan": "Open-source v1 M0: a class detector that sizes attacker-shaped inputs for every exported matcher and ledger operation by an operation counter (never a clock) and asserts the bound; closes the F-105 and F-107 gap before M1 and M2 touch src/match.mjs and src/ledger.mjs.",
-          "until": "2026-10-28"
-        }
+        "detector": "test/cost-bounds.test.mjs::every exported function shows how its work is bounded"
       }
     },
     {
@@ -137,7 +139,8 @@
       "detectors": [
         "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code",
         "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
-        "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism"
+        "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism",
+        "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)"
       ]
     },
     {
@@ -193,7 +196,8 @@
       ],
       "detectors": [
         "test/ledger.test.mjs::F-85: a ledger reached through a symlinked or hard-linked FILE refuses",
-        "eval/__tests__/stranger-regressions.test.mjs::relative --out stranger"
+        "eval/__tests__/stranger-regressions.test.mjs::relative --out stranger",
+        "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)"
       ]
     },
     {
@@ -215,7 +219,8 @@
       ],
       "detectors": [
         "eval/__tests__/stranger-regressions.test.mjs::relative --out stranger",
-        "test/secret-scan.test.mjs::the hook as SHIPPED"
+        "test/secret-scan.test.mjs::the hook as SHIPPED",
+        "test/core-specs.test.mjs::every drill entry is recognised, however many letters its id has (F-147)"
       ]
     },
     {
@@ -238,7 +243,8 @@
       "detectors": [
         "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through",
         "test/core-specs.test.mjs::every source file is classified core or not core",
-        "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit"
+        "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit",
+        "test/core-specs.test.mjs::every drill anchor is found exactly once in its file, without running the drill (F-149)"
       ]
     },
     {

@@ -49,11 +49,18 @@ jobs:
         run: |
           base="${BASE_REF:?the range check needs the pull request base}"
           if ! git cat-file -e "origin/$base:scripts/findings-check.mjs" 2>/dev/null; then
-            echo "self-evolution: the base has no checker yet; only this branch's checker ran"
-            exit 0
+            echo "::error::self-evolution: the base has no checker, so nothing older judges this branch"
+            exit 1
           fi
-          mkdir -p "$RUNNER_TEMP/base-checker/scripts"
-          for f in $(git ls-tree --name-only "origin/$base" scripts/ | grep -E '^scripts/findings-[a-z-]+\.mjs$'); do
+          # the gate's files as the base lists them (scripts/gate-files.json, F-144);
+          # a base from before the list has only its scripts/findings-*.mjs
+          if git cat-file -e "origin/$base:scripts/gate-files.json" 2>/dev/null; then
+            files=$(git show "origin/$base:scripts/gate-files.json" | node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0, "utf8")).files.join("\n"))')
+          else
+            files=$(git ls-tree --name-only "origin/$base" scripts/ | grep -E '^scripts/findings-[a-z-]+\.mjs$')
+          fi
+          for f in $files; do
+            mkdir -p "$RUNNER_TEMP/base-checker/$(dirname "$f")"
             git show "origin/$base:$f" > "$RUNNER_TEMP/base-checker/$f"
           done
           SAKK_BRANCH="$HEAD_REF" node "$RUNNER_TEMP/base-checker/scripts/findings-check.mjs" --range "origin/$base"

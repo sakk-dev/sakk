@@ -20,6 +20,11 @@
           "kind": "detector",
           "ref": "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
           "since": "F-65"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/ci-honesty.test.mjs::no workflow turns a skip or a failure into a green check",
+          "since": "F-142"
         }
       ]
     },
@@ -95,6 +100,16 @@
           "kind": "detector",
           "ref": "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit",
           "since": "F-98"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)",
+          "since": "F-148"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/core-specs.test.mjs::every drill anchor is found exactly once in its file, without running the drill (F-149)",
+          "since": "F-149"
         }
       ]
     },
@@ -135,6 +150,11 @@
           "kind": "detector",
           "ref": "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has",
           "since": "F-81"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)",
+          "since": "F-144"
         }
       ]
     },
@@ -175,6 +195,11 @@
           "kind": "detector",
           "ref": "eval/__tests__/scorer-rules.test.mjs::fires on its trigger, and not without it",
           "since": "F-89"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/bounded-spawn.test.mjs::every node --test run loads the bound",
+          "since": "F-143"
         }
       ]
     },
@@ -190,6 +215,16 @@
           "kind": "detector",
           "ref": "scripts/l1-fuzz.mjs::F-63 class: a declared fiction right before the secret",
           "since": "F-65"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)",
+          "since": "F-145"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)",
+          "since": "F-146"
         }
       ]
     },
@@ -3158,12 +3193,12 @@
       "instance_fix": "open",
       "class_fix": null,
       "guard": "",
-      "sweep": "Needs a policy choice: an entry cap, a size guard or a minimum estimate — a product decision.",
+      "sweep": "Owner's decision 2026-10-22: no entry cap and no history dropped — the live books stay small through an append-only, hash-chained archive with a call-id index, so a call costs the same at any age; that is the fix this finding waits for. Already landed (open-source M1): every stored input is bounded (INPUT_TOO_LONG at 256/1024 characters, an estimate floor of 1e-6, POLICY_TOO_LARGE at 4 MiB).",
       "sweep_status": "not_done",
       "status": "open",
       "areas": ["src/ledger.mjs", "src/mcp.mjs"],
       "mechanism_gap": "RC-01 detectors cover inputs one call at a time; growth across many valid calls was never measured.",
-      "mechanism_upgrade": "none: open — product decision",
+      "mechanism_upgrade": "none: open — the archive closes it; test/cost-bounds.test.mjs holds the gap as F-105 debt until then",
       "class": "C-04"
     },
     {
@@ -4184,6 +4219,288 @@
       ],
       "mechanism_gap": "The RC-07 detectors check that gates run; none checks the flags that tell git not to run them.",
       "mechanism_upgrade": "test/self-evolution-cli.test.mjs::F-140: commands that turn the git hooks off are refused even with every answer given"
+    },
+    {
+      "id": "F-141",
+      "date": "2026-10-22",
+      "introduced_in": "ece32d3",
+      "found_by": "T0",
+      "class": "C-14",
+      "title": "A checker that cannot load locked out the edits that would repair it",
+      "symptom": "On 2026-10-22 the shell tokenizer was moved into src/classify.mjs before that file existed. findings-lib.mjs then failed to import, findings-check.mjs crashed before its own repair exemption could run, and the parent folder's dispatcher, which fails closed on a crash, denied every edit and every shell command in the repository for the rest of the session, including the edits that would have repaired it.",
+      "evidence": "hook refusals in the session transcript on Edit, Write and Bash: \"ERR_MODULE_NOT_FOUND … src/classify.mjs … denied rather than let an unchecked call through\"; work continued only as drafts outside the repository until the owner restored one file",
+      "direct_cause": "The repair exemption sat behind a static import that could fail.",
+      "why": [
+        "The exemption was written for errors inside the check, not for the check failing to load.",
+        "The dispatcher was made fail closed without a repair path that does not depend on the component that fails."
+      ],
+      "root_cause": "The failure of one module took down the path meant to repair it.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-09"],
+      "es": ["ES-07"],
+      "instance_fix": "this commit: findings-check loads its library lazily; while it cannot load, edits to scripts/findings-*.mjs, src/classify.mjs and findings/ pass, and so does git restore of exactly those files; everything else is denied with the way to repair",
+      "guard": "test/self-evolution-cli.test.mjs::F-141: the gate's own files can be edited while the checker cannot load",
+      "class_fix": null,
+      "sweep": "The parent dispatcher and the managed install keep failing closed; the repair path lives in the checker, the one component that knows its own files. Pre-commit and CI still fail while the checker cannot load.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/findings-check.mjs"],
+      "mechanism_gap": "The RC-09 detectors isolate failures on product paths and in scripts; none fed the loop's own checker a library that cannot load.",
+      "mechanism_upgrade": "test/self-evolution-cli.test.mjs::F-141: the gate's own files can be edited while the checker cannot load"
+    },
+    {
+      "id": "F-142",
+      "date": "2026-10-22",
+      "introduced_in": "7c226a2",
+      "found_by": "human",
+      "class": "C-01",
+      "title": "A review that could not run showed as a passed check",
+      "symptom": "pr-review.yml's adversarial-review job, with no DEEPSEEK_API_KEY in this repository, printed a notice and ended with exit 0, so every pull request carried a green check although no model review ran; the session's status report then counted it as passed. Three more paths in the same job did the same (a failed API call, an empty response, a review that could not be posted), and ci.yml's base-checker step exited 0 when the base had no checker.",
+      "evidence": "inbox 2026-10-22T07-21-52-808Z-2b4f48; the owner: the key was configured for the HostApp repository, not this one",
+      "direct_cause": "Skipping the work was written as a successful step.",
+      "why": [
+        "The job could only say pass or fail, and skipped was spelled pass.",
+        "No check read the workflows for steps that end early with success."
+      ],
+      "root_cause": "A check that did not run reported success.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "pattern": "fail-open-absence",
+      "instance_fix": "this commit: a review-key job says only whether a key is set; the review job runs only if it is (needs + if), so without a key it shows as skipped; once it runs, a failed call, an empty response or a review that cannot be posted fails the check; the base-checker step fails when the base has no checker",
+      "guard": "test/ci-honesty.test.mjs::no workflow turns a skip or a failure into a green check",
+      "class_fix": null,
+      "sweep": "Every workflow in .github/workflows/ was read for exit 0, || true, || echo and continue-on-error: five uses, all in pr-review.yml and ci.yml, all fixed; the detector now runs on every workflow file.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [".github/workflows/pr-review.yml", ".github/workflows/ci.yml"],
+      "mechanism_gap": "The C-01 detectors read product commands and docs; none read the CI workflows that report on them.",
+      "mechanism_upgrade": "test/ci-honesty.test.mjs::no workflow turns a skip or a failure into a green check"
+    },
+    {
+      "id": "F-143",
+      "date": "2026-10-22",
+      "introduced_in": "ece32d3",
+      "found_by": "T0",
+      "class": "C-04",
+      "title": "A hung child held the test run for twenty minutes; --test-timeout cannot bound it",
+      "symptom": "During a local run of four test files in parallel, the checker spawned by test/self-evolution.test.mjs ('a command longer than the bound…') sat blocked reading its stdin while its parent waited in spawnSync; the test ran 1,223 s against a 300 s --test-timeout and the run had to be found and killed by hand. The hang itself did not recur in 392 tries (8×4 targeted parallel runs, 360 stress spawns with 70 KB stdin), so its direct cause is not known.",
+      "evidence": "session 2026-10-22: process 6803 sampled in read(0) under ReadFileUtf8; test output \"a command longer than the bound is refused… (1223036 ms)\"; scratchpad stdin-stress.mjs and repro.sh found no repeat",
+      "direct_cause": "Test helpers started synchronous children without a timeout.",
+      "why": [
+        "A synchronous child blocks the event loop, so the timer behind --test-timeout cannot fire.",
+        "The C-04 detector checked that every node --test script carries --test-timeout and was read as bounding every test."
+      ],
+      "root_cause": "The test tool's own bound was trusted for a case it cannot see.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-07"],
+      "instance_fix": "this commit: test/bounded-spawn.mjs is loaded before every test file (--import in npm test, test:eval and the pre-commit hook) and gives every spawnSync, execFileSync and execSync without its own timeout a 240 s bound with SIGKILL, saying on stderr which child it killed",
+      "guard": "test/bounded-spawn.test.mjs::every node --test run loads the bound",
+      "class_fix": null,
+      "sweep": "115 synchronous spawns in test/ and eval/__tests__/ are now bounded by the preload rather than one by one; the detector covers npm scripts, scripts/hooks/ and .github/workflows/.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "test/self-evolution.test.mjs",
+        "test/self-evolution-cli.test.mjs",
+        "package.json",
+        "scripts/hooks/pre-commit"
+      ],
+      "mechanism_gap": "The C-04 detector proved every run carries --test-timeout, and --test-timeout cannot interrupt a synchronous child.",
+      "mechanism_upgrade": "test/bounded-spawn.test.mjs::every node --test run loads the bound"
+    },
+    {
+      "id": "F-144",
+      "date": "2026-10-22",
+      "introduced_in": "e3eec09",
+      "found_by": "T0",
+      "class": "C-02",
+      "title": "The gate's files were listed by hand in five places, and one copy missed a file",
+      "symptom": "When the shell tokenizer moved to src/classify.mjs, the test of the base-branch checker still copied only scripts/findings-check.mjs and findings-lib.mjs, so the base checker failed to load ('Cannot find module …/src/classify.mjs') and the test failed for that reason instead of judging the branch. The same set was written out separately in both test harnesses, the CI base-checker step and the checker's repair path.",
+      "evidence": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too, 2026-10-22: \"the checker cannot load (Cannot find module … src/classify.mjs …)\"",
+      "direct_cause": "One test copied a fixed list of two files.",
+      "why": [
+        "Each place that copies the gate wrote its own list.",
+        "Nothing compared those lists with what the checker imports."
+      ],
+      "root_cause": "A list written in each place stood in for the rule 'the files the gate runs from'.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-04"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: scripts/gate-files.json lists the files once; both harnesses, the base-checker test and the CI base-checker step read it (CI falls back to the old pattern only for a base from before the list)",
+      "guard": "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)",
+      "class_fix": null,
+      "sweep": "All five copies found by searching for findings-check.mjs and findings-lib.mjs across test/, scripts/ and .github/; the checker's repair path keeps its own pattern until the dispatcher's last-known-good snapshot (RC-09 review) replaces it, and the detector compares the list with the checker's real import closure.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "test/self-evolution.test.mjs",
+        "test/self-evolution-cli.test.mjs",
+        ".github/workflows/ci.yml"
+      ],
+      "mechanism_gap": "The C-02 detectors compare product rules with their lists; the gate's own file set was never one of them.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)"
+    },
+    {
+      "id": "F-145",
+      "date": "2026-10-22",
+      "introduced_in": "worktree",
+      "found_by": "T0",
+      "class": "C-02",
+      "title": "A wrapper's flag value was read as the command, so a force push behind sudo -u passed",
+      "symptom": "In the guard's classifier (M1 draft), `sudo -u root env FOO=1 command git push --force` skipped sudo's flags but not the value of -u, took `root` as the command's name and answered shell.run, which the shipped policy allows. The draft's own test caught it before any commit.",
+      "evidence": "test/guard.test.mjs::wrappers are unwrapped before the command is named, first run 2026-10-22: \"sudo -u root env FOO=1 command git push --force\" not destructive",
+      "direct_cause": "The unwrapper skipped words starting with - and nothing else.",
+      "why": [
+        "Wrappers were a list of names; which of their flags take a value was not part of it.",
+        "The next literal word was taken as the command without the wrapper's grammar."
+      ],
+      "root_cause": "A list of wrapper names stood in for each wrapper's grammar.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-03"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-02.1",
+        "why": "C-02.1 said a call is a named action only when its form is recognised and anything else is shell.run; a wrapper form was recognised but misread, so the unknown-is-shell.run rule let a destructive command through as an ordinary one."
+      },
+      "instance_fix": "this commit: WRAPPERS maps each wrapper to the flags that take a value and a sample; the value is skipped with its flag (sudo, doas, nice, time, timeout, exec; env -u/-S/-C)",
+      "guard": "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)",
+      "class_fix": null,
+      "sweep": "Every wrapper in the list was given its value flags from its manual page; env handled the same way; the detector runs each wrapper's sample in front of a force push, and a wrapper added without a sample fails it.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/classify.mjs"],
+      "mechanism_gap": "The C-02 detectors check lists against their rules in the ledger and policy code; the classifier's wrapper list is new in M1 and had none.",
+      "mechanism_upgrade": "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)"
+    },
+    {
+      "id": "F-146",
+      "date": "2026-10-22",
+      "introduced_in": "worktree",
+      "found_by": "T0",
+      "class": "C-08",
+      "title": "A temp-folder allow covered the home folder, and deleting the repository itself had no name",
+      "symptom": "In the guard's shipped policy (M1 draft), allow-temp-cleanup matched ~outside/var/folders/ by prefix and came before deny-rm-outside-repo; with HOME inside a temp folder (the test world here, HOME=/tmp in many containers) `rm -rf ~/` and `rm -rf ~/work` were allowed. The same review showed that `rm -rf .` or `cd .. && rm -rf <repo>` gave the repository root no scope, so allow-in-repo answered allow.",
+      "evidence": "test/guard.test.mjs::the shipped policy denies the headline cases and ::deletes outside the repository are denied through every alias, first runs 2026-10-22: \"rm -rf ~/\" allow",
+      "direct_cause": "Folder allows were judged on the target path alone.",
+      "why": [
+        "The home folder had no name of its own, only whatever absolute path it sits at.",
+        "A delete was named for its target, not for what lies under it: the repository, home, Sakk state."
+      ],
+      "root_cause": "One folder had several names, and the one a rule saw depended on where it happened to live.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-03"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-08.1",
+        "why": "C-08.1 gave every path one canonical name, but the home folder's name was its absolute path, so a temp-folder prefix could cover it, and a delete of a parent was named for the parent instead of for the repository or home inside it."
+      },
+      "instance_fix": "this commit: paths under the home folder are ~home/…; a delete whose target contains the repository, the home folder or SAKK_HOME is ~protected/repo|home|sakk; the shipped policy denies ~protected/ first and ~home/ with ~outside/",
+      "guard": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)",
+      "class_fix": null,
+      "sweep": "Every allow in the shipped policy was read for a folder prefix: allow-temp-cleanup was the only one; mv of the repository, find -delete on a parent and rm of ~/.sakk now name what they take; spec and docs list the new scopes.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/classify.mjs", "policies/guard-default.json"],
+      "mechanism_gap": "The C-08 detectors check that aliases of one path reach one name; none checked what a folder rule covers when the folder contains another protected one.",
+      "mechanism_upgrade": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)"
+    },
+    {
+      "id": "F-147",
+      "date": "2026-10-22",
+      "introduced_in": "worktree",
+      "found_by": "T0",
+      "class": "C-09",
+      "title": "The drill check assumed one-letter ids and missed the 27th drill",
+      "symptom": "test/core-specs.test.mjs looked for each core file's drill with /run_drill MUT-[A-Z] file /, written in 458c86d when there were fewer than 26 drills; the guard's drills MUT-AA…AE were not recognised and the three new core files read as undrilled.",
+      "evidence": "test/core-specs.test.mjs, 2026-10-22: \"src/hook.mjs: has a spec and a mutation-drill anchor — no drill anchor\"",
+      "direct_cause": "The id pattern matched one letter.",
+      "why": [
+        "The format of an id was never stated, only assumed from the ids that existed.",
+        "No test ran the pattern against an id past Z."
+      ],
+      "root_cause": "A state that was true while the registry was small was taken as a rule.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "answer_failed": {
+        "qid": "C-09.1",
+        "why": "C-09.1 listed the environments the hook is tried in (no repository, detached HEAD, Node 20 and 22) and not the state of the registries this branch adds to; the 27th drill was a state no check had tried."
+      },
+      "instance_fix": "this commit: one drillLine() pattern takes ids of any length, used by every core-file test",
+      "guard": "test/core-specs.test.mjs::every drill entry is recognised, however many letters its id has (F-147)",
+      "class_fix": null,
+      "sweep": "Other id patterns read for the same assumption: findings (F-\\d+), questions (C-\\d+\\.\\d+) and classes take any number of digits; drill ids were the only fixed-width one.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["test/core-specs.test.mjs"],
+      "mechanism_gap": "The C-09 detectors try environments; none tried a registry grown past the size it was written at.",
+      "mechanism_upgrade": "test/core-specs.test.mjs::every drill entry is recognised, however many letters its id has (F-147)"
+    },
+    {
+      "id": "F-148",
+      "date": "2026-10-22",
+      "introduced_in": "worktree",
+      "found_by": "T0",
+      "class": "C-05",
+      "title": "The guard spec's rule table differed from the shipped policy",
+      "symptom": "specs/guard/spec.md listed the shipped rules without allow-temp-cleanup, in an order other than the policy's, with two rules folded into one row; rules match first to last, so the table described a policy that does not exist.",
+      "evidence": "review of specs/guard/spec.md against policies/guard-default.json while fixing F-146, 2026-10-22",
+      "direct_cause": "The table was written by hand beside the policy.",
+      "why": [
+        "Nothing compared the table with the policy file.",
+        "The order of rules, which decides the answer, was not part of what the table had to match."
+      ],
+      "root_cause": "A statement about the policy was kept by memory.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-07"],
+      "es": ["ES-01"],
+      "answer_failed": {
+        "qid": "C-05.1",
+        "why": "C-05.1 made the docs and the spec's adversary rows name tested behaviour, but the spec's rule table was outside both, so it drifted from the policy file with nothing to fail."
+      },
+      "instance_fix": "this commit: the table lists every shipped rule, one per row, in the policy's order, with its verdict",
+      "guard": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)",
+      "class_fix": null,
+      "sweep": "docs/GUARD.md names no rule list of its own (it points to the policy file); the README quick start names behaviour only.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["specs/guard/spec.md"],
+      "mechanism_gap": "The C-05 detectors check that named codes and tests exist; none compared a spec table with the file it describes.",
+      "mechanism_upgrade": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)"
+    },
+    {
+      "id": "F-149",
+      "date": "2026-10-22",
+      "introduced_in": "worktree",
+      "found_by": "T0",
+      "class": "C-10",
+      "title": "Drill anchors drifted from the source four times, and only the hour-long drill noticed",
+      "symptom": "While building M1, prettier's line wrapping broke new drill anchors (MUT-AB, MUT-AC) and two later edits broke MUT-AA (the halt line was rewritten) and MUT-AD (the anchor came to appear twice in src/classify.mjs). Each was found only when the mutation drill ran, about an hour per full run; the plan's step 're-check every drill anchor after prettier' was done by hand and missed two.",
+      "evidence": "scratchpad drill-m1.out, 2026-10-22: \"[MUT-AA] DRILL BROKEN: anchor not found exactly once in src/hook.mjs\", \"[MUT-AD] … src/classify.mjs\"",
+      "direct_cause": "Anchors are literal source text, and only the drill read them.",
+      "why": [
+        "The drill is slow, so it runs before merge, not on each change.",
+        "Re-checking anchors after an edit was a step in a plan, done from memory."
+      ],
+      "root_cause": "A required check was kept as a written step instead of a test.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "answer_failed": {
+        "qid": "C-10.1",
+        "why": "C-10.1 moved the guard's required steps into the hook itself, but this branch's own step of re-checking drill anchors after an edit or a reformat stayed a line in a plan, so two anchors drifted unseen until the drill ran."
+      },
+      "instance_fix": "this commit: MUT-AA and MUT-AD point at the current source; npm test reads every drill anchor the way run_drill receives it (double- or single-quoted) and fails when one is not found exactly once",
+      "guard": "test/core-specs.test.mjs::every drill anchor is found exactly once in its file, without running the drill (F-149)",
+      "class_fix": null,
+      "sweep": "All 32 drill entries are read by the new test; it also fails if an entry is laid out so that it cannot be read, so none is skipped.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/mutation-drill.sh"],
+      "mechanism_gap": "The C-10 detectors turn rule text into checks for the product; the drill's anchors were checked only by the drill itself.",
+      "mechanism_upgrade": "test/core-specs.test.mjs::every drill anchor is found exactly once in its file, without running the drill (F-149)"
     }
   ]
 }

@@ -359,7 +359,9 @@ export function stopProblems(req, stopped) {
 
 // --- R1: shell commands -----------------------------------------------------
 
-export const MAX_COMMAND = 64 * 1024;
+// One tokenizer for the loop and the guard (F-133): src/classify.mjs.
+import { MAX_COMMAND, shellSegments } from '../src/classify.mjs';
+export { MAX_COMMAND, shellSegments };
 
 const READ_ONLY = new Set(
   (
@@ -445,156 +447,6 @@ function gitKind(rest, isPath) {
 const NPM_READ =
   /^(test|t|lint|format:check|gate|audit|brief|inbox|findings-report|findings:check|test:[\w:-]+)$/;
 const LOOP_TOOLS = /^scripts\/findings-(brief|check|inbox|report)\.mjs$/;
-
-/**
- * Split a command into segments (arrays of words) outside quotes, collecting
- * output-redirect targets and whether anything opaque (heredoc, command
- * substitution) appears. Linear in the length; no backtracking.
- */
-export function shellSegments(cmd) {
-  const segs = [];
-  const redirects = [];
-  let words = [];
-  let w = '';
-  let inWord = false;
-  let q = null;
-  let opaque = false;
-  let wantTarget = false;
-  let heredoc = null; // delimiter waiting for the end of the line
-  let hasRedirect = false;
-  const endWord = () => {
-    if (inWord) {
-      if (wantTarget) {
-        redirects.push({ seg: segs.length, target: w }); // resolved in its own segment's directory
-        wantTarget = false;
-        hasRedirect = true;
-      } else words.push(w);
-    }
-    w = '';
-    inWord = false;
-  };
-  const endSeg = () => {
-    endWord();
-    if (words.length || hasRedirect) segs.push(words);
-    words = [];
-    hasRedirect = false;
-  };
-  for (let i = 0; i < cmd.length; i++) {
-    const c = cmd[i];
-    if (q === "'") {
-      if (c === "'") q = null;
-      else w += c;
-      continue;
-    }
-    if (q === '"') {
-      if (c === '"') q = null;
-      else if (c === '\\' && i + 1 < cmd.length) w += cmd[++i];
-      else {
-        if (c === '`' || (c === '$' && cmd[i + 1] === '(')) opaque = true;
-        w += c;
-      }
-      continue;
-    }
-    if (c === "'" || c === '"') {
-      q = c;
-      inWord = true;
-      continue;
-    }
-    if (c === '\\') {
-      if (cmd[i + 1] === '\n') i++;
-      else if (i + 1 < cmd.length) {
-        w += cmd[++i];
-        inWord = true;
-      }
-      continue;
-    }
-    if (c === '#' && !inWord) {
-      while (i + 1 < cmd.length && cmd[i + 1] !== '\n') i++;
-      continue;
-    }
-    if (c === '`' || (c === '$' && cmd[i + 1] === '(')) {
-      opaque = true;
-      w += c;
-      inWord = true;
-      continue;
-    }
-    if (c === '\n') {
-      endSeg();
-      if (heredoc !== null) {
-        // skip the body up to the delimiter line
-        const { delim, strip } = heredoc;
-        heredoc = null;
-        let j = i + 1;
-        for (;;) {
-          const e = cmd.indexOf('\n', j);
-          const line = cmd.slice(j, e < 0 ? cmd.length : e);
-          if ((strip ? line.replace(/^\t+/, '') : line) === delim || e < 0) {
-            i = e < 0 ? cmd.length : e;
-            break;
-          }
-          j = e + 1;
-        }
-      }
-      continue;
-    }
-    if (c === '<') {
-      endWord();
-      if (cmd[i + 1] === '<' && cmd[i + 2] !== '<') {
-        opaque = true;
-        i += 2;
-        const strip = cmd[i] === '-';
-        if (strip) i++;
-        while (cmd[i] === ' ' || cmd[i] === '\t') i++;
-        const m = /^(?:'([^'\n]*)'|"([^"\n]*)"|([^\s;&|<>()]+))/.exec(cmd.slice(i, i + 256));
-        if (m) {
-          heredoc = { delim: m[1] ?? m[2] ?? m[3], strip };
-          i += m[0].length - 1;
-        } else i--;
-      } else if (cmd[i + 1] === '<') i += 2; // here-string
-      continue;
-    }
-    if (c === '>') {
-      if (inWord && /^\d+$/.test(w)) {
-        w = '';
-        inWord = false;
-      } else endWord();
-      if (cmd[i + 1] === '>' || cmd[i + 1] === '|') i++;
-      if (cmd[i + 1] === '&') {
-        i++;
-        if (/[\d-]/.test(cmd[i + 1] ?? '')) {
-          while (/[\d-]/.test(cmd[i + 1] ?? '')) i++;
-          continue;
-        }
-      }
-      wantTarget = true;
-      continue;
-    }
-    if (c === '&' && cmd[i + 1] === '>') {
-      endWord();
-      i++;
-      if (cmd[i + 1] === '>') i++;
-      wantTarget = true;
-      continue;
-    }
-    if (c === '|' || c === '&' || c === ';' || c === '(' || c === ')' || c === '{' || c === '}') {
-      if ((c === '{' || c === '}') && inWord) {
-        w += c;
-        continue;
-      }
-      endSeg();
-      continue;
-    }
-    if (c === ' ' || c === '\t') {
-      endWord();
-      continue;
-    }
-    w += c;
-    inWord = true;
-  }
-  endSeg();
-  if (q !== null) opaque = true; // unterminated quote: cannot be read
-  return { segs, redirects, opaque };
-}
 
 /**
  * R1. What a shell command may write. kind: 'read' (provably read-only),

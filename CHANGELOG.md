@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the agent guard (open-source v1, M1)
+
+- `sakk hook --agent claude-code|cursor|codex`: one hook for all three
+  agents. Each tool call is classified into actions (`file.read`,
+  `file.write`, `file.delete`, `secret.read`, `git.destructive`,
+  `prod.delete`, `deploy`, `package.install`, `net.download`,
+  `shell.constructed`, `shell.run`, `mcp.<server>.<tool>`) and judged by the
+  policy kernel. Any error is a deny with a code.
+- `sakk guard install|uninstall <agent> [--user]`, `sakk try "<command>"`,
+  `sakk doctor` (checks the hook really fires).
+- `policies/guard-default.json`: the shipped policy (docs/GUARD.md).
+- Scopes (public API): repo-relative, `~sakk/…`, `~home/…`,
+  `~outside/<absolute>`, and `~protected/repo|home|sakk` for a delete that
+  would take the repository, the home folder or Sakk's state with it
+  (F-146).
+- A broken rule file is isolated, never a refusal of every call (RC-09):
+  - A project policy that fails to load gives way to the last one that
+    loaded, kept in `$SAKK_HOME/policy-good/`. Refusals say so, and
+    `alerts.jsonl` records `POLICY_FALLBACK`.
+  - With nothing to fall back to, or an unreadable config or ledger, only
+    reading the project goes on (`ruleId: rules-unknown`).
+- New refusal codes in hook answers (public API): `HOOK_PAYLOAD_INVALID`,
+  `HOOK_INPUT_TOO_LARGE`, `HOOK_POLICY_UNREADABLE`, `HOOK_LEDGER_UNREADABLE`,
+  `HOOK_CONFIG_UNREADABLE`, `HOOK_CONTEXT_INVALID`, `HOOK_DEADLINE`,
+  `HOOK_PATH_UNREADABLE`, `HOOK_USAGE`.
+
+### Added — bounds on what the books store (F-105, first part; C-04)
+
+- New refusal codes (public API):
+  - `INPUT_TOO_LONG`: a call id, run id, task id or agent id over 256
+    characters, a name over 256, or a halt reason over 1024.
+  - `POLICY_TOO_LARGE`: the policy file is over 4 MiB.
+- `ESTIMATE_INVALID` now also refuses estimates below $0.000001.
+- `test/cost-bounds.test.mjs` lists every exported function with the
+  refusal that bounds it; a new export without an entry fails the suite.
+
+### Fixed — found while building M1 (F-141 to F-149)
+
+- F-141: a checker that could not load locked the repository it guards. It
+  now loads its library lazily, and while it cannot load only the gate's own
+  files can be repaired.
+- F-142: the adversarial review showed as passed when no key was set. It
+  is now skipped at the job (shown as skipped), and a review that cannot be
+  made or posted fails.
+- F-143: a hung synchronous child could hold a test run with no bound.
+  `test/bounded-spawn.mjs` now bounds every one.
+- F-144: the gate's files are listed once, in `scripts/gate-files.json`.
+- F-145: a wrapper's flag value (`sudo -u root`) is no longer read as the
+  command.
+- F-146: a temp-folder allow no longer covers the home folder, and a delete
+  of the repository itself is named and denied.
+- F-147: drill ids of any length are recognised.
+- F-148: the guard spec's rule table is compared with the shipped policy.
+- F-149: every mutation-drill anchor is checked by `npm test`, not only by
+  the hour-long drill.
+
 ### Changed (release preparation)
 
 - Halt, resume, reconcile and unlock records are now described as named:

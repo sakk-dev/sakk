@@ -1,7 +1,14 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +31,11 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..');
+/** The gate's own files, listed once (F-144); the fallback only lets this file load on an older base. */
+const MANIFEST = join(REPO, 'scripts', 'gate-files.json');
+const GATE_FILES = existsSync(MANIFEST)
+  ? JSON.parse(readFileSync(MANIFEST, 'utf8')).files
+  : ['scripts/findings-check.mjs', 'scripts/findings-lib.mjs'];
 
 const LEDGER = {
   findings: [
@@ -60,8 +72,10 @@ function repo({ ledger = LEDGER, classes = CLASSES } = {}) {
   mkdirSync(join(d, 'scripts'), { recursive: true });
   mkdirSync(join(d, 'findings'), { recursive: true });
   mkdirSync(join(d, 'src'), { recursive: true });
-  for (const f of ['findings-check.mjs', 'findings-lib.mjs'])
-    copyFileSync(join(REPO, 'scripts', f), join(d, 'scripts', f));
+  for (const f of GATE_FILES) {
+    mkdirSync(dirname(join(d, f)), { recursive: true });
+    copyFileSync(join(REPO, f), join(d, f));
+  }
   writeFileSync(join(d, 'findings', 'ledger.json'), JSON.stringify(ledger));
   writeFileSync(join(d, 'findings', 'classes.json'), JSON.stringify(classes));
   writeFileSync(join(d, 'src', 'x.mjs'), 'export const x = 1;\n');
@@ -77,6 +91,10 @@ const check = (d, args, input, cwd = d) =>
     input,
     encoding: 'utf8',
     env: ENV,
+    // a hung checker fails the test in a minute instead of the run in twenty (seen on macOS
+    // with a 64 KB stdin under a loaded parallel run)
+    timeout: 60_000,
+    killSignal: 'SIGKILL',
   });
 const NONE = 'none: this throwaway repository has no test suite to point at';
 /** A version-2 answers file: every answer names its guard (R3). */
@@ -724,16 +742,22 @@ describe('R5: stop-the-line is a gate, not a document', () => {
     assert.match(at({ after: 'F-04' }), /one of detector, waiver or debt/);
   });
   test('control: the stop-line sees the classes stopped in the ledger, and only those', () => {
-    // the ledger as it stood on 2026-10-21 before this change (F-01…F-128, F-120 still open)
+    // the ledger as it stood on 2026-10-21 before this change (F-01…F-128, with
+    // F-105 and F-120 still open and their upgrades still "none", as they were then)
     const real = JSON.parse(readFileSync(join(REPO, 'findings', 'ledger.json'), 'utf8'));
     const reg = JSON.parse(readFileSync(join(REPO, 'findings', 'classes.json'), 'utf8'));
     const then = {
       findings: real.findings
         .filter((f) => Number(f.id.slice(2)) <= 128)
-        .map((f) =>
-          f.id === 'F-120'
-            ? { ...f, mechanism_upgrade: 'none: open — commit-time and CI enforcement cover it' }
-            : f,
+        .map(
+          (f) =>
+            ({
+              'F-120': {
+                ...f,
+                mechanism_upgrade: 'none: open — commit-time and CI enforcement cover it',
+              },
+              'F-105': { ...f, mechanism_upgrade: 'none: open — product decision' },
+            })[f.id] ?? f,
         ),
     };
     const bare = { classes: reg.classes.map(({ stopline, ...c }) => c) };
@@ -935,6 +959,27 @@ describe('R6: the data the gate reads only moves forward', () => {
       );
     }
   });
+  test("the gate's files are listed once, and the list is what the checker loads (F-144)", () => {
+    assert.ok(existsSync(MANIFEST), 'scripts/gate-files.json lists the files the gate runs from');
+    // every relative module the checker reaches, statically or lazily
+    const closure = new Set();
+    const visit = (rel) => {
+      if (closure.has(rel)) return;
+      closure.add(rel);
+      const text = readFileSync(join(REPO, rel), 'utf8');
+      const specs = [
+        ...text.matchAll(/^\s*(?:import|export)\s[^'"]*?from\s*['"](\.[^'"]+)['"]/gm),
+        ...text.matchAll(/^\s*import\s*['"](\.[^'"]+)['"]/gm),
+        ...text.matchAll(/\bimport\(\s*['"](\.[^'"]+)['"]\s*\)/g),
+      ].map((m) => m[1]);
+      for (const sp of specs) visit(join(dirname(rel), sp).split('\\').join('/'));
+    };
+    visit('scripts/findings-check.mjs');
+    assert.deepEqual([...closure].sort(), [...GATE_FILES].sort());
+    // and everything that copies the gate reads the list instead of its own
+    const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
+    assert.match(ci, /scripts\/gate-files\.json/, 'the CI base-checker step reads the list');
+  });
   test("the base branch's checker judges the pull request too", () => {
     const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
     const start = ci.indexOf('\n  self-evolution:\n');
@@ -956,12 +1001,14 @@ describe('R6: the data the gate reads only moves forward', () => {
     commit(git, 'feat: x, with a checker that says yes');
     assert.equal(check(d, ['--range', 'main']).status, 0, "the branch's own checker now says yes");
     const baseDir = mkdtempSync(join(tmpdir(), 'base-checker-'));
-    mkdirSync(join(baseDir, 'scripts'));
-    for (const f of ['findings-check.mjs', 'findings-lib.mjs'])
+    // as the CI step does: every file of the gate, as the base has it
+    for (const f of GATE_FILES) {
+      mkdirSync(dirname(join(baseDir, f)), { recursive: true });
       writeFileSync(
-        join(baseDir, 'scripts', f),
-        execFileSync('git', ['show', `main:scripts/${f}`], { cwd: d, env: ENV }),
+        join(baseDir, f),
+        execFileSync('git', ['show', `main:${f}`], { cwd: d, env: ENV }),
       );
+    }
     const r = spawnSync(
       process.execPath,
       [join(baseDir, 'scripts', 'findings-check.mjs'), '--range', 'main'],

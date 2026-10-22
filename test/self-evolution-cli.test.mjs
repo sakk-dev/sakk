@@ -22,6 +22,11 @@ import { fileURLToPath } from 'node:url';
  */
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
+/** The gate's own files, listed once (F-144); the fallback only lets this file load on an older base. */
+const MANIFEST = join(REPO, 'scripts', 'gate-files.json');
+const GATE_FILES = existsSync(MANIFEST)
+  ? JSON.parse(readFileSync(MANIFEST, 'utf8')).files
+  : ['scripts/findings-check.mjs', 'scripts/findings-lib.mjs'];
 const ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
 const ANSWER = 'Absent input refuses with a named code and the test deletes it to prove so.';
 const NONE = 'none: this throwaway repository has no test suite to point at';
@@ -54,8 +59,10 @@ function repo({ ledger = LEDGER, classes = CLASSES } = {}) {
   const d = mkdtempSync(join(tmpdir(), 'selfevo-cli-'));
   const git = (...a) => execFileSync('git', a, { cwd: d, stdio: 'ignore', env: ENV });
   for (const sub of ['scripts', 'findings', 'src']) mkdirSync(join(d, sub), { recursive: true });
-  for (const f of ['findings-check.mjs', 'findings-lib.mjs'])
-    copyFileSync(join(REPO, 'scripts', f), join(d, 'scripts', f));
+  for (const f of GATE_FILES) {
+    mkdirSync(dirname(join(d, f)), { recursive: true });
+    copyFileSync(join(REPO, f), join(d, f));
+  }
   writeFileSync(join(d, 'findings', 'ledger.json'), JSON.stringify(ledger));
   writeFileSync(join(d, 'findings', 'classes.json'), JSON.stringify(classes));
   writeFileSync(join(d, 'src', 'x.mjs'), 'export const x = 1;\n');
@@ -325,5 +332,46 @@ describe('skipping the hooks is refused, and disputing the gate is the way out',
     const r = edit(d);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /--source dispute/);
+  });
+});
+
+describe('F-141: a broken checker can still be repaired, and nothing else passes', () => {
+  /** A repository whose checker library imports something that is not there. */
+  function broken() {
+    const { d } = repo();
+    const lib = join(d, 'scripts', 'findings-lib.mjs');
+    writeFileSync(lib, `import './does-not-exist.mjs';\n${readFileSync(lib, 'utf8')}`);
+    return d;
+  }
+  const editOf = (d, file) =>
+    check(
+      d,
+      ['--edit'],
+      JSON.stringify({ tool_name: 'Edit', cwd: d, tool_input: { file_path: join(d, file) } }),
+    );
+  test("F-141: the gate's own files can be edited while the checker cannot load", () => {
+    const d = broken();
+    assert.equal(editOf(d, 'scripts/findings-lib.mjs').status, 0, 'the repair is let through');
+    assert.equal(editOf(d, 'findings/ledger.json').status, 0, 'logging a problem is never blocked');
+    assert.equal(
+      bash(d, 'git restore scripts/findings-lib.mjs').status,
+      0,
+      'restoring the file from git',
+    );
+  });
+  test('F-141: everything else is denied, with the way to repair, not a crash', () => {
+    const d = broken();
+    const r = editOf(d, 'src/x.mjs');
+    assert.equal(
+      r.status,
+      2,
+      'a deny, not a crash (exit 1), so no caller reads it as an error to ignore',
+    );
+    assert.match(r.stderr, /Only the gate's own files can be repaired now/);
+    assert.equal(
+      bash(d, 'git restore scripts/findings-lib.mjs && rm -rf src').status,
+      2,
+      'nothing chained onto the repair',
+    );
   });
 });
