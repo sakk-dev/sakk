@@ -4991,6 +4991,42 @@
       "distinct_from": {
         "F-83": "F-83 is a backticked FILE NAME in the README that did not exist; F-161 is a documented CLI COMMAND that the binary does not implement — the same class (docs name something absent) but a different surface, and the new detector covers commands where F-83's covered file names."
       }
+    },
+    {
+      "id": "F-162",
+      "date": "2026-10-22",
+      "introduced_in": "b821cf9",
+      "found_by": "review",
+      "class": "C-04",
+      "title": "The console's read-only /api/agents ran subprocesses and could block the event loop; four lower review notes",
+      "symptom": "The independent review of M4 found: (1) MODERATE — GET /api/agents called doctor() with its default probe, which spawnSync-fires every installed hook and mkdir's Sakk's home, so a request labelled read-only executed subprocesses and, because spawnSync is synchronous, could stall the single-threaded server for up to (installed hooks x 15 s) — violating the spec's read-only and bounded-work guarantees. Behind the token gate, so not web-reachable, and the console's own tests never installed a hook, so the spawn path was never exercised. A latent bug rode along: the console passed SAKK_HOME where doctor expects the OS home, so it would have looked for agent configs in the wrong place. (2) LOW — GET /api/overview called updateIndex, writing the spend index on a read. (3) LOW — the halt response said 'name typed by the user' though the name is the OS account, auto-derived. (4) LOW — the spec claimed the token cookie was 'scoped to that port', which HTTP cookies are not. (5) LOW — CSV export did not neutralise leading = + - @ (spreadsheet formula injection).",
+      "evidence": "independent adversarial review of oss/m4-console at b821cf9, 2026-10-22; the reviewer noted /api/agents returned in 48 ms only because the fixture had no installed hook, so the spawnSync path was untested.",
+      "direct_cause": "The read-only endpoint reused doctor(), a CLI function that fires the installed hook and creates Sakk's home, instead of a read-only variant; the cost-bounds detector bounds each exported function alone and did not see doctor composed into an HTTP GET.",
+      "why": [
+        "doctor() was written for the CLI, where firing the hook and creating the home are wanted; the console reused it unchanged for a GET.",
+        "The C-04 detector proves each exported function is bounded in isolation, but nothing checked that a bounded-for-the-CLI function stays bounded and side-effect-free when wired behind a read-only HTTP route.",
+        "The console's tests installed no hook, so the fire-on-GET path and the wrong-home bug never ran."
+      ],
+      "root_cause": "A read-only, bounded surface reused a function built to act (fire a subprocess) and to write, and no check caught the composition because the cost detector looks at functions one at a time.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-07"],
+      "answer_failed": {
+        "qid": "C-04.1",
+        "why": "C-04.1 asks what bounds the work on hostile input; /api/agents' work was (installed hooks x spawnSync 15 s) of blocking subprocess time, unbounded by any counter or refusal — and it was not read-only."
+      },
+      "instance_fix": "this commit: doctor() gains probe:false — it reports each hook's installed state without firing it or creating the home; the console calls doctor({probe:false}) and passes the OS home (fixing the wrong-home bug); /api/overview no longer calls updateIndex, so a GET writes nothing (the hook maintains the index); the halt note now reads 'self-declared (the OS account name, not a verified identity)'; the spec no longer claims a port-scoped cookie; CSV export prefixes a leading = + - @ with a quote. A test installs a hook and asserts /api/agents reports it installed without firing.",
+      "guard": "test/console.test.mjs::the agents page reports installed hooks without firing them (read-only, bounded)",
+      "class_fix": null,
+      "sweep": "the agents endpoint is the only place the console reused an acting function; it now uses the read-only probe, and the test that installs a hook guards the no-fire path. The other four notes are each fixed and the read-only guarantee now holds for every GET. No follow-up finding needed.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/console.mjs", "src/guard-install.mjs", "specs/console/spec.md"],
+      "mechanism_gap": "The C-04 cost-bounds detector binds every exported function to a proof of its own bound, but doctor's proof was 'run by a person against the agent's config, never on the hook path' — true for the CLI; the detector had no way to see the console had wired doctor into a read-only HTTP GET, where firing subprocesses is neither read-only nor bounded.",
+      "mechanism_upgrade": "test/console.test.mjs::the agents page reports installed hooks without firing them (read-only, bounded)",
+      "distinct_from": {
+        "F-143": "F-143 is the mutation drill's synchronous child that --test-timeout cannot interrupt; F-162 is a read-only HTTP GET firing subprocesses and blocking the event loop — a different surface (the console, not the drill) and a different trigger (composition into a route, not a hung test)."
+      }
     }
   ]
 }

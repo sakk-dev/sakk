@@ -17,6 +17,7 @@ import {
   PAGE_LINES,
 } from '../src/console.mjs';
 import { initLedger } from '../src/ledger.mjs';
+import { install } from '../src/guard-install.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -303,7 +304,7 @@ describe('sakk ui console (M4): data and bounds', () => {
         },
         body: '{}',
       });
-      assert.match(r.body, /name typed by the user/); // a self-declared stop, never "signed"
+      assert.match(r.body, /self-declared/); // a self-declared stop, never "signed"
     } finally {
       await c.close();
     }
@@ -396,6 +397,32 @@ describe('sakk ui console (M4): data and bounds', () => {
         assert.equal(r.status, 200, name);
         JSON.parse(r.body); // valid JSON
       }
+    } finally {
+      await c.close();
+    }
+  });
+
+  test('the agents page reports installed hooks without firing them (read-only, bounded)', async () => {
+    const w = world();
+    // install the guard for claude-code in the isolated world (writes under HOME=base)
+    install('claude-code', { user: false, cwd: w.base, home: w.base });
+    const c = await startConsole({ ...w });
+    try {
+      const r = await hit(c.port, {
+        path: '/api/agents',
+        headers: { Host: `127.0.0.1:${c.port}`, Cookie: cookie(c.token) },
+      });
+      assert.equal(r.status, 200);
+      const d = JSON.parse(r.body);
+      const cc = d.checks.find((x) => x.name.startsWith('claude-code ('));
+      assert.ok(cc, 'an installed claude-code hook is reported');
+      assert.match(cc.detail, /installed/);
+      // the read-only page must NOT have fired the hook (that is the probe path)
+      assert.doesNotMatch(
+        cc.detail,
+        /forced push/,
+        'the hook was reported, not run as a subprocess',
+      );
     } finally {
       await c.close();
     }

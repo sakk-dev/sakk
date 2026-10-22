@@ -7,12 +7,12 @@
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { openSync, fstatSync, readSync, closeSync, existsSync } from 'node:fs';
-import { userInfo } from 'node:os';
+import { userInfo, homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { sakkHome, readConfig, repoRootOf, choosePolicy, evaluate, normalize } from './hook.mjs';
 import { loadPrices } from './prices.mjs';
-import { daySpend, updateIndex, systemZone, dayOf, claudeLogDir, SpendError } from './spend.mjs';
+import { daySpend, systemZone, dayOf, SpendError } from './spend.mjs';
 import { doctor } from './guard-install.mjs';
 import { halt, LedgerError } from './ledger.mjs';
 
@@ -119,15 +119,15 @@ export function policyInUse({ cwd, home }) {
 
 // --- the data each page shows, from M1-M3's own functions (contract #3) ---
 
-export function overviewData({ home, env = process.env, now = Date.now() }) {
+export function overviewData({ home, now = Date.now() }) {
   const config = readConfig(home);
   const { table } = loadPrices({ home });
   const zone = config.timeZone || systemZone();
   const day = dayOf(now, zone);
-  const logDir = config.claudeLogDir || claudeLogDir(env);
   let spend;
   try {
-    updateIndex({ home, logDir, zone, since: now - 36 * 3600 * 1000 });
+    // read-only: the hook maintains the spend index; the console only reads it,
+    // so a GET never writes (M4 review). Spend is current whenever a cap is set.
     spend = daySpend({ home, day, table });
   } catch (e) {
     if (!(e instanceof SpendError)) throw e;
@@ -266,7 +266,7 @@ export function startConsole({
           return json(res, {
             allowHalt,
             haltReady: Boolean(ledgerPath),
-            checks: doctor({ cwd, home, env }),
+            checks: doctor({ cwd, home: env.HOME || homedir(), env, probe: false }),
           });
         if (name === 'prices') {
           try {
@@ -321,7 +321,7 @@ export function startConsole({
               halted: true,
               scope: agentId ?? 'all',
               by,
-              note: 'name typed by the user',
+              note: 'self-declared (the OS account name, not a verified identity)',
               already: Boolean(r.alreadyHalted),
             });
           } catch (e) {
@@ -460,7 +460,7 @@ const PAGES={
 };
 const TOKEN=(document.cookie.match(/(?:^|; )sakk_t=([^;]+)/)||[])[1]||"";
 async function show(p){document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("on",b.dataset.page===p));const m=document.getElementById("main");m.textContent="";try{await PAGES[p](m);}catch(e){m.append($("p",{class:"deny",text:"Could not load: "+esc(e&&e.message)}));}try{const f=await api("forbidden");document.getElementById("forbidden").textContent=f.forbidden?("\u00b7 "+f.forbidden+" blocked request(s)"):"";}catch(_){}}
-function exportRows(rows,fmt){let text,type;if(fmt==="jsonl"){text=rows.map(r=>JSON.stringify(r)).join("\\n");type="application/x-ndjson";}else{const q=s=>'"'+String(s==null?"":s).replace(/"/g,'""')+'"';text=["at,by,verdict,ruleId,action,scope",...rows.map(r=>[r.at,r.by,r.verdict,r.ruleId,r.context&&r.context.action,r.context&&r.context.scope].map(q).join(","))].join("\\n");type="text/csv";}const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download="sakk-decisions."+(fmt==="jsonl"?"jsonl":"csv");a.click();}
+function exportRows(rows,fmt){let text,type;if(fmt==="jsonl"){text=rows.map(r=>JSON.stringify(r)).join("\\n");type="application/x-ndjson";}else{const q=s=>{let v=String(s==null?"":s);if(/^[=+\\-@\\t\\r]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';};text=["at,by,verdict,ruleId,action,scope",...rows.map(r=>[r.at,r.by,r.verdict,r.ruleId,r.context&&r.context.action,r.context&&r.context.scope].map(q).join(","))].join("\\n");type="text/csv";}const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download="sakk-decisions."+(fmt==="jsonl"?"jsonl":"csv");a.click();}
 document.querySelectorAll(".nav").forEach(b=>b.addEventListener("click",()=>show(b.dataset.page)));
 show("overview");
 </script>

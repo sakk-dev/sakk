@@ -326,8 +326,10 @@ const BOUNDS = {
       guard: 'test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself',
     },
     doctor: {
-      bounded: "run by a person against the agent's own config file, never on the hook path",
-      guard: 'test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself',
+      bounded:
+        'reads a fixed set of agent config files; the fire probe (one spawnSync with its own 15 s timeout per installed hook) runs only when probe is true (the CLI). The console calls doctor({probe:false}), which fires nothing and creates nothing — bounded and side-effect-free on the read-only HTTP path (F-162)',
+      guard:
+        'test/console.test.mjs::the agents page reports installed hooks without firing them (read-only, bounded)',
     },
   },
   'policy.mjs': {

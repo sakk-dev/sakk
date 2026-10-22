@@ -245,6 +245,9 @@ export function doctor({
   home = homedir(),
   env = process.env,
   managed = '/Library/Application Support/ClaudeCode/managed-settings.json',
+  // probe:false reports the installed state without firing the hook or creating
+  // Sakk's home — a read-only, subprocess-free check for `sakk ui` (M4 review).
+  probe = true,
 } = {}) {
   const out = [];
   const add = (name, ok, detail, warn = false) => out.push({ name, ok, detail, warn });
@@ -265,15 +268,18 @@ export function doctor({
   }
   const sh = sakkHome(env);
   try {
-    mkdirSync(sh, { recursive: true });
+    if (probe) mkdirSync(sh, { recursive: true }); // read-only check never creates it
     accessSync(sh, constants.W_OK);
     add('decision log', true, `${join(sh, 'decisions.jsonl')} is writable`);
   } catch (e) {
-    add(
-      'decision log',
-      false,
-      `${sh} is not writable (${e.code ?? e.message}) — every call would be denied`,
-    );
+    if (!probe && e.code === 'ENOENT')
+      add('decision log', true, `${sh} will be created on the first call`, true);
+    else
+      add(
+        'decision log',
+        false,
+        `${sh} is not writable (${e.code ?? e.message}) — every call would be denied`,
+      );
   }
   let anyInstalled = false;
   for (const agent of AGENTS) {
@@ -293,6 +299,11 @@ export function doctor({
     }
     anyInstalled = true;
     for (const f of found) {
+      if (!probe) {
+        // read-only: report that the hook is installed, without running it
+        add(`${agent} (${f.where})`, true, `${f.p}: installed (run sakk doctor to probe it fires)`);
+        continue;
+      }
       const r = fire(agent, f.c, root ?? cwd, env);
       add(
         `${agent} (${f.where})`,

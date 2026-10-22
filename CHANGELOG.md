@@ -50,6 +50,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CONSOLE_TRY_EMPTY`. Export is CSV and JSONL; FOCUS and evidence bundles are
   the enterprise edition.
 
+### Fixed — M4 console, from the independent review (F-162)
+
+- `GET /api/agents` is now read-only and subprocess-free: it reports each hook's
+  installed state via `doctor({probe:false})` instead of firing the hook
+  (`spawnSync`) and creating Sakk's home, so a read-only request can no longer
+  run subprocesses or block the event loop. It also passes the OS home to
+  `doctor`, fixing a path bug. `GET /api/overview` no longer updates the spend
+  index — a GET writes nothing. The halt record is labelled "self-declared (the
+  OS account name)", the CSV export neutralises spreadsheet formula injection
+  (leading `= + - @`), and the spec no longer claims a port-scoped cookie.
+
 ### Added — the secret guard in the hook (open-source v1, M3)
 
 - A write whose content is a secret, and a shell command (or `apply_patch`
