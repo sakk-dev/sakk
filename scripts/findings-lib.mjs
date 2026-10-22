@@ -560,8 +560,17 @@ export function classifyShell(cmd, cwd, home = process.env.HOME ?? '', exists = 
       continue;
     }
     if (name === 'node') {
-      if (args[0] === '--test' || args[0] === '--version' || args[0] === '-v') continue;
-      if (args[0] && LOOP_TOOLS.test(args[0].replace(/^\.\//, ''))) continue;
+      // node runs code, so it is read-only only when it injects none: --test,
+      // --version, -v with no --import/--require/-r/--loader/-e/--eval (F-157:
+      // `node --test --import 'data:…writeFileSync' x` ran arbitrary code)
+      const injects = args.some((a) =>
+        /^(--import|--require|-r|--loader|--experimental-loader|-e|--eval|--input-type)(=|$)/.test(
+          a,
+        ),
+      );
+      if (!injects && (args[0] === '--test' || args[0] === '--version' || args[0] === '-v'))
+        continue;
+      if (!injects && args[0] && LOOP_TOOLS.test(args[0].replace(/^\.\//, ''))) continue;
       write('opaque', 'node');
       continue;
     }

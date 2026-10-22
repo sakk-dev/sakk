@@ -371,6 +371,11 @@ describe('R1: a shell command that may write meets the same gate', () => {
       'xargs rm < list': 'opaque',
       'some-unknown-tool --flag': 'opaque',
       'echo "unterminated': 'opaque',
+      // F-157: node --test runs code when it injects a module, so it is not read-only
+      'node --test --import \'data:text/javascript,import("fs")\' x': 'opaque',
+      'node --test --require ./p.js x': 'opaque',
+      'node --test -r ./p.js x': 'opaque',
+      'node --test -e "process.exit(0)"': 'opaque',
     };
     for (const c of read) assert.equal(kind(c), 'read', c);
     for (const [c, k] of Object.entries(writes)) assert.equal(kind(c), k, c);

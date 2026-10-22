@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -390,6 +391,51 @@ describe('F-141: a broken checker can still be repaired, and nothing else passes
       bash(d, 'git restore scripts/findings-lib.mjs && rm -rf src').status,
       2,
       'nothing chained onto the repair',
+    );
+  });
+  test('F-157: the window resolves a symlink leaf, survives a non-error, and ignores a stray key', () => {
+    // a symlink whose leaf points at product code is judged by its real target,
+    // not by its name under findings/ or scripts/
+    const d = broken();
+    symlinkSync(join(d, 'src', 'x.mjs'), join(d, 'findings', 'link.mjs'));
+    const viaLink = check(
+      d,
+      ['--edit'],
+      JSON.stringify({
+        tool_name: 'Write',
+        cwd: d,
+        tool_input: { file_path: join(d, 'findings', 'link.mjs') },
+      }),
+    );
+    assert.equal(viaLink.status, 2, 'a findings/ symlink to src is not an open findings/ file');
+    // a Bash payload carrying a stray file_path key is judged by its command
+    const strayKey = check(
+      d,
+      ['--edit'],
+      JSON.stringify({
+        tool_name: 'Bash',
+        cwd: d,
+        tool_input: { command: 'rm -rf src', file_path: join(d, 'findings', 'x') },
+      }),
+    );
+    assert.equal(strayKey.status, 2, 'the file_path key does not make a Bash write pass');
+    // a checker library that throws a non-error still denies, never crashes (exit 1)
+    const d2 = repo().d;
+    writeFileSync(join(d2, 'scripts', 'findings-lib.mjs'), 'throw null;\n');
+    const nonError = check(
+      d2,
+      ['--edit'],
+      JSON.stringify({
+        tool_name: 'Edit',
+        cwd: d2,
+        tool_input: { file_path: join(d2, 'src', 'x.mjs') },
+      }),
+    );
+    assert.equal(nonError.status, 2, 'a thrown null denies, it does not skip the window');
+    assert.equal(
+      editOf(d2, 'findings/ledger.json').status,
+      0,
+      'and the repair path still works when the throw was a non-error',
     );
   });
 });

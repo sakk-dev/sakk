@@ -50,6 +50,11 @@
           "kind": "runtime_guard",
           "ref": "src/append.mjs::appendNoFollow",
           "since": "F-101"
+        },
+        {
+          "kind": "detector",
+          "ref": "test/self-evolution-cli.test.mjs::F-157: the window resolves a symlink leaf, survives a non-error, and ignores a stray key",
+          "since": "F-157"
         }
       ]
     },
@@ -4785,6 +4790,39 @@
       "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-02"
+    },
+    {
+      "id": "F-157",
+      "date": "2026-10-22",
+      "introduced_in": "294f391",
+      "found_by": "review",
+      "class": "C-07",
+      "title": "The broken-checker window and the loop classifier trusted inputs they should have resolved or refused",
+      "symptom": "The gate review found four holes the gate trusted rather than resolved: (1) while the checker could not load, the window judged a path by its leaf name, so a symlink leaf under findings/ pointing at product code passed; (2) it read a file_path key even on a Bash call, so a stray key made a shell write look like a file edit; (3) a checker library that threw a non-error (throw null/'x'/{}) crashed the window with exit 1 instead of denying, and code that read exit 1 as success would proceed; (4) the loop's shell classifier treated `node --test` as read-only regardless of code-injecting flags, so `node --test --import <payload>` ran arbitrary code unjudged.",
+      "evidence": "adversarial review of the gate and CI, 2026-10-22 (findings 4, 5, 6, and the node --test note); scripts in scratchpad/rev",
+      "direct_cause": "Each input was taken at face value: a path by its leaf, a payload by a key, a thrown value as an Error, a node flag list as harmless.",
+      "why": [
+        "The window realpath-resolved only the parent directories, not the leaf.",
+        "The thrown value was assumed to be an Error with a .message.",
+        "node was assumed read-only whenever its first argument was --test, without reading the injecting flags."
+      ],
+      "root_cause": "The gate trusted the shape of its inputs instead of resolving or validating them.",
+      "dt": ["DT-SHAPE"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-07.1",
+        "why": "C-07.1 said the payload, command and paths are canonicalized and bounded; but the window resolved only a path's parents (not its leaf), trusted a file_path key regardless of tool, and trusted a thrown value as an Error, and the loop classifier trusted node --test without its injecting flags."
+      },
+      "instance_fix": "this commit: the window realpaths the full path including the leaf; it treats a file_path only for a real file tool, judging a Bash call by its command; a non-error load failure is coerced to a printable message and still denies; node --test is read-only only when it injects no module (no --import/--require/-r/--loader/-e/--eval).",
+      "guard": "test/self-evolution-cli.test.mjs::F-157: the window resolves a symlink leaf, survives a non-error, and ignores a stray key",
+      "class_fix": null,
+      "sweep": "The window and the loop classifier were walked for inputs trusted by shape: path leaves, payload keys, thrown values, interpreter flags; each now resolves or validates.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/findings-check.mjs", "scripts/findings-lib.mjs"],
+      "mechanism_gap": "The F-141 window tests exercised plain paths and a missing module; none used a symlink leaf, a stray key, a non-error throw, or an injecting node flag.",
+      "mechanism_upgrade": "test/self-evolution-cli.test.mjs::F-157: the window resolves a symlink leaf, survives a non-error, and ignores a stray key"
     }
   ]
 }

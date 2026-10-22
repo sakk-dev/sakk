@@ -86,6 +86,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`base64`, `openssl`, `dd if=`) is still a `secret.read`.
 - F-156: a git value-option (e.g. `--namespace x`) can no longer shift the
   subcommand so a `push --force` reads as ordinary work.
+- F-157: while the checker cannot load it now resolves a path's symlink leaf
+  (not just its parents), judges a Bash call by its command rather than a
+  stray `file_path` key, and denies instead of crashing when the library
+  throws a non-error; the loop's shell classifier treats `node --test` as
+  read-only only when it injects no module.
 
 ### Changed (release preparation)
 

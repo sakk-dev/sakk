@@ -30,10 +30,14 @@ import { fileURLToPath } from 'node:url';
 // still let the repair of the gate's own files through — and nothing else.
 let lib;
 let libError = null;
+let libLoaded = false;
 try {
   lib = await import('./findings-lib.mjs');
+  libLoaded = true;
 } catch (e) {
-  libError = e;
+  // a thrown null/undefined/string is still a load failure (F-157): record it
+  // as something printable, never leave libLoaded true
+  libError = e ?? new Error('the checker library threw a non-error value');
 }
 const {
   EXEMPT,
@@ -86,8 +90,9 @@ function gateRepo() {
 const OPEN_WHILE_BROKEN = /^findings\/.*$/;
 /** The gate's own code: restored from git while the checker cannot load, never rewritten (RC-09 review). */
 const GATE_CODE = '(?:scripts/findings-[\\w-]+\\.mjs|src/classify\\.mjs)';
-if (libError !== null) {
-  const why = `self-evolution: the checker cannot load (${libError.message.split('\n')[0]})`;
+const FILE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+if (!libLoaded) {
+  const why = `self-evolution: the checker cannot load (${String(libError?.message ?? libError).split('\n')[0]})`;
   if (mode !== '--edit') {
     console.error(`${why} — fix scripts/findings-*.mjs or src/classify.mjs`);
     process.exit(mode === undefined ? 2 : 1);
@@ -100,12 +105,17 @@ if (libError !== null) {
   }
   const repo = gateRepo();
   const file = hook?.tool_input?.file_path ?? hook?.tool_input?.notebook_path;
-  if (typeof file === 'string' && file !== '') {
-    // one spelling per place (/var and /private/var): resolve the nearest existing parent
-    let abs = resolve(typeof hook.cwd === 'string' ? hook.cwd : repo, file);
-    for (let d = dirname(abs), tail = [abs.slice(dirname(abs).length + 1)]; ;) {
+  // only an actual file tool edits a file; a Bash call with a stray file_path key
+  // is judged by its command below, not by that key (F-157)
+  if (FILE_TOOLS.has(hook?.tool_name) && typeof file === 'string' && file !== '') {
+    // resolve the real path, the leaf included: a symlink leaf must not be judged
+    // by its own name (F-157). Fall back to the nearest existing parent when the
+    // leaf does not exist yet (one spelling per place: /var and /private/var).
+    const start = resolve(typeof hook.cwd === 'string' ? hook.cwd : repo, file);
+    let abs = start;
+    for (let d = start, tail = []; ;) {
       try {
-        abs = join(realpathSync(d), ...tail);
+        abs = tail.length ? join(realpathSync(d), ...tail) : realpathSync(d);
         break;
       } catch {
         if (dirname(d) === d) break;
