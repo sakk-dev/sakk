@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the gitleaks rule port in the secret guard (open-source v1, M3)
+
+- The secret guard now runs **189 of gitleaks' 195 rules** (v8.21.2, MIT)
+  alongside the eight hand-written ones, in the hook and the commit scan.
+  `scripts/gitleaks-port.mjs` reads the pinned `config/gitleaks.toml` and
+  generates `src/secret-rules.generated.mjs`, translating RE2 to JS (a leading
+  `(?i)` to the `i` flag, a mid `(?i)` and `(?i:…)` by case-folding, `(?P<>)` to
+  `(?<>)`, `\z` to `$`); it refuses any construct it does not know (4 rules, in
+  `REFUSED`), never guessing.
+- Rules are keyword-gated and filtered by gitleaks' global allowlist and
+  per-rule entropy; one secret matched by two rules is reported once. The port
+  is deterministic (a re-run reproduces the file byte-for-byte) and every
+  enabled rule is **linear on hostile input** — the `(?:.|\s){0,N}` span idiom,
+  which backtracks catastrophically in JS, is rewritten to `[\s\S]`.
+- Two rules ship disabled as reviewed exclusions: `generic-api-key` (too broad
+  — it flags ordinary code, and in a fail-closed guard a false positive denies
+  a legitimate write) and `curl-auth-user` (a RE2 pattern that is not linear in
+  JS). The repository scans clean with the rest enabled.
+- The full per-rule recall corpus is the remaining C-13 stopline
+  (`specs/secret-guard`, due 2026-10-28): gitleaks' own samples are generated
+  by Go helpers, not literal strings.
+
 ### Added — the spend and cap CLI (F-161 follow-up)
 
 - `sakk cap set <usd> [--zone <IANA>]` / `sakk cap off`: set or lift the daily

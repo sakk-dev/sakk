@@ -23,6 +23,7 @@ import { execFileSync } from 'node:child_process';
 import { createHmac, randomBytes } from 'node:crypto';
 import { lstatSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { GITLEAKS_RULES, GITLEAKS_ALLOWLIST } from './secret-rules.generated.mjs';
 
 export const FICTIONAL_EXEMPTION_TOKEN = 'TEST_ONLY_FAKE_SECRET_DO_NOT_USE';
 /** The entire exemption list. A test pins it to exactly this one entry. */
@@ -74,6 +75,47 @@ export const RULES = Object.freeze([
   },
 ]);
 
+// --- gitleaks' ported rule set (src/secret-rules.generated.mjs, M3) ---
+// Rules disabled for precision (they matched the benign corpus). Each is a
+// reviewed exclusion the both-sided test keeps honest.
+export const GITLEAKS_DISABLED = new Set([
+  // gitleaks' broadest rule: any `…key/secret/token… = "<10+ chars>"`. It
+  // flags ordinary code (two hits in this repo) — in a fail-closed guard a
+  // false positive denies a legitimate write, so it ships disabled, as it
+  // commonly is in gitleaks deployments.
+  'generic-api-key',
+  // RE2 is linear; this rule's `(?:.*|.*(?:\r\n.*){1,5})` alternation of
+  // unbounded .* is safe in gitleaks' RE2 engine but backtracks catastrophically
+  // in JS's RegExp. Disabled until it can be rewritten without the ambiguity.
+  'curl-auth-user',
+]);
+
+const GL_ALLOW = GITLEAKS_ALLOWLIST.map((a) => new RegExp(a.re, a.flags));
+export const GL_RULES = GITLEAKS_RULES.filter((r) => !GITLEAKS_DISABLED.has(r.id)).map((r) => ({
+  name: `gl:${r.id}`,
+  re: new RegExp(r.re, r.flags.includes('g') ? r.flags : `${r.flags}g`),
+  keywords: r.keywords.map((k) => k.toLowerCase()),
+  entropy: r.entropy,
+}));
+
+/** Shannon entropy (bits per char) — gitleaks' per-rule entropy gate. */
+function shannon(s) {
+  if (!s) return 0;
+  const freq = new Map();
+  for (const ch of s) freq.set(ch, (freq.get(ch) ?? 0) + 1);
+  let h = 0;
+  for (const n of freq.values()) {
+    const p = n / s.length;
+    h -= p * Math.log2(p);
+  }
+  return h;
+}
+const glAllowed = (secret) =>
+  GL_ALLOW.some((re) => {
+    re.lastIndex = 0;
+    return re.test(secret);
+  });
+
 const KEY = process.env.SAKK_SCAN_KEY ? Buffer.from(process.env.SAKK_SCAN_KEY) : randomBytes(32);
 const fingerprint = (value) => createHmac('sha256', KEY).update(value).digest('hex').slice(0, 12);
 
@@ -91,6 +133,24 @@ function rawFindings(text) {
       const secret = rule.group ? m[rule.group] : m[0];
       if (rule.group && PLACEHOLDER.test(secret)) continue;
       out.push({ rule, index: m.index, end: m.index + m[0].length, secret });
+    }
+  }
+  // gitleaks' ported rules: keyword-gated (bounded + precise), group-1 secret,
+  // skipped on a placeholder, an allowlist match, or below the rule's entropy.
+  const lower = text.toLowerCase();
+  for (const rule of GL_RULES) {
+    if (rule.keywords.length && !rule.keywords.some((k) => lower.includes(k))) continue;
+    rule.re.lastIndex = 0;
+    let m;
+    while ((m = rule.re.exec(text)) !== null) {
+      if (m[0] === '') {
+        rule.re.lastIndex += 1; // never loop on a zero-width match
+        continue;
+      }
+      const secret = m[1] ?? m[0];
+      if (PLACEHOLDER.test(secret) || glAllowed(secret)) continue;
+      if (rule.entropy > 0 && shannon(secret) < rule.entropy) continue;
+      out.push({ rule: { name: rule.name }, index: m.index, end: m.index + m[0].length, secret });
     }
   }
   return out;
@@ -140,6 +200,9 @@ export function scanText(text, path = '(inline)') {
       exempted += 1; // counted, never silent
       continue;
     }
+    // one secret, one finding: a span already reported (e.g. by a base rule) is
+    // not reported again by an overlapping gitleaks rule (F-122).
+    if (spans.some(([a, b]) => h.index < b && h.end > a)) continue;
     spans.push([h.index, h.end]);
     add(h);
   }
@@ -149,7 +212,10 @@ export function scanText(text, path = '(inline)') {
   // second pass — a reported finding is never counted twice.
   if (EXEMPTIONS.some((t) => text.includes(t)))
     for (const h of rawFindings(blankTokens(text)))
-      if (!spans.some(([a, b]) => h.index < b && h.end > a)) add(h);
+      if (!spans.some(([a, b]) => h.index < b && h.end > a)) {
+        spans.push([h.index, h.end]); // dedup within this pass too (F-122)
+        add(h);
+      }
   return { findings, exempted };
 }
 

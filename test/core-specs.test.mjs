@@ -35,6 +35,8 @@ const CORE = {
   'scripts/evidence-bundle.mjs': 'specs/evidence-bundle/spec.md',
 };
 const NOT_CORE = {
+  'src/secret-rules.generated.mjs':
+    'generated from config/gitleaks.toml by scripts/gitleaks-port.mjs; a data table, not hand code — the determinism test re-ports and compares byte-for-byte, and the both-sided test measures it',
   'src/append.mjs':
     'append-only file writes that refuse to follow a symlink; driven by the ledger and policy tests',
   'eval/lib/trace.mjs': 'trace file I/O; every field it writes is re-checked by the scorer',
