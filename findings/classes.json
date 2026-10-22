@@ -316,7 +316,8 @@
       ],
       "detectors": [
         "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving",
-        "eval/__tests__/scorer-rules.test.mjs::SCORER_ERROR: a judge that cannot score"
+        "eval/__tests__/scorer-rules.test.mjs::SCORER_ERROR: a judge that cannot score",
+        "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it"
       ]
     },
     {

@@ -349,14 +349,24 @@ describe('F-141: a broken checker can still be repaired, and nothing else passes
       ['--edit'],
       JSON.stringify({ tool_name: 'Edit', cwd: d, tool_input: { file_path: join(d, file) } }),
     );
-  test("F-141: the gate's own files can be edited while the checker cannot load", () => {
+  test('F-141: while the checker cannot load, its code is restored from git, never rewritten', () => {
     const d = broken();
-    assert.equal(editOf(d, 'scripts/findings-lib.mjs').status, 0, 'the repair is let through');
     assert.equal(editOf(d, 'findings/ledger.json').status, 0, 'logging a problem is never blocked');
+    assert.equal(bash(d, 'git restore scripts/findings-lib.mjs').status, 0, 'restoring from git');
+    assert.equal(bash(d, 'git checkout -- src/classify.mjs').status, 0);
+    // the research behind the RC-09 review: a blanket exemption for the gate's own
+    // files lets the broken gate be rewritten unjudged
+    assert.equal(editOf(d, 'scripts/findings-lib.mjs').status, 2, 'no rewrite of the gate code');
+    assert.equal(editOf(d, 'src/classify.mjs').status, 2);
     assert.equal(
-      bash(d, 'git restore scripts/findings-lib.mjs').status,
-      0,
-      'restoring the file from git',
+      bash(d, 'git restore --source=HEAD~1 scripts/findings-lib.mjs').status,
+      2,
+      'no other source',
+    );
+    assert.equal(
+      bash(d, 'git restore scripts/findings-lib.mjs', join(d, 'src')).status,
+      2,
+      'from the top folder only',
     );
   });
   test('F-141: everything else is denied, with the way to repair, not a crash', () => {
@@ -367,11 +377,77 @@ describe('F-141: a broken checker can still be repaired, and nothing else passes
       2,
       'a deny, not a crash (exit 1), so no caller reads it as an error to ignore',
     );
-    assert.match(r.stderr, /Only the gate's own files can be repaired now/);
+    assert.match(r.stderr, /restored, not rewritten/);
     assert.equal(
       bash(d, 'git restore scripts/findings-lib.mjs && rm -rf src').status,
       2,
       'nothing chained onto the repair',
     );
+  });
+});
+
+describe('the last known good gate: a copy outside the working tree judges (RC-09 review)', () => {
+  /** The gate's listed files, copied out of `from` into a fresh folder, as the dispatcher does. */
+  function copyOf(from) {
+    const c = mkdtempSync(join(tmpdir(), 'gate-copy-'));
+    for (const f of GATE_FILES) {
+      mkdirSync(dirname(join(c, f)), { recursive: true });
+      copyFileSync(join(from, f), join(c, f));
+    }
+    return c;
+  }
+  const run = (copy, payload, env) =>
+    spawnSync(process.execPath, [join(copy, 'scripts', 'findings-check.mjs'), '--edit'], {
+      cwd: payload.cwd,
+      input: JSON.stringify(payload),
+      encoding: 'utf8',
+      env: { ...ENV, ...env },
+      timeout: 60_000,
+    });
+  test('a gate run from a copy judges the repository it is given, and refuses a folder without a ledger', () => {
+    const { d } = repo();
+    const c = copyOf(d);
+    const bypass = {
+      tool_name: 'Bash',
+      cwd: d,
+      tool_input: { command: 'git commit --no-verify -m x' },
+    };
+    assert.equal(run(c, bypass, { SAKK_GATE_REPO: d }).status, 2, 'the named repository is judged');
+    const write = { tool_name: 'Bash', cwd: d, tool_input: { command: 'echo 2 > src/x.mjs' } };
+    assert.equal(run(c, write, { SAKK_GATE_REPO: d }).status, 2, 'a write that needs answers');
+    const empty = mkdtempSync(join(tmpdir(), 'no-ledger-'));
+    const r = run(c, bypass, { SAKK_GATE_REPO: empty });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /not a repository that keeps findings\/classes\.json/);
+    // not told which repository: a copy cannot place a shell write, so it refuses
+    assert.equal(run(c, write, {}).status, 2);
+  });
+  test('the committed gate passes its own self-test from a copy, as the dispatcher runs it', () => {
+    const list = JSON.parse(readFileSync(MANIFEST, 'utf8'));
+    assert.ok(list.hooks?.PreToolUse?.length > 0, 'the list names the hooks that judge a call');
+    assert.ok(list.selftest?.length >= 3, 'and cases that prove they judge');
+    const c = copyOf(REPO);
+    const matches = (m, tool) => m === undefined || m === '' || new RegExp(`^(?:${m})$`).test(tool);
+    for (const t of list.selftest) {
+      const ev = { hook_event_name: 'PreToolUse', session_id: 'selftest', cwd: REPO, ...t.event };
+      const outcomes = list.hooks.PreToolUse.filter((h) => matches(h.matcher, ev.tool_name)).map(
+        (h) => {
+          const r = spawnSync('/bin/sh', ['-c', h.command], {
+            cwd: REPO,
+            input: JSON.stringify(ev),
+            encoding: 'utf8',
+            env: { ...ENV, SAKK_GATE_DIR: c, SAKK_GATE_REPO: REPO, CLAUDE_PROJECT_DIR: REPO },
+            timeout: 60_000,
+          });
+          return r.status === 2 ? 'deny' : r.status === 0 ? 'pass' : 'crash';
+        },
+      );
+      const got = outcomes.includes('crash')
+        ? 'crash'
+        : outcomes.includes('deny')
+          ? 'deny'
+          : 'pass';
+      assert.equal(got, t.expect, t.name);
+    }
   });
 });

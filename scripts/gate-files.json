@@ -1,4 +1,56 @@
 {
-  "why": "The files the self-evolution checker runs from, listed once (F-144). Everything that copies, snapshots or repairs the gate reads this list; test/self-evolution.test.mjs fails when it differs from what scripts/findings-check.mjs actually imports.",
-  "files": ["scripts/findings-check.mjs", "scripts/findings-lib.mjs", "src/classify.mjs"]
+  "why": "The self-evolution gate, listed once (F-144): the files it runs from, the hooks that run it, and the cases that prove a copy of it judges. The parent-folder dispatcher runs the hooks from a copy of these files taken from HEAD, kept outside the working tree, only once the copy passes these cases and those of the copy it replaces (RC-09 review); test/self-evolution-cli.test.mjs runs the same cases on every change.",
+  "files": ["scripts/findings-check.mjs", "scripts/findings-lib.mjs", "src/classify.mjs"],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "command": "node \"$SAKK_GATE_DIR/scripts/findings-check.mjs\" --edit",
+        "timeout": 180
+      }
+    ]
+  },
+  "selftest": [
+    {
+      "name": "a hook bypass is refused",
+      "event": {
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git commit --no-verify -m selftest"
+        }
+      },
+      "expect": "deny"
+    },
+    {
+      "name": "turning the commit hooks off is refused",
+      "event": {
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git -c core.hooksPath=/dev/null commit -m selftest"
+        }
+      },
+      "expect": "deny"
+    },
+    {
+      "name": "reading the repository passes",
+      "event": {
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git status"
+        }
+      },
+      "expect": "pass"
+    },
+    {
+      "name": "the answers file is always open",
+      "event": {
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "findings/acks/selftest.json",
+          "content": "{}"
+        }
+      },
+      "expect": "pass"
+    }
+  ]
 }
