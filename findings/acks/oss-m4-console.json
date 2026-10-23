@@ -73,6 +73,26 @@
     "C-15.1": {
       "answer": "The tests exercise the real path end to end: the real http server, the real decision log and spend index on disk, the real evaluate for the try box, compared against the real CLI output — no stand-in that writes its own evidence.",
       "guard": "test/console.test.mjs::the console and the CLI report the same numbers"
+    },
+    "C-06.1": {
+      "answer": "The drill budget check reads the real workflow file and the real drill script; its one non-derived figure, the per-mutant budget, is labelled in the test as a measurement from the CI run on PR #24 (2705 s for 38 mutants), so a reader sees it is measured, not a guarantee.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-08.1": {
+      "answer": "The limit is read from the one drill job in ci.yml by its job key, and the mutant count from the one script that job runs (npm run drill is sh scripts/mutation-drill.sh); there is no second copy of either for the check to read instead.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-13.1": {
+      "answer": "Measured on both sides: the check is red at the old 45-minute limit (needs 64 for 38 mutants) and green at 75, and it refuses a mutant count under 30 so a broken count cannot pass by finding nothing.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-14.1": {
+      "answer": "The budget check is its own node:test case: when it fails it names the drill limit and the minutes needed, and the other claims checks in the file keep running and report on their own.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-16.1": {
+      "answer": "The finding was judged by CI, not by the writer: GitHub cancelled the drill at its limit and the step timings came from the runner. The pull request is still judged by the base branch copy of the checker as well as its own.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
     }
   }
 }
