@@ -4991,6 +4991,42 @@
       "distinct_from": {
         "F-143": "F-143 is the mutation drill's synchronous child that --test-timeout cannot interrupt; F-162 is a read-only HTTP GET firing subprocesses and blocking the event loop — a different surface (the console, not the drill) and a different trigger (composition into a route, not a hung test)."
       }
+    },
+    {
+      "id": "F-165",
+      "date": "2026-10-23",
+      "introduced_in": "0dd328d",
+      "found_by": "T0",
+      "class": "C-09",
+      "title": "A spend test passed only on 2026-10-22: its logs were dated that day while the hook read the real clock",
+      "symptom": "From 2026-10-23 the commit gate on oss/gitleaks-port failed test/spend.test.mjs 'the cap denies inside the hook's evaluate' ('allow' !== 'deny'). The same test fails on the unmodified branch head, and every branch from oss/m2-spend up carries it, so each CI re-run from that day on goes red.",
+      "evidence": "Local gate on 2026-10-23 (Asia/Dubai, 09:44Z): the one failure in the full run; reproduced alone with node --test --test-name-pattern='cap denies inside' on a clean checkout of 57e5958.",
+      "direct_cause": "The test wrote a session log stamped 2026-10-22T10:00Z and called evaluate() without its now option, so the hook took Date.now() as 'today' and the logged spend fell on yesterday.",
+      "why": [
+        "Every capCheck test in the file passed now: NOW, but the two that go through evaluate() did not; evaluate defaults now to Date.now.",
+        "The test was written and first run on 2026-10-22, the only day its fixtures and the real clock agree, so it passed every local and CI run that day.",
+        "Nothing checks that a test with dated fixtures also fixes the clock the code under test reads."
+      ],
+      "root_cause": "A test assumed the day it runs equals the day its fixtures are stamped; the code took its clock from the environment, and that other environment (any later day) was never tried.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-02"],
+      "answer_failed": {
+        "qid": "C-09.2",
+        "why": "C-09.2's guard is the very test that broke: it drove the cap through evaluate(), the real path, but left evaluate's clock real while its logs were dated, so it was true only on 2026-10-22 and no run on another day had tried it."
+      },
+      "instance_fix": "this commit: both evaluate() calls in test/spend.test.mjs pass now: () => NOW, the log's mtime is set to NOW, and the test also asserts the same logs allow on the next day — the hook's clock, not the run date, decides 'today'. Product code was right: evaluate passes now() to the cap check.",
+      "guard": "test/spend.test.mjs::the cap denies inside the hook's evaluate, not only in capCheck",
+      "class_fix": null,
+      "sweep": "Every evaluate() and capCheck() call in test/spend.test.mjs is read by the new detector (all now carry now). The other suites that call evaluate() configure no cap, so the run date does not reach a decision; the full gate on 2026-10-23 had this as its only failure.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["test/spend.test.mjs"],
+      "mechanism_gap": "No check tied dated fixtures to a fixed clock; the suite was green on the day it was written and so could not show the dependency.",
+      "mechanism_upgrade": "test/spend.test.mjs::every hook or cap call in the spend tests sets its own clock (F-165)",
+      "distinct_from": {
+        "F-62": "F-62 is a stopwatch deciding pass/fail under load (C-04, a duration); F-165 is a calendar date assumed equal to the run date (C-09), which fails deterministically from the next day."
+      }
     }
   ]
 }
