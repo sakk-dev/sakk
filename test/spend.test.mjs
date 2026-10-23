@@ -339,7 +339,11 @@ describe('the cap', () => {
 describe('the agent cannot raise its own cap, and the cap fires inside the hook', async () => {
   const { normalize, evaluate } = await import('../src/hook.mjs');
   const verdict = (ev, home, base) =>
-    evaluate(ev, { env: { ...process.env, SAKK_HOME: home, HOME: base }, log: false }).verdict;
+    evaluate(ev, {
+      env: { ...process.env, SAKK_HOME: home, HOME: base },
+      log: false,
+      now: () => NOW,
+    }).verdict;
   const writeEv = (home, base, file) =>
     normalize('claude-code', {
       hook_event_name: 'PreToolUse',
@@ -363,19 +367,45 @@ describe('the agent cannot raise its own cap, and the cap fires inside the hook'
     writeFileSync(join(w.home, 'prices.json'), JSON.stringify(TABLE));
     writeFileSync(join(w.home, 'config.json'), JSON.stringify(w.config));
     writeFileSync(w.file, line({ usage: { input_tokens: 1_000_000, output_tokens: 0 } }));
+    utimesSync(w.file, NOW / 1000, NOW / 1000);
     const ev = normalize('claude-code', {
       hook_event_name: 'PreToolUse',
       tool_name: 'Bash',
       cwd: w.base,
       tool_input: { command: 'ls' },
     });
-    const r = evaluate(ev, {
-      env: { ...process.env, SAKK_HOME: w.home, HOME: w.base },
-      log: false,
-    });
+    // the hook's clock decides "today": the logs are from NOW's day, so the cap
+    // holds then and not on the next day — whatever day the suite runs (F-165)
+    const at = (t) =>
+      evaluate(ev, {
+        env: { ...process.env, SAKK_HOME: w.home, HOME: w.base },
+        log: false,
+        now: () => t,
+      });
+    const r = at(NOW);
     assert.equal(r.verdict, 'deny');
     assert.match(r.reason, /SPEND_CAP_REACHED/);
+    assert.equal(at(NOW + 24 * 3600 * 1000).verdict, 'allow');
   });
+});
+
+test('every hook or cap call in the spend tests sets its own clock (F-165)', () => {
+  // the fixtures are dated 2026-10-22; a call that reads the real clock passes
+  // only on that day. Each call's argument text must name `now`.
+  const src = readFileSync(join(ROOT, 'test', 'spend.test.mjs'), 'utf8');
+  const calls = [];
+  for (const m of src.matchAll(/(?<!')\b(?:evaluate|capCheck)\(/g)) {
+    let depth = 0;
+    let end = m.index + m[0].length - 1;
+    for (; end < src.length; end++) {
+      if (src[end] === '(') depth++;
+      else if (src[end] === ')' && --depth === 0) break;
+    }
+    calls.push(src.slice(m.index, end + 1));
+  }
+  assert.ok(calls.length >= 10, `found only ${calls.length} calls — the scan is broken`);
+  const unclocked = calls.filter((c) => !/\bnow\b/.test(c));
+  assert.deepEqual(unclocked, [], 'these calls read the real clock');
 });
 
 describe('spend refusals (negative tests)', () => {
