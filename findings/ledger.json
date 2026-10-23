@@ -4938,6 +4938,10 @@
       "dt": ["DT-TOOL"],
       "rc": ["RC-01"],
       "es": ["ES-02"],
+      "answer_failed": {
+        "qid": "C-09.2",
+        "why": "C-09.2's guard is the very test that broke: it drove the cap through evaluate(), the real path, but left evaluate's clock real while its logs were dated, so it was true only on 2026-10-22 and no run on another day had tried it."
+      },
       "instance_fix": "this commit: both evaluate() calls in test/spend.test.mjs pass now: () => NOW, the log's mtime is set to NOW, and the test also asserts the same logs allow on the next day — the hook's clock, not the run date, decides 'today'. Product code was right: evaluate passes now() to the cap check.",
       "guard": "test/spend.test.mjs::the cap denies inside the hook's evaluate, not only in capCheck",
       "class_fix": null,
