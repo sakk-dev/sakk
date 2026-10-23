@@ -218,6 +218,23 @@ describe('nothing hangs instead of failing (findings F-15)', () => {
     }
     assert.ok(jobs >= 4, `only ${jobs} jobs found`);
   });
+  test('the drill job has time for every mutant it runs (F-166)', () => {
+    // The drill reruns a whole suite per mutant, so its cost grows with the
+    // mutant count; CI cancels it at timeout-minutes and the check reads red.
+    // Budget per mutant, measured on CI (PR #24, Node 22): 2705 s for 38
+    // mutants, about 71 s; 100 s leaves room for runner variance and the
+    // fuzz and campaign steps. Adding mutants without raising the limit fails here.
+    const PER_MUTANT_S = 100;
+    const mutants = (read('scripts/mutation-drill.sh').match(/^run_drill MUT-/gm) ?? []).length;
+    assert.ok(mutants >= 30, `found only ${mutants} mutants — the count is broken`);
+    const ci = read(join('.github', 'workflows', 'ci.yml'));
+    const drill = ci.slice(ci.indexOf('\n  drill:\n') + 1).split(/\n {2}[a-z][\w-]*:\n/)[0];
+    const limit = Number(drill.match(/timeout-minutes:\s*(\d+)/)?.[1]);
+    assert.ok(
+      limit * 60 >= mutants * PER_MUTANT_S,
+      `drill: ${limit} min for ${mutants} mutants needs ${Math.ceil((mutants * PER_MUTANT_S) / 60)}`,
+    );
+  });
 });
 
 describe('a stopwatch never stands in for a work bound (findings F-62)', () => {

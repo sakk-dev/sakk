@@ -5027,6 +5027,46 @@
       "distinct_from": {
         "F-62": "F-62 is a stopwatch deciding pass/fail under load (C-04, a duration); F-165 is a calendar date assumed equal to the run date (C-09), which fails deterministically from the next day."
       }
+    },
+    {
+      "id": "F-166",
+      "date": "2026-10-23",
+      "introduced_in": "b821cf9",
+      "found_by": "T0",
+      "class": "C-04",
+      "title": "The drill CI job outgrew its fixed 45-minute limit, so CI cancelled it and PRs #23-#26 read red",
+      "symptom": "On PRs #23-#26 the drill job (Node 20 and 22) was cancelled at 45 minutes: npm run drill alone took 2653-2705 s, against 1681-1845 s on #20. A cancelled required job reads as a failed check, so a correct branch could not show green CI.",
+      "evidence": "GitHub Actions step timings: #20 drill 1845 s / 1681 s; #23 drill 2653 s (cancelled) and 2178 s (passed) on two runs; #24 drill 2679 s and 2705 s (both cancelled). The fuzz and campaign steps after it take under 35 s.",
+      "direct_cause": "scripts/mutation-drill.sh reruns a whole npm test script for each of its 38 mutants; the M4 console and M5 release tests made each rerun about 71 s on CI, and 38 x 71 s passed the 45-minute timeout-minutes set by hand when the suite was smaller.",
+      "why": [
+        "The drill copies the repo and runs the full suite per mutant, so its cost is mutants x suite time.",
+        "The suite grew in M2-M5 (spend, console, release tests), raising the per-mutant time from about 45 s to about 71 s on CI.",
+        "The job limit was a fixed number of minutes, and no check related it to the number of mutants or to measured run time, so the limit was crossed only when CI cancelled the job."
+      ],
+      "root_cause": "A cost that grows with the work (mutants x suite) was bounded only by a hand-set clock limit in the workflow, with nothing tying that limit to the work it has to cover.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-04"],
+      "es": ["ES-02"],
+      "answer_failed": {
+        "qid": "C-04.1",
+        "why": "C-04.1 was answered for the console code (log tail and request size bounded by counters), not for the cost the new tests add to CI, where the drill reruns the suite per mutant and only the 45-minute clock bounded it."
+      },
+      "instance_fix": "this commit: the drill job timeout-minutes is 75 (needs 64 at 100 s per mutant for 38 mutants; observed about 45 minutes); test/claims-are-checked.test.mjs adds a check that the drill limit covers the mutant count at a declared per-mutant budget, so adding mutants without raising the limit fails.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)",
+      "class_fix": null,
+      "sweep": "The other CI jobs (test 30 min, format, self-evolution, base-checker 10 min) run once per push and finished well inside their limits on every run checked (#19-#26), so the drill is the only instance. Not done here (no class fix claimed): the per-mutant budget is a measured figure and goes stale as the suite grows; a class fix would run each mutant against only the test file that holds its named killer, so per-mutant cost stops growing with the suite and CI minutes drop. That changes the drill itself and is left for the release checklist.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        ".github/workflows/ci.yml",
+        "test/claims-are-checked.test.mjs",
+        "scripts/mutation-drill.sh"
+      ],
+      "mechanism_gap": "The C-04 detectors bound the product code by counters (cost-bounds, bounded-spawn, test timeouts) but none looked at the CI drill, whose work scales with the mutant count and was bounded only by a fixed clock.",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)",
+      "distinct_from": {
+        "F-62": "F-62 is a stopwatch deciding a test result under load; F-166 is a CI job limit that did not scale with the work the job runs, so the job was cancelled rather than judged."
+      }
     }
   ]
 }

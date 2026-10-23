@@ -98,7 +98,7 @@ jobs:
       - run: npm run lint
   drill:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     strategy:
       matrix:
         node: [20, 22]
