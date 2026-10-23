@@ -5063,6 +5063,46 @@
       "distinct_from": {
         "F-85": "F-85 is a ledger reached through a symlink/hard link that ALREADY EXISTS (resolved and refused at classify time); F-163 is a link the command CREATES before using it, which the static resolver cannot follow — a run-time TOCTOU, closed by treating a chained link-create as constructed."
       }
+    },
+    {
+      "id": "F-164",
+      "date": "2026-10-23",
+      "introduced_in": "57e5958",
+      "found_by": "T0",
+      "class": "C-09",
+      "title": "The gitleaks port emitted (?-i:…) scopes that only Node 23+ compiles, so the whole CLI crashed at import on Node 20 and 22",
+      "symptom": "CI on oss/gitleaks-port (Node 20 and 22) failed: importing src/secret-scan.mjs threw 'Invalid regular expression … Invalid group' while compiling etsy-access-token, so every test that loads the scanner — and every sakk command — crashed. Locally (Node 25) the port, its compile check and the whole suite passed.",
+      "evidence": "CI run on PR #26 (jobs test (20), test (22)); reproduced locally with node --no-js-regexp-modifiers bin/sakk.mjs --version (throws at src/secret-scan.mjs:96); four generated rules carried (?-i:: etsy-access-token, generic-api-key, hashicorp-tf-api-token, sumologic-access-token.",
+      "direct_cause": "translate() refused an unknown inline group only if it was the FIRST '(?' match in the pattern; these rules start with a plain (?: group, so the later (?-i: was never checked, and the fallback compile check ran on the developer's Node 25, which has regexp modifiers.",
+      "why": [
+        "The refusal check used String.match (first hit only), so any pattern with an earlier (?: group skipped the check entirely.",
+        "The last line of defence — 'it must compile as a Node RegExp' — compiled on whatever Node ran the port, which locally is the newest one, not the floor (engines >= 20).",
+        "The answer to C-09.1 said the regexes are compiled on the Node the project targets; nothing in the local gate runs that Node, so the answer was true only in CI."
+      ],
+      "root_cause": "A check that the output runs on the supported runtime was performed on the newest runtime, so syntax the floor lacks passed every local check; only the CI matrix runs the floor.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-02"],
+      "answer_failed": {
+        "qid": "C-09.1",
+        "why": "C-09.1 claimed the generated regexes are compiled on Node 20+, but the test compiled them on the local Node 25; a construct only Node 23+ accepts passed every local run."
+      },
+      "instance_fix": "this commit: (?-i:…) inside a (?i) pattern is translated by dropping the i flag and case-folding everything outside the scope (the scope is copied verbatim as (?:…)); every '(?' opener — not only the first — must be one Node 20 has or the rule is refused. Three rules that were refused for the same scope (authress, okta, sumologic-access-id) now port too: 194 ported, 192 enabled, 1 refused. Verified with node --no-js-regexp-modifiers: the CLI loads and all 205 generated regexes compile.",
+      "guard": "test/gitleaks-port.test.mjs::every generated regex uses only syntax Node 20 has, and (?-i:…) keeps its meaning (F-164)",
+      "class_fix": null,
+      "sweep": "Other generated or hand-written regexes that could carry Node-23-only syntax: the guard test reads every generated rule and allowlist regex from the text (inline flag groups and repeated group names); the hand-written rules in src/secret-scan.mjs and src/classify.mjs have no inline flag groups (grep '(?[a-z-]*[:)]'). Duplicate named groups were checked with --no-js-regexp-duplicate-named-groups: the CLI loads.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "scripts/gitleaks-port.mjs",
+        "src/secret-rules.generated.mjs",
+        "test/gitleaks-port.test.mjs"
+      ],
+      "mechanism_gap": "Second occurrence after F-121 of 'passes only on the newest Node': the local gate runs one Node version, and the port's compile check inherited it. F-121's upgrade was 'none, CI catches it'; that held again, but only after a push.",
+      "mechanism_upgrade": "test/gitleaks-port.test.mjs::every generated regex uses only syntax Node 20 has, and (?-i:…) keeps its meaning (F-164)",
+      "distinct_from": {
+        "F-121": "F-121 is a test that overflowed JSON.stringify on older V8 (a runtime behaviour difference in test code); F-164 is generated product code using syntax older V8 rejects at compile time, which broke the shipped CLI, not only a test."
+      }
     }
   ]
 }

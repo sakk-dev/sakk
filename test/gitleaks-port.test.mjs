@@ -4,7 +4,12 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runPort, translate, PortError } from '../scripts/gitleaks-port.mjs';
-import { GITLEAKS_RULES, REFUSED, PINNED } from '../src/secret-rules.generated.mjs';
+import {
+  GITLEAKS_RULES,
+  GITLEAKS_ALLOWLIST,
+  REFUSED,
+  PINNED,
+} from '../src/secret-rules.generated.mjs';
 import { scanText, scanPaths, GL_RULES, GITLEAKS_DISABLED } from '../src/secret-scan.mjs';
 import { normalize, evaluate } from '../src/hook.mjs';
 
@@ -152,6 +157,44 @@ describe('gitleaks rule port (M3)', () => {
     const committed = readFileSync(join(ROOT, 'src', 'secret-rules.generated.mjs'), 'utf8');
     assert.equal(fresh, committed, 'run `node scripts/gitleaks-port.mjs --write` to regenerate');
     assert.match(PINNED.commit, /^[0-9a-f]{40}$/);
+  });
+
+  test('every generated regex uses only syntax Node 20 has, and (?-i:…) keeps its meaning (F-164)', () => {
+    // Inline modifiers and repeated group names compile on Node 23+ only; on
+    // Node 20/22 one such rule threw at import and took the whole CLI down.
+    // Read from the text, so a newer local Node cannot hide it.
+    const all = [...GITLEAKS_RULES, ...GITLEAKS_ALLOWLIST];
+    for (const r of all) {
+      assert.doesNotMatch(
+        r.re,
+        /(^|[^\\])\(\?-?[a-zA-Z]+-?[a-zA-Z]*[:)]/,
+        `${r.id ?? r.re} has an inline flag group`,
+      );
+      const names = [...r.re.matchAll(/\(\?<([A-Za-z_]\w*)>/g)].map((m) => m[1]);
+      assert.equal(new Set(names).size, names.length, `${r.id ?? r.re} repeats a group name`);
+    }
+    // a later unknown group is refused even when a plain (?: comes first
+    assert.throws(() => translate('(?:x)(?s:y)'), PortError);
+    assert.throws(() => translate('(?:x)(?-m:y)'), PortError);
+    // (?i)…(?-i:…): the scope stays case-sensitive, the rest does not
+    const t = translate('(?i)key(?-i:[Aa]pi|API)=v');
+    const re = new RegExp(t.source, t.flags);
+    assert.equal(t.flags, '');
+    for (const s of ['KEYApi=V', 'keyapi=v', 'kEyAPI=v']) assert.match(s, re);
+    assert.doesNotMatch('keyaPI=v', re);
+    // the real upstream rule: the atlasv1 marker is case-sensitive, the rest is not
+    const tf = GITLEAKS_RULES.find((r) => r.id === 'hashicorp-tf-api-token');
+    const tfRe = new RegExp(tf.re, tf.flags);
+    const tail = 'Ab0'.repeat(21);
+    assert.match(`${'Q'.repeat(14)}.atlasv1.${tail}`, tfRe);
+    assert.doesNotMatch(`${'q'.repeat(14)}.ATLASV1.${tail}`, tfRe);
+    // the counts the docs state are the generated ones
+    const spec = readFileSync(join(ROOT, 'specs', 'secret-guard', 'spec.md'), 'utf8');
+    const log = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8');
+    assert.ok(spec.includes(`**${GL_RULES.length} are enabled**`), 'spec enabled count');
+    assert.ok(spec.includes(`and ${REFUSED.length} is refused`), 'spec refused count');
+    assert.ok(log.includes(`**${GL_RULES.length} of gitleaks' 195 rules**`), 'CHANGELOG count');
+    assert.ok(log.includes(`(${REFUSED.length} rule, in`), 'CHANGELOG refused count');
   });
 
   test('an unknown regex construct is refused, not mis-translated', () => {

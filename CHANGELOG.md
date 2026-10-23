@@ -9,13 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — the gitleaks rule port in the secret guard (open-source v1, M3)
 
-- The secret guard now runs **189 of gitleaks' 195 rules** (v8.21.2, MIT)
+- The secret guard now runs **192 of gitleaks' 195 rules** (v8.21.2, MIT)
   alongside the eight hand-written ones, in the hook and the commit scan.
   `scripts/gitleaks-port.mjs` reads the pinned `config/gitleaks.toml` and
   generates `src/secret-rules.generated.mjs`, translating RE2 to JS (a leading
-  `(?i)` to the `i` flag, a mid `(?i)` and `(?i:…)` by case-folding, `(?P<>)` to
-  `(?<>)`, `\z` to `$`); it refuses any construct it does not know (4 rules, in
-  `REFUSED`), never guessing.
+  `(?i)` to the `i` flag, a mid `(?i)`, `(?i:…)` and `(?-i:…)` by case-folding,
+  `(?P<>)` to `(?<>)`, `\z` to `$`) into syntax Node 20 runs; it refuses any
+  construct it does not know (1 rule, in `REFUSED`), never guessing.
 - Rules are keyword-gated and filtered by gitleaks' global allowlist and
   per-rule entropy; one secret matched by two rules is reported once. The port
   is deterministic (a re-run reproduces the file byte-for-byte) and every

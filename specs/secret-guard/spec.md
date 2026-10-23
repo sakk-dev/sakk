@@ -21,10 +21,14 @@ column names `test/secret-guard.test.mjs` or `test/guard.test.mjs`.
 
 **Shipped — the gitleaks rule port.** `scripts/gitleaks-port.mjs` reads the
 pinned `config/gitleaks.toml` (gitleaks v8.21.2, MIT) and writes
-`src/secret-rules.generated.mjs`: of 195 upstream rules, **189 are enabled**,
+`src/secret-rules.generated.mjs`: of 195 upstream rules, **192 are enabled**,
 2 are disabled (`generic-api-key` for precision, `curl-auth-user` for a RE2
-construct that backtracks in JS), and 4 are refused by the translator (an
-unknown `(?-i:…)` scope — recorded in `REFUSED`, never half-translated). The
+construct that backtracks in JS), and 1 is refused by the translator
+(`curl-auth-header`, whose second mid-pattern `(?i)` the case-folder does not
+place — recorded in `REFUSED`, never half-translated). The generated regexes use
+only syntax Node 20 has: a `(?-i:…)` scope inside a `(?i)` pattern is translated
+by dropping the `i` flag and case-folding everything outside the scope, since
+inline modifiers compile only on Node 23+ (F-164). The
 hook and the commit scan run these alongside the eight hand-written rules,
 keyword-gated with gitleaks' global allowlist and per-rule entropy. The port
 is deterministic (a re-run must reproduce the file byte-for-byte) and every

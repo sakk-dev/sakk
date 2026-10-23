@@ -24,17 +24,89 @@ export class PortError extends Error {
   }
 }
 
+/** Index just past the ")" closing the group opened at src[open], respecting [] and escapes. */
+function groupEnd(src, open) {
+  let depth = 0;
+  let inClass = false;
+  for (let j = open; j < src.length; j += 1) {
+    const c = src[j];
+    if (c === '\\') {
+      j += 1;
+      continue;
+    }
+    if (inClass) {
+      if (c === ']') inClass = false;
+      continue;
+    }
+    if (c === '[') inClass = true;
+    else if (c === '(') depth += 1;
+    else if (c === ')') {
+      depth -= 1;
+      if (depth === 0) return j + 1;
+    }
+  }
+  throw new PortError('unterminated group');
+}
+
+/** The first four characters of every "(?" group opener, skipping escapes and classes. */
+function groupOpeners(src) {
+  const out = [];
+  let inClass = false;
+  for (let i = 0; i < src.length; i += 1) {
+    const c = src[i];
+    if (c === '\\') {
+      i += 1;
+      continue;
+    }
+    if (inClass) {
+      if (c === ']') inClass = false;
+      continue;
+    }
+    if (c === '[') inClass = true;
+    else if (c === '(' && src[i + 1] === '?') out.push(src.slice(i, i + 4));
+  }
+  return out;
+}
+
+// Group openers Node 20 understands. Inline flag groups ((?i), (?i:…), (?-i:…))
+// compile only on Node 23+, so they are translated away or the rule is refused.
+const PLAIN_OPENER = /^\(\?(?::|=|!|<=|<!|<[A-Za-z_])/;
+
 /**
  * Case-fold a regex segment so letters match either case without the i flag
- * (used for (?i:…) scopes and for the remainder after a mid-pattern (?i), where
- * a leading literal must stay case-sensitive). Escapes (\n, \w, \x60) and
- * non-letters are untouched. Throws on a construct it cannot fold safely.
+ * (used for (?i:…) scopes, for the remainder after a mid-pattern (?i), where
+ * a leading literal must stay case-sensitive, and for a whole (?i) pattern
+ * that scopes case back on with (?-i:…)). A (?-i:…) group is copied verbatim
+ * as (?:…). Escapes (\n, \w, \x60) and non-letters are untouched. Throws on a
+ * construct it cannot fold safely.
  */
 export function caseFold(seg) {
   let out = '';
   for (let i = 0; i < seg.length; i += 1) {
     const c = seg[i];
-    if (c === '\\') {
+    if (c === '(' && seg[i + 1] === '?') {
+      if (seg.startsWith('(?-i:', i)) {
+        const end = groupEnd(seg, i);
+        const body = seg.slice(i + 5, end - 1);
+        if (body.includes('(?i')) throw new PortError('(?i inside a (?-i: scope');
+        out += `(?:${body})`;
+        i = end - 1;
+      } else if (seg.startsWith('(?i:', i)) {
+        out += '(?:'; // already folding
+        i += 3;
+      } else if (seg.startsWith('(?<', i) && /[A-Za-z_]/.test(seg[i + 3] ?? '')) {
+        const close = seg.indexOf('>', i);
+        if (close === -1) throw new PortError('unterminated group name while case-folding');
+        out += seg.slice(i, close + 1); // a group name is not folded
+        i = close;
+      } else if (PLAIN_OPENER.test(seg.slice(i, i + 4))) {
+        const len = seg[i + 2] === '<' ? 4 : 3;
+        out += seg.slice(i, i + len);
+        i += len - 1;
+      } else {
+        throw new PortError(`unhandled inline group ${seg.slice(i, i + 4)} while case-folding`);
+      }
+    } else if (c === '\\') {
       out += c + (seg[i + 1] ?? '');
       i += 1;
     } else if (c === '[') {
@@ -108,6 +180,12 @@ export function translate(re) {
   // char via . OR \s, which blows up exponentially in JS. It is exactly the
   // any-char class, so rewrite it to [\s\S] (one class, linear in JS too).
   src = src.replace(/\(\?:(?:\.\|\\s|\\s\|\.|\.\|\\n|\\n\|\.)\)/g, '[\\s\\S]');
+  // a (?i) pattern that scopes case back on with (?-i:…): Node 20/22 have no
+  // inline modifiers, so drop the i flag and case-fold all but those scopes
+  if (flags === 'i' && src.includes('(?-i:')) {
+    flags = '';
+    src = caseFold(src);
+  }
   // (?i:…) scoped case-insensitivity → case-fold the group body, drop the flag
   src = expandScopedI(src);
   // a mid-pattern (?i): case-fold everything after it (a leading literal, e.g.
@@ -116,15 +194,12 @@ export function translate(re) {
   if (mid !== -1) {
     src = src.slice(0, mid) + caseFold(src.slice(mid + 4));
   }
-  // any remaining inline flag group we do not handle → refuse
-  const unknown = src.match(/\(\?[a-zA-Z]*[):]/);
-  if (
-    unknown &&
-    !unknown[0].startsWith('(?:') &&
-    !unknown[0].startsWith('(?<') &&
-    !/^\(\?[=!]/.test(unknown[0])
-  )
-    throw new PortError(`unhandled inline group ${unknown[0]}`);
+  // what is left of (?-i:…) sits where case already matters: a plain group
+  src = src.replaceAll('(?-i:', '(?:');
+  // every remaining group opener must be one Node 20 has — all of them, not
+  // only the first (F-164: a leading (?: hid a later (?-i: from this check)
+  for (const opener of groupOpeners(src))
+    if (!PLAIN_OPENER.test(opener)) throw new PortError(`unhandled inline group ${opener}`);
   // it must compile as a Node RegExp
   try {
     new RegExp(src, flags);
@@ -139,25 +214,7 @@ function expandScopedI(src) {
   let out = '';
   for (let i = 0; i < src.length; i += 1) {
     if (src.startsWith('(?i:', i)) {
-      // find the matching close paren, respecting nested () and [] and escapes
-      let depth = 1;
-      let j = i + 4;
-      let inClass = false;
-      for (; j < src.length && depth > 0; j += 1) {
-        const c = src[j];
-        if (c === '\\') {
-          j += 1;
-          continue;
-        }
-        if (inClass) {
-          if (c === ']') inClass = false;
-          continue;
-        }
-        if (c === '[') inClass = true;
-        else if (c === '(') depth += 1;
-        else if (c === ')') depth -= 1;
-      }
-      if (depth !== 0) throw new PortError('unterminated (?i: group');
+      const j = groupEnd(src, i);
       const body = src.slice(i + 4, j - 1);
       out += `(?:${caseFold(expandScopedI(body))})`;
       i = j - 1;

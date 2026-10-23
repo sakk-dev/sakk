@@ -44,7 +44,14 @@
     },
     "C-09.1": {
       "answer": "The port assumes Node's RegExp (no u flag, no inline (?i) flag), so it translates rather than relying on engine features; the generated regexes are compiled and run on the Node the project targets (20+), and the test compiles every one, catching any that Node rejects.",
-      "guard": "test/gitleaks-port.test.mjs::every ported regex is linear on hostile input"
+      "guard": "test/gitleaks-port.test.mjs::every ported regex is linear on hostile input",
+      "revisions": [
+        {
+          "finding": "F-164",
+          "answer": "The original answer said the regexes are compiled on the Node the project targets, but the test compiled them on the local Node 25, which accepts (?-i:…); Node 20 and 22 threw at import (F-164). Now the guard reads every generated regex as text and refuses inline flag groups and repeated group names, so the floor's syntax is checked on any Node, and the port checks every group opener, not only the first.",
+          "guard": "test/gitleaks-port.test.mjs::every generated regex uses only syntax Node 20 has, and (?-i:…) keeps its meaning (F-164)"
+        }
+      ]
     },
     "C-09.2": {
       "answer": "The rules run where the guard really runs: a test drives the real scanText/hook with a secret only a ported rule catches and sees the deny, so the rules are shown firing on the real path, not merely generated.",
