@@ -44,6 +44,21 @@ function codeSpans(md) {
   return [...fences, ...inline].join('\n');
 }
 
+/** Bullets and paragraphs, each with its continuation lines (fenced blocks dropped). */
+function docBlocks(md) {
+  const blocks = [];
+  let cur = null;
+  for (const line of md.replace(/```[a-z]*\n[\s\S]*?```/g, '').split('\n')) {
+    if (!line.trim()) cur = null;
+    else if (!cur || /^\s*(?:[-*] |#)/.test(line)) blocks.push((cur = [line]));
+    else cur.push(line);
+  }
+  return blocks.map((b) => b.join('\n'));
+}
+
+/** How the docs say a command is not in this release. */
+const NOT_SHIPPED = /not shipped|\bplanned\b|on the roadmap|^\s*- \[ \]/im;
+
 describe('release packaging (M5)', () => {
   test('the published files all exist and exclude tests, specs and findings', () => {
     for (const f of pkg.files)
@@ -103,8 +118,24 @@ describe('release packaging (M5)', () => {
       [],
       'the docs name a sakk command that is neither implemented nor a declared planned one',
     );
-    // control: the detector can fail — a fake command is caught
+    // A PLANNED command is excused only where the docs say it is not shipped:
+    // the bullet or paragraph that names it must carry a not-shipped marker.
+    // (The first version of this test let M2's "`sakk cap set` ..." pass,
+    // because PLANNED excused the name wherever it appeared.)
+    const unmarked = [];
+    for (const f of ['README.md', 'CHANGELOG.md'])
+      for (const block of docBlocks(read(f)))
+        for (const m of block.matchAll(/`[^`\n]*\bsakk ([a-z][a-z-]+)[^`\n]*`/g))
+          if (PLANNED.has(m[1]) && !real.has(m[1]) && !NOT_SHIPPED.test(block))
+            unmarked.push(`${f}: ${block.split('\n')[0].slice(0, 80)}`);
+    assert.deepEqual(
+      [...new Set(unmarked)],
+      [],
+      'a planned command is named without saying it is not shipped',
+    );
+    // controls: the detector can fail — a fake command is caught, an unmarked planned one too
     assert.ok(!real.has('definitelynotacommand'));
+    assert.ok(!NOT_SHIPPED.test('- `sakk cap set <usd>`: a daily cap the guard enforces'));
   });
 
   test('the version is one source of truth across the binary and the plugin', () => {
