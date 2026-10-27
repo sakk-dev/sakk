@@ -51,6 +51,14 @@ export function parseSuiteSummary(out) {
   return { tests: pick('tests'), pass: pick('pass'), fail: pick('fail') };
 }
 
+/** The drill defines exactly this many mutants (MUT-A…MUT-AL). It is a
+ * CONSCIOUS tripwire, deliberately NOT derived from the drill: adding a
+ * mutant without bumping this must fail a test, never silently shrink the
+ * witness. `test/certificate.test.mjs` links it to the drill's real count
+ * and to the freshness parser's reach — the latter caught the MUT-AA
+ * two-letter regex gap that made 12 mutants' hashes invisible (F-167). */
+export const EXPECTED_MUTANTS = 38;
+
 /** F8, machine-enforced: every `sha256 before=` the drill report testifies
  * about must equal the file's CURRENT hash — a drill that ran on different
  * bytes is a testimony about someone else's code. */
@@ -60,7 +68,7 @@ export function verifyDrillFreshness({ reportText, fileHashOf }) {
   let checked = 0;
   const blocks = [
     ...reportText.matchAll(
-      /\[(MUT-[A-Z])\] file=(\S+)\n(?:.*\n)?\[\1\] sha256 before=([0-9a-f]{64})/g,
+      /\[(MUT-[A-Z]+)\] file=(\S+)\n(?:.*\n)?\[\1\] sha256 before=([0-9a-f]{64})/g,
     ),
   ];
   for (const [, mut, file, before] of blocks) {
@@ -152,7 +160,6 @@ if (isMain) {
     console.error(`CERT_INTERNAL: ${e.message} — no certificate emitted`);
     process.exit(2);
   });
-  const EXPECTED_MUTANTS = 26;
   const refuse = (code, msg) => {
     // Review F9: a stale certificate from an earlier commit lying around
     // IS an emitted claim — refusal removes it.

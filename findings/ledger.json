@@ -4476,7 +4476,10 @@
       "status": "fixed",
       "areas": ["src/classify.mjs", "policies/guard-default.json"],
       "mechanism_gap": "The C-08 detectors check that aliases of one path reach one name; none checked what a folder rule covers when the folder contains another protected one.",
-      "mechanism_upgrade": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)"
+      "mechanism_upgrade": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)",
+      "distinct_from": {
+        "F-173": "F-146 was a path-ALLOW whose scope was too broad — a temp-folder allow canonicalised to also cover $HOME, one file reachable under several spellings by where it lived. F-173 is a path-READ guard that never performs shell expansion, so a glob/brace/variable token opens a secret the matched literal name does not spell. F-146 is canonical-identity / allow-scope at classify time; F-173 is the shell rewriting the token after classify. Different mechanism, different fix."
+      }
     },
     {
       "id": "F-147",
@@ -5061,7 +5064,8 @@
       "mechanism_gap": "The C-08 symlink/hard-link detectors resolved a link to an EXISTING target at classify time (F-85, the ledger path); none considered a link created earlier in the SAME command, whose target does not exist yet, so the static resolver scoped the alias as safe.",
       "mechanism_upgrade": "test/spend-cli.test.mjs::the agent cannot set its own cap (writing ~/.sakk is denied)",
       "distinct_from": {
-        "F-85": "F-85 is a ledger reached through a symlink/hard link that ALREADY EXISTS (resolved and refused at classify time); F-163 is a link the command CREATES before using it, which the static resolver cannot follow — a run-time TOCTOU, closed by treating a chained link-create as constructed."
+        "F-85": "F-85 is a ledger reached through a symlink/hard link that ALREADY EXISTS (resolved and refused at classify time); F-163 is a link the command CREATES before using it, which the static resolver cannot follow — a run-time TOCTOU, closed by treating a chained link-create as constructed.",
+        "F-173": "F-163 is a filesystem-link TOCTOU — the command CREATES a symlink/hard-link then uses it, so the static resolver follows pre-create state to a different target; it mutates the filesystem between classify and open. F-173 mutates nothing: the secret already exists under its real name; the shell merely expands a glob/brace/variable so the written token never spells the path the OS opens. Both are classify-view ≠ run-target, but one is a link race, the other lexical expansion."
       }
     },
     {
@@ -5179,6 +5183,242 @@
       "distinct_from": {
         "F-62": "F-62 is a stopwatch deciding a test result under load; F-166 is a CI job limit that did not scale with the work the job runs, so the job was cancelled rather than judged."
       }
+    },
+    {
+      "id": "F-167",
+      "date": "2026-10-27",
+      "introduced_in": "unknown",
+      "found_by": "T0",
+      "class": "C-10",
+      "title": "The certificate witness drifted from the drill: EXPECTED_MUTANTS stayed 26 and the freshness regex matched only single-letter ids, so a genuinely all-green drill of 38 mutants could not be certified",
+      "symptom": "The first real `npm run certificate` on the stack refused with CERT_STALE_EVIDENCE (kills=38 checked=26 expected=26) although every one of the 38 mutants was killed, both control suites were green, and the tree was clean. A correct release state could not produce a certificate.",
+      "evidence": "mutation-drill-report.txt: 38 'MUTANT KILLED' lines and 38 MUT blocks (26 single-letter MUT-A..MUT-S, 12 two-letter MUT-AA..MUT-AL); 'DRILL PASS: 38/38'. gate-certificate.mjs had `const EXPECTED_MUTANTS = 26` and the freshness regex `/\\[(MUT-[A-Z])\\] .../` whose single-letter class cannot match a two-letter id. scripts/mutation-drill.sh defines 38 run_drill calls.",
+      "direct_cause": "The freshness regex MUT-[A-Z] matched only the 26 single-letter ids, so verifyDrillFreshness returned checked=26 against kills=38 and the checked===kills completeness guard (F3) made fresh=false; EXPECTED_MUTANTS was also still 26.",
+      "why": [
+        "The drill grew from 26 to 38 mutants during M1-M5 (MUT-AA..MUT-AL added for archive, hook, console and release paths).",
+        "The witness hardcoded the 26-mutant single-letter world in two places (EXPECTED_MUTANTS and the hash-freshness regex) and neither was updated when the drill grew.",
+        "Nothing linked the drill's real mutant count or its id shape to the witness at test time; only a full certificate run (minutes, rarely invoked) exercised the witness, so the divergence stayed invisible until the first real run — the same shape as F-149, where a drill property was checked only by the drill itself.",
+        "Latent severity (C-01): had the F3 completeness guard not existed, the single-letter regex would have been absence-read-as-success, issuing a certificate while the 12 two-letter mutants' tampered-file freshness went unverified. Defense in depth contained it as a false refusal instead of a false certificate."
+      ],
+      "root_cause": "The witness that must track the drill (its mutant count and id shape) was kept in sync by nothing but the rarely-run certificate itself; no test fails at `npm test` time when the drill and the witness diverge.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "answer_failed": {
+        "qid": "C-10.1",
+        "why": "When the drill grew past 26 mutants, C-10.1 ('make a test fail when the step is missing') was not honored for the witness: the new mutants were added to the drill and the CI timeout was raised (F-166), but no test tied the drill's actual count or id shape to EXPECTED_MUTANTS or to the freshness regex, so the witness could drift untested."
+      },
+      "instance_fix": "this commit: EXPECTED_MUTANTS is moved to module scope, exported, and set to 38; the freshness regex is widened to MUT-[A-Z]+ so every two-letter id is in reach of hash verification; test/certificate.test.mjs adds three tests that read scripts/mutation-drill.sh, assert its run_drill id count equals EXPECTED_MUTANTS, and drive verifyDrillFreshness with the drill's real id set so checked must equal the full count.",
+      "guard": "test/certificate.test.mjs::EXPECTED_MUTANTS equals the number the drill actually defines",
+      "class_fix": null,
+      "sweep": "The other two hardcoded-count/shape couplings between the drill and its readers were checked: the drill's anchors are already linked to their files by F-149 (core-specs.test.mjs), and the drill's CI time budget to its mutant count by F-166 (claims-are-checked.test.mjs). This finding closes the third — the certificate witness. No class fix claimed: EXPECTED_MUTANTS stays a conscious tripwire deliberately not derived from the drill, so a drill that silently shrinks still fails the count-link test rather than silently lowering the expectation.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/gate-certificate.mjs", "test/certificate.test.mjs"],
+      "mechanism_gap": "The C-10 detectors turn rule text into checks for the product and (F-149) for the drill's anchors, but none tied the certificate witness's expected mutant count or its id-parsing regex to the drill it testifies about; that coupling was exercised only by the certificate run itself.",
+      "mechanism_upgrade": "test/certificate.test.mjs::the freshness parser can see every mutant id the drill emits (the MUT-AA regex gap)",
+      "distinct_from": {
+        "F-149": "F-149 made the drill's per-file anchors checkable without running the drill; F-167 makes the drill's mutant count and the witness's id-parsing reach checkable without running the certificate. Same mechanism (a drill property checked only by the drill/cert), different property and different reader.",
+        "F-166": "F-166 is the drill's CI time budget not scaling with the mutant count (C-04, a clock); F-167 is the certificate witness's expected count and id regex not tracking the mutant set (C-10, an untested coupling). Both stem from the 26->38 growth but on different readers."
+      }
+    },
+    {
+      "id": "F-168",
+      "date": "2026-10-27",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-01",
+      "title": "costOf reads an empty cache_creation:{} split as an authoritative zero, charging nothing for cache-write tokens the same usage would be billed for without the split key",
+      "symptom": "A usage row with cache_creation_input_tokens:1000 and an empty cache_creation:{} object is priced at $0 for those 1000 cache-write tokens, while the identical row without the split key is priced at 1000×cacheWrite5m. The spend ledger silently undercounts (underbills) whenever a provider or a replayed log emits an empty breakdown object.",
+      "evidence": "probe: costOf(entry,{cache_creation_input_tokens:1000, cache_creation:{}}) === 0 vs costOf(entry,{cache_creation_input_tokens:1000}) === 0.00375 (entry.cacheWrite5m = 3.75/M). src/prices.mjs costOf: `let w5=cacheWrite,w1h=0; if (split && typeof split==='object'){ w5=count(split,'ephemeral_5m_input_tokens'); w1h=count(split,'ephemeral_1h_input_tokens'); }` — an empty {} is truthy and typeof 'object', so w5/w1h are overwritten with 0. Pinned by test/spend.test.mjs 'GAP F-168 S-FN-012 ...'.",
+      "direct_cause": "costOf treats the presence of a cache_creation object as proof that it carries the full 5m/1h breakdown; an empty object passes the `split && typeof split===object` guard and zeroes w5 and w1h, discarding the cache_creation_input_tokens total it would otherwise have charged.",
+      "why": [
+        "The cache_creation split was added to price the 5m and 1h ephemeral tiers separately, assuming that whenever the object is present it enumerates the breakdown.",
+        "A provider, or a replayed/trimmed log, can emit cache_creation:{} — the key present but empty — which the guard reads as \"the breakdown is all zero\" rather than \"no breakdown was given, fall back to the aggregate\".",
+        "The empty-object branch was never exercised; only populated splits and the no-key path were tested, so the absence of a breakdown inside a present object read as success (zero cost)."
+      ],
+      "root_cause": "A present-but-empty breakdown object is accepted as a complete, authoritative breakdown; the code checks that the split key exists but never that it actually carries the tokens it is trusted to account for.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — the fix direction (fall back to the aggregate cacheWrite when the split is empty, vs. keep a present split authoritative) is a pending product decision; once decided, sweep the other split consumer (parseLine cache_creation normalization in src/spend.mjs) for the same present-but-empty assumption.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/prices.mjs"],
+      "mechanism_gap": "The RC-01 detectors verify assumptions on the surfaces they were written for (ledger reserve/settle, policy byte-matching, the certificate witness); none drives costOf cache_creation branch, so the assumption that a present split object is a complete split was outside every existing detector reach.",
+      "mechanism_upgrade": "test/spend.test.mjs::GAP F-168 S-FN-012 empty cache_creation:{} zeroes the cache-write charge (undercount)",
+      "distinct_from": {
+        "F-170": "F-170 is a malformed (non-integer) count that is not screened or isolated and crashes pricing; F-168 is a well-formed row whose empty cache split is silently priced at zero. Opposite failure modes — unhandled crash vs silent undercount."
+      }
+    },
+    {
+      "id": "F-169",
+      "date": "2026-10-27",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-09",
+      "title": "The shipped price snapshot carries only a handful of older models, so out of the box sakk cannot price a single current Claude model — every real call fails closed as PRICE_UNKNOWN",
+      "symptom": "With no user price table, loadPrices() falls back to the shipped prices/snapshot.json; priceOf(table, id) returns null for every current model (claude-sonnet-4-5-*, claude-opus-4-5, claude-haiku-5-5, claude-sonnet-5-5). capCheck then denies every priced run with PRICE_UNKNOWN. A fresh install cannot meter or cap any current-model agent until the operator hand-authors a table.",
+      "evidence": "probe: loadPrices({home:<nonexistent>}).path === SHIPPED_PRICES; priceOf(table,'claude-sonnet-4-5-20250929') === null (and for opus-4-5, haiku-5-5, sonnet-5-5); Object.keys(table.models).length <= 6. Pinned by test/spend.test.mjs 'GAP F-169 S-FN-020 ...'. The pricing CODE is correct (null, no guess, fail-closed); the shipped DATA is the gap.",
+      "direct_cause": "prices/snapshot.json ships with only the small set of older models it was trimmed to; no current model is in it, and priceOf makes no guess, so a loadPrices-from-shipped table prices nothing an operator will actually run.",
+      "why": [
+        "The snapshot was seeded once with a handful of models and shipped as the fallback table; keeping it in step with the models sakk would actually meet was assumed, never verified against the live model set.",
+        "Because the code is deliberately fail-closed (unknown model -> null -> PRICE_UNKNOWN deny), the empty coverage does not crash or warn at build time; it surfaces only as a blanket deny the first time a real agent runs.",
+        "No check ties the shipped snapshot model coverage to the models the product documents or targets, so a stale snapshot is an unexercised release state."
+      ],
+      "root_cause": "The shipped fallback price table model coverage is assumed adequate and is never tried against the current model set before release, so the out-of-the-box state (prices nothing) ships unexercised.",
+      "dt": ["DT-DEP"],
+      "rc": ["RC-06"],
+      "es": ["ES-02"],
+      "sweep": "Not swept — refreshing the shipped snapshot (which models, from what source, and how it stays current) is a pending product decision; once decided, sweep for any other shipped data artifact (e.g. default policies) assumed current but never checked against the live set.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["prices/snapshot.json", "src/prices.mjs"],
+      "mechanism_gap": "The RC-06 detectors guard against unrepresentative FIXTURE data on the eval/gold surfaces they cover; none checks the SHIPPED snapshot coverage against the current model set, so a release-time data artifact that represents no model an operator will run was outside the detectors scope.",
+      "mechanism_upgrade": "test/spend.test.mjs::GAP F-169 S-FN-020 shipped snapshot omits every current Claude model"
+    },
+    {
+      "id": "F-170",
+      "date": "2026-10-27",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-01",
+      "title": "A fractional token count passes parseLine finiteNonNeg validation, then throws USAGE_INVALID deep in costOf, and daySpend does not isolate the throw — so `sakk spend` crashes instead of failing closed cleanly",
+      "symptom": "A usage row with a non-integer count (e.g. input_tokens:1.5) is accepted and stored by parseLine, then crashes daySpend/capCheck with an unhandled USAGE_INVALID PriceError when costOf is reached. `sakk spend` aborts rather than marking the line unreadable and denying with a readable reason.",
+      "evidence": "probe/test: parseLine(...usage:{input_tokens:1.5}) returns the row with usage.input_tokens === 1.5 (src/spend.mjs validates with finiteNonNeg, not an integer check); daySpend({...}) then throws /USAGE_INVALID/ because costOf count() rejects the non-integer. daySpend calls costOf with no try/catch, so the throw is not isolated to an unreadable-line path. Pinned by test/spend.test.mjs 'GAP F-170 S-SEC-004 ...'.",
+      "direct_cause": "parseLine token validation (finiteNonNeg) accepts fractional values, so a non-integer survives into the day index; costOf count() then throws USAGE_INVALID, and daySpend has no per-line guard to turn that throw into an unreadable-line deny, so it propagates and crashes the command.",
+      "why": [
+        "parseLine was written to reject negative and non-finite counts but not non-integer ones, so a fractional token is treated as valid input and stored.",
+        "The integer invariant lives only in costOf count(), far from the parse boundary, and it signals by throwing rather than by a value parseLine could screen on.",
+        "daySpend trusts that every stored, parsed line can be priced and calls costOf without isolating a per-line failure, so a single malformed row aborts the whole command rather than reading as one unreadable line."
+      ],
+      "root_cause": "A malformed token count is neither screened at the parse boundary nor isolated where it is priced; the integer requirement is enforced only by a throw deep in costOf that no caller catches, so an invalid row aborts the command instead of failing closed as one unreadable line.",
+      "dt": ["DT-SHAPE"],
+      "rc": ["RC-09"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — the fix (reject non-integer at parseLine as an unreadable line, and/or isolate costOf throws per line in daySpend so one bad row denies cleanly) is a pending product decision; once decided, sweep the other costOf call sites (capCheck, the hook evaluate) for the same unisolated-throw shape.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/spend.mjs", "src/prices.mjs"],
+      "mechanism_gap": "The RC-09 detectors check failure isolation on the self-evolution CLI and base-checker surfaces they were written for (F-141/F-158); none drives a malformed usage row through daySpend, so costOf throwing past an unguarded call site in the spend path was outside their reach.",
+      "mechanism_upgrade": "test/spend.test.mjs::GAP F-170 S-SEC-004 fractional tokens pass parseLine then crash pricing (not isolated)",
+      "distinct_from": {
+        "F-168": "F-168 is a well-formed usage row undercharged because an empty split is read as zero; F-170 is a malformed (fractional) count accepted at parse then throwing unisolated in pricing. Different defect — silent underbill vs unhandled crash."
+      }
+    },
+    {
+      "id": "F-171",
+      "date": "2026-10-27",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-11",
+      "title": "An agent that may run the `sakk` binary can lift its own daily cap (cap off / cap set) and remove its own kill switch (guard uninstall) with no named-human gate — the very controls meant to bind it",
+      "symptom": "The daily cap and an installed guard are safety controls meant to hold against the agent. halt/resume/reconcile/unlock all refuse without --by <name>, but `sakk cap off`, `sakk cap set <huge>` and `sakk guard uninstall claude-code` succeed (exit 0) with no named human and no confirmation: the cap is deleted or raised to any value, and the PreToolUse hook file removes itself. An agent permitted to run `sakk` can disable the ceiling and the kill switch it is supposed to be bound by.",
+      "evidence": "test: test/kill-switch.test.mjs 'GAP J-UAT-016 ...' drives the real CLI in an isolated HOME/SAKK_HOME/cwd — `sakk halt` without --by exits 2 (named-human gate), while `cap off` / `cap set 999999` / `guard uninstall claude-code` each exit 0 and change state (capUsd removed, capUsd=999999, .claude/settings.json no longer carries the sakk hook). The same test feeds `sakk cap off` through the REAL hook evaluate(): none of the dedicated protections (halt/spend-cap/secret) fire, so running the self-disable over Bash is not caught by the guard it tears down. bin/sakk.mjs:705 asserts in a comment 'the agent is denied writing ~/.sakk, so it cannot raise its own cap' — but the sakk binary writes config.json itself; that write is not a classified Bash file-write the hook denies.",
+      "direct_cause": "The cap and guard admin subcommands call writeConfig / guard-install directly and carry no --by requirement, and the hook does not classify an invocation of the sakk binary as the protected-home write it performs; so the only barrier the design assumes (the hook denying a Bash write to ~/.sakk) is bypassed by the sakk binary doing the write on the agent's behalf.",
+      "why": [
+        "The named-human gate (--by) was added to the controls that were framed as human overrides — halt, resume, reconcile, unlock — but cap and guard were framed as operator setup, so the same gate was never written for them.",
+        "The cap design assumed the agent can only change config by a Bash file-write to ~/.sakk, which the hook denies; it did not account for the agent invoking the sakk binary, which performs that write itself and is not classified as a protected-home mutation.",
+        "The admin surface was only exercised on the happy path (a human runs cap/guard and it works); it was never driven adversarially as the agent disabling its own controls, so the missing authorization boundary never surfaced."
+      ],
+      "root_cause": "The authorization boundary that keeps a control out of the hands of the actor it constrains is applied inconsistently: halt-family subcommands demand a named human, but the cap and guard subcommands trust whoever runs the binary, and the hook does not treat running sakk-admin as crossing into the protected home — so the agent sits on the untrusted side of the cap/guard boundary yet can move both.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — the fix (whether cap off/set and guard uninstall should require --by like halt, and/or whether the hook must classify an argv that invokes the sakk binary against its own home as a protected-home write) is a pending product decision; once decided, sweep every sakk subcommand that writes ~/.sakk or the agent hook config (init, cap, guard, scan --install-hook) for the same ungated self-mutation.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["bin/sakk.mjs", "src/guard-install.mjs"],
+      "mechanism_gap": "The RC-05 detectors defend the trust boundary on the content/model surfaces they were written for (a writer repeating injected instructions, a judge decoding and scoring base64); none treats the agent itself as the untrusted party at the CLI admin boundary, so an agent invoking sakk to disable its own cap and guard was outside every existing RC-05 detector.",
+      "mechanism_upgrade": "test/kill-switch.test.mjs::GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed",
+      "distinct_from": {
+        "F-49": "F-49 is a concurrency lost-update: a human-forced unlock during a halt lets a racing reserve overwrite the halt write. F-171 is an authorization gap with no race: the agent simply runs an ungated admin subcommand to delete its own cap and remove its own guard. Different axis — mutual-exclusion loss vs a missing named-human boundary on the controls meant to bind the agent."
+      }
+    },
+    {
+      "id": "F-172",
+      "date": "2026-10-27",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-08",
+      "title": "A halt never reaches the installed hook in a default install: `sakk halt` writes the ledger to a cwd-relative path while the hook reads halt only from config.ledgerPath ?? SAKK_LEDGER_PATH, and no command writes config.ledgerPath — so the kill switch is silently inert",
+      "symptom": "After `sakk init --cap N` then `sakk halt --by <name>` in a project, the installed PreToolUse hook (node sakk.mjs hook --agent <agent>) does NOT honor the stop. haltFor resolves the ledger from config.ledgerPath ?? env.SAKK_LEDGER_PATH, neither of which is set out of the box, so it returns {known:false, halt:null}: the agent keeps running with no deny and no error. The operator pulled the kill switch and nothing stopped.",
+      "evidence": "test test/kill-switch.test.mjs 'GAP J-UAT-030 ...' drives the real CLI and real hook in an isolated HOME/SAKK_HOME/cwd: `sakk init --cap 100` then `sakk halt --by alice` write ./sakk-ledger.json in cwd; evaluate(normalize('claude-code', <Bash `rm -rf build` event>), {env}) in the default install produces NO decision with ruleId 'halt', while the same call with env.SAKK_LEDGER_PATH pointed at the written ledger is denied by ruleId 'halt' (verdict deny). src/hook.mjs:426 `haltFor(ev.agent, config.ledgerPath ?? env.SAKK_LEDGER_PATH)` and :262-263 `if (!ledgerPath) return {known:false, halt:null}`; bin/sakk.mjs:79 the CLI resolves `--ledger ?? SAKK_LEDGER_PATH ?? 'sakk-ledger.json'` (cwd-relative); src/guard-install.mjs:31-32 the installed command is `node sakk.mjs hook --agent <agent>` with no ledger path; bin/sakk.mjs calls writeConfig only from cap off / cap set, so config.ledgerPath is never written by any command.",
+      "direct_cause": "The halt-write and the hook-read resolve the ledger location by two independent rules that do not meet by default — the CLI defaults to a cwd-relative sakk-ledger.json while the hook has no default at all (config.ledgerPath ?? SAKK_LEDGER_PATH, both unset) — and nothing (not init, not guard install, no dedicated command) binds the two together, so the stop the operator writes lands where the hook never looks.",
+      "why": [
+        "The kill switch was built as two pieces — a CLI that writes a halt record to a ledger, and a hook that reads halt from a ledger — each given its own path-resolution rule, on the assumption that the operator would point both at the same file.",
+        "guard install writes the hook command with no ledger path and no SAKK_LEDGER_PATH, and no CLI command writes config.ledgerPath, so the only thing that can connect the two is an environment variable the operator must remember to export (or a hand-edited config.json) — a required step with no command and no default.",
+        "The halt was only ever tested with the ledger path supplied explicitly (the happy path); the default-install round-trip — does a stop written by the CLI actually reach a freshly installed hook? — was never exercised, so the silently-inert default never surfaced."
+      ],
+      "root_cause": "The kill-switch ledger is one thing addressed by two divergent resolution rules (CLI cwd-default vs hook config/env lookup) with no mechanism binding them, so out of the box the operator's halt and the hook's halt-lookup name different files; the control is inert by default and fails silently rather than refusing to arm.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-07"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — the fix (guard install bakes a resolvable ledger path into the hook command or stored config at install time, and/or a `sakk config set ledger <path>` command, and/or the hook defaults to the same cwd-relative sakk-ledger.json the CLI uses, and/or guard install refuses to arm without a resolvable ledger path) is a pending product decision. Once decided, sweep the spend-cap path in the same hook (src/hook.mjs:437-439 reads config.capUsd and spendCap's ledger the same way) for whether the cap is equally un-wired by default, and sweep every agent target (cursor, codex) for the same install-time wiring gap.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["bin/sakk.mjs", "src/hook.mjs", "src/guard-install.mjs"],
+      "mechanism_gap": "The RC-07 detectors check that documented claims and required steps are backed by enforcement on the surfaces they cover — README/spec claims matched to code (claims-are-checked), each red line / drill / script present (core-specs), the schema pinned (schema-pins), the guard rule list complete (guard). None of them drives the halt control end to end in a default install, so a required wiring step whose omission silently disarms the kill switch — rather than failing a documented-claim check — was outside every existing RC-07 detector's reach.",
+      "mechanism_upgrade": "test/kill-switch.test.mjs::GAP J-UAT-030 sakk halt is silently inert unless the ledger path is wired into the hook",
+      "distinct_from": {
+        "F-173": "F-172 is the kill-switch: `sakk halt` writes a cwd-relative ledger while the hook reads halt only from config.ledgerPath ?? SAKK_LEDGER_PATH, so the two never meet and halt is inert. F-173 is the secret-read guard matching the literal argv token while the shell expands a glob/brace/variable to the protected file. Same class (two rules for one target) and same file (src/hook.mjs), but the halt-path divergence and the secret-read expansion blind spot are independent; neither fix touches the other."
+      }
+    },
+    {
+      "id": "F-173",
+      "date": "2026-10-27",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-08",
+      "title": "The secret guard matches the literal argv token against the secret-name regex, so a shell expansion that resolves to the secret at run time — a glob (cat .e*), a brace (cat .e{nv,xample}) or a variable (f=.env; cat $f) — is classified as a read of a harmless name and allowed, while the same file read by its spelled-out name is denied",
+      "symptom": "Over the installed PreToolUse hook, `cat .env` is denied (reason names protect-secret-files / secret.read) but `cat .e*`, `cat .en?`, `cat .??*`, `cat .e{nv,xample}` and `f=.env; cat $f` are all ALLOWED, even though the shell expands each to .env before cat runs. `cat \"$HOME/.env\"` is denied too — but only incidentally, because the literal token ends in the path segment `.env` that the pattern match catches, NOT because $HOME is resolved (the deny reason prints the unexpanded string `$HOME/.env`). The guard performs no shell expansion of any kind, so any form whose spelled-out token does not already contain the secret name as a path segment reads the very file the guard exists to protect.",
+      "evidence": "test test/secret-guard.test.mjs 'GAP K-SEC-043/K-SEC-045 ...' drives normalize+evaluate (the SHIPPED hook, src/hook.mjs) in a mkdtemp HOME/SAKK_HOME/cwd: Bash events `cat .env`, `cat ~/.ssh/id_rsa`, `cat \"$HOME/.env\"` all return verdict deny with a reason matching /protect-secret-files/ (the deny for `$HOME/.env` prints the literal `$HOME/.env`, confirming no expansion happened — it matched the trailing `.env`); Bash events `cat .e*`, `cat .en?`, `cat .??*`, `cat .e{nv,xample}`, `f=.env; cat $f` each return verdict allow with an empty reason (no secret deny). src/classify.mjs shellActions() emits {action:'file.read', path:<literal token>} and src/hook.mjs isSecretPath() matches the literal token against the SECRET name pattern, so `.e*` / `.e{nv,xample}` / `$f` never match while `$HOME/.env` and `.ssh/id_rsa` do, purely by the spelling of the written token.",
+      "direct_cause": "shellActions classifies each command word as a literal path and isSecretPath matches it against a fixed secret-name pattern; the shell performs pathname (glob), brace and variable expansion AFTER the hook has classified the pre-expansion word, and the classifier resolves none of it, so a token whose written spelling does not contain the secret name (`.e*`, `.e{nv,xample}`, `$f`) is allowed even though it expands to the secret before cat opens it.",
+      "why": [
+        "The secret guard was built to recognise a protected file by its NAME, and name-matching was implemented against the argv token as written, on the unstated assumption that the token the agent types is the path the reader opens.",
+        "The shell sits between the classified command and the file system and rewrites the token (glob, brace, variable, command substitution) before the reader runs; the classifier performs no expansion at all — it matches the written token against the secret pattern — so a path like \"$HOME/.env\" is caught only incidentally (its spelled-out tail is `.env`), while any expansion form that does not already contain the secret name produces a token that cannot match.",
+        "The secret-read tests exercised spelled-out readers and paths (cat/grep/cp .env, ~/.ssh/...); none fed a command whose protected target only appears after shell expansion, so the gap between the inspected name and the opened name was never exercised and never surfaced."
+      ],
+      "root_cause": "The protected file is one thing addressed by two names — the pre-expansion argv token the guard inspects and the post-expansion path the OS opens — and the classifier binds its decision to the first while the read happens on the second; absent a rule that treats any word which could expand to a secret as a secret read (or that refuses to classify what it cannot safely expand), the guard protects only the spellings it happens to recognise.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — the fix (whether the classifier should expand globs/braces/variables against the real cwd before matching, or conservatively treat any word containing glob/brace/variable/command-substitution metacharacters near a secret-shaped stem as a secret read and deny, or refuse to classify a command it cannot fully resolve) is a pending product decision. Once decided, sweep every reader the guard classifies (cat, grep, cp, head, tail, less, dd, and any unlisted reader per F-155) for the same expansion blind spot, and sweep the write/exec classifications for the symmetric case (a glob/variable that expands to a protected write target or an exec of an expanded path).",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/classify.mjs", "src/hook.mjs"],
+      "mechanism_gap": "The secret-read detectors (test/secret-scan.test.mjs, test/secret-guard.test.mjs) assert denies on spelled-out readers and paths, and F-155 widened them to an unlisted reader; none drives a command whose protected target is produced by shell expansion (glob/brace/variable) rather than written literally, so a word that the classifier cannot match but the shell expands to a secret was outside every existing secret-guard detector.",
+      "mechanism_upgrade": "test/secret-guard.test.mjs::GAP K-SEC-043/K-SEC-045 glob, brace and variable expansions that resolve to a secret are not classified as a secret read",
+      "distinct_from": {
+        "F-155": "F-155 (an unlisted READER of a literally-named secret) and F-173 (a listed reader of an expansion-named secret) are different holes in the same guard: F-155 varies the command, F-173 varies the spelling of the path; fixing one does not fix the other.",
+        "F-172": "F-172 and F-173 are both C-08 (one target addressed by two divergent rules) and both touch src/hook.mjs, but on unrelated surfaces: F-172 is the HALT/kill-switch ledger path resolved two ways (CLI cwd-default vs the hook reading config.ledgerPath ?? SAKK_LEDGER_PATH) so halt never reaches the hook; F-173 is the secret-FILE-READ classifier matching the literal argv token while the shell expands a glob/brace/variable to the real path. Fixing the halt-path binding does nothing for shell expansion, and vice versa."
+      }
+    },
+    {
+      "id": "F-174",
+      "date": "2026-10-27",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-01",
+      "title": "On a Claude Code too old to honor onFailure, `sakk guard install claude-code` writes a hook that fails OPEN and tells the operator nothing: the install prints success, the onFailure line is simply omitted, and neither the CLI output nor `sakk doctor` warns that a hook which fails to run will let the call through",
+      "symptom": "On old Claude Code (claude --version absent or < 2.1.295), install writes the hook without onFailure:'block' — correct, since the old binary would choke on the unknown key — but the only signal is the ABSENCE of the trailing clause in the success line. The operator sees `claude-code: guard added to <path>` and `next: sakk doctor`, runs doctor, and sees nothing flagging that their guard is fail-open: if the hook process ever fails to start (bad node path, syntax error, OOM), the agent's action proceeds unguarded. A control whose whole purpose is to fail closed is silently installed fail-open.",
+      "evidence": "test test/guard.test.mjs 'GAP G-INS-006 ...' calls install('claude-code', {cwd, home, supportsOnFailure:false}) and asserts the returned onFailure is false and the written settings carry no onFailure key (fail-open on old CC) — AND that nothing surfaces it: the operator-facing path is exercised via the real CLI (spawnSync bin/sakk.mjs guard install claude-code) in an isolated HOME/cwd whose `claude` shim reports an old version, and stdout contains no warning (no /fail open/i, /fails? open/i). src/guard-install.mjs claudeSupportsOnFailure() returns false when `claude --version` throws or is < 2.1.295; withGuard adds onFailure only when truthy; bin/sakk.mjs:599 appends the reassuring 'a hook that fails to run blocks the call' clause ONLY when r.onFailure is truthy, and prints nothing in its place when false; doctor() returns no check for this condition.",
+      "direct_cause": "The fail-open branch is reached by OMISSION — withGuard leaves onFailure off and the CLI leaves its success-line clause off — so the degraded state is encoded as the absence of text rather than as an explicit warning, and no doctor check turns that absence into a visible, actionable finding.",
+      "why": [
+        "Supporting old Claude Code required install to DROP onFailure rather than emit a key the old binary rejects; the drop was implemented as a silent conditional (add the clause when supported, add nothing when not), so the safe-for-old-CC path and the warn-the-operator path were conflated into one branch that does neither.",
+        "The success line was written to describe the good case ('a hook that fails to run blocks the call') and simply suppressed in the degraded case, on the assumption that an operator would notice the missing clause — but a missing sentence is not a signal, and the operator has no baseline to compare against.",
+        "doctor was built to check that the hook FIRES (its wiring and that the binary is reachable); it was never given a check for the fail-open-by-fallback condition, so the one tool the CLI points the operator at ('next: sakk doctor') is silent on exactly the risk the fallback introduces."
+      ],
+      "root_cause": "A degraded, less-safe install is treated as a success with a shorter message instead of a success with a warning: the loss of fail-closed behavior on old Claude Code is represented by absent output at both surfaces (CLI line and doctor) rather than by an explicit, testable warning, so absence of the guarantee is read as presence of a normal install.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — the fix (install and/or doctor must emit an explicit, operator-facing warning whenever onFailure could not be set, naming the fail-open consequence and the remedy: upgrade Claude Code) is a pending product decision. Once decided, sweep every agent target for the same fallback (the onFailure degrade applies only to claude-code today, but cursor/codex install paths should be checked for any equivalent silently-dropped guarantee), and sweep doctor for other guarantees it reports as present-or-absent rather than pass/warn/fail.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["bin/sakk.mjs", "src/guard-install.mjs"],
+      "mechanism_gap": "The install/packaging detectors assert the install round-trips and that the SHIPPED plugin manifest carries onFailure:'block' (test/release.test.mjs), and guard.test.mjs asserts withGuard sets onFailure when told to; none drives the old-Claude-Code path (supportsOnFailure:false) and asserts the operator is WARNED that the resulting hook is fail-open, so a success-shaped install that silently drops the fail-closed guarantee was outside every existing detector.",
+      "mechanism_upgrade": "test/guard.test.mjs::GAP G-INS-006 install on an old Claude Code falls open with no warning to the operator"
     }
   ]
 }

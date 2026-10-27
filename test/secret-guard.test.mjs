@@ -169,3 +169,56 @@ describe('every write surface and agent is covered, and zero actions cannot smug
     assert.equal(run(w, bashEv(w, '# just a comment')).verdict, 'allow');
   });
 });
+
+describe('reading a protected secret file is denied (M3, protect-secret-files)', () => {
+  test('K-FN-005 a cat of a secret file is denied; ordinary reads are allowed', () => {
+    const w = world();
+    // The protect-secret-files rule denies a read whose spelled-out path names a
+    // secret — .env, an SSH private key, a $HOME/.env whose literal tail is `.env`.
+    for (const cmd of ['cat .env', 'cat ~/.ssh/id_rsa', 'cat "$HOME/.env"']) {
+      const r = run(w, bashEv(w, cmd));
+      assert.equal(r.verdict, 'deny', `${cmd} should be denied`);
+      assert.match(
+        r.reason,
+        /protect-secret-files|secret\.read/,
+        `${cmd} denied by the secret-read rule`,
+      );
+    }
+    // control: ordinary reads / listing are allowed
+    assert.equal(run(w, bashEv(w, 'cat README.md')).verdict, 'allow');
+    assert.equal(run(w, bashEv(w, 'ls -la && head package.json')).verdict, 'allow');
+  });
+});
+
+describe('K-SEC-043 / K-SEC-045: a shell expansion that resolves to a secret evades the read guard (GAP)', () => {
+  // protect-secret-files matches the LITERAL argv token against the secret-name
+  // pattern; the shell performs glob, brace and variable expansion only AFTER the
+  // hook has classified the pre-expansion word, and the classifier resolves none
+  // of it. So `cat .env` is denied (its spelled-out name matches) but `cat .e*`,
+  // `cat .e{nv,xample}` and `f=.env; cat $f` are allowed, though each opens .env
+  // at run time. `cat "$HOME/.env"` is denied only incidentally — its literal tail
+  // is `.env` — which is exactly why a plain-variable form that hides that tail
+  // slips through. This test PINS the current (gap) behaviour so the fix (F-173)
+  // has to change it deliberately; the title is the mechanism_upgrade guard, not a
+  // green pretending the guard is expansion-aware.
+  test('GAP K-SEC-043/K-SEC-045 glob, brace and variable expansions that resolve to a secret are not classified as a secret read', () => {
+    const w = world();
+    const deniedAsSecret = (cmd) => {
+      const r = run(w, bashEv(w, cmd));
+      return r.verdict === 'deny' && /protect-secret-files|secret\.read/.test(r.reason || '');
+    };
+    // precondition: the literal spelling IS caught, so the gap below is about the
+    // spelling of the path, not the rule being absent.
+    assert.ok(deniedAsSecret('cat .env'), 'precondition: the literal .env read is denied');
+
+    // GAP — each of these opens .env (or a secret) once the shell expands it, yet
+    // none is classified as a secret read:
+    for (const cmd of ['cat .e*', 'cat .en?', 'cat .??*', 'cat .e{nv,xample}', 'f=.env; cat $f']) {
+      assert.equal(
+        deniedAsSecret(cmd),
+        false,
+        `GAP F-173: ${cmd} expands to a secret but is currently allowed`,
+      );
+    }
+  });
+});

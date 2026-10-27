@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,7 @@ import {
   LEDGER_SCHEMA,
   LEDGER_SCHEMA_V2,
 } from '../src/ledger.mjs';
+import { normalize, evaluate } from '../src/hook.mjs';
 
 /** One test per row of the specs/kill-switch adversary table. */
 
@@ -657,5 +658,166 @@ describe('RC-08 class: every ledger write declares whether it confirms the books
       assert.ok(CONFIRMS.has(fn) || KEEPS.has(fn), `write in ${fn} is not classified`);
       assert.equal(keeps, KEEPS.has(fn), `${fn}: keepUpdatedAt must be ${KEEPS.has(fn)}`);
     }
+  });
+});
+
+describe('J-UAT-016: an agent can turn off its own cap and kill switch (GAP)', () => {
+  // The daily cap and an installed guard are meant to bind the AGENT — the design
+  // note in bin/sakk.mjs cap says "the agent is denied writing ~/.sakk, so it
+  // cannot raise its own cap." That defence assumes the only way to change the
+  // config is a classified Bash file-write the hook denies. It is not: `sakk cap
+  // off/set` and `sakk guard uninstall` are ordinary subcommands that write the
+  // config and the hook settings themselves, with NO named-human gate — unlike
+  // halt/resume, which refuse without --by <name>. The installed hook does not
+  // classify a `sakk`-admin invocation as the protected-home write it is, so an
+  // agent allowed to run `sakk` can lift its own ceiling and remove its own kill
+  // switch. This test PINS the current (gap) behaviour so the fix (F-171) has to
+  // change it deliberately; the exact title is the C-11.1 ack guard, not a green
+  // pretending the control is safe.
+  test('GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed', () => {
+    const base = mkdtempSync(join(tmpdir(), 'juat016-'));
+    const home = join(base, 'sakkhome'); // SAKK_HOME: holds config.json (the cap)
+    mkdirSync(home, { recursive: true });
+    const proj = join(base, 'proj'); // the agent's cwd: holds .claude/settings.json (the guard)
+    mkdirSync(proj, { recursive: true });
+    const configPath = join(home, 'config.json');
+    writeFileSync(configPath, `${JSON.stringify({ capUsd: 5 }, null, 2)}\n`);
+    const env = { ...process.env, HOME: base, SAKK_HOME: home };
+    const run = (args) =>
+      spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env, cwd: proj });
+
+    // Contrast: HALT has a named-human gate the agent cannot skip anonymously.
+    const haltNoBy = run(['halt', '--ledger', join(base, 'l.json')]);
+    assert.equal(haltNoBy.status, 2, 'halt rightly refuses without --by');
+    assert.match(haltNoBy.stderr, /requires --by/);
+
+    // GAP 1 — cap off: no --by, no confirmation; the daily ceiling is simply gone.
+    const capOff = run(['cap', 'off']);
+    assert.equal(capOff.status, 0, `cap off should currently succeed: ${capOff.stderr}`);
+    assert.equal(
+      onDisk(configPath).capUsd,
+      undefined,
+      'the cap the agent was supposed to be bound by is removed, ungated',
+    );
+
+    // GAP 2 — cap set to an astronomical ceiling: equally ungated.
+    const capSet = run(['cap', 'set', '999999']);
+    assert.equal(capSet.status, 0, `cap set should currently succeed: ${capSet.stderr}`);
+    assert.equal(onDisk(configPath).capUsd, 999999, 'the agent raised its own cap, ungated');
+
+    // GAP 3 — guard uninstall: the kill switch removes itself, ungated.
+    const gInstall = run(['guard', 'install', 'claude-code']);
+    assert.equal(gInstall.status, 0, `guard install: ${gInstall.stderr}`);
+    const settings = join(proj, '.claude', 'settings.json');
+    assert.ok(
+      existsSync(settings) && readFileSync(settings, 'utf8').includes('sakk.mjs'),
+      'precondition: the guard is installed',
+    );
+    const gUninstall = run(['guard', 'uninstall', 'claude-code']);
+    assert.equal(
+      gUninstall.status,
+      0,
+      `guard uninstall should currently succeed: ${gUninstall.stderr}`,
+    );
+    assert.ok(
+      !existsSync(settings) || !readFileSync(settings, 'utf8').includes('sakk.mjs'),
+      'the guard removed itself with no named human',
+    );
+
+    // And the installed hook does not mediate the self-disable: fed `sakk cap off`
+    // through the REAL hook, none of the dedicated protections (halt / spend-cap /
+    // secret) recognise it, so an agent running the command over Bash is not
+    // stopped by the very guard it is tearing down.
+    const r = evaluate(
+      normalize('claude-code', {
+        hook_event_name: 'PreToolUse',
+        cwd: proj,
+        session_id: 's-juat016',
+        tool_use_id: 'c-juat016',
+        tool_name: 'Bash',
+        tool_input: { command: 'sakk cap off' },
+      }),
+      { env, log: false },
+    );
+    const byDedicatedRule = (r.decisions ?? []).some((d) =>
+      ['halt', 'spend-cap', 'secret'].includes(d.ruleId),
+    );
+    assert.equal(
+      byDedicatedRule,
+      false,
+      'no dedicated protection recognises a self-disable command — the gap F-171 records',
+    );
+  });
+});
+
+describe('J-UAT-030 / G-FN-016 — a halt does not reach the hook in a default install', () => {
+  test('GAP J-UAT-030 sakk halt is silently inert unless the ledger path is wired into the hook', () => {
+    const base = mkdtempSync(join(tmpdir(), 'ks-juat030-'));
+    const home = join(base, 'sakkhome');
+    const proj = join(base, 'proj');
+    mkdirSync(home, { recursive: true });
+    mkdirSync(proj, { recursive: true });
+    // A default install: config.json exists but carries no ledgerPath (no CLI
+    // command writes one — only `cap`/`guard` touch config.json) and no capUsd
+    // (so the cap branch is skipped and cannot set `unknown`, which would mask halt).
+    writeFileSync(join(home, 'config.json'), '{}\n');
+
+    const env = { ...process.env, HOME: base, SAKK_HOME: home };
+    delete env.SAKK_LEDGER_PATH;
+    const run = (args) =>
+      spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env, cwd: proj });
+
+    // The operator sets up and then pulls the kill switch. With no --ledger and no
+    // SAKK_LEDGER_PATH both commands act on ./sakk-ledger.json relative to the CLI's
+    // own cwd (bin/sakk.mjs ledgerPath()).
+    const inited = run(['init', '--cap', '100', '--by', 'alice']);
+    assert.equal(inited.status, 0, `init should succeed: ${inited.stderr}`);
+    const halted = run(['halt', '--by', 'alice', '--reason', 'stop everything']);
+    assert.equal(halted.status, 0, `halt should succeed: ${halted.stderr}`);
+    const wrote = join(proj, 'sakk-ledger.json');
+    assert.ok(existsSync(wrote), 'halt wrote the ledger to cwd-relative sakk-ledger.json');
+
+    const ev = {
+      hook_event_name: 'PreToolUse',
+      cwd: proj,
+      session_id: 's-juat030',
+      tool_use_id: 'c-juat030',
+      tool_name: 'Bash',
+      tool_input: { command: 'rm -rf build' }, // a non-read, mutating action
+    };
+
+    // GAP (G-FN-016): the installed hook resolves halt only from
+    // config.ledgerPath ?? env.SAKK_LEDGER_PATH (src/hook.mjs:426), with no fallback
+    // to where `sakk halt` actually wrote. In a default install neither is set, so
+    // haltFor returns {known:false, halt:null} and the stop is silently ignored.
+    const def = evaluate(normalize('claude-code', ev), { env, log: false });
+    const haltSeenByDefault = (def.decisions ?? []).some((d) => d.ruleId === 'halt');
+    assert.equal(
+      haltSeenByDefault,
+      false,
+      'default install: the hook never consults the ledger halt was written to — the kill switch is inert',
+    );
+
+    // Control: once the operator wires the exact path halt wrote into the agent env,
+    // the same call is denied by halt. The switch works; it is just off by default.
+    const wired = evaluate(normalize('claude-code', ev), {
+      env: { ...env, SAKK_LEDGER_PATH: wrote },
+      log: false,
+    });
+    assert.ok(
+      (wired.decisions ?? []).some((d) => d.ruleId === 'halt'),
+      'wired: the hook honors the halt once SAKK_LEDGER_PATH points at the written ledger',
+    );
+    assert.equal(wired.verdict, 'deny', 'wired: the halted call is denied');
+
+    // J-UAT-030: even after `sakk init` created the ledger, nothing wrote
+    // config.ledgerPath — the only writeConfig callers are cap off / cap set. So the
+    // only ways to wire the hook are a hand-edited config.json or an env var the
+    // operator must remember to export; neither is a command and neither has a default.
+    assert.equal(
+      JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).ledgerPath,
+      undefined,
+      'no command (init included) writes config.ledgerPath — the hook has nothing to resolve by',
+    );
   });
 });

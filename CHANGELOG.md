@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the release certificate's mutant-freshness parser (F-167)
+
+- The certificate's drill-freshness parser read mutant ids with a `MUT-[A-Z]`
+  regex that was blind to the twelve two-letter mutants (`MUT-AA`…`MUT-AL`):
+  their tampered-file hash blocks were never in the verified set, so the
+  `freshness: N hashes verified` line a reader relies on could never be issued.
+  The parser now reads `MUT-[A-Z]+`, so every mutant the drill emits is in
+  reach, and `EXPECTED_MUTANTS` is pinned to the count the drill defines; a test
+  fails `npm test` if either drifts from `scripts/mutation-drill.sh`.
+
 ### Added — the gitleaks rule port in the secret guard (open-source v1, M3)
 
 - The secret guard now runs **192 of gitleaks' 195 rules** (v8.21.2, MIT)

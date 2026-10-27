@@ -197,6 +197,30 @@ describe('gitleaks rule port (M3)', () => {
     assert.ok(log.includes(`(${REFUSED.length} rule, in`), 'CHANGELOG refused count');
   });
 
+  test('K-ACC-068 the ported rule set accounts for every [[rules]] block in the pinned gitleaks.toml', () => {
+    // The "195 rules" the docs and CHANGELOG cite is the number of [[rules]] blocks
+    // in the pinned upstream config — count it from the source file (resolved from the
+    // repo root, never the session cwd — ack C-09.1), not from a literal, so that the
+    // claim stays true if the source is re-pinned. Every one of those blocks must end up
+    // either translated (GITLEAKS_RULES) or refused with a reason (REFUSED); none may be
+    // silently dropped. GL_RULES = translated − reviewed disables is pinned separately
+    // by 'a disabled rule is a reviewed exclusion'.
+    const toml = readFileSync(join(ROOT, 'config', 'gitleaks.toml'), 'utf8');
+    const sourceRules = (toml.match(/^\[\[rules\]\]/gm) || []).length;
+    assert.ok(sourceRules > 0, 'the pinned gitleaks.toml has [[rules]] blocks to port');
+    assert.equal(
+      GITLEAKS_RULES.length + REFUSED.length,
+      sourceRules,
+      `every source rule is translated or refused: ${GITLEAKS_RULES.length} + ${REFUSED.length} must equal the ${sourceRules} [[rules]] in config/gitleaks.toml`,
+    );
+    // the number the CHANGELOG states is that same counted source, not an independent literal
+    const log = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8');
+    assert.ok(
+      log.includes(`of gitleaks' ${sourceRules} rules`),
+      `CHANGELOG states the counted source total (${sourceRules})`,
+    );
+  });
+
   test('an unknown regex construct is refused, not mis-translated', () => {
     assert.throws(() => translate('(?P=name)'), PortError); // a backreference we do not handle
     assert.throws(() => translate('(?<=foo)(?z:bar)'), PortError);

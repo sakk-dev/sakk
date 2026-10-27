@@ -21,6 +21,7 @@ import {
   withGuard,
   withoutGuard,
   hookCommand,
+  claudeSupportsOnFailure,
 } from '../src/guard-install.mjs';
 import { initLedger, halt } from '../src/ledger.mjs';
 
@@ -702,6 +703,96 @@ describe('install and doctor', () => {
       withGuard('claude-code', {}, { command: 'c', onFailure: true }).hooks.PreToolUse[0].hooks[0]
         .onFailure,
       'block',
+    );
+  });
+  test('GAP G-INS-006 install on an old Claude Code falls open with no warning to the operator', () => {
+    // Claude Code only honours onFailure:'block' from 2.1.295; on an older (or
+    // absent) binary install DROPS the key, which is correct — the old CC would
+    // choke on a key it does not know. The gap is that the drop is SILENT: the
+    // degraded, fail-open install is encoded as the ABSENCE of text (no onFailure
+    // in the config, no reassuring clause in the success line) rather than as an
+    // explicit warning, and `sakk doctor` — the one tool the install points the
+    // operator at — carries no check for it. So an operator on old CC is told the
+    // guard is installed and is never told that if the hook process ever fails to
+    // start, the agent's action proceeds UNGUARDED. This test PINS that silence so
+    // the fix (F-174 — an explicit fail-open warning at install and/or doctor) has
+    // to change it deliberately; the title is the mechanism_upgrade guard, not a
+    // green pretending the operator was warned.
+
+    // the version gate itself is right: old / unreadable / absent -> drop, new -> keep
+    assert.equal(
+      claudeSupportsOnFailure(() => 'claude 2.0.0 (old build)'),
+      false,
+      'old CC: drop',
+    );
+    assert.equal(
+      claudeSupportsOnFailure(() => 'anthropic claude 2.1.294'),
+      false,
+      '< 2.1.295: drop',
+    );
+    assert.equal(
+      claudeSupportsOnFailure(() => '2.1.295'),
+      true,
+      '>= 2.1.295: keep',
+    );
+    assert.equal(
+      claudeSupportsOnFailure(() => {
+        throw new Error('ENOENT: claude not found');
+      }),
+      false,
+      'absent CC: drop',
+    );
+
+    // GAP 1 — install on old CC writes a fail-OPEN hook and marks it nowhere.
+    const w = world();
+    const r = install('claude-code', { cwd: w.repo, home: w.home, supportsOnFailure: false });
+    assert.equal(r.onFailure, false, 'old CC: the hook is installed without onFailure (fail-open)');
+    assert.doesNotMatch(
+      readFileSync(r.path, 'utf8'),
+      /onFailure/,
+      'GAP F-174: the fail-open hook carries no onFailure marker a reader could notice',
+    );
+
+    // GAP 2 — doctor(), where the install sends the operator next, surfaces no warning.
+    const checks = doctor({ cwd: w.repo, home: w.home, env: w.env });
+    assert.ok(
+      checks.every((c) => c.ok),
+      JSON.stringify(checks.filter((c) => !c.ok)),
+    );
+    assert.equal(
+      checks.some((c) => /fail[- ]?open|onFailure|fails to run/i.test(`${c.name} ${c.detail}`)),
+      false,
+      'GAP F-174: doctor says nothing about the install being fail-open',
+    );
+
+    // GAP 3 — the real CLI prints the reassuring onFailure clause only when CC is new
+    // enough; with claude absent from PATH (claudeSupportsOnFailure -> false) it omits
+    // the clause and prints no warning in its place.
+    const w2 = world();
+    const emptyBin = join(w2.base, 'emptybin');
+    mkdirSync(emptyBin);
+    const cli = spawnSync(process.execPath, [BIN, 'guard', 'install', 'claude-code'], {
+      cwd: w2.repo,
+      env: { ...w2.env, PATH: emptyBin },
+      encoding: 'utf8',
+    });
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.match(cli.stdout, /guard added to/, 'the install reports success');
+    assert.doesNotMatch(
+      cli.stdout,
+      /onFailure|fail[- ]?open|blocks the call/i,
+      'GAP F-174: the success line carries no fail-open warning on old/absent CC',
+    );
+
+    // CONTROL — where CC is new enough the fail-closed guarantee IS wired and IS stated,
+    // so the gap above is the missing WARNING on the degraded path, not a broken install.
+    const w3 = world();
+    const ok = install('claude-code', { cwd: w3.repo, home: w3.home, supportsOnFailure: true });
+    assert.equal(ok.onFailure, true, 'new CC: the hook is installed fail-closed');
+    assert.match(
+      readFileSync(ok.path, 'utf8'),
+      /"onFailure":\s*"block"/,
+      'new CC: the hook carries onFailure: block',
     );
   });
   test('doctor fails when the hook would not fire', () => {

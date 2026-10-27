@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "branch": "oss/p0-uat-backfill",
+  "answers": {
+    "C-01.1": {
+      "answer": "This change is itself an absence fix. The certificate's drill-freshness parser used a single-letter regex (MUT-[A-Z]) that was blind to the 12 two-letter mutants (MUT-AA..MUT-AL): their hash blocks were never in the verified set at all, so an absent block could not even be seen. Widening it to MUT-[A-Z]+ puts every mutant in reach, and the existing checked===kills completeness guard then refuses when any kill lacks a verified hash block. The P0 UAT backfill tests are all negative assertions: remove the guarded refusal and the test goes red.",
+      "guard": "test/certificate.test.mjs::the freshness parser can see every mutant id the drill emits (the MUT-AA regex gap)"
+    },
+    "C-01.2": {
+      "answer": "Revert the regex to MUT-[A-Z] and the new parser-reach test goes red: checked drops to 26 against 38 real ids, proving the parser silently narrowed its set. Revert EXPECTED_MUTANTS to 26 and the count-link test goes red. Neither drift can pass a green npm test any more; before this it only surfaced in the rarely-run multi-minute certificate run, where it read as an unissuable witness rather than a caught bug.",
+      "guard": "test/certificate.test.mjs::EXPECTED_MUTANTS equals the number the drill actually defines"
+    },
+    "C-04.1": {
+      "answer": "The new test's work is bounded by the mutant count read from the committed drill file (38 today), not by a clock: it builds exactly one synthetic hash block per id and asserts checked equals that count. The regex widening adds no backtracking risk because [A-Z]+ is terminated by the literal ']' that follows every id, so it cannot run away on the bracketed tokens. The drill's own time bound is untouched by this change.",
+      "guard": "test/certificate.test.mjs::every mutant the drill defines is counted exactly once"
+    },
+    "C-05.1": {
+      "answer": "The CHANGELOG entry for F-167 describes the witness fix and the three new certificate tests fail without that fix, so the sentence is backed. The certificate's own prose ('N/N mutants killed, each by its pre-named guardian; N hashes verified') is rendered from drill.checked / drill.kills, never typed, so it cannot overstate coverage independently of the numbers the gate acted on.",
+      "guard": "test/certificate.test.mjs::EXPECTED_MUTANTS equals the number the drill actually defines"
+    },
+    "C-05.2": {
+      "answer": "The figures the certificate reports (checked, kills) are exactly the ones the refusal logic acts on. The fix makes checked reflect all 38 mutants, so the 'freshness: 38 tampered-file hashes verified' line a reader relies on is now true rather than permanently unissuable. Exit codes are unchanged and still actionable: 0 only on a real certificate, 2 on every refusal path.",
+      "guard": "test/certificate.test.mjs::F8 machine-enforced: drill evidence freshness"
+    },
+    "C-10.1": {
+      "answer": "Keeping EXPECTED_MUTANTS and the freshness regex in sync with the drill was enforced by nobody: only a full certificate run (minutes, rarely invoked) would notice, the exact F-149 shape where the drill's anchors were checked only by the drill itself. The new witness-drill test reads scripts/mutation-drill.sh, counts its run_drill ids, and fails npm test if EXPECTED_MUTANTS or the parser no longer covers them. The required sync is now a test, not rule text.",
+      "guard": "test/certificate.test.mjs::EXPECTED_MUTANTS equals the number the drill actually defines"
+    },
+    "C-10.2": {
+      "answer": "The drill count can drift from two routes: editing mutation-drill.sh (adding run_drill lines) or editing gate-certificate.mjs (EXPECTED_MUTANTS or the regex). The new test reads the drill file directly at test time, so either route is caught by the same npm test / gate / CI run and there is no cached count to go stale. The freshness parser still freezes what it read by hashing CURRENT bytes (F8), which this change does not weaken.",
+      "guard": "test/certificate.test.mjs::the freshness parser can see every mutant id the drill emits (the MUT-AA regex gap)"
+    },
+    "C-09.1": {
+      "answer": "The spend backfill cases (S-FN-012, S-FN-017, S-FN-020, S-SEC-004) compute money through costOf/priceOf/parseLine with an explicitly built price table and explicit token rows, never through daySpend against the real clock, so they do not inherit F-165's dated-fixture-on-today trap; where a day bucket is needed it comes from dayOf(fixedIso), not a wall clock. The gitleaks count reconciliation (K-ACC-068) resolves config/gitleaks.toml and the generated module from the repo root via fileURLToPath(import.meta.url), not a cwd-relative path, so the same counts hold from any directory and on any Node that imports the module (the F-164 crash surface).",
+      "guard": "test/spend.test.mjs::S-FN-017 Haiku-5.5 at prompt 100001 prices the whole call at the long-context tier"
+    },
+    "C-09.2": {
+      "answer": "Secret-guard, guard-install and kill-switch cases drive the SHIPPED hook surface (normalize+evaluate from src/hook.mjs, guard-install.mjs) inside a mkdtemp HOME/SAKK_HOME sandbox, the same entry the installed PreToolUse hook calls, so a green means the real agent path decides as asserted rather than a hand-rolled matcher. Panel cases (U-SEC-*) start the real console HTTP server on an ephemeral port and issue real fetch() requests with the real token, exercising the server as a browser would. Packaging cases (P-INS/P-ACC) assert against the real `npm pack` file list / installed tgz, not the working tree.",
+      "guard": "test/console.test.mjs::U-SEC-003 malformed, uppercased and Bearer-wrapped tokens are all rejected 403"
+    },
+    "C-11.1": {
+      "answer": "J-UAT-016 and J-UAT-030 are exactly a value whose meaning outlives its scope: a cap, a halt and the installed hook are the spend ceiling and kill switch, which must hold against the agent, yet the agent can move them through ordinary CLI subcommands the hook never classifies (cap off / cap set / guard uninstall) or a halt that never reaches the hook because no command writes config.ledgerPath. This backfill adds no new writer; it adds adversarial tests that assert which caller each control actually trusts, and where a control currently trusts the agent the real verdict is pinned with a gap label and filed as a finding, never papered over with a green that pretends the writer is safe.",
+      "guard": "test/kill-switch.test.mjs::GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed"
+    }
+  }
+}

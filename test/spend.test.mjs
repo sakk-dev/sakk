@@ -424,3 +424,169 @@ describe('spend refusals (negative tests)', () => {
     );
   });
 });
+
+// ── P0 UAT backfill (branch oss/p0-uat-backfill): the four spend/pricing P0
+// cases that were "待补自动化" on the UAT sheet. S-FN-017 is clean (positive +
+// boundary). The other three are CONFIRMED GAPS: each is pinned by a GAP-
+// labelled characterization test (so the suite is honest about the current
+// behavior, not green over a broken one) and an open finding — F-168/169/170 —
+// whose fix is a product decision for the owner, not a quiet patch here.
+describe('P0 UAT backfill — spend', () => {
+  // S-FN-017 (已实现): past the long-context threshold the WHOLE call bills at
+  // the high tier, and the threshold is a strict > (exactly at it stays base).
+  // Synthetic "合成价表" per the UAT; the title names the Haiku-5.5 scenario it
+  // models (that model is not in the shipped snapshot — see S-FN-020/F-169).
+  test('S-FN-017 Haiku-5.5 at prompt 100001 prices the whole call at the long-context tier', () => {
+    const e = {
+      input: 1 * M,
+      output: 5 * M,
+      cacheRead: 0.1 * M,
+      cacheWrite5m: 1.25 * M,
+      cacheWrite1h: 2 * M,
+      longContext: {
+        thresholdTokens: 100_000,
+        input: 2 * M,
+        output: 7.5 * M,
+        cacheRead: 0.2 * M,
+        cacheWrite5m: 2.5 * M,
+        cacheWrite1h: 4 * M,
+      },
+    };
+    // prompt = 100001 > 100000 → whole call at the high tier
+    close(
+      costOf(e, { input_tokens: 100001, output_tokens: 1000 }),
+      100001 * 2 * M + 1000 * 7.5 * M,
+    );
+    close(costOf(e, { input_tokens: 100001, output_tokens: 1000 }), 0.207502);
+    // exactly at the threshold the strict > keeps it on the base tier
+    close(costOf(e, { input_tokens: 100000, output_tokens: 1000 }), 100000 * 1 * M + 1000 * 5 * M);
+  });
+
+  // S-FN-012 (部分实现 / 缺陷, F-168): an empty cache_creation:{} split is read as
+  // authoritative, zeroing w5 and w1h, so 1000 cache-write tokens are charged
+  // $0 — while the same tokens with no split key are charged 1000×cacheWrite5m.
+  // Direction = undercount = underbilling. This pins the defect; the fix is a
+  // product decision (fall back to cacheWrite when the split is empty vs. keep
+  // the split authoritative) recorded in F-168.
+  test('GAP F-168 S-FN-012 empty cache_creation:{} zeroes the cache-write charge (undercount)', () => {
+    const e = priceOf(TABLE, 'claude-test-5');
+    const withEmptySplit = costOf(e, { cache_creation_input_tokens: 1000, cache_creation: {} });
+    const withoutSplit = costOf(e, { cache_creation_input_tokens: 1000 });
+    assert.equal(
+      withEmptySplit,
+      0,
+      'CURRENT (buggy): an empty split charges nothing for 1000 tokens',
+    );
+    close(withoutSplit, 1000 * 3.75 * M);
+    assert.ok(
+      withEmptySplit < withoutSplit,
+      'the empty-split path undercounts vs the no-split path',
+    );
+  });
+
+  // S-FN-020 (部分实现 / P0 发布阻断, F-169): the shipped snapshot carries only a
+  // handful of older models; every current Claude model is unpriced. The code
+  // is correct — null, no guess, so capCheck fails closed with PRICE_UNKNOWN
+  // (tested above) — but out of the box sakk cannot price a single current-
+  // model call. This pins the release-blocking data gap; refreshing the shipped
+  // snapshot is a product decision recorded in F-169.
+  test('GAP F-169 S-FN-020 shipped snapshot omits every current Claude model', () => {
+    const { table, path } = loadPrices({ home: join(tmpdir(), 'no-such-sakk-home') });
+    assert.equal(path, SHIPPED_PRICES);
+    for (const id of [
+      'claude-sonnet-4-5-20250929',
+      'claude-opus-4-5',
+      'claude-haiku-5-5',
+      'claude-sonnet-5-5',
+    ])
+      assert.equal(priceOf(table, id), null, `${id} is unpriced in the shipped snapshot`);
+    assert.ok(
+      Object.keys(table.models).length <= 6,
+      'the snapshot carries only a handful of older models',
+    );
+  });
+
+  // S-SEC-004 (部分实现, F-170): a fractional token (input_tokens:1.5) passes
+  // parseLine's finiteNonNeg check (there is no integer gate), is stored, then
+  // crashes costOf with USAGE_INVALID. daySpend does not isolate the throw, so
+  // `sakk spend` crashes instead of recording the line unreadable and failing
+  // closed cleanly. This pins both halves (accepted at parse, crashes at price);
+  // the clean fail-closed + honest deny message is a product decision (F-170).
+  test('GAP F-170 S-SEC-004 fractional tokens pass parseLine then crash pricing (not isolated)', () => {
+    const r = parseLine(
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-10-22T10:00:00Z',
+        requestId: 'req_x',
+        message: { id: 'msg_x', model: 'claude-test-5', usage: { input_tokens: 1.5 } },
+      }),
+    );
+    assert.equal(
+      r.call.usage.input_tokens,
+      1.5,
+      'CURRENT (gap): a non-integer token is accepted, not marked unreadable',
+    );
+    const w = world();
+    mkdirSync(join(w.home, 'spend', 'days'), { recursive: true });
+    writeFileSync(
+      join(w.home, 'spend', 'days', '2026-10-22.json'),
+      JSON.stringify({
+        'msg_x|req_x': {
+          key: 'msg_x|req_x',
+          model: 'claude-test-5',
+          usage: { input_tokens: 1.5 },
+          ts: NOW,
+        },
+      }),
+    );
+    assert.throws(
+      () => daySpend({ home: w.home, day: '2026-10-22', table: TABLE }),
+      /USAGE_INVALID/,
+    );
+  });
+
+  // R-REL-018 (已实现): the spend read is fail-CLOSED on a corrupt log — a single
+  // unreadable line makes the WHOLE day's cap uncheckable, so every call that day
+  // is denied (SPEND_UNREADABLE) even though the readable lines are far under the
+  // cap, and the deny does not clear on a retry: only a person fixing the log
+  // restores service (REQ-R03, REQ-S06). The existing reading-the-logs test shows
+  // one good + one bad line denies; this strengthens it — several readable lines
+  // proven under the cap still deny when one bad line joins them (it is the bad
+  // line, not the spend, that denies), and a re-read does not self-recover.
+  test('R-REL-018 one unreadable log line denies the whole day under cap, and a retry does not self-recover', () => {
+    const good = Array.from({ length: 5 }, (_, i) =>
+      line({ id: `msg_${i}`, req: `req_${i}`, ts: '2026-10-22T10:00:00Z' }),
+    );
+
+    // control: a day of only readable lines, well under the $1 cap, allows
+    const clean = world({ cap: 1 });
+    writeFileSync(clean.file, good.join(''));
+    utimesSync(clean.file, NOW / 1000, NOW / 1000);
+    const cleanDay = spendOf(clean);
+    assert.equal(cleanDay.calls, good.length, 'the readable lines are distinct and counted');
+    assert.ok(cleanDay.usd < 1, `the readable spend is under the cap ($${cleanDay.usd})`);
+    assert.equal(cleanDay.unreadable, 0, 'no unreadable lines in the clean day');
+    assert.equal(
+      capCheck({ home: clean.home, config: clean.config, table: TABLE, now: NOW }),
+      null,
+      'a clean day under cap allows',
+    );
+
+    // the same readable lines plus ONE unreadable line: the whole day denies, though
+    // the readable spend is identical and still under the cap.
+    const poisoned = world({ cap: 1 });
+    writeFileSync(poisoned.file, `${good.join('')}{not json — a truncated or corrupt record\n`);
+    utimesSync(poisoned.file, NOW / 1000, NOW / 1000);
+    const r1 = capCheck({ home: poisoned.home, config: poisoned.config, table: TABLE, now: NOW });
+    assert.match(
+      r1?.reason ?? '',
+      /SPEND_UNREADABLE/,
+      'one bad line denies the whole day under cap',
+    );
+
+    // no self-recovery: reading again (the log unchanged) still denies — the deny is
+    // not transient and does not clear on retry; a person must fix the log.
+    const r2 = capCheck({ home: poisoned.home, config: poisoned.config, table: TABLE, now: NOW });
+    assert.match(r2?.reason ?? '', /SPEND_UNREADABLE/, 'a retry does not self-recover');
+  });
+});

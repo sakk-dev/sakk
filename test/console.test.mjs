@@ -1,10 +1,19 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  realpathSync,
+} from 'node:fs';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   startConsole,
@@ -12,11 +21,13 @@ import {
   tokenOk,
   renderPage,
   overviewData,
+  secretData,
   tryData,
   TAIL_BYTES,
   PAGE_LINES,
 } from '../src/console.mjs';
-import { initLedger } from '../src/ledger.mjs';
+import { initLedger, readLedger } from '../src/ledger.mjs';
+import { normalize, evaluate } from '../src/hook.mjs';
 import { install } from '../src/guard-install.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -530,6 +541,243 @@ describe('sakk ui console (M4): typed refusals', () => {
       assert.match(taken.stderr, /UI_PORT_IN_USE/);
     } finally {
       await held.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P0 UAT backfill — the console (M4) UAT cases that were "手工验证/待补自动化".
+// Each test drives the REAL HTTP server (or the real renderPage artifact) so a
+// green means the server behaves as the UAT case asserts, not a hand-rolled
+// matcher. Where a case turns out to be an open gap, it is pinned with a GAP
+// label and filed as a finding — never papered over. (branch oss/p0-uat-backfill)
+// ---------------------------------------------------------------------------
+describe('P0 UAT backfill — console (M4)', () => {
+  const HOSTOK = (port) => ({ Host: `127.0.0.1:${port}` });
+
+  // A sha256 map of every file under a directory, so "did any byte change" is a
+  // single deepEqual — used by U-SEC-021 to prove GETs write nothing.
+  function snapshotDir(dir) {
+    const out = {};
+    const walk = (d) => {
+      for (const name of readdirSync(d)) {
+        const p = join(d, name);
+        const st = statSync(p);
+        if (st.isDirectory()) walk(p);
+        else out[relative(dir, p)] = createHash('sha256').update(readFileSync(p)).digest('hex');
+      }
+    };
+    walk(dir);
+    return out;
+  }
+
+  // U-SEC-003 — token variants, end to end through /api/overview. The exact
+  // test name is the guard the C-09.2 ack points at; do not rename it.
+  test('U-SEC-003 malformed, uppercased and Bearer-wrapped tokens are all rejected 403', async () => {
+    const w = world({ decisions: [dec()] });
+    const c = await startConsole({ ...w });
+    try {
+      const good = c.token;
+      // positive control: the real token is accepted, so a blanket 403 below
+      // cannot be a broken endpoint masquerading as a rejection.
+      const ok = await hit(c.port, {
+        path: '/api/overview',
+        headers: { ...HOSTOK(c.port), Cookie: cookie(good) },
+      });
+      assert.equal(ok.status, 200, 'the real token is accepted (positive control)');
+
+      const flip = good.slice(0, -1) + (good.slice(-1) === '0' ? '1' : '0'); // same length, one byte off
+      const variants = [
+        ['garbage / wrong length', 'not-a-real-token'],
+        ['same length, one byte off', flip],
+        ['Bearer-wrapped', `Bearer ${good}`],
+      ];
+      const up = good.toUpperCase();
+      if (up !== good) variants.push(['uppercased', up]); // hex all-but-always has a-f; the freak all-digit token would equal itself, so skip it rather than flake
+
+      for (const [label, tok] of variants) {
+        const viaQuery = await hit(c.port, {
+          path: `/api/overview?t=${encodeURIComponent(tok)}`,
+          headers: HOSTOK(c.port),
+        });
+        assert.equal(viaQuery.status, 403, `${label} via ?t= must be 403`);
+        const viaCookie = await hit(c.port, {
+          path: '/api/overview',
+          headers: { ...HOSTOK(c.port), Cookie: cookie(tok) },
+        });
+        assert.equal(viaCookie.status, 403, `${label} via cookie must be 403`);
+      }
+    } finally {
+      await c.close();
+    }
+  });
+
+  // U-SEC-007 — DNS-rebinding: a request carrying the right token but a Host
+  // that is not the loopback literal the server bound to is refused, so a
+  // rebinding attacker who reaches the port with a hostname gets nothing.
+  test('U-SEC-007 a rebound Host (valid token, wrong Host) is refused 403', async () => {
+    const w = world({ decisions: [dec()] });
+    const c = await startConsole({ ...w });
+    try {
+      for (const host of ['attacker.example', `attacker.example:${c.port}`, 'localhost.evil']) {
+        const r = await hit(c.port, {
+          path: '/api/overview',
+          headers: { Host: host, Cookie: cookie(c.token) },
+        });
+        assert.equal(r.status, 403, `Host ${host} must be refused`);
+      }
+    } finally {
+      await c.close();
+    }
+  });
+
+  // U-SEC-010 — cross-origin CSRF against the one write (halt): a foreign
+  // Origin, and a form-style POST with no Origin/token header, are both
+  // refused, and the agent is left un-halted in the ledger.
+  test('U-SEC-010 cross-origin and form-style POST /api/halt are refused, agent stays un-halted', async () => {
+    const w = world({ ledger: true });
+    const c = await startConsole({ ...w, allowHalt: true });
+    try {
+      const foreign = await hit(c.port, {
+        path: '/api/halt',
+        method: 'POST',
+        headers: {
+          ...HOSTOK(c.port),
+          Cookie: cookie(c.token),
+          'Content-Type': 'application/json',
+          Origin: 'http://attacker.example',
+          'X-Sakk-Token': c.token,
+        },
+        body: '{}',
+      });
+      assert.equal(foreign.status, 403, 'a cross-origin halt must be refused');
+
+      const formCsrf = await hit(c.port, {
+        path: '/api/halt',
+        method: 'POST',
+        // a browser form-POST carries the cookie but cannot set X-Sakk-Token
+        headers: { ...HOSTOK(c.port), Cookie: cookie(c.token), 'Content-Type': 'text/plain' },
+        body: '{}',
+      });
+      assert.equal(formCsrf.status, 403, 'a form-style CSRF halt must be refused');
+
+      const doc = readLedger({ ledgerPath: w.ledgerPath });
+      assert.ok(
+        !doc.halt || !doc.halt.global,
+        'no cross-origin request may have halted the ledger',
+      );
+    } finally {
+      await c.close();
+    }
+  });
+
+  // U-SEC-012 — path traversal / static-file fishing: with a valid token, any
+  // path that is not '/' or '/api/*' is a 404 with no file bytes, so the
+  // process cannot be made to serve its own source or a dotfile.
+  test('U-SEC-012 traversal and static paths 404, never serving file content', async () => {
+    const w = world({ decisions: [dec()] });
+    const c = await startConsole({ ...w });
+    try {
+      const paths = [
+        '/etc/passwd',
+        '/src/console.mjs',
+        '/package.json',
+        '/.env',
+        '/%2e%2e%2f%2e%2e%2fpackage.json',
+        '/..%2f..%2fsrc%2fhook.mjs',
+      ];
+      for (const path of paths) {
+        const r = await hit(c.port, {
+          path,
+          headers: { ...HOSTOK(c.port), Cookie: cookie(c.token) },
+        });
+        assert.equal(r.status, 404, `${path} must be 404`);
+        assert.ok(!/\bimport\b|root:|"name":|sk-ant/.test(r.body), `${path} leaked file content`);
+      }
+    } finally {
+      await c.close();
+    }
+  });
+
+  // U-SEC-016 / U-SEC-017 — the console can never show or export a plaintext
+  // secret, because the value never reaches the decision log it reads from.
+  // Drive the REAL hook on a secret-bearing command, then read the log and
+  // every view (overview, the secrets panel, the export source) and assert the
+  // value appears nowhere while the secret deny (rule + fingerprint) is present.
+  test('U-SEC-016/017 a planted secret never reaches the log, the panel or the export', () => {
+    const w = world();
+    const SECRET = ['AKIA', 'IOSFODNN7EXAMPLE'].join(''); // assembled at runtime so no secret-shaped literal sits in source (the no-secrets-in-tree meta-test); still fires aws_access_key
+    const r = evaluate(
+      normalize('claude-code', {
+        hook_event_name: 'PreToolUse',
+        cwd: w.cwd,
+        session_id: 's-sec',
+        tool_use_id: 'c-sec-1',
+        tool_name: 'Bash',
+        tool_input: { command: `aws s3 cp x s3://b --metadata key=${SECRET}` },
+      }),
+      { env: w.env, log: true },
+    );
+    // the guard fired: the call is denied by the secret rule, not silently allowed
+    assert.equal(r.verdict, 'deny');
+    assert.ok(
+      r.decisions.some((d) => d.ruleId === 'secret'),
+      'the command must be denied by the secret rule',
+    );
+
+    // what landed on disk, and what every view renders from it
+    const logText = readFileSync(join(w.home, 'decisions.jsonl'), 'utf8');
+    const overview = JSON.stringify(overviewData({ home: w.home, env: w.env }));
+    const panel = secretData({ home: w.home });
+    const panelText = JSON.stringify(panel);
+    for (const [where, text] of [
+      ['decisions.jsonl', logText],
+      ['overview (panel + export source)', overview],
+      ['secrets panel', panelText],
+    ]) {
+      assert.ok(!text.includes(SECRET), `the plaintext secret must never appear in ${where}`);
+    }
+    // the panel still records that a secret was blocked, attributed to the agent,
+    // but as a card built from rule + fingerprint — never the value
+    assert.ok(panel.cards.length >= 1, 'a blocked secret must show as a card');
+    assert.equal(panel.cards[0].agent, 'claude-code');
+  });
+
+  // U-SEC-018 — the shipped page carries the CSV formula-injection guard, so a
+  // cell beginning =,+,-,@ (or a tab/CR) is prefixed with a quote on export.
+  test('U-SEC-018 the shipped page ships the CSV formula-injection guard', () => {
+    const page = renderPage('nonce-csv', false);
+    // the neutralizing char class and the quote-prefix both live in the page JS
+    assert.ok(page.includes('/^[=+\\-@\\t\\r]/'), 'the formula-injection char class is present');
+    assert.ok(page.includes('v="\'"+v'), 'a cell matching it is prefixed with a quote');
+  });
+
+  // U-SEC-021 — every GET is read-only: hitting each page-data endpoint,
+  // including the /api/try box that evaluates a command, changes no byte on disk.
+  test('U-SEC-021 no GET endpoint writes anything, not even the try box', async () => {
+    const w = world({ decisions: [dec()] });
+    const c = await startConsole({ ...w });
+    try {
+      const before = snapshotDir(w.base);
+      const gets = [
+        '/',
+        '/api/overview',
+        '/api/rules',
+        '/api/secret',
+        '/api/agents',
+        '/api/prices',
+        '/api/records',
+        '/api/forbidden',
+        '/api/try?cmd=ls%20-la',
+        '/api/try?cmd=rm%20-rf%20%2F', // even a destructive command only gets judged, never run
+      ];
+      for (const path of gets) {
+        const sep = path.includes('?') ? '&' : '?';
+        await hit(c.port, { path: `${path}${sep}t=${c.token}`, headers: HOSTOK(c.port) });
+      }
+      assert.deepEqual(snapshotDir(w.base), before, 'a GET changed a file on disk');
+    } finally {
+      await c.close();
     }
   });
 });
