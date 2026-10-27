@@ -5241,15 +5241,25 @@
       "dt": ["DT-LOGIC"],
       "rc": ["RC-01"],
       "es": ["ES-04"],
-      "sweep": "Not swept — the fix direction (fall back to the aggregate cacheWrite when the split is empty, vs. keep a present split authoritative) is a pending product decision; once decided, sweep the other split consumer (parseLine cache_creation normalization in src/spend.mjs) for the same present-but-empty assumption.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept: the only other split consumer, parseLine cache_creation normalization in src/spend.mjs, always writes both ephemeral fields (0 when absent) and never emits an empty object, and its sub-counts are now integer-screened (tokenCount), so costOf never sees a non-integer or an authoritative-looking empty split from a parsed line.",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": ["src/prices.mjs"],
       "mechanism_gap": "The RC-01 detectors verify assumptions on the surfaces they were written for (ledger reserve/settle, policy byte-matching, the certificate witness); none drives costOf cache_creation branch, so the assumption that a present split object is a complete split was outside every existing detector reach.",
-      "mechanism_upgrade": "test/spend.test.mjs::GAP F-168 S-FN-012 empty cache_creation:{} zeroes the cache-write charge (undercount)",
+      "mechanism_upgrade": "test/spend.test.mjs::F-168 S-FN-012 empty cache_creation:{} falls back to the aggregate cache-write",
       "distinct_from": {
         "F-170": "F-170 is a malformed (non-integer) count that is not screened or isolated and crashes pricing; F-168 is a well-formed row whose empty cache split is silently priced at zero. Opposite failure modes — unhandled crash vs silent undercount."
-      }
+      },
+      "instance_fix": "this commit: costOf (src/prices.mjs) honours the cache_creation split only when it enumerates tokens (s5 + s1h > 0); a present-but-empty object falls back to the aggregate cache_creation_input_tokens, so cache-write tokens are no longer silently zeroed. test/spend.test.mjs now asserts the empty-split cost equals the no-split cost and that a populated split is still priced per-tier.",
+      "class_fix": null,
+      "guard": "test/spend.test.mjs::F-168 S-FN-012 empty cache_creation:{} falls back to the aggregate cache-write",
+      "corrections": [
+        {
+          "field": "mechanism_upgrade",
+          "from": "test/spend.test.mjs::GAP F-168 S-FN-012 empty cache_creation:{} zeroes the cache-write charge (undercount)",
+          "why": "The fix commit rewrote the GAP test to assert the corrected behavior and renamed it (GAP marker dropped), so the detector-upgrade anchor now names the rewritten standing test — the standard GAP-to-fix workflow."
+        }
+      ]
     },
     {
       "id": "F-169",
@@ -5296,15 +5306,25 @@
       "dt": ["DT-SHAPE"],
       "rc": ["RC-09"],
       "es": ["ES-04"],
-      "sweep": "Not swept — the fix (reject non-integer at parseLine as an unreadable line, and/or isolate costOf throws per line in daySpend so one bad row denies cleanly) is a pending product decision; once decided, sweep the other costOf call sites (capCheck, the hook evaluate) for the same unisolated-throw shape.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept: costOf has exactly one call site (daySpend), now guarded; the hook reaches pricing only through capCheck -> daySpend, so no unisolated costOf throw remains.",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": ["src/spend.mjs", "src/prices.mjs"],
       "mechanism_gap": "The RC-09 detectors check failure isolation on the self-evolution CLI and base-checker surfaces they were written for (F-141/F-158); none drives a malformed usage row through daySpend, so costOf throwing past an unguarded call site in the spend path was outside their reach.",
-      "mechanism_upgrade": "test/spend.test.mjs::GAP F-170 S-SEC-004 fractional tokens pass parseLine then crash pricing (not isolated)",
+      "mechanism_upgrade": "test/spend.test.mjs::F-170 S-SEC-004 a fractional token is unreadable at parse and isolated in daySpend",
       "distinct_from": {
         "F-168": "F-168 is a well-formed usage row undercharged because an empty split is read as zero; F-170 is a malformed (fractional) count accepted at parse then throwing unisolated in pricing. Different defect — silent underbill vs unhandled crash."
-      }
+      },
+      "instance_fix": "this commit: parseLine (src/spend.mjs) screens token counts with tokenCount (finiteNonNeg + Number.isInteger) at the parse boundary, so a fractional count is marked unreadable instead of stored; as defence in depth daySpend wraps costOf in try/catch, counting a throwing row as one unreadable line (not a priced call), so the cap fails closed via SPEND_UNREADABLE instead of crashing. test/spend.test.mjs asserts both halves.",
+      "class_fix": null,
+      "guard": "test/spend.test.mjs::F-170 S-SEC-004 a fractional token is unreadable at parse and isolated in daySpend",
+      "corrections": [
+        {
+          "field": "mechanism_upgrade",
+          "from": "test/spend.test.mjs::GAP F-170 S-SEC-004 fractional tokens pass parseLine then crash pricing (not isolated)",
+          "why": "The fix commit rewrote the GAP test to assert the corrected behavior and renamed it (GAP marker dropped), so the detector-upgrade anchor now names the rewritten standing test — the standard GAP-to-fix workflow."
+        }
+      ]
     },
     {
       "id": "F-171",

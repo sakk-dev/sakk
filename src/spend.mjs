@@ -80,6 +80,9 @@ export function listLogs(dir) {
 }
 
 const finiteNonNeg = (x) => typeof x === 'number' && Number.isFinite(x) && x >= 0;
+// Token counts must be whole numbers: costOf rejects a fractional count deep in
+// pricing, so screen it here at the parse boundary instead (F-170).
+const tokenCount = (x) => finiteNonNeg(x) && Number.isInteger(x);
 const USAGE_FIELDS = [
   'input_tokens',
   'output_tokens',
@@ -104,8 +107,8 @@ export function parseLine(line) {
   const u = o.message.usage;
   if (u === null || typeof u !== 'object') return { unreadable: 'usage is not an object' };
   for (const k of USAGE_FIELDS)
-    if (u[k] !== undefined && u[k] !== null && !finiteNonNeg(u[k]))
-      return { unreadable: `${k} is not a count` };
+    if (u[k] !== undefined && u[k] !== null && !tokenCount(u[k]))
+      return { unreadable: `${k} is not a whole-token count` };
   const ts = Date.parse(o.timestamp);
   if (!Number.isFinite(ts)) return { unreadable: 'no timestamp' };
   const id = typeof o.message.id === 'string' ? o.message.id : null;
@@ -115,13 +118,13 @@ export function parseLine(line) {
       ? `${id ?? ''}|${req ?? ''}`
       : `unkeyed:${createHash('sha256').update(line).digest('hex').slice(0, 16)}`;
   const usage = {};
-  for (const k of USAGE_FIELDS) if (finiteNonNeg(u[k])) usage[k] = u[k];
+  for (const k of USAGE_FIELDS) if (tokenCount(u[k])) usage[k] = u[k];
   if (u.cache_creation && typeof u.cache_creation === 'object')
     usage.cache_creation = {
-      ephemeral_5m_input_tokens: finiteNonNeg(u.cache_creation.ephemeral_5m_input_tokens)
+      ephemeral_5m_input_tokens: tokenCount(u.cache_creation.ephemeral_5m_input_tokens)
         ? u.cache_creation.ephemeral_5m_input_tokens
         : 0,
-      ephemeral_1h_input_tokens: finiteNonNeg(u.cache_creation.ephemeral_1h_input_tokens)
+      ephemeral_1h_input_tokens: tokenCount(u.cache_creation.ephemeral_1h_input_tokens)
         ? u.cache_creation.ephemeral_1h_input_tokens
         : 0,
     };
@@ -256,6 +259,7 @@ export function daySpend({ home, day, table }) {
   const unpriced = new Map();
   const byModel = {};
   let n = 0;
+  let unreadable = calls['~unreadable'] ?? 0;
   for (const [key, c] of Object.entries(calls)) {
     if (key === '~unreadable') continue;
     n += 1;
@@ -264,7 +268,17 @@ export function daySpend({ home, day, table }) {
       unpriced.set(c.model ?? '(no model)', (unpriced.get(c.model ?? '(no model)') ?? 0) + 1);
       continue;
     }
-    const cost = costOf(entry, c.usage);
+    let cost;
+    try {
+      cost = costOf(entry, c.usage);
+    } catch {
+      // a stored row that cannot be priced (e.g. a malformed count that reached
+      // the index through some other writer) is one unreadable line, not a
+      // crashed command — the cap then fails closed via SPEND_UNREADABLE (F-170)
+      n -= 1;
+      unreadable += 1;
+      continue;
+    }
     usd += cost;
     byModel[c.model] = (byModel[c.model] ?? 0) + cost;
   }
@@ -273,7 +287,7 @@ export function daySpend({ home, day, table }) {
     usd,
     calls: n,
     unpriced: Object.fromEntries(unpriced),
-    unreadable: calls['~unreadable'] ?? 0,
+    unreadable,
     byModel,
   };
 }

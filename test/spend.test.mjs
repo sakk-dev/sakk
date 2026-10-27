@@ -462,25 +462,29 @@ describe('P0 UAT backfill — spend', () => {
     close(costOf(e, { input_tokens: 100000, output_tokens: 1000 }), 100000 * 1 * M + 1000 * 5 * M);
   });
 
-  // S-FN-012 (部分实现 / 缺陷, F-168): an empty cache_creation:{} split is read as
-  // authoritative, zeroing w5 and w1h, so 1000 cache-write tokens are charged
-  // $0 — while the same tokens with no split key are charged 1000×cacheWrite5m.
-  // Direction = undercount = underbilling. This pins the defect; the fix is a
-  // product decision (fall back to cacheWrite when the split is empty vs. keep
-  // the split authoritative) recorded in F-168.
-  test('GAP F-168 S-FN-012 empty cache_creation:{} zeroes the cache-write charge (undercount)', () => {
+  // S-FN-012 (F-168, fixed): a present but empty cache_creation:{} is not an
+  // authoritative "all zero" breakdown — a trimmed or replayed log can emit it.
+  // costOf now honours the split only when it enumerates tokens; an empty split
+  // falls back to the aggregate so the 1000 cache-write tokens are billed the
+  // same as with no split key, and a populated split is still priced per-tier.
+  test('F-168 S-FN-012 empty cache_creation:{} falls back to the aggregate cache-write', () => {
     const e = priceOf(TABLE, 'claude-test-5');
     const withEmptySplit = costOf(e, { cache_creation_input_tokens: 1000, cache_creation: {} });
     const withoutSplit = costOf(e, { cache_creation_input_tokens: 1000 });
+    close(withoutSplit, 1000 * 3.75 * M);
     assert.equal(
       withEmptySplit,
-      0,
-      'CURRENT (buggy): an empty split charges nothing for 1000 tokens',
+      withoutSplit,
+      'an empty split must not undercount — it falls back to the aggregate',
     );
-    close(withoutSplit, 1000 * 3.75 * M);
-    assert.ok(
-      withEmptySplit < withoutSplit,
-      'the empty-split path undercounts vs the no-split path',
+    // a split that actually enumerates the breakdown is still authoritative:
+    // 600 at 5m (3.75/M) + 400 at 1h (6/M), not the flat aggregate rate.
+    close(
+      costOf(e, {
+        cache_creation_input_tokens: 1000,
+        cache_creation: { ephemeral_5m_input_tokens: 600, ephemeral_1h_input_tokens: 400 },
+      }),
+      600 * 3.75 * M + 400 * 6 * M,
     );
   });
 
@@ -506,13 +510,12 @@ describe('P0 UAT backfill — spend', () => {
     );
   });
 
-  // S-SEC-004 (部分实现, F-170): a fractional token (input_tokens:1.5) passes
-  // parseLine's finiteNonNeg check (there is no integer gate), is stored, then
-  // crashes costOf with USAGE_INVALID. daySpend does not isolate the throw, so
-  // `sakk spend` crashes instead of recording the line unreadable and failing
-  // closed cleanly. This pins both halves (accepted at parse, crashes at price);
-  // the clean fail-closed + honest deny message is a product decision (F-170).
-  test('GAP F-170 S-SEC-004 fractional tokens pass parseLine then crash pricing (not isolated)', () => {
+  // S-SEC-004 (F-170, fixed): a fractional token (input_tokens:1.5) is screened
+  // at the parse boundary — parseLine marks it unreadable instead of storing it
+  // — and, as defence in depth, a malformed row that reaches the day index does
+  // not crash daySpend: the costOf throw is isolated to one unreadable line, so
+  // the cap fails closed cleanly (SPEND_UNREADABLE) rather than aborting.
+  test('F-170 S-SEC-004 a fractional token is unreadable at parse and isolated in daySpend', () => {
     const r = parseLine(
       JSON.stringify({
         type: 'assistant',
@@ -521,11 +524,10 @@ describe('P0 UAT backfill — spend', () => {
         message: { id: 'msg_x', model: 'claude-test-5', usage: { input_tokens: 1.5 } },
       }),
     );
-    assert.equal(
-      r.call.usage.input_tokens,
-      1.5,
-      'CURRENT (gap): a non-integer token is accepted, not marked unreadable',
-    );
+    assert.ok(r.unreadable, 'a non-integer token count is marked unreadable at the parse boundary');
+    assert.match(r.unreadable, /input_tokens/);
+    assert.equal(r.call, undefined, 'it is not stored as a priced call');
+
     const w = world();
     mkdirSync(join(w.home, 'spend', 'days'), { recursive: true });
     writeFileSync(
@@ -539,10 +541,14 @@ describe('P0 UAT backfill — spend', () => {
         },
       }),
     );
-    assert.throws(
-      () => daySpend({ home: w.home, day: '2026-10-22', table: TABLE }),
-      /USAGE_INVALID/,
+    const s = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+    assert.equal(
+      s.unreadable,
+      1,
+      'the malformed row is counted as one unreadable line, not a crash',
     );
+    assert.equal(s.calls, 0, 'it is not counted as a priced call');
+    assert.equal(s.usd, 0);
   });
 
   // R-REL-018 (已实现): the spend read is fail-CLOSED on a corrupt log — a single

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — spend accounting correctness (F-168, F-170)
+
+- An empty `cache_creation:{}` object (which a trimmed or replayed log can emit)
+  was read as an authoritative all-zero breakdown, so cache-write tokens were
+  priced at `$0`. `costOf` now honours the split only when it enumerates tokens
+  and otherwise falls back to the `cache_creation_input_tokens` aggregate, so
+  those tokens are billed the same as with no split key (F-168).
+- A fractional token count (e.g. `input_tokens: 1.5`) passed the spend parser's
+  validation and then threw deep in pricing, crashing `sakk spend`. Token counts
+  are now screened as whole numbers at the parse boundary — a non-integer line is
+  marked unreadable — and `daySpend` isolates any pricing throw as one unreadable
+  line, so the cap fails closed via `SPEND_UNREADABLE` instead of aborting
+  (F-170).
+
 ### Fixed — the release certificate's mutant-freshness parser (F-167)
 
 - The certificate's drill-freshness parser read mutant ids with a `MUT-[A-Z]`

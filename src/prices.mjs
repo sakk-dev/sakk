@@ -126,8 +126,16 @@ export function costOf(entry, usage) {
   let w5 = cacheWrite;
   let w1h = 0;
   if (split && typeof split === 'object') {
-    w5 = count(split, 'ephemeral_5m_input_tokens');
-    w1h = count(split, 'ephemeral_1h_input_tokens');
+    const s5 = count(split, 'ephemeral_5m_input_tokens');
+    const s1h = count(split, 'ephemeral_1h_input_tokens');
+    // A present but empty cache_creation:{} is not an authoritative "all zero"
+    // breakdown — a trimmed or replayed log can emit it. Honour the split only
+    // when it actually enumerates tokens; otherwise keep the aggregate so
+    // cache-write tokens are never silently dropped from the bill (F-168).
+    if (s5 + s1h > 0) {
+      w5 = s5;
+      w1h = s1h;
+    }
   }
   const prompt = input + cacheRead + cacheWrite;
   const rate =
