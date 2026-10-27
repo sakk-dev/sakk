@@ -181,8 +181,8 @@ export function uninstall(agent, opts = {}) {
   return writeConfig(path, before, withoutGuard(agent, before));
 }
 
-/** The installed guard commands of one config file, for one agent. */
-function installedCommands(agent, path) {
+/** The installed guard hook objects of one config file, for one agent (ours only). */
+function installedHooks(agent, path) {
   if (!existsSync(path)) return [];
   let cfg;
   try {
@@ -194,7 +194,12 @@ function installedCommands(agent, path) {
     agent === 'cursor'
       ? Object.values(cfg.hooks ?? {}).flat()
       : (cfg.hooks?.PreToolUse ?? []).flatMap((g) => g.hooks ?? []);
-  return all.map((h) => h.command).filter((c) => ours(c, agent));
+  return all.filter((h) => ours(h.command, agent));
+}
+
+/** The installed guard commands of one config file, for one agent. */
+function installedCommands(agent, path) {
+  return installedHooks(agent, path).map((h) => h.command);
 }
 
 /** A synthetic forced push in each agent's shape: the installed hook must deny it. */
@@ -331,6 +336,23 @@ export function doctor({
       'cursor double run',
       true,
       'Cursor also runs Claude Code project hooks, so each Cursor call is decided twice; harmless, but logged twice',
+      true,
+    );
+  // A fail-open install is a degraded guard, not a healthy one: a Claude Code
+  // hook with no onFailure: block was installed on a binary older than 2.1.295,
+  // so if the hook process ever fails to start the tool call proceeds UNGUARDED.
+  // Surface it here — the one tool install points the operator at — rather than
+  // leave the lost guarantee to be inferred from an absent config key (F-174).
+  const claudeHooks = [
+    configPath('claude-code', { cwd, home }),
+    configPath('claude-code', { user: true, cwd, home }),
+    ...(existsSync(managed) ? [managed] : []),
+  ].flatMap((p) => installedHooks('claude-code', p));
+  if (claudeHooks.length > 0 && claudeHooks.some((h) => h.onFailure !== 'block'))
+    add(
+      'claude-code fail-open',
+      true,
+      'the installed Claude Code hook has no onFailure: block — it was installed on a Claude Code older than 2.1.295, so if the hook ever fails to start the tool call proceeds UNGUARDED; upgrade Claude Code and run sakk guard install claude-code again for a fail-closed guard',
       true,
     );
   if (!anyInstalled)

@@ -598,6 +598,15 @@ if (cmd === 'init') {
     console.log(
       `${agent}: ${action === 'install' ? 'guard added to' : 'guard removed from'} ${r.path}${r.backup ? ` (previous file kept at ${r.backup})` : ''}${r.onFailure ? '; a hook that fails to run blocks the call (onFailure: block)' : ''}`,
     );
+  // A degraded, fail-open install is a success WITH A WARNING, never a quiet
+  // success with a shorter line. On a Claude Code too old for onFailure
+  // (< 2.1.295) the guard cannot fail closed, so say so to the operator
+  // explicitly rather than leave the lost guarantee to be inferred from an
+  // absent clause (F-174).
+  if (action === 'install' && agent === 'claude-code' && !r.onFailure)
+    console.log(
+      '! claude-code: this Claude Code is too old for onFailure (needs 2.1.295+), so the guard is installed FAIL-OPEN — if the hook ever fails to start, the tool call proceeds UNGUARDED. Upgrade Claude Code and reinstall for a fail-closed guard; sakk doctor flags this.',
+    );
   if (action === 'install') console.log('next: sakk doctor — it checks the hook really fires');
 } else if (cmd === 'doctor') {
   const checks = doctor();

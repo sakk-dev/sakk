@@ -41,6 +41,42 @@
     "C-11.1": {
       "answer": "J-UAT-016 and J-UAT-030 are exactly a value whose meaning outlives its scope: a cap, a halt and the installed hook are the spend ceiling and kill switch, which must hold against the agent, yet the agent can move them through ordinary CLI subcommands the hook never classifies (cap off / cap set / guard uninstall) or a halt that never reaches the hook because no command writes config.ledgerPath. This backfill adds no new writer; it adds adversarial tests that assert which caller each control actually trusts, and where a control currently trusts the agent the real verdict is pinned with a gap label and filed as a finding, never papered over with a green that pretends the writer is safe.",
       "guard": "test/kill-switch.test.mjs::GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed"
+    },
+    "C-07.1": {
+      "answer": "The F-174 fix reacts to exactly two externally-sourced inputs and trusts neither blindly: the installed Claude Code version string, parsed only through claudeSupportsOnFailure which returns false on any missing binary, unparseable output or thrown error (so an untrusted or spoofed version degrades to fail-open-and-warn, never to a false fail-closed claim); and the agent's own settings file, read via readJson which rejects anything that is not a plain object. The operator warning text is a fixed string literal with no interpolation of any external value, so no attacker-controlled bytes reach the console line.",
+      "guard": "test/guard.test.mjs::doctor fails when the hook would not fire"
+    },
+    "C-07.2": {
+      "answer": "The gate this touches is the guard's fail-closed guarantee and the party it constrains is the agent whose tool calls the hook adjudicates. The fix gives the agent no new power to clear anything: it cannot set onFailure, cannot suppress the install-time warning, and cannot clear the doctor flag. Only a human upgrading the local Claude Code binary to 2.1.295+ and reinstalling removes the warning, so the step that clears the degraded state is reserved to a person at the machine, not to the constrained agent.",
+      "guard": "test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself"
+    },
+    "C-15.1": {
+      "answer": "The rewritten G-INS-006 drives the real paths, not stand-ins: it spawns the actual bin/sakk.mjs via spawnSync for `guard install claude-code` with the real binary probe forced old, and it calls the real doctor() against a real mkdtemp sandbox config, then asserts the exact stdout bytes the operator sees and the exact doctor check array. There is no hand-rolled matcher writing its own evidence; the control arm installs on a probe forced new and asserts the warning is absent and onFailure:block present, so both the degraded and the healthy real paths are exercised.",
+      "guard": "test/guard.test.mjs::doctor fails when the hook would not fire"
+    },
+    "C-03.1": {
+      "answer": "Each assertion in the rewritten test is pinned to one cause. Revert the bin/sakk.mjs install-warning branch and only the old-Claude-Code install arm goes red; revert the doctor() fail-open warn check and only the doctor arm goes red; the new-CC control arm (which asserts NO warning and onFailure:block present) goes red if the warning ever fires on the fail-closed path. So the check fails for the fail-open-is-silent defect it names and not for an unrelated reason, proven by putting each half of the bug back independently.",
+      "guard": "test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself"
+    },
+    "C-03.2": {
+      "answer": "The test observes the two surfaces an operator actually reads — the real spawnSync stdout of the install command and the real array returned by doctor() — rather than a proxy for them, so it can see the warning the operator would see at exactly the moment they would see it. The new-CC control proves the no-warning case is reachable and distinct from the old-CC case, so a green means the warning appears on the degraded path and stays absent on the healthy one, which is precisely what the test name claims.",
+      "guard": "test/guard.test.mjs::doctor fails when the hook would not fire"
+    },
+    "C-03.3": {
+      "answer": "The doctor fail-open check is tied to the real installed config bytes, not to a ledger note or a comment: it inspects whether the installed claude-code hook object actually carries onFailure:'block'. Remove that key from the installed hook and the warn surfaces; add it and the warn disappears. Because the check resolves against the real settings file the install wrote, it fails on the real degraded runtime state (a guard that would proceed unguarded if the hook failed to start), not merely when some paperwork is missing.",
+      "guard": "test/guard.test.mjs::doctor fails when the hook would not fire"
+    },
+    "C-02.1": {
+      "answer": "The fail-open condition is derived from the installed config, not from a hand-written list of hook locations: doctor() enumerates the sakk claude-code hooks it finds through the same installedCommands/config traversal install writes through, and warns on any that lacks onFailure:'block'. So a degraded hook is caught wherever it was installed rather than only at a hard-coded path, and adding a new install location does not silently fall outside the check because the check reads the config the installer produced.",
+      "guard": "test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself"
+    },
+    "C-02.2": {
+      "answer": "The onFailure degrade is claude-code-specific today: cursor and codex hooks are written with their own unconditional failClosed shape, so there is no sibling surface where the same silently-dropped guarantee hides. The fix scopes the warning to agent==='claude-code' deliberately, and the sweep confirmed the other two agents always write their fail-closed field, so fixing this one instance does not leave an equivalent fail-open-without-warning on cursor or codex unaddressed.",
+      "guard": "test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself"
+    },
+    "C-08.1": {
+      "answer": "The fix adds no new path resolution and so introduces no new alias: doctor reads the same config locations install writes through (project configPath via repoRootOf, the user path via homedir, the managed path), each resolved once, and BIN is realpathSync'd before it is embedded, so a single hook is not reachable under two spellings in a way that could hide a fail-open copy from the doctor sweep. The existing alias-denial guard still covers the delete-through-every-name surface this change does not alter.",
+      "guard": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)"
     }
   }
 }

@@ -5433,12 +5433,22 @@
       "dt": ["DT-SPEC"],
       "rc": ["RC-01"],
       "es": ["ES-04"],
-      "sweep": "Not swept — the fix (install and/or doctor must emit an explicit, operator-facing warning whenever onFailure could not be set, naming the fail-open consequence and the remedy: upgrade Claude Code) is a pending product decision. Once decided, sweep every agent target for the same fallback (the onFailure degrade applies only to claude-code today, but cursor/codex install paths should be checked for any equivalent silently-dropped guarantee), and sweep doctor for other guarantees it reports as present-or-absent rather than pass/warn/fail.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept: the onFailure degrade applies only to claude-code — cursor and codex hooks are written with failClosed:true unconditionally in withGuard, so there is no sibling guarantee that could be silently dropped. doctor's other reports already use pass/warn/fail (node, policy, decision log, start-folder, cursor double run), so no other present-or-absent guarantee was found reported as a bare success line.",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": ["bin/sakk.mjs", "src/guard-install.mjs"],
       "mechanism_gap": "The install/packaging detectors assert the install round-trips and that the SHIPPED plugin manifest carries onFailure:'block' (test/release.test.mjs), and guard.test.mjs asserts withGuard sets onFailure when told to; none drives the old-Claude-Code path (supportsOnFailure:false) and asserts the operator is WARNED that the resulting hook is fail-open, so a success-shaped install that silently drops the fail-closed guarantee was outside every existing detector.",
-      "mechanism_upgrade": "test/guard.test.mjs::GAP G-INS-006 install on an old Claude Code falls open with no warning to the operator"
+      "mechanism_upgrade": "test/guard.test.mjs::G-INS-006 install on an old Claude Code warns the operator it is fail-open, and doctor flags it",
+      "instance_fix": "this commit: bin/sakk.mjs prints an explicit fail-open warning after a claude-code install whose onFailure could not be set (old/absent Claude Code), and doctor() adds a \"claude-code fail-open\" warn check (ok:true, warn:true) over the installed hooks. test/guard.test.mjs G-INS-006 drives the real CLI (spawnSync) and the real doctor() and asserts the warning is present on the degraded path and absent on the healthy path.",
+      "class_fix": null,
+      "guard": "test/guard.test.mjs::G-INS-006 install on an old Claude Code warns the operator it is fail-open, and doctor flags it",
+      "corrections": [
+        {
+          "field": "mechanism_upgrade",
+          "from": "test/guard.test.mjs::GAP G-INS-006 install on an old Claude Code falls open with no warning to the operator",
+          "why": "The fix commit rewrote the GAP test to assert the corrected warn-the-operator behavior and renamed it (GAP marker dropped), so the detector-upgrade anchor now names the rewritten standing test — the standard GAP-to-fix workflow."
+        }
+      ]
     }
   ]
 }
