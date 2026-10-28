@@ -70,7 +70,20 @@ Cap the day's spend (read from Claude Code's local logs — an estimate, not the
 sakk cap set 5 --zone Asia/Dubai   # deny paid calls once today's spend reaches $5
 sakk spend                         # today's spend by model
 sakk cap off                       # lift it
+sakk prices                        # the price table in use, and where it came from
 ```
+
+The per-token rates ship in `prices/snapshot.json`, regenerated from the
+public [LiteLLM price table](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)
+(MIT) — the file's `source` block records the exact commit and SHA-256 it was
+built from, and `sakk prices` prints that provenance. They are community
+figures, an estimate and not any provider's invoice. A model the table does
+not list is **not guessed**: it prices to nothing, and the cap then fails
+closed for the day (`PRICE_UNKNOWN`) rather than undercount your spend. To
+override a rate or add a model, drop a `sakk-prices.v1` table at
+`~/.sakk/prices.json` (a user table wins over the shipped one, and a malformed
+one is refused, never silently ignored); maintainers refresh the shipped
+snapshot by re-running `scripts/prices-trim.mjs` against the LiteLLM table.
 
 ## Quickstart
 

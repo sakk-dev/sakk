@@ -76,7 +76,7 @@ export function trim(raw, { commit, fetchedAt }) {
       commit,
       sha256: createHash('sha256').update(raw).digest('hex'),
       fetchedAt,
-      license: 'MIT (BerriAI/litellm)',
+      license: 'LiteLLM (MIT, (c) Berri AI)',
     },
     models,
   };

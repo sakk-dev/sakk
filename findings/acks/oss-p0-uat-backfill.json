@@ -77,6 +77,10 @@
     "C-08.1": {
       "answer": "The fix adds no new path resolution and so introduces no new alias: doctor reads the same config locations install writes through (project configPath via repoRootOf, the user path via homedir, the managed path), each resolved once, and BIN is realpathSync'd before it is embedded, so a single hook is not reachable under two spellings in a way that could hide a fail-open copy from the doctor sweep. The existing alias-denial guard still covers the delete-through-every-name surface this change does not alter.",
       "guard": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)"
+    },
+    "C-06.1": {
+      "answer": "The regenerated snapshot's numbers are community figures from BerriAI/litellm under MIT, not Anthropic's own rate card, and the file records that honestly instead of dressing it up as first-party pricing. scripts/prices-trim.mjs writes the provenance block itself, never by hand: source.sha256 is computed from the exact fetched bytes, source.url is the LiteLLM raw JSON it was fetched from, source.commit is the upstream main sha the maintainer passes with --commit, fetchedAt is the run date, and source.license is the fixed credit 'LiteLLM (MIT, (c) Berri AI)' — the same shape as the gitleaks credit, and pinned by test/release.test.mjs P-ACC-008 so the third-party credit cannot silently drop out of a regenerated snapshot. loadPrices hands that same source block to every reader so `sakk prices` shows operators exactly where the numbers came from, and the README refresh note points them at the `~/.sakk/prices.json` override (and, for maintainers, scripts/prices-trim.mjs re-run against the LiteLLM table) instead of hand-editing the shipped snapshot, so nobody sees a provenance the data does not have.",
+      "guard": "test/spend.test.mjs::the price snapshot is small, sourced and never edited in place"
     }
   }
 }

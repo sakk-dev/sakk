@@ -488,26 +488,44 @@ describe('P0 UAT backfill — spend', () => {
     );
   });
 
-  // S-FN-020 (部分实现 / P0 发布阻断, F-169): the shipped snapshot carries only a
-  // handful of older models; every current Claude model is unpriced. The code
-  // is correct — null, no guess, so capCheck fails closed with PRICE_UNKNOWN
-  // (tested above) — but out of the box sakk cannot price a single current-
-  // model call. This pins the release-blocking data gap; refreshing the shipped
-  // snapshot is a product decision recorded in F-169.
-  test('GAP F-169 S-FN-020 shipped snapshot omits every current Claude model', () => {
+  // S-FN-020 (F-169, fixed): the shipped snapshot is regenerated from the public
+  // LiteLLM table (BerriAI/litellm, MIT) and now carries every current Claude
+  // model, so out of the box sakk prices a real call instead of denying it. The
+  // fail-closed code is unchanged — the fix is data, not a loosening: a model the
+  // snapshot does not list is still priced null, so capCheck denies it
+  // PRICE_UNKNOWN rather than guess. This drives both halves on the SHIPPED table.
+  test('S-FN-020 the shipped snapshot prices every current Claude model, and an unknown model still fails closed', () => {
     const { table, path } = loadPrices({ home: join(tmpdir(), 'no-such-sakk-home') });
     assert.equal(path, SHIPPED_PRICES);
+    // every current Claude model an operator could run is now priced, with finite
+    // positive rates and a real per-call cost — not null, which denied every call
     for (const id of [
-      'claude-sonnet-4-5-20250929',
-      'claude-opus-4-5',
-      'claude-haiku-5-5',
+      'claude-opus-5-5',
       'claude-sonnet-5-5',
-    ])
-      assert.equal(priceOf(table, id), null, `${id} is unpriced in the shipped snapshot`);
-    assert.ok(
-      Object.keys(table.models).length <= 6,
-      'the snapshot carries only a handful of older models',
+      'claude-haiku-5-5',
+      'claude-opus-5',
+      'claude-fable-5-1',
+    ]) {
+      const e = priceOf(table, id);
+      assert.ok(e, `${id} is priced in the shipped snapshot`);
+      assert.ok(e.input > 0 && e.output > 0, `${id} has positive input/output rates`);
+      assert.ok(
+        costOf(e, { input_tokens: 1000, output_tokens: 100 }) > 0,
+        `${id} prices a real call`,
+      );
+    }
+    // an unlisted model is still unpriced, and the real spend path denies it
+    // PRICE_UNKNOWN rather than guess — the snapshot refresh did not loosen this
+    assert.equal(
+      priceOf(table, 'claude-does-not-exist-9'),
+      null,
+      'an unlisted model is not guessed',
     );
+    const w = world();
+    writeFileSync(w.file, line({ model: 'claude-does-not-exist-9' }));
+    utimesSync(w.file, NOW / 1000, NOW / 1000);
+    const r = capCheck({ home: w.home, config: w.config, table, now: NOW });
+    assert.match(r?.reason ?? '', /PRICE_UNKNOWN: claude-does-not-exist-9/);
   });
 
   // S-SEC-004 (F-170, fixed): a fractional token (input_tokens:1.5) is screened

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Prices (specs/spend/spec.md, "Price"). The table is data, never code: a
-// trimmed snapshot of LiteLLM's model list ships with the package, and
-// `sakk prices update` writes a newer one to SAKK_HOME. A model missing from
-// the table is unpriced — never guessed.
+// trimmed snapshot of LiteLLM's model list ships with the package
+// (maintainers regenerate it with scripts/prices-trim.mjs), and an operator
+// can override or extend it with a sakk-prices.v1 table at SAKK_HOME/prices.json.
+// A model missing from the table is unpriced — never guessed.
 //
 // Table shape (sakk-prices.v1), prices in USD per token:
 //   { schema, source: { url, commit, sha256, fetchedAt, license },

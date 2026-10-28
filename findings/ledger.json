@@ -3859,7 +3859,8 @@
       "mechanism_gap": "The RC-10 detectors check that named codes, files and counts exist; none checks a security adjective (signed, verified, tamper-proof) against a mechanism.",
       "mechanism_upgrade": "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism",
       "distinct_from": {
-        "F-104": "F-104 is about durability limits of the lock and fsync promised away in the README; F-126 is about the word signed promising an identity mechanism that does not exist. Different mechanism, different fix."
+        "F-104": "F-104 is about durability limits of the lock and fsync promised away in the README; F-126 is about the word signed promising an identity mechanism that does not exist. Different mechanism, different fix.",
+        "F-175": "F-126 is the word signed promising an identity mechanism the kill-switch records do not have; F-175 is a price-table subcommand named in docs, specs and runtime hints that was never implemented. They share only CHANGELOG.md as a surface — different claim, different mechanism, different fix."
       }
     },
     {
@@ -4992,7 +4993,8 @@
       "mechanism_gap": "The RC-10 detectors (claims-are-checked) checked that backticked error codes and backticked file names in the docs exist in the code, but never that a documented sakk subcommand exists — so a CHANGELOG naming a command the CLI lacks slipped past.",
       "mechanism_upgrade": "test/release.test.mjs::every command the README shows is a real sakk subcommand",
       "distinct_from": {
-        "F-83": "F-83 is a backticked FILE NAME in the README that did not exist; F-161 is a documented CLI COMMAND that the binary does not implement — the same class (docs name something absent) but a different surface, and the new detector covers commands where F-83's covered file names."
+        "F-83": "F-83 is a backticked FILE NAME in the README that did not exist; F-161 is a documented CLI COMMAND that the binary does not implement — the same class (docs name something absent) but a different surface, and the new detector covers commands where F-83's covered file names.",
+        "F-175": "F-161 fixed the M2 CHANGELOG overclaim and added the README/CHANGELOG first-token detector; F-175 is the same RC-10 class recurring past that detector, on surfaces it cannot see (later command tokens, two runtime hint strings, docs/SPEND.md, specs/) plus a CHANGELOG line promising the command lands with the gitleaks port, which has shipped without it. A recurrence filed as its own finding, not a re-open of F-161."
       }
     },
     {
@@ -5269,7 +5271,7 @@
       "class": "C-09",
       "title": "The shipped price snapshot carries only a handful of older models, so out of the box sakk cannot price a single current Claude model — every real call fails closed as PRICE_UNKNOWN",
       "symptom": "With no user price table, loadPrices() falls back to the shipped prices/snapshot.json; priceOf(table, id) returns null for every current model (claude-sonnet-4-5-*, claude-opus-4-5, claude-haiku-5-5, claude-sonnet-5-5). capCheck then denies every priced run with PRICE_UNKNOWN. A fresh install cannot meter or cap any current-model agent until the operator hand-authors a table.",
-      "evidence": "probe: loadPrices({home:<nonexistent>}).path === SHIPPED_PRICES; priceOf(table,'claude-sonnet-4-5-20250929') === null (and for opus-4-5, haiku-5-5, sonnet-5-5); Object.keys(table.models).length <= 6. Pinned by test/spend.test.mjs 'GAP F-169 S-FN-020 ...'. The pricing CODE is correct (null, no guess, fail-closed); the shipped DATA is the gap.",
+      "evidence": "probe: loadPrices({home:<nonexistent>}).path === SHIPPED_PRICES; priceOf(table,'claude-sonnet-4-5-20250929') === null (and for opus-4-5, haiku-5-5, sonnet-5-5); Object.keys(table.models).length <= 6 (the gap as found). The pricing CODE is correct (null, no guess, fail-closed); the shipped DATA was the gap. Originally pinned by the GAP test now rewritten as test/spend.test.mjs 'S-FN-020 the shipped snapshot prices every current Claude model, and an unknown model still fails closed'.",
       "direct_cause": "prices/snapshot.json ships with only the small set of older models it was trimmed to; no current model is in it, and priceOf makes no guess, so a loadPrices-from-shipped table prices nothing an operator will actually run.",
       "why": [
         "The snapshot was seeded once with a handful of models and shipped as the fallback table; keeping it in step with the models sakk would actually meet was assumed, never verified against the live model set.",
@@ -5280,12 +5282,27 @@
       "dt": ["DT-DEP"],
       "rc": ["RC-06"],
       "es": ["ES-02"],
-      "sweep": "Not swept — refreshing the shipped snapshot (which models, from what source, and how it stays current) is a pending product decision; once decided, sweep for any other shipped data artifact (e.g. default policies) assumed current but never checked against the live set.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept: prices/snapshot.json is the only shipped data artifact that mirrors an evolving external set — a grep for a source/sha256/fetchedAt provenance block across the package finds no sibling, so no other shipped table is silently stale against a live source. The regeneration pins provenance and a standing test (S-FN-020) now exercises the shipped table against every current Claude model, so the prices-nothing state cannot ship again unexercised. The separate honesty gap — docs and two runtime strings naming a `sakk prices update`/`add` command the CLI never implemented — is filed as F-175 (a pending product decision), not part of this data fix.",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": ["prices/snapshot.json", "src/prices.mjs"],
       "mechanism_gap": "The RC-06 detectors guard against unrepresentative FIXTURE data on the eval/gold surfaces they cover; none checks the SHIPPED snapshot coverage against the current model set, so a release-time data artifact that represents no model an operator will run was outside the detectors scope.",
-      "mechanism_upgrade": "test/spend.test.mjs::GAP F-169 S-FN-020 shipped snapshot omits every current Claude model"
+      "mechanism_upgrade": "test/spend.test.mjs::S-FN-020 the shipped snapshot prices every current Claude model, and an unknown model still fails closed",
+      "instance_fix": "this commit: regenerated prices/snapshot.json from the LiteLLM public model table (scripts/prices-trim.mjs; 170 models, provenance block recording source url/commit/sha256/fetchedAt/license), so a loadPrices from the shipped table now prices every current Claude model (opus-5-5, sonnet-5-5, haiku-5-5, opus-5, fable-5-1) while an unknown id still returns null -> PRICE_UNKNOWN deny. src/prices.mjs header corrected to state the real refresh path (maintainers re-run scripts/prices-trim.mjs; an operator overrides via SAKK_HOME/prices.json). test/spend.test.mjs S-FN-020 asserts a current model prices and an unknown one still fails closed.",
+      "class_fix": null,
+      "guard": "test/spend.test.mjs::S-FN-020 the shipped snapshot prices every current Claude model, and an unknown model still fails closed",
+      "corrections": [
+        {
+          "field": "mechanism_upgrade",
+          "from": "test/spend.test.mjs::GAP F-169 S-FN-020 shipped snapshot omits every current Claude model",
+          "why": "The fix commit regenerated the snapshot and rewrote the GAP test to assert the corrected behavior, renaming it (GAP marker dropped), so the detector-upgrade anchor now names the rewritten standing test — the standard GAP-to-fix workflow."
+        },
+        {
+          "field": "evidence",
+          "from": "probe: loadPrices({home:<nonexistent>}).path === SHIPPED_PRICES; priceOf(table,'claude-sonnet-4-5-20250929') === null (and for opus-4-5, haiku-5-5, sonnet-5-5); Object.keys(table.models).length <= 6. Pinned by test/spend.test.mjs 'GAP F-169 S-FN-020 ...'. The pricing CODE is correct (null, no guess, fail-closed); the shipped DATA is the gap.",
+          "why": "The probe text is unchanged; only the tense and the pin moved. The gap is fixed in this commit, so the evidence now records the as-found count as past and names the rewritten standing test that replaced the GAP test, instead of a test name that no longer exists."
+        }
+      ]
     },
     {
       "id": "F-170",
@@ -5449,6 +5466,44 @@
           "why": "The fix commit rewrote the GAP test to assert the corrected warn-the-operator behavior and renamed it (GAP marker dropped), so the detector-upgrade anchor now names the rewritten standing test — the standard GAP-to-fix workflow."
         }
       ]
+    },
+    {
+      "id": "F-175",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-05",
+      "title": "A `sakk prices update` / `sakk prices add` command is named across docs, specs and two runtime hint strings the CLI prints to operators, but was never implemented — `prices` routes to a read-only lister, so an operator hitting PRICE_UNKNOWN is told to run a command that errors, and F-161's release detector stays green because its regex validates only a command's first token",
+      "symptom": "Docs (docs/SPEND.md), specs (specs/spend/{spec,contract,decide}.md) and — the live-harm surfaces — two runtime strings the CLI prints to operators tell them to run `sakk prices update` (and `sakk prices add <model>`) to refresh or extend the price table. Neither subcommand exists: bin/sakk.mjs routes `prices` to a read-only lister only. src/spend.mjs's PRICE_UNKNOWN hint reads '... run sakk prices update, or add the model to <home>/prices.json' and src/console.mjs's approximate-cost note reads 'Approximate - run sakk prices update.', so an operator who hits an unpriced model is told by the CLI's own output to run a command that returns a usage error. The only real refresh paths are re-running scripts/prices-trim.mjs (maintainers) and writing a sakk-prices.v1 table at SAKK_HOME/prices.json (operators).",
+      "evidence": "grep for `prices update`/`prices add` across the package finds CHANGELOG.md, specs/spend/spec.md, specs/spend/contract.md, specs/spend/decide.md, docs/SPEND.md, findings/acks/oss-m2-spend.json, src/spend.mjs (the PRICE_UNKNOWN hint string) and src/console.mjs (the approximate-cost note string). bin/sakk.mjs's command table routes `prices` to a read-only lister with no `update`/`add` case. test/release.test.mjs 'every command the README shows is a real sakk subcommand' stays GREEN because its regex /\\bsakk ([a-z][a-z-]+)/ captures only the first token, so `sakk prices update` is validated as `prices` (a real subcommand); it also scans only README/CHANGELOG code spans, never runtime src/*.mjs strings or specs/.",
+      "direct_cause": "A command that was documented and emitted in runtime hints was never wired into bin/sakk.mjs, and the one honesty detector that could catch it (F-161's) cannot see it: its regex captures only a command's first token, so a multi-word phantom passes as its real first word, and it scans only README/CHANGELOG code spans, not the runtime hint strings or the specs/ where this phantom also lives.",
+      "why": [
+        "The price table was designed with a refresh/extend UX (`sakk prices update` / `sakk prices add`) that was written into the specs, the CHANGELOG, docs/SPEND.md and two runtime hint strings, but the subcommands were never added to bin/sakk.mjs, which routes `prices` to a read-only lister only.",
+        "F-161 caught and fixed one instance of this phantom (the M2 CHANGELOG line) and added a release detector, but the detector validates only the first token of a documented command and scans only README/CHANGELOG code spans, and F-161's sweep was scoped to those two files ('the same overclaim cannot recur in either') — so the same phantom in the command's later tokens, in the runtime strings an operator actually reads, in docs/SPEND.md and in specs/ stayed invisible and the branch stayed green.",
+        "No detector resolves a command string that the docs or the running CLI emit against the actual subcommand table in bin/sakk.mjs, so a reference to a non-existent command is an unexercised honesty gap until an operator runs it and gets a usage error."
+      ],
+      "root_cause": "A user-facing command (`sakk prices update` / `add`) is named across docs, specs and two runtime hint strings but was never implemented, and the honesty detector that should catch it validates only a command's first token on two doc surfaces (README/CHANGELOG) — so a multi-word phantom on the runtime, docs and spec surfaces ships unchecked, and the running CLI tells operators to invoke a command that does not exist.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-01"],
+      "sweep": "Swept the phantom's whole footprint (grep `prices update`/`prices add`): CHANGELOG.md, specs/spend/{spec,contract,decide}.md, docs/SPEND.md, findings/acks/oss-m2-spend.json, and the two runtime strings src/spend.mjs (PRICE_UNKNOWN hint) and src/console.mjs (approximate-cost note). The real refresh paths that already exist are `sakk prices [--json]` (read-only view), re-running scripts/prices-trim.mjs (maintainers) and dropping a sakk-prices.v1 table at SAKK_HOME/prices.json (operators). Resolution is the same owner product decision F-161 already routed (wire the spend/cap/prices CLI vs keep `prices` read-only); until it is made, no surface is edited, so retracting references is not pre-judged against a possible decision to implement the command.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": [
+        "src/spend.mjs",
+        "src/console.mjs",
+        "docs/SPEND.md",
+        "specs/spend/spec.md",
+        "specs/spend/contract.md",
+        "specs/spend/decide.md",
+        "CHANGELOG.md",
+        "test/release.test.mjs"
+      ],
+      "mechanism_gap": "The RC-10 claims-are-checked detectors resolve backticked file names and error codes in the docs against the code (test/claims-are-checked.test.mjs), and test/release.test.mjs 'every command the README shows is a real sakk subcommand' scans README/CHANGELOG code spans with a first-token-only regex (/\\bsakk ([a-z][a-z-]+)/), so a multi-word command validates on its first word alone and `sakk prices update` passes as `prices`; no detector scans runtime src/*.mjs strings or specs/ for a command reference. The phantom sits in exactly the surfaces and the token position F-161's detector left uncovered.",
+      "mechanism_upgrade": "none: whether to retract the `sakk prices update`/`add` references (docs, specs, and the two runtime hint strings) or to implement them as real subcommands is the owner product decision F-161 already routed; widening the release detector to validate every token of a multi-word command and to scan runtime src/*.mjs command strings is deferred until that decision, so the detector does not go red against text that may be about to become true.",
+      "distinct_from": {
+        "F-161": "F-161 fixed one instance of this phantom — the M2 CHANGELOG line — marked the spend/cap/prices CLI not-shipped there, and is the detector this finding escaped past; its sweep was scoped to README/CHANGELOG. F-175 is the same RC-10 class recurring on the surfaces that sweep and detector do not cover: the command's later tokens, the two runtime hint strings an operator actually reads, docs/SPEND.md, and specs/. Same class, different surfaces; filing it keeps the escape visible rather than re-opening F-161."
+      }
     }
   ]
 }
