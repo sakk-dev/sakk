@@ -19,8 +19,9 @@ sakk prices update       # fetch the current list (the only network call)
   (`prices/snapshot.json`, MIT). `sakk prices update` writes a newer one to
   `~/.sakk/prices.json`; the package itself is never edited.
 - Each call is counted once, at its largest recorded usage. Cache writes are
-  priced per their duration, and past a model's long-context threshold the
-  whole request is priced at the higher rate.
+  priced per their duration (writes the log does not break down count at the
+  5-minute price), and past a model's long-context threshold the whole
+  request is priced at the higher rate.
 
 The figures are an estimate from local logs, not your provider's invoice.
 Your provider's own spend limits remain the backstop.
@@ -52,3 +53,7 @@ shown to be under it.
 ## Not covered
 
 Cursor keeps no local token log. Codex logs are read in a later release.
+
+The cap counts tokens only. Server-side tools your provider charges per
+request, such as web search, are not in the figure, so on a day with many
+searches your provider charges more than `sakk spend` shows.

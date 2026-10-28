@@ -54,8 +54,16 @@ kinds are:
 - input;
 - output;
 - cache write, 5-minute and 1-hour (`usage.cache_creation.ephemeral_5m/1h_input_tokens`;
-  without the breakdown, all cache writes count at the 5-minute price);
+  without the breakdown, all cache writes count at the 5-minute price). The
+  breakdown refines the price of the aggregate `cache_creation_input_tokens`,
+  never lowers it: the 1-hour part is billed at its price and the larger of
+  the 5-minute part and the aggregate minus the 1-hour part at the 5-minute
+  price, and those tokens are what count toward long context (F-168, F-179);
 - cache read.
+
+Request-priced server tools (`usage.server_tool_use`, e.g. web search) are
+not priced in v1 and the cap does not count them; docs/SPEND.md says so
+(F-180, open).
 
 | Rule                                                                                                                             | Source                                                    |
 | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
@@ -131,15 +139,15 @@ spending.
 
 ## Input-space table
 
-| Input       | Classes covered                                                                                                                                                |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Log folder  | Absent (spend 0, stated "no logs found at <path>"); empty; unreadable file; symlinks (not followed out of the folder); subagent folders; 10,000 files          |
-| Log line    | Assistant with usage; without usage; user/system/summary lines; partial last line (not read until complete); over 1 MiB; non-JSON; missing ids; unknown fields |
-| Usage       | All kinds present; cache breakdown absent; zeros; negative / NaN / strings (→ unreadable); huge but finite                                                     |
-| Model       | Priced; unpriced; an alias (resolved through LiteLLM's names only, never guessed); a date-suffixed id                                                          |
-| Price table | Shipped snapshot; user override; malformed override (→ refuse, never fall back silently); override missing a model                                             |
-| Time        | Day boundaries in UTC, Dubai and a DST zone; a line timestamp in the future (counted today, flagged); a clock change mid-day                                   |
-| Cap         | Unset (no check, and the console says so); 0; fractional; the exact boundary (at the cap = reached)                                                            |
+| Input       | Classes covered                                                                                                                                                                                                                                                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Log folder  | Absent (spend 0, stated "no logs found at <path>"); empty; unreadable file; symlinks (not followed out of the folder); subagent folders; 10,000 files                                                                                                                                                                                                                    |
+| Log line    | Assistant with usage; without usage; user/system/summary lines; partial last line (not read until complete); over 1 MiB; non-JSON; missing ids; unknown fields                                                                                                                                                                                                           |
+| Usage       | All kinds present; cache breakdown absent, empty, partial or larger than the aggregate; zeros; in every count and both breakdown fields, negative / fractional / Infinity / strings / booleans / objects (→ unreadable), null (→ absent); a breakdown that is not an object (→ unreadable); huge but finite — enumerated by `test/spend.test.mjs::the usage input space` |
+| Model       | Priced; unpriced; an alias (resolved through LiteLLM's names only, never guessed); a date-suffixed id                                                                                                                                                                                                                                                                    |
+| Price table | Shipped snapshot; user override; malformed override (→ refuse, never fall back silently); override missing a model                                                                                                                                                                                                                                                       |
+| Time        | Day boundaries in UTC, Dubai and a DST zone; a line timestamp in the future (counted today, flagged); a clock change mid-day                                                                                                                                                                                                                                             |
+| Cap         | Unset (no check, and the console says so); 0; fractional; the exact boundary (at the cap = reached)                                                                                                                                                                                                                                                                      |
 
 ## Evidence-source declaration
 

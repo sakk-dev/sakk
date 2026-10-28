@@ -101,6 +101,10 @@
     "C-14.1": {
       "answer": "The retirement lookup reads the ledger, which the change does not otherwise trust: a missing ledger, a revision naming an unknown finding, or a corrections field that is not an array retires nothing and throws nothing, so one malformed finding falls back to the strict rule for that guard alone and every other answer is still checked and reported. The checker never stops on this input; the worst a bad entry can do is leave a stale guard reported as not resolving, which is the pre-change behaviour.",
       "guard": "test/self-evolution.test.mjs::a malformed corrections field retires nothing and the other guards are still checked (F-178)"
+    },
+    "C-16.1": {
+      "answer": "No, not inside this branch: the writer of R-23, R-24 and the R-10/R-12/R-17/R-22 extensions (and of the F-178 checker change) is the same model that wrote the fixes they cite. The independent judge comes at the pull request: the CI review runs on a different model (MiniMax) from a fresh checkout, and the base branch's checker judges this branch's ledger and answers with the code already merged, so the checker this branch edits cannot pass itself. Until that review lands the rule changes are drafts on a branch, not merged doctrine.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
     }
   }
 }

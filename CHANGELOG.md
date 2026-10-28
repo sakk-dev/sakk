@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a cache-write breakdown can no longer lower the bill (F-179)
+
+- A `cache_creation` breakdown that names only part of the cache writes now
+  bills the rest at the 5-minute price, as a log line with no breakdown does;
+  before, the breakdown replaced the total and the daily cap counted less than
+  was spent. Breakdown tokens beyond the total are billed and count toward
+  long context.
+- A breakdown field that is not a whole-token count (a string, a fraction, a
+  boolean, a negative number), or a `cache_creation` that is not an object,
+  now makes the line unreadable — the cap denies with `SPEND_UNREADABLE` —
+  instead of being read as 0.
+- docs/SPEND.md now states that the cap counts tokens only: server-side tools
+  billed per request, such as web search, are not included (F-180).
+
 ### Changed — the agent cannot lift its own cap or remove its own guard (F-171)
 
 - `sakk cap off`, raising the cap, moving its day with `--zone`, and

@@ -89,6 +89,7 @@ const USAGE_FIELDS = [
   'cache_creation_input_tokens',
   'cache_read_input_tokens',
 ];
+const CACHE_SPLIT_FIELDS = ['ephemeral_5m_input_tokens', 'ephemeral_1h_input_tokens'];
 
 /**
  * One transcript line → null (not a priced call), { call } or { unreadable }.
@@ -109,6 +110,16 @@ export function parseLine(line) {
   for (const k of USAGE_FIELDS)
     if (u[k] !== undefined && u[k] !== null && !tokenCount(u[k]))
       return { unreadable: `${k} is not a whole-token count` };
+  const cc = u.cache_creation;
+  if (cc !== undefined && cc !== null) {
+    if (typeof cc !== 'object' || Array.isArray(cc))
+      return { unreadable: 'cache_creation is not an object' };
+    // Read as 0, a malformed split field would drop those writes from the bill
+    // whenever the aggregate is missing (F-179).
+    for (const k of CACHE_SPLIT_FIELDS)
+      if (cc[k] !== undefined && cc[k] !== null && !tokenCount(cc[k]))
+        return { unreadable: `cache_creation.${k} is not a whole-token count` };
+  }
   const ts = Date.parse(o.timestamp);
   if (!Number.isFinite(ts)) return { unreadable: 'no timestamp' };
   const id = typeof o.message.id === 'string' ? o.message.id : null;
@@ -119,15 +130,8 @@ export function parseLine(line) {
       : `unkeyed:${createHash('sha256').update(line).digest('hex').slice(0, 16)}`;
   const usage = {};
   for (const k of USAGE_FIELDS) if (tokenCount(u[k])) usage[k] = u[k];
-  if (u.cache_creation && typeof u.cache_creation === 'object')
-    usage.cache_creation = {
-      ephemeral_5m_input_tokens: tokenCount(u.cache_creation.ephemeral_5m_input_tokens)
-        ? u.cache_creation.ephemeral_5m_input_tokens
-        : 0,
-      ephemeral_1h_input_tokens: tokenCount(u.cache_creation.ephemeral_1h_input_tokens)
-        ? u.cache_creation.ephemeral_1h_input_tokens
-        : 0,
-    };
+  if (cc !== undefined && cc !== null)
+    usage.cache_creation = Object.fromEntries(CACHE_SPLIT_FIELDS.map((k) => [k, cc[k] ?? 0]));
   for (const k of ['service_tier', 'speed', 'inference_geo'])
     if (typeof u[k] === 'string') usage[k] = u[k];
   return {

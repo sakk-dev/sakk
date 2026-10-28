@@ -5252,7 +5252,8 @@
       "mechanism_gap": "The RC-01 detectors verify assumptions on the surfaces they were written for (ledger reserve/settle, policy byte-matching, the certificate witness); none drives costOf cache_creation branch, so the assumption that a present split object is a complete split was outside every existing detector reach.",
       "mechanism_upgrade": "test/spend.test.mjs::F-168 S-FN-012 empty cache_creation:{} falls back to the aggregate cache-write",
       "distinct_from": {
-        "F-170": "F-170 is a malformed (non-integer) count that is not screened or isolated and crashes pricing; F-168 is a well-formed row whose empty cache split is silently priced at zero. Opposite failure modes — unhandled crash vs silent undercount."
+        "F-170": "F-170 is a malformed (non-integer) count that is not screened or isolated and crashes pricing; F-168 is a well-formed row whose empty cache split is silently priced at zero. Opposite failure modes — unhandled crash vs silent undercount.",
+        "F-180": "F-180 is a charge the price model has no kind for (per-request server tools); F-168 was a priced token kind, cache writes, dropped by an empty breakdown."
       },
       "instance_fix": "this commit: costOf (src/prices.mjs) honours the cache_creation split only when it enumerates tokens (s5 + s1h > 0); a present-but-empty object falls back to the aggregate cache_creation_input_tokens, so cache-write tokens are no longer silently zeroed. test/spend.test.mjs now asserts the empty-split cost equals the no-split cost and that a populated split is still priced per-tier.",
       "class_fix": null,
@@ -5332,7 +5333,8 @@
       "mechanism_gap": "The RC-09 detectors check failure isolation on the self-evolution CLI and base-checker surfaces they were written for (F-141/F-158); none drives a malformed usage row through daySpend, so costOf throwing past an unguarded call site in the spend path was outside their reach.",
       "mechanism_upgrade": "test/spend.test.mjs::F-170 S-SEC-004 a fractional token is unreadable at parse and isolated in daySpend",
       "distinct_from": {
-        "F-168": "F-168 is a well-formed usage row undercharged because an empty split is read as zero; F-170 is a malformed (fractional) count accepted at parse then throwing unisolated in pricing. Different defect — silent underbill vs unhandled crash."
+        "F-168": "F-168 is a well-formed usage row undercharged because an empty split is read as zero; F-170 is a malformed (fractional) count accepted at parse then throwing unisolated in pricing. Different defect — silent underbill vs unhandled crash.",
+        "F-180": "F-180 is well-formed usage whose per-request server-tool counts the price model never reads; F-170 was a malformed token count that crashed pricing."
       },
       "instance_fix": "this commit: parseLine (src/spend.mjs) screens token counts with tokenCount (finiteNonNeg + Number.isInteger) at the parse boundary, so a fractional count is marked unreadable instead of stored; as defence in depth daySpend wraps costOf in try/catch, counting a throwing row as one unreadable line (not a priced call), so the cap fails closed via SPEND_UNREADABLE instead of crashing. test/spend.test.mjs asserts both halves.",
       "class_fix": null,
@@ -5636,6 +5638,69 @@
       "areas": ["scripts/findings-lib.mjs", "scripts/findings-check.mjs"],
       "mechanism_gap": "The C-13 detectors (F-119's benign corpus of real answers) cover the answer-text rules; guard resolution was a separate detector whose tests held only failing references, so the first legitimate supersede was outside them.",
       "mechanism_upgrade": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    },
+    {
+      "id": "F-179",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-02",
+      "title": "The cache_creation split can still lower the bill: parseLine reads a malformed split field as 0, and costOf honours a split that names only part of the cache writes",
+      "symptom": "With cache_creation_input_tokens:1000 the right charge is about $0.00393 (test price table). A split of {5m:-1, 1h:100} was billed $0.00078 and a split of {5m:400} $0.00168: the split replaced the aggregate even though it named fewer tokens. A split field of \"1000\", 1000.5 or true was silently read as 0 rather than marked unreadable; with the aggregate present that happened to fall back to it, but a row carrying only the split lost those writes entirely. The daily cap counts less than was spent.",
+      "evidence": "probe on oss/p0-uat-backfill at fe936ca: costOf(entry, parseLine(line).call.usage) for aggregate 1000 and each split above; parseLine({cache_creation:{ephemeral_5m_input_tokens:'1000'}}) returned a call with ephemeral_5m_input_tokens 0. src/spend.mjs parseLine screened only the four top-level counts (USAGE_FIELDS) and coerced split fields with `tokenCount(x) ? x : 0`; src/prices.mjs costOf replaced the aggregate whenever s5 + s1h > 0.",
+      "direct_cause": "parseLine applied the F-170 whole-token screen to the four top-level counts and a coerce-to-zero to the two split fields, and costOf, after F-168, trusted any split that named at least one token as the complete breakdown.",
+      "why": [
+        "F-168 fixed the case it was found on (an empty split) by special-casing zero, not the rule the case broke: a breakdown refines the price of the aggregate and never shrinks it.",
+        "F-170 screened the counts in USAGE_FIELDS, a hand-written list of top-level fields, so the nested split fields stayed on the older coerce-to-zero path written before the screen existed.",
+        "The spec's input-space table lists 'negative / NaN / strings (→ unreadable)' for usage without naming which fields, and no test walked every numeric field, so the table's claim went unchecked for the two nested ones."
+      ],
+      "root_cause": "Both earlier fixes covered the instances they were found on (the empty split, the top-level counts) instead of the rule those instances share, so the next instance of each rule passed: a partial split, and a malformed nested count.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: parseLine marks a cache_creation that is not an object, or a split field that is present, not null and not a whole-token count, unreadable (the cap then fails closed, SPEND_UNREADABLE); costOf bills the 1-hour split at its price and max(5-minute split, aggregate minus 1-hour split) at the 5-minute price, so a split refines the aggregate and never lowers it, and split tokens count toward the long-context threshold. specs/spend/spec.md states both rules.",
+      "class_fix": "test/spend.test.mjs::every numeric field of a real usage line is either priced or declared unpriced",
+      "guard": "test/spend.test.mjs::a cache split never prices below the same usage without it",
+      "sweep": "Every numeric field of a real Claude Code usage block is now enumerated: the four counts and two split fields are priced and each is driven through seven malformed values at parse and six at pricing; the server_tool_use request counts are the only unpriced numeric fields and are filed as F-180. mergeCall takes the maximum of each field and feeds costOf, which now never shrinks the aggregate, so a merge of partial observations cannot lower the bill. Six mutants of the fix (no split screen, no object check, arrays allowed, the old >0 rule, the split alone, the old long-context prompt) each turn the suite red.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/spend.mjs", "src/prices.mjs", "specs/spend/spec.md"],
+      "mechanism_gap": "The C-02 detectors enumerate from the source for directories, keys, codes and env variables; none enumerates the fields of a parsed usage record, so the F-170 screen over a hand-written field list and the F-168 zero special-case both passed every check while the spec's input-space table claimed the whole usage space.",
+      "mechanism_upgrade": "test/spend.test.mjs::every numeric field of a real usage line is either priced or declared unpriced",
+      "distinct_from": {
+        "F-168": "F-168 was the empty split priced at zero; F-179 is the rule that fix did not state: a split naming some but not all writes still undercounted, and a malformed split field read as 0.",
+        "F-170": "F-170 was a fractional top-level count crashing pricing unisolated; F-179 is the nested split fields that screen never reached, which were coerced to 0 rather than crashing."
+      }
+    },
+    {
+      "id": "F-180",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-01",
+      "title": "The daily spend cap prices tokens only; per-request server-tool charges a usage block reports (server_tool_use web searches) are left out, and no document says so",
+      "symptom": "A day whose calls run web searches is reported and capped lower than it was billed: the API bills each server-side web search per request on top of the tokens, and sakk spend counts the tokens alone. A user who sets a $5 cap reads it as $5 of model spend.",
+      "evidence": "test/spend.test.mjs 'every numeric field of a real usage line is either priced or declared unpriced' walks a Claude Code usage block: server_tool_use.web_search_requests and server_tool_use.web_fetch_requests are its only numeric fields that neither parseLine keeps nor costOf prices. specs/spend/spec.md Price defines cost as the sum over token kinds; README and docs/SPEND.md describe a daily dollar cap without the limit.",
+      "direct_cause": "The price model and the snapshot were built around token kinds; request-priced server tools were not in the model, and the cap's documentation did not declare the omission.",
+      "why": [
+        "The spend design took LiteLLM's token prices as the whole cost of a call, and the per-request search price lives in a separate field of the same table that was never read.",
+        "The input-space table enumerated token fields only, so a numeric usage field that is not a token count had no row.",
+        "No test listed every numeric field a real usage block carries, so the unpriced one was invisible until the F-179 enumeration listed them."
+      ],
+      "root_cause": "A cost the cap cannot see is absent from the reading, and the absence reads as zero spend instead of being declared as a limit.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — pricing server tools is a product decision for the owner (a request-price field in the table and the snapshot, or a declared limit). This branch declares the limit in specs/spend/spec.md and docs/SPEND.md; the enumeration test names the two unpriced fields, so a decision either way is one edit there.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/prices.mjs", "specs/spend/spec.md", "docs/SPEND.md"],
+      "mechanism_gap": "The C-01 detectors catch an absent key, flag or file turning into a pass in the CLI, bundles and CI; a cost kind missing from the price model is absence in the data model, outside every one of them.",
+      "mechanism_upgrade": "test/spend.test.mjs::every numeric field of a real usage line is either priced or declared unpriced",
+      "distinct_from": {
+        "F-168": "F-168 was a token kind the model prices (cache writes) dropped by an empty breakdown; F-180 is a charge the model has no kind for at all (per-request server tools), so it is missing from every row, not misread in one.",
+        "F-170": "F-170 was a malformed token count crashing pricing; F-180 is well-formed usage whose request counts are outside the price model, read without error and simply not priced."
+      }
     }
   ]
 }

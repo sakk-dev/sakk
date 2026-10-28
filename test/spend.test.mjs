@@ -464,9 +464,9 @@ describe('P0 UAT backfill — spend', () => {
 
   // S-FN-012 (F-168, fixed): a present but empty cache_creation:{} is not an
   // authoritative "all zero" breakdown — a trimmed or replayed log can emit it.
-  // costOf now honours the split only when it enumerates tokens; an empty split
-  // falls back to the aggregate so the 1000 cache-write tokens are billed the
-  // same as with no split key, and a populated split is still priced per-tier.
+  // The split never shrinks the aggregate (F-179 generalised this): an empty
+  // split leaves the 1000 cache-write tokens billed the same as with no split
+  // key, and a populated split is still priced per-tier.
   test('F-168 S-FN-012 empty cache_creation:{} falls back to the aggregate cache-write', () => {
     const e = priceOf(TABLE, 'claude-test-5');
     const withEmptySplit = costOf(e, { cache_creation_input_tokens: 1000, cache_creation: {} });
@@ -612,5 +612,158 @@ describe('P0 UAT backfill — spend', () => {
     // not transient and does not clear on retry; a person must fix the log.
     const r2 = capCheck({ home: poisoned.home, config: poisoned.config, table: TABLE, now: NOW });
     assert.match(r2?.reason ?? '', /SPEND_UNREADABLE/, 'a retry does not self-recover');
+  });
+});
+
+// The usage input space, enumerated (R-03, F-179). F-168 and F-170 were each
+// one cell of this table found by hand; the split fields were a cell nobody
+// visited. Every numeric field a usage line carries is driven through every
+// malformed value: parse marks it unreadable (never 0), and a row that reaches
+// pricing anyway throws USAGE_INVALID and is isolated by daySpend.
+describe('the usage input space (R-03, F-179)', () => {
+  // A usage block as Claude Code writes it, with every field it can carry.
+  const REAL = {
+    input_tokens: 1000,
+    output_tokens: 100,
+    cache_creation_input_tokens: 1000,
+    cache_read_input_tokens: 500,
+    cache_creation: { ephemeral_5m_input_tokens: 400, ephemeral_1h_input_tokens: 600 },
+    server_tool_use: { web_search_requests: 1, web_fetch_requests: 0 },
+    service_tier: 'standard',
+  };
+  const PRICED = [
+    'input_tokens',
+    'output_tokens',
+    'cache_creation_input_tokens',
+    'cache_read_input_tokens',
+    'cache_creation.ephemeral_5m_input_tokens',
+    'cache_creation.ephemeral_1h_input_tokens',
+  ];
+  // Per-request server-tool charges are outside the token price (F-180).
+  const NOT_PRICED = ['server_tool_use.web_search_requests', 'server_tool_use.web_fetch_requests'];
+  const INF = '__INF__';
+  const BAD = ['1000', -1, 1000.5, true, {}, [1000], INF];
+  const numericLeaves = (o, p = []) =>
+    Object.entries(o).flatMap(([k, v]) =>
+      v && typeof v === 'object'
+        ? numericLeaves(v, [...p, k])
+        : typeof v === 'number'
+          ? [[...p, k].join('.')]
+          : [],
+    );
+  const withLeaf = (o, path, v) => {
+    const c = structuredClone(o);
+    const ks = path.split('.');
+    let t = c;
+    for (const k of ks.slice(0, -1)) t = t[k];
+    t[ks.at(-1)] = v;
+    return c;
+  };
+  const lineOf = (usage) =>
+    JSON.stringify({
+      type: 'assistant',
+      timestamp: '2026-10-22T10:00:00Z',
+      requestId: 'req_x',
+      message: { id: 'msg_x', model: 'claude-test-5', usage },
+    }).replace(`"${INF}"`, '1e400');
+
+  test('every numeric field of a real usage line is either priced or declared unpriced', () => {
+    assert.deepEqual(numericLeaves(REAL).sort(), [...PRICED, ...NOT_PRICED].sort());
+    const parsed = parseLine(lineOf(REAL)).call.usage;
+    assert.deepEqual(
+      numericLeaves(parsed).sort(),
+      [...PRICED].sort(),
+      'parse keeps exactly the priced fields',
+    );
+    const e = priceOf(TABLE, 'claude-test-5');
+    for (const f of PRICED)
+      assert.ok(
+        costOf(e, withLeaf(parsed, f, parsed[f] ?? 0)) > 0 &&
+          costOf(e, withLeaf(parsed, f, 10_000)) > costOf(e, parsed),
+        `${f} moves the price`,
+      );
+  });
+
+  test('a malformed value in any priced field is unreadable at parse, never read as 0', () => {
+    for (const f of PRICED)
+      for (const bad of BAD) {
+        const r = parseLine(lineOf(withLeaf(REAL, f, bad)));
+        assert.ok(
+          r?.unreadable,
+          `${f} = ${JSON.stringify(bad)} must be unreadable, got ${JSON.stringify(r)}`,
+        );
+        assert.equal(r.call, undefined);
+      }
+    // absent and null are "not given", not malformed
+    for (const f of PRICED) {
+      assert.ok(parseLine(lineOf(withLeaf(REAL, f, null))).call, `${f} = null is absent`);
+      assert.ok(parseLine(lineOf(withLeaf(REAL, f, undefined))).call, `${f} absent`);
+    }
+    for (const bad of ['split', 1000, true, [400, 600]])
+      assert.ok(
+        parseLine(lineOf({ ...REAL, cache_creation: bad })).unreadable,
+        `cache_creation = ${JSON.stringify(bad)}`,
+      );
+  });
+
+  test('a malformed priced field that reaches pricing throws USAGE_INVALID and daySpend isolates the row', () => {
+    const e = priceOf(TABLE, 'claude-test-5');
+    const usage = parseLine(lineOf(REAL)).call.usage;
+    const w = world();
+    const rows = {};
+    for (const f of PRICED)
+      for (const bad of [...BAD.filter((b) => b !== INF), Infinity, NaN]) {
+        const u = withLeaf(usage, f, bad);
+        assert.throws(() => costOf(e, u), /USAGE_INVALID/, `${f} = ${String(bad)}`);
+        const key = `msg_${Object.keys(rows).length}|req`;
+        rows[key] = { key, model: 'claude-test-5', usage: u, ts: NOW };
+      }
+    mkdirSync(join(w.home, 'spend', 'days'), { recursive: true });
+    writeFileSync(join(w.home, 'spend', 'days', '2026-10-22.json'), JSON.stringify(rows));
+    const s = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+    // JSON turns Infinity and NaN into null (absent), so those two rows price
+    assert.equal(s.unreadable, Object.keys(rows).length - 2 * PRICED.length);
+  });
+
+  test('a cache split never prices below the same usage without it', () => {
+    const e = priceOf(TABLE, 'claude-test-5');
+    const splits = [{}, { ephemeral_5m_input_tokens: 400 }, { ephemeral_1h_input_tokens: 100 }];
+    for (const s5 of [0, 1, 400, 1000, 1500])
+      for (const s1h of [0, 1, 600, 1000, 1500])
+        splits.push({ ephemeral_5m_input_tokens: s5, ephemeral_1h_input_tokens: s1h });
+    for (const agg of [0, 1000])
+      for (const split of splits) {
+        const without = costOf(e, { input_tokens: 10, cache_creation_input_tokens: agg });
+        const withSplit = costOf(e, {
+          input_tokens: 10,
+          cache_creation_input_tokens: agg,
+          cache_creation: split,
+        });
+        assert.ok(
+          withSplit >= without - 1e-15,
+          `aggregate ${agg} split ${JSON.stringify(split)}: ${withSplit} < ${without}`,
+        );
+      }
+    // the part a split leaves out is billed at the 5-minute price, as with no split
+    close(
+      costOf(e, {
+        cache_creation_input_tokens: 1000,
+        cache_creation: { ephemeral_1h_input_tokens: 100 },
+      }),
+      900 * 3.75 * M + 100 * 6 * M,
+    );
+    // a split larger than the aggregate is billed in full, and counts toward long context
+    close(
+      costOf(e, {
+        cache_creation_input_tokens: 100,
+        cache_creation: { ephemeral_5m_input_tokens: 400, ephemeral_1h_input_tokens: 600 },
+      }),
+      400 * 3.75 * M + 600 * 6 * M,
+    );
+    // split tokens count toward the long-context threshold: 199,500 + 1,000 > 200,000
+    close(
+      costOf(e, { input_tokens: 199_500, cache_creation: { ephemeral_5m_input_tokens: 1000 } }),
+      199_500 * 6 * M + 1000 * 7.5 * M,
+    );
   });
 });

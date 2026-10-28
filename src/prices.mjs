@@ -129,16 +129,13 @@ export function costOf(entry, usage) {
   if (split && typeof split === 'object') {
     const s5 = count(split, 'ephemeral_5m_input_tokens');
     const s1h = count(split, 'ephemeral_1h_input_tokens');
-    // A present but empty cache_creation:{} is not an authoritative "all zero"
-    // breakdown — a trimmed or replayed log can emit it. Honour the split only
-    // when it actually enumerates tokens; otherwise keep the aggregate so
-    // cache-write tokens are never silently dropped from the bill (F-168).
-    if (s5 + s1h > 0) {
-      w5 = s5;
-      w1h = s1h;
-    }
+    // The split refines the price of the aggregate, never shrinks it: an
+    // empty cache_creation:{} (F-168) or one naming only part of the writes
+    // (F-179) leaves the rest at the 5-minute price, as a row with no split.
+    w1h = s1h;
+    w5 = Math.max(s5, cacheWrite - s1h);
   }
-  const prompt = input + cacheRead + cacheWrite;
+  const prompt = input + cacheRead + w5 + w1h;
   const rate =
     entry.longContext && prompt > entry.longContext.thresholdTokens ? entry.longContext : entry;
   let usd =
