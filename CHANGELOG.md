@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the agent cannot re-point the ledger a halt is read from (F-181)
+
+- From the agent, `sakk init` is now denied (`protect-guard-state`), as
+  `sakk cap` is. Run by an agent, it could record a ledger the agent writes in
+  `~/.sakk/config.json`; the hook reads that ledger first, so a halt held on
+  the ledger `SAKK_LEDGER_PATH` names stopped applying. A person runs `init`
+  at the terminal as before. Agents or scripts that ran `sakk init` through a
+  guarded agent must now run it themselves.
+
 ### Fixed — a cache-write breakdown can no longer lower the bill (F-179)
 
 - A `cache_creation` breakdown that names only part of the cache writes now

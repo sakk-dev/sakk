@@ -242,6 +242,8 @@ so a halt also stops an agent behind the installed guard: every tool call
 except reading the repository is denied until `sakk resume`. Running `init`
 again wires an existing ledger without touching it, and never replaces a
 different recorded path — it says which ledger the hook still reads.
+Because it decides where the hook reads halts from, the guard denies the
+agent `sakk init`, as it denies `sakk cap`; a person runs it.
 
 While halted, `reserve()` refuses `LEDGER_HALTED` (or `AGENT_HALTED`),
 every reservation the halt refuses is logged to `sakk-alerts.jsonl`

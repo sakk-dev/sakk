@@ -542,9 +542,11 @@ export function shellActions(
     else if (INTERPRETERS.test(name) && has(/^-(c|e)$|^--eval$/)) add('shell.constructed');
     else if (PTY_DRIVERS.has(name)) add('shell.constructed');
     // Sakk's own commands that change its controls are the writes they make, so
-    // the agent is judged as if it wrote the file: the cap is guard state (denied),
-    // the hook config is agent config (asked). A person runs them (F-171).
-    else if (name === 'sakk' && verb === 'cap' && sakkHome)
+    // the agent is judged as if it wrote the file: the cap, and the ledger the
+    // hook reads halts from, are guard state (denied); the hook config is agent
+    // config (asked). A person runs them (F-171, F-181). Every subcommand is
+    // declared by its effect in test/kill-switch.test.mjs (R-24).
+    else if (name === 'sakk' && (verb === 'cap' || verb === 'init') && sakkHome)
       add('file.write', join(sakkHome, 'config.json'));
     else if (
       name === 'sakk' &&

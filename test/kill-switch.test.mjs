@@ -797,6 +797,159 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
     }
   });
 
+  test('J-UAT-016 an agent cannot re-point the ledger a halt is read from (F-181)', () => {
+    const w = world();
+    const ops = join(w.base, 'ops', 'ledger.json'); // the person's, found by SAKK_LEDGER_PATH
+    mkdirSync(dirname(ops), { recursive: true });
+    initLedger({ ledgerPath: ops, capUsd: 50, initializedBy: 'ops' });
+    halt({ ledgerPath: ops, by: 'ops', agentId: 'cursor' });
+    const env = { ...w.env, SAKK_LEDGER_PATH: ops };
+    const cursorRuns = (command) =>
+      evaluate(
+        normalize('cursor', {
+          hook_event_name: 'beforeShellExecution',
+          cwd: w.proj,
+          conversation_id: 's-f181',
+          generation_id: 'g-f181',
+          command,
+        }),
+        { env, log: false },
+      );
+    assert.equal(cursorRuns('rm -rf build').verdict, 'deny', 'precondition: cursor is halted');
+    const rewire = 'sakk init --cap 5 --ledger ./x.json';
+    const r = evaluate(
+      normalize('claude-code', {
+        hook_event_name: 'PreToolUse',
+        cwd: w.proj,
+        session_id: 's-f181',
+        tool_use_id: 'c-f181',
+        tool_name: 'Bash',
+        tool_input: { command: rewire },
+      }),
+      { env, log: false },
+    );
+    assert.equal(r.verdict, 'deny', 'claude-code is not halted, and still may not run it');
+    assert.ok(r.decisions.some((d) => d.ruleId === 'protect-guard-state'));
+    // the control: run anyway, it records the agent's ledger and cursor's halt is gone
+    const ran = spawnSync(process.execPath, [CLI, ...rewire.split(' ').slice(1)], {
+      encoding: 'utf8',
+      env,
+      cwd: w.proj,
+    });
+    assert.equal(ran.status, 0, ran.stderr);
+    assert.equal(cursorRuns('rm -rf build').verdict, 'allow', 'the route the hook refuses is live');
+  });
+
+  // R-24: a control cannot be lifted by the party it binds. Every subcommand the
+  // CLI dispatches is declared by its effect on a control the agent is bound by,
+  // with commands showing how the hook judges an agent that runs it. A new
+  // subcommand fails here until someone declares it; one that loosens a control
+  // reaches an agent only under a GAP naming an open finding.
+  const SUBCOMMANDS = {
+    // records the ledger the hook reads halts from (F-181)
+    init: { effect: 'loosens', judged: [['sakk init --cap 5 --ledger ./x.json', 'deny']] },
+    status: { effect: 'none', judged: [['sakk status --json', 'allow']] },
+    reconcile: {
+      effect: 'loosens',
+      gap: 'F-177',
+      judged: [['sakk reconcile --by alice', 'allow']],
+    },
+    unlock: { effect: 'loosens', gap: 'F-177', judged: [['sakk unlock --by alice', 'allow']] },
+    halt: { effect: 'tightens', judged: [['sakk halt --by alice --agent cursor', 'allow']] },
+    resume: {
+      effect: 'loosens',
+      gap: 'F-177',
+      judged: [['sakk resume --by alice --agent cursor', 'allow']],
+    },
+    // the reserve gate an agent calls by choice; its own server holds nothing back
+    mcp: { effect: 'none', judged: [['sakk mcp --ledger ./sakk-ledger.json', 'allow']] },
+    // verify reads; export and reindex rebuild from the same record, halts included
+    ledger: {
+      effect: 'none',
+      judged: [
+        ['sakk ledger verify', 'allow'],
+        ['sakk ledger export --out ./flat.json', 'allow'],
+      ],
+    },
+    scan: {
+      effect: 'tightens',
+      judged: [
+        ['sakk scan --staged', 'allow'],
+        ['sakk scan --install-hook', 'allow'],
+      ],
+    },
+    hook: { effect: 'none', judged: [['sakk hook --agent claude-code', 'allow']] },
+    try: { effect: 'none', judged: [['sakk try "git status"', 'allow']] },
+    guard: {
+      effect: 'loosens',
+      judged: [
+        ['sakk guard install claude-code', 'require_approval'],
+        ['sakk guard uninstall claude-code', 'require_approval'],
+      ],
+    },
+    doctor: { effect: 'none', judged: [['sakk doctor', 'allow']] },
+    ui: { effect: 'tightens', judged: [['sakk ui --allow-halt', 'allow']] },
+    cap: {
+      effect: 'loosens',
+      judged: [
+        ['sakk cap off', 'deny'],
+        ['sakk cap set 3', 'deny'],
+      ],
+    },
+    spend: { effect: 'none', judged: [['sakk spend --json', 'allow']] },
+    prices: { effect: 'none', judged: [['sakk prices', 'allow']] },
+  };
+
+  test('R-24 every sakk subcommand is declared by its effect on a control, and judged by it', () => {
+    const src = readFileSync(CLI, 'utf8');
+    const table = src.match(/^const COMMANDS = \{\n([\s\S]*?)\n\};/m)?.[1] ?? '';
+    const names = new Set([...table.matchAll(/^ {2}([a-z]+):/gm)].map((m) => m[1]));
+    assert.ok(names.size >= 10, `only ${names.size} commands in the flag table — pattern drifted?`);
+    for (const m of src.matchAll(/cmd === '([a-z][a-z-]*)'/g)) names.add(m[1]);
+    assert.deepEqual(
+      Object.keys(SUBCOMMANDS).sort(),
+      [...names].sort(),
+      'a subcommand is dispatched but not declared here, or declared but gone',
+    );
+    const open = new Set(
+      JSON.parse(readFileSync(join(HERE, '..', 'findings', 'ledger.json'), 'utf8'))
+        .findings.filter((f) => f.status === 'open')
+        .map((f) => f.id),
+    );
+    const w = world();
+    for (const [name, { effect, gap, judged }] of Object.entries(SUBCOMMANDS)) {
+      assert.ok(['none', 'tightens', 'loosens'].includes(effect), `${name}: effect ${effect}`);
+      assert.ok(judged.length > 0, `${name}: no command shows how the hook judges it`);
+      const verdicts = [];
+      for (const [command, expected] of judged) {
+        assert.ok(command.startsWith(`sakk ${name}`), `${name}: "${command}" runs another command`);
+        const r = evaluate(
+          normalize('claude-code', {
+            hook_event_name: 'PreToolUse',
+            cwd: w.proj,
+            session_id: 's-r24',
+            tool_use_id: 'c-r24',
+            tool_name: 'Bash',
+            tool_input: { command },
+          }),
+          { env: w.env, log: false },
+        );
+        assert.equal(r.verdict, expected, command);
+        verdicts.push(r.verdict);
+      }
+      if (gap === undefined) {
+        if (effect === 'loosens')
+          assert.ok(
+            !verdicts.includes('allow'),
+            `${name} loosens a control and an agent may run it`,
+          );
+      } else {
+        assert.ok(open.has(gap), `${name}: GAP ${gap} is not an open finding — remove the mark`);
+        assert.ok(verdicts.includes('allow'), `${name}: GAP ${gap} no longer reaches the agent`);
+      }
+    }
+  });
+
   test(
     'J-UAT-016 a person at a terminal who types the word makes the change',
     { skip: !HAS_PTY && 'python3 with pty is not installed' },

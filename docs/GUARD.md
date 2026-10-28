@@ -94,7 +94,9 @@ are. The agent name is what the installed config passes — self-declared.
 (`{"ledgerPath": "…"}`); the hook reads it, then `SAKK_LEDGER_PATH`. Once
 someone runs `sakk halt`, every tool call is denied except reading the
 repository, until a person runs `sakk resume`. The CLI resolves the ledger
-by the same rule, so the halt lands where the hook looks.
+by the same rule, so the halt lands where the hook looks. The guard denies
+the agent `sakk init`: run by an agent, it could point the hook at a ledger
+the agent writes, and a halt held elsewhere would stop applying.
 
 ## When a rule file is broken
 

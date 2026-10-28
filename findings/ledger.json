@@ -5701,6 +5701,40 @@
         "F-168": "F-168 was a token kind the model prices (cache writes) dropped by an empty breakdown; F-180 is a charge the model has no kind for at all (per-request server tools), so it is missing from every row, not misread in one.",
         "F-170": "F-170 was a malformed token count crashing pricing; F-180 is well-formed usage whose request counts are outside the price model, read without error and simply not priced."
       }
+    },
+    {
+      "id": "F-181",
+      "date": "2026-10-28",
+      "introduced_in": "b0144c6",
+      "found_by": "review",
+      "class": "C-02",
+      "title": "An agent can run sakk init and re-point the ledger the hook reads halts from, so a halt held on another ledger stops applying; the F-171 fix denied cap and guard by name, not every subcommand that loosens a control",
+      "symptom": "A person halts one agent on the ledger SAKK_LEDGER_PATH names. A second, un-halted agent runs 'sakk init --cap 5 --ledger ./x.json'; the hook allows it as an in-repo shell command, init records the agent's in-repo ledger in ~/.sakk/config.json, the hook reads that ledger first, and the halted agent's next destructive call is allowed.",
+      "evidence": "test/kill-switch.test.mjs 'J-UAT-016 an agent cannot re-point the ledger a halt is read from (F-181)': before this commit the hook answered allow (allow-in-repo) for the init command, and after the CLI ran it the cursor agent halted on the ops ledger had 'rm -rf build' allowed. F-171's sweep text: 'init, scan --install-hook and guard install only tighten ... and never replace a recorded one'.",
+      "direct_cause": "classify.mjs judged sakk cap as the config.json write and sakk guard as the agent-config write, and every other sakk subcommand as shell.run, so init, which writes config.json too, fell through to allow-in-repo.",
+      "why": [
+        "The F-171 fix named the two subcommands its finding showed (cap, guard) instead of stating the rule that every Sakk command is judged by the write it makes.",
+        "F-171's sweep judged init as tightening because it never replaces a recorded ledgerPath, and missed the case where none is recorded and the hook found the ledger through SAKK_LEDGER_PATH: recording one then moves the hook off it.",
+        "The F-172 change that made the hook read config.ledgerPath first turned init into a loosening command, and nothing re-judged the subcommands when a control's source changed.",
+        "No test enumerated the CLI's subcommands, so a subcommand's effect on a control was decided once in prose and never checked again."
+      ],
+      "root_cause": "A list of the commands a finding showed stood in for the rule that every command which can loosen a control is judged as the write it makes, and the list was not tied to the CLI's own dispatch table, so a command whose effect changed later stayed off it.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: classify.mjs judges sakk init as the write to ~/.sakk/config.json, so protect-guard-state denies it to the agent as it denies sakk cap; a person runs it. README and docs/GUARD.md say so.",
+      "class_fix": "test/kill-switch.test.mjs::R-24 every sakk subcommand is declared by its effect on a control, and judged by it",
+      "guard": "test/kill-switch.test.mjs::J-UAT-016 an agent cannot re-point the ledger a halt is read from (F-181)",
+      "sweep": "All 17 subcommands in bin/sakk.mjs's dispatch table are declared in test/kill-switch.test.mjs SUBCOMMANDS with their effect on a control (none, tightens, loosens) and the hook's verdict on each form: init and cap are denied, guard install and uninstall are asked, and resume, reconcile and unlock are the loosening commands still allowed, each tied to the open F-177. A new subcommand, a dispatch entry with no declaration, a loosening entry the hook allows without an open finding, or a gap naming a closed finding turns the test red. Six mutants (init not judged as the write, guard not asked, an undeclared subcommand, cap not denied, a gap naming the fixed F-171, a loosening declared allow) each turn it red.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/classify.mjs", "bin/sakk.mjs", "test/kill-switch.test.mjs"],
+      "mechanism_gap": "The F-171 detectors asserted cap and guard by name; nothing enumerated the CLI's subcommands from its dispatch table, so a subcommand outside the finding's examples, or one whose effect on a control changed after the sweep, was never judged.",
+      "mechanism_upgrade": "test/kill-switch.test.mjs::R-24 every sakk subcommand is declared by its effect on a control, and judged by it",
+      "distinct_from": {
+        "F-171": "F-171 was the agent lifting its own cap or removing its own guard through sakk cap and guard; F-181 is a third subcommand, init, re-pointing the ledger so another agent's halt stops applying, which the F-171 list did not reach.",
+        "F-177": "F-177 is resume, reconcile and unlock trusting a self-declared --by and the in-repo default ledger, which needs a decision on where the ledger lives; F-181 is init re-pointing the hook's ledger, fixed here by judging it as the config write it makes."
+      }
     }
   ]
 }
