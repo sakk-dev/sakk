@@ -80,9 +80,11 @@ are. The agent name is what the installed config passes — self-declared.
 
 ## When Sakk is stopped
 
-If a ledger is configured (`~/.sakk/config.json`: `{"ledgerPath": "…"}`)
-and someone runs `sakk halt`, every tool call is denied except reading the
-repository, until a person runs `sakk resume`.
+`sakk init` records the ledger's absolute path in `~/.sakk/config.json`
+(`{"ledgerPath": "…"}`); the hook reads it, then `SAKK_LEDGER_PATH`. Once
+someone runs `sakk halt`, every tool call is denied except reading the
+repository, until a person runs `sakk resume`. The CLI resolves the ledger
+by the same rule, so the halt lands where the hook looks.
 
 ## When a rule file is broken
 

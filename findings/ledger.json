@@ -5391,12 +5391,27 @@
       "dt": ["DT-SPEC"],
       "rc": ["RC-07"],
       "es": ["ES-04"],
-      "sweep": "Not swept — the fix (guard install bakes a resolvable ledger path into the hook command or stored config at install time, and/or a `sakk config set ledger <path>` command, and/or the hook defaults to the same cwd-relative sakk-ledger.json the CLI uses, and/or guard install refuses to arm without a resolvable ledger path) is a pending product decision. Once decided, sweep the spend-cap path in the same hook (src/hook.mjs:437-439 reads config.capUsd and spendCap's ledger the same way) for whether the cap is equally un-wired by default, and sweep every agent target (cursor, codex) for the same install-time wiring gap.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept: the hook's daily spend cap has no such seam — it reads no ledger at all, only config.capUsd (and the transcripts), which `sakk cap set` writes into the same ~/.sakk/config.json the hook reads, so it is armed by a documented command rather than an unwritten step. Cursor and codex install the same `sakk hook --agent <agent>` command and read the same ~/.sakk/config.json, so no agent target has its own wiring gap. The console stop button (sakk ui) had the identical seam — it fell back to SAKK_LEDGER_PATH only, never config — and now resolves through the same function with no ./sakk-ledger.json guess. sakk mcp keeps its explicit --ledger / SAKK_LEDGER_PATH requirement by spec (a server must not guess a ledger), and that refusal is loud, not inert.",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": ["bin/sakk.mjs", "src/hook.mjs", "src/guard-install.mjs"],
       "mechanism_gap": "The RC-07 detectors check that documented claims and required steps are backed by enforcement on the surfaces they cover — README/spec claims matched to code (claims-are-checked), each red line / drill / script present (core-specs), the schema pinned (schema-pins), the guard rule list complete (guard). None of them drives the halt control end to end in a default install, so a required wiring step whose omission silently disarms the kill switch — rather than failing a documented-claim check — was outside every existing RC-07 detector's reach.",
-      "mechanism_upgrade": "test/kill-switch.test.mjs::GAP J-UAT-030 sakk halt is silently inert unless the ledger path is wired into the hook",
+      "mechanism_upgrade": "test/kill-switch.test.mjs::J-UAT-030 sakk init wires the ledger into the hook, so a halt from any directory stops the guarded agent",
+      "instance_fix": "this commit: src/hook.mjs resolveLedgerPath is the one rule (--ledger > config.ledgerPath > SAKK_LEDGER_PATH > caller fallback) used by the hook's halt lookup, every CLI ledger command and the console; sakk init records the absolute ledger path in ~/.sakk/config.json when none is recorded, wires an existing valid ledger on a re-run without touching it, never replaces a different recorded path (it says which ledger the hook still reads), and never wires a file that does not read as a ledger. test/cli.test.mjs, test/console.test.mjs (the stop button) and the rewritten J-UAT-030 drive the real CLI and hook; all seven new or changed tests fail on the pre-fix code.",
+      "class_fix": null,
+      "guard": "test/kill-switch.test.mjs::J-UAT-030 sakk init wires the ledger into the hook, so a halt from any directory stops the guarded agent",
+      "corrections": [
+        {
+          "field": "sweep",
+          "from": "Not swept — the fix (guard install bakes a resolvable ledger path into the hook command or stored config at install time, and/or a `sakk config set ledger <path>` command, and/or the hook defaults to the same cwd-relative sakk-ledger.json the CLI uses, and/or guard install refuses to arm without a resolvable ledger path) is a pending product decision. Once decided, sweep the spend-cap path in the same hook (src/hook.mjs:437-439 reads config.capUsd and spendCap's ledger the same way) for whether the cap is equally un-wired by default, and sweep every agent target (cursor, codex) for the same install-time wiring gap.",
+          "why": "The product decision is made (D3=A: init writes the absolute ledgerPath into the hook config, one shared resolver, idempotent, never overwrites the user's config), so the sweep it deferred was run against the shipped fix and its result recorded."
+        },
+        {
+          "field": "mechanism_upgrade",
+          "from": "test/kill-switch.test.mjs::GAP J-UAT-030 sakk halt is silently inert unless the ledger path is wired into the hook",
+          "why": "The fix rewrote the GAP test to assert the corrected behavior (init wires the ledger; a halt from any directory stops the hook) and dropped the GAP marker, so the detector-upgrade anchor now names the standing test."
+        }
+      ],
       "distinct_from": {
         "F-173": "F-172 is the kill-switch: `sakk halt` writes a cwd-relative ledger while the hook reads halt only from config.ledgerPath ?? SAKK_LEDGER_PATH, so the two never meet and halt is inert. F-173 is the secret-read guard matching the literal argv token while the shell expands a glob/brace/variable to the protected file. Same class (two rules for one target) and same file (src/hook.mjs), but the halt-path divergence and the secret-read expansion blind spot are independent; neither fix touches the other."
       }

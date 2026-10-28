@@ -174,7 +174,7 @@ describe('P0 UAT backfill — install & accuracy (P-INS / P-ACC)', () => {
     }
   };
 
-  test('P-INS-001 `sakk init` creates a ledger, refuses to overwrite it, and does not wire any hook', () => {
+  test('P-INS-001 `sakk init` creates a ledger, refuses to overwrite it, and installs no agent hook', () => {
     const base = mkdtempSync(join(tmpdir(), 'sakk-init-'));
     try {
       const home = join(base, 'home');
@@ -200,10 +200,16 @@ describe('P0 UAT backfill — install & accuracy (P-INS / P-ACC)', () => {
         'the existing ledger is untouched (cap stays 5)',
       );
 
-      // init is not guard-install (F-172): it writes only the ledger, never a
+      // init records the ledger for the installed guard in Sakk's own config
+      // (F-172) and nothing else: it is not guard-install, so it never writes a
       // Claude Code / Cursor / Codex hook config. The guard would write
       // <home>/.claude/settings.json (src/guard-install.mjs configPath); init
       // must not have created it.
+      assert.equal(
+        JSON.parse(readFileSync(join(home, '.sakk', 'config.json'), 'utf8')).ledgerPath,
+        ledger,
+        'init records the ledger path the hook reads',
+      );
       assert.ok(
         !existsSync(join(home, '.claude', 'settings.json')),
         'init did not wire a claude-code hook',

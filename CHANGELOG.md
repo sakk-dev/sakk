@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `sakk halt` now stops the guarded agent (F-172)
+
+- No command wrote `ledgerPath` into `~/.sakk/config.json`, so the hook never
+  saw a ledger: `sakk halt` recorded a halt the installed guard could not read
+  and the agent kept running. `sakk init` now records the ledger's absolute path
+  there, and the CLI, the hook and the console's stop button resolve the ledger
+  by one shared rule (`--ledger` > the recorded path > `SAKK_LEDGER_PATH` > the
+  CLI's `./sakk-ledger.json`), so a halt lands where the hook reads. Re-running
+  `init` wires an existing ledger without touching it and never replaces a
+  different recorded path.
+
+### Fixed — the shipped price snapshot (F-169)
+
+- The shipped `prices/snapshot.json` priced none of the current Claude models,
+  so out of the box every metered run was refused as `PRICE_UNKNOWN`. It is now
+  regenerated from the LiteLLM table (170 models) by `scripts/prices-trim.mjs`,
+  which also writes the third-party credit (`LiteLLM (MIT, (c) Berri AI)`) into
+  the snapshot's provenance block. An unknown model still fails closed.
+
+### Fixed — the guard says when it would fail open (F-174)
+
+- On Claude Code older than 2.1.295 the hook cannot be installed with
+  `onFailure: "block"`, so a hook that times out lets the call run. `sakk guard
+install` now says so, and `sakk doctor` warns on any installed Claude Code
+  hook that lacks the field.
+
 ### Fixed — spend accounting correctness (F-168, F-170)
 
 - An empty `cache_creation:{}` object (which a trimmed or replayed log can emit)

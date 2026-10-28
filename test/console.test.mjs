@@ -11,7 +11,7 @@ import {
   realpathSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -512,6 +512,67 @@ describe('sakk ui console (M4): typed refusals', () => {
     } finally {
       await c.close();
     }
+  });
+
+  test('the stop button halts the ledger sakk init recorded for the hook (F-172)', async () => {
+    const bin = join(ROOT, 'bin', 'sakk.mjs');
+    const w = world();
+    const proj = join(w.base, 'proj');
+    mkdirSync(proj);
+    const env = { ...w.env };
+    delete env.SAKK_LEDGER_PATH;
+    const init = spawnSync(process.execPath, [bin, 'init', '--cap', '100'], {
+      encoding: 'utf8',
+      env,
+      cwd: proj,
+    });
+    assert.equal(init.status, 0, init.stderr);
+    // started from another directory, with no --ledger: no ./sakk-ledger.json guess
+    const ui = spawn(process.execPath, [bin, 'ui', '--allow-halt'], { env, cwd: w.base });
+    try {
+      const url = await new Promise((resolve, reject) => {
+        let out = '';
+        let err = '';
+        ui.stdout.on('data', (b) => {
+          out += b;
+          const m = out.match(/Sakk console: (\S+)/);
+          if (m) resolve(new URL(m[1]));
+        });
+        ui.stderr.on('data', (b) => (err += b));
+        ui.on('exit', (code) => reject(new Error(`sakk ui exited ${code}: ${err}`)));
+      });
+      const tok = url.searchParams.get('t');
+      const r = await hit(Number(url.port), {
+        path: '/api/halt',
+        method: 'POST',
+        headers: {
+          Host: url.host,
+          Origin: url.origin,
+          Cookie: cookie(tok),
+          'X-Sakk-Token': tok,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      });
+      assert.equal(r.status, 200, r.body);
+      assert.match(r.body, /"halted":true/);
+    } finally {
+      ui.kill('SIGINT');
+    }
+    const ev = {
+      hook_event_name: 'PreToolUse',
+      cwd: proj,
+      session_id: 's-f172',
+      tool_use_id: 'c-f172',
+      tool_name: 'Bash',
+      tool_input: { command: 'rm -rf build' },
+    };
+    const out = evaluate(normalize('claude-code', ev), { env, log: false });
+    assert.ok(
+      (out.decisions ?? []).some((d) => d.ruleId === 'halt'),
+      'the installed hook sees the halt the console wrote',
+    );
+    assert.equal(out.verdict, 'deny');
   });
 
   test('sakk ui refuses an invalid, privileged or taken port', async () => {

@@ -1,7 +1,15 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -750,32 +758,33 @@ describe('J-UAT-016: an agent can turn off its own cap and kill switch (GAP)', (
   });
 });
 
-describe('J-UAT-030 / G-FN-016 — a halt does not reach the hook in a default install', () => {
-  test('GAP J-UAT-030 sakk halt is silently inert unless the ledger path is wired into the hook', () => {
+describe('J-UAT-030 / G-FN-016 — a halt reaches the hook in a default install (F-172)', () => {
+  test('J-UAT-030 sakk init wires the ledger into the hook, so a halt from any directory stops the guarded agent', () => {
     const base = mkdtempSync(join(tmpdir(), 'ks-juat030-'));
     const home = join(base, 'sakkhome');
     const proj = join(base, 'proj');
-    mkdirSync(home, { recursive: true });
-    mkdirSync(proj, { recursive: true });
-    // A default install: config.json exists but carries no ledgerPath (no CLI
-    // command writes one — only `cap`/`guard` touch config.json) and no capUsd
+    const elsewhere = join(base, 'elsewhere');
+    for (const d of [home, proj, elsewhere]) mkdirSync(d, { recursive: true });
+    // A default install: config.json exists but carries no ledgerPath and no capUsd
     // (so the cap branch is skipped and cannot set `unknown`, which would mask halt).
     writeFileSync(join(home, 'config.json'), '{}\n');
 
     const env = { ...process.env, HOME: base, SAKK_HOME: home };
     delete env.SAKK_LEDGER_PATH;
-    const run = (args) =>
-      spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env, cwd: proj });
+    const run = (args, cwd = proj) =>
+      spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env, cwd });
 
-    // The operator sets up and then pulls the kill switch. With no --ledger and no
-    // SAKK_LEDGER_PATH both commands act on ./sakk-ledger.json relative to the CLI's
-    // own cwd (bin/sakk.mjs ledgerPath()).
+    // The operator sets up in the project with no --ledger and no SAKK_LEDGER_PATH:
+    // init creates ./sakk-ledger.json and records its absolute path for the hook.
     const inited = run(['init', '--cap', '100', '--by', 'alice']);
     assert.equal(inited.status, 0, `init should succeed: ${inited.stderr}`);
-    const halted = run(['halt', '--by', 'alice', '--reason', 'stop everything']);
-    assert.equal(halted.status, 0, `halt should succeed: ${halted.stderr}`);
-    const wrote = join(proj, 'sakk-ledger.json');
-    assert.ok(existsSync(wrote), 'halt wrote the ledger to cwd-relative sakk-ledger.json');
+    const wrote = join(realpathSync(proj), 'sakk-ledger.json');
+    assert.ok(existsSync(wrote), 'init wrote ./sakk-ledger.json');
+    assert.equal(
+      JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).ledgerPath,
+      wrote,
+      'init records the absolute ledger path in config.json',
+    );
 
     const ev = {
       hook_event_name: 'PreToolUse',
@@ -785,39 +794,25 @@ describe('J-UAT-030 / G-FN-016 — a halt does not reach the hook in a default i
       tool_name: 'Bash',
       tool_input: { command: 'rm -rf build' }, // a non-read, mutating action
     };
+    const decide = () => evaluate(normalize('claude-code', ev), { env, log: false });
+    const byHalt = (r) => (r.decisions ?? []).some((d) => d.ruleId === 'halt');
+    assert.equal(byHalt(decide()), false, 'before the halt nothing is stopped');
 
-    // GAP (G-FN-016): the installed hook resolves halt only from
-    // config.ledgerPath ?? env.SAKK_LEDGER_PATH (src/hook.mjs:426), with no fallback
-    // to where `sakk halt` actually wrote. In a default install neither is set, so
-    // haltFor returns {known:false, halt:null} and the stop is silently ignored.
-    const def = evaluate(normalize('claude-code', ev), { env, log: false });
-    const haltSeenByDefault = (def.decisions ?? []).some((d) => d.ruleId === 'halt');
+    // The kill switch, pulled from another directory and still with no flag: the
+    // CLI resolves the recorded ledger, so the halt lands where the hook reads.
+    const halted = run(['halt', '--by', 'alice', '--reason', 'stop everything'], elsewhere);
+    assert.equal(halted.status, 0, `halt should succeed: ${halted.stderr}`);
     assert.equal(
-      haltSeenByDefault,
+      existsSync(join(elsewhere, 'sakk-ledger.json')),
       false,
-      'default install: the hook never consults the ledger halt was written to — the kill switch is inert',
+      'no stray ledger where halt ran',
     );
+    const stopped = decide();
+    assert.ok(byHalt(stopped), 'the default-install hook honors the halt');
+    assert.equal(stopped.verdict, 'deny', 'the halted call is denied');
 
-    // Control: once the operator wires the exact path halt wrote into the agent env,
-    // the same call is denied by halt. The switch works; it is just off by default.
-    const wired = evaluate(normalize('claude-code', ev), {
-      env: { ...env, SAKK_LEDGER_PATH: wrote },
-      log: false,
-    });
-    assert.ok(
-      (wired.decisions ?? []).some((d) => d.ruleId === 'halt'),
-      'wired: the hook honors the halt once SAKK_LEDGER_PATH points at the written ledger',
-    );
-    assert.equal(wired.verdict, 'deny', 'wired: the halted call is denied');
-
-    // J-UAT-030: even after `sakk init` created the ledger, nothing wrote
-    // config.ledgerPath — the only writeConfig callers are cap off / cap set. So the
-    // only ways to wire the hook are a hand-edited config.json or an env var the
-    // operator must remember to export; neither is a command and neither has a default.
-    assert.equal(
-      JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).ledgerPath,
-      undefined,
-      'no command (init included) writes config.ledgerPath — the hook has nothing to resolve by',
-    );
+    const resumed = run(['resume', '--by', 'alice'], elsewhere);
+    assert.equal(resumed.status, 0, `resume should succeed: ${resumed.stderr}`);
+    assert.equal(byHalt(decide()), false, 'resume lifts the halt the hook reads');
   });
 });

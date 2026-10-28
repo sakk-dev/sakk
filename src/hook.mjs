@@ -94,8 +94,8 @@ export function readConfig(home) {
 
 /**
  * Write Sakk's config atomically — only a person's CLI commands call this
- * (sakk cap set/off); the agent is denied writing ~/.sakk by the guard, so it
- * cannot set its own cap. Merges onto the current config so one key's change
+ * (sakk init, cap set/off); the agent is denied writing ~/.sakk by the guard,
+ * so it cannot set its own cap. Merges onto the current config so one key's change
  * never drops another (the log folder a cap was set with, say).
  */
 export function writeConfig(home, patch) {
@@ -108,6 +108,26 @@ export function writeConfig(home, patch) {
   mkdirSync(home, { recursive: true });
   writeFileAtomic(join(home, 'config.json'), `${JSON.stringify(next, null, 2)}\n`);
   return next;
+}
+
+/**
+ * Where the ledger is — one rule for every command and the hook, so a halt
+ * the CLI writes lands where the hook reads (F-172): --ledger, else the
+ * absolute path `sakk init` recorded in config.json, else SAKK_LEDGER_PATH,
+ * else the caller's fallback (the CLI's ./sakk-ledger.json; the hook and the
+ * console have none). The config outranks the environment because it is the
+ * one source the CLI and the hook are both sure to see. `from` names the
+ * source; a set-but-empty SAKK_LEDGER_PATH resolves to no path, from 'env-empty'.
+ */
+export function resolveLedgerPath({ flag, config = {}, env = process.env, fallback } = {}) {
+  if (flag !== undefined) return { path: resolve(flag), from: 'flag' };
+  if (typeof config.ledgerPath === 'string' && config.ledgerPath !== '')
+    return { path: resolve(config.ledgerPath), from: 'config' };
+  if (env.SAKK_LEDGER_PATH === '') return { path: null, from: 'env-empty' };
+  if (env.SAKK_LEDGER_PATH !== undefined)
+    return { path: resolve(env.SAKK_LEDGER_PATH), from: 'env' };
+  if (fallback !== undefined) return { path: resolve(fallback), from: 'default' };
+  return { path: null, from: null };
 }
 
 /** The git top level of `cwd`, or null outside a repository. */
@@ -423,7 +443,7 @@ export function evaluate(
   let halt = null;
   if (unknown === null)
     try {
-      ({ known, halt } = haltFor(ev.agent, config.ledgerPath ?? env.SAKK_LEDGER_PATH));
+      ({ known, halt } = haltFor(ev.agent, resolveLedgerPath({ config, env }).path));
     } catch (e) {
       unknown = e;
     }

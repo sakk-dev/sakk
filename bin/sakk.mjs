@@ -19,7 +19,15 @@ import {
 import { loadPolicy } from '../src/policy.mjs';
 import { startMcpServer } from '../src/mcp.mjs';
 import { display, scanPaths, scanStaged, ScanError } from '../src/secret-scan.mjs';
-import { evaluate, normalize, runHook, readConfig, writeConfig, sakkHome } from '../src/hook.mjs';
+import {
+  evaluate,
+  normalize,
+  runHook,
+  readConfig,
+  writeConfig,
+  sakkHome,
+  resolveLedgerPath,
+} from '../src/hook.mjs';
 import { loadPrices } from '../src/prices.mjs';
 import {
   daySpend,
@@ -41,9 +49,11 @@ import { startConsole } from '../src/console.mjs';
  *   sakk reconcile --by <name> [--ledger <path>]
  *   sakk halt|resume --by <name> [--agent <id>] [--ledger <path>]
  *
- * Path resolution: --ledger flag > SAKK_LEDGER_PATH > ./sakk-ledger.json
- * (the CLI's one explicit convenience default — always printed, never
- * guessed silently; the library itself keeps no default at all).
+ * Path resolution (resolveLedgerPath, shared with the hook): --ledger flag >
+ * the absolute path `sakk init` recorded in ~/.sakk/config.json >
+ * SAKK_LEDGER_PATH > ./sakk-ledger.json (the CLI's one explicit convenience
+ * default — always printed, never guessed silently; the library itself keeps
+ * no default at all).
  *
  * Exit codes: 0 ok · 1 ledger error (every refusal code on stderr) ·
  * 2 usage error · 3 status: reconciliation required (gate your CI on it) ·
@@ -70,13 +80,34 @@ const val = (n) => {
   return v;
 };
 
+/** The ledger by the hook's own rule (resolveLedgerPath), so a halt lands where the hook reads. */
+function ledgerFrom(fallback) {
+  const flagged = val('ledger');
+  let config = {};
+  if (flagged === undefined)
+    try {
+      config = readConfig(sakkHome());
+    } catch (e) {
+      console.error(String(e.message));
+      process.exit(1);
+    }
+  const r = resolveLedgerPath({ flag: flagged, config, fallback });
+  const envPath = process.env.SAKK_LEDGER_PATH;
+  if (r.from === 'config' && envPath && resolve(envPath) !== r.path)
+    console.error(
+      `note: using ${r.path} from ${join(sakkHome(), 'config.json')}; SAKK_LEDGER_PATH (${envPath}) is not used — pass --ledger to choose another`,
+    );
+  return r;
+}
+
 function ledgerPath() {
+  const r = ledgerFrom('sakk-ledger.json');
   // set-but-empty is a mistake, not "use the current directory" (ledger review N2)
-  if (val('ledger') === undefined && process.env.SAKK_LEDGER_PATH === '') {
+  if (r.from === 'env-empty') {
     console.error('LEDGER_PATH_REQUIRED: SAKK_LEDGER_PATH is set but empty');
     process.exit(2);
   }
-  return resolve(val('ledger') ?? process.env.SAKK_LEDGER_PATH ?? 'sakk-ledger.json');
+  return r.path;
 }
 /** A name, not whitespace: self-declared and never verified (ledger review N1; F-70; F-126). */
 const named = (by) => typeof by === 'string' && by.trim() !== '';
@@ -117,7 +148,7 @@ Spend and the daily cap (from Claude Code's local logs; an estimate, not the inv
   sakk spend [--day <YYYY-MM-DD>] [--json]                today's spend by model, and what could not be priced
   sakk prices [--json]                                    the price table in use and its source
 
-Ledger path: --ledger > $SAKK_LEDGER_PATH > ./sakk-ledger.json
+Ledger path: --ledger > the one init recorded in ~/.sakk/config.json (the hook reads it too) > $SAKK_LEDGER_PATH > ./sakk-ledger.json
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status) · 4 halted (status; wins over 3, both shown)
 max_reservable_usd of 0 means nothing fits under the cap (reserve requires a positive amount)
 `;
@@ -186,16 +217,39 @@ if (cmd === 'init') {
     process.exit(2);
   }
   const p = ledgerPath();
+  if (val('by') !== undefined && !named(val('by'))) {
+    console.error('init --by needs a name');
+    process.exit(2);
+  }
+  let refused = null;
   try {
-    if (val('by') !== undefined && !named(val('by'))) {
-      console.error('init --by needs a name');
-      process.exit(2);
-    }
     initLedger({ ledgerPath: p, capUsd: cap, initializedBy: val('by') ?? 'sakk-cli' });
   } catch (e) {
-    fail(e);
+    if (!(e instanceof LedgerError && e.code === 'LEDGER_ALREADY_EXISTS')) fail(e);
+    refused = e;
   }
-  console.log(`ledger created: ${p}`);
+  if (!refused) console.log(`ledger created: ${p}`);
+  // Record the ledger for the hook so `sakk halt` reaches it (F-172). Re-running
+  // init wires an existing ledger too, and never replaces a different recorded one.
+  const home = sakkHome();
+  let recorded;
+  try {
+    if (refused) readLedger({ ledgerPath: p, maxAgeMs: Number.POSITIVE_INFINITY });
+    recorded = readConfig(home).ledgerPath;
+  } catch (e) {
+    console.error(`the hook is not wired to ${p}: ${String(e.message)}`);
+    if (refused) fail(refused);
+    process.exit(1);
+  }
+  const configFile = join(home, 'config.json');
+  if (typeof recorded !== 'string' || recorded === '') {
+    writeConfig(home, { ledgerPath: p });
+    console.log(`hook wired: a halt on this ledger now stops the guarded agent (${configFile})`);
+  } else if (resolve(recorded) !== p)
+    console.error(
+      `note: the hook still reads halts from ${recorded} (${configFile}); this ledger is not wired — change ledgerPath there to switch`,
+    );
+  if (refused) fail(refused);
   console.log(`cap: $${cap} — reserve before you spawn; reaching the cap refuses.`);
 } else if (cmd === 'status') {
   const p = ledgerPath();
@@ -867,8 +921,9 @@ if (cmd === 'init') {
       process.exit(2);
     }
   }
-  const rawLedger = val('ledger') ?? (process.env.SAKK_LEDGER_PATH || undefined);
-  const lp = typeof rawLedger === 'string' && rawLedger !== '' ? resolve(rawLedger) : null;
+  // the hook's own rule, with no ./sakk-ledger.json guess: the stop button
+  // halts exactly the ledger the hook reads (F-172)
+  const lp = val('ledger') === '' ? null : ledgerFrom(undefined).path;
   const allowHalt = flag('allow-halt');
   startConsole({ port, allowHalt, cwd: process.cwd(), ledgerPath: lp }).then(
     (c) => {

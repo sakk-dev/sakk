@@ -40,7 +40,14 @@
     },
     "C-11.1": {
       "answer": "J-UAT-016 and J-UAT-030 are exactly a value whose meaning outlives its scope: a cap, a halt and the installed hook are the spend ceiling and kill switch, which must hold against the agent, yet the agent can move them through ordinary CLI subcommands the hook never classifies (cap off / cap set / guard uninstall) or a halt that never reaches the hook because no command writes config.ledgerPath. This backfill adds no new writer; it adds adversarial tests that assert which caller each control actually trusts, and where a control currently trusts the agent the real verdict is pinned with a gap label and filed as a finding, never papered over with a green that pretends the writer is safe.",
-      "guard": "test/kill-switch.test.mjs::GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed"
+      "guard": "test/kill-switch.test.mjs::GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed",
+      "revisions": [
+        {
+          "finding": "F-172",
+          "answer": "J-UAT-030 is closed: `sakk init`, a person's setup step, records the ledger's absolute path in ~/.sakk/config.json once and never replaces a different recorded path, and that file sits in the guard state the hook denies the agent writing; the CLI, hook and console resolve the ledger through the one function, so a halt from any directory lands where the hook looks. J-UAT-016 still trusts the agent (cap off / cap set / guard uninstall) and stays pinned with its gap label until F-171.",
+          "guard": "test/kill-switch.test.mjs::J-UAT-030 sakk init wires the ledger into the hook, so a halt from any directory stops the guarded agent"
+        }
+      ]
     },
     "C-07.1": {
       "answer": "The F-174 fix reacts to exactly two externally-sourced inputs and trusts neither blindly: the installed Claude Code version string, parsed only through claudeSupportsOnFailure which returns false on any missing binary, unparseable output or thrown error (so an untrusted or spoofed version degrades to fail-open-and-warn, never to a false fail-closed claim); and the agent's own settings file, read via readJson which rejects anything that is not a plain object. The operator warning text is a fixed string literal with no interpolation of any external value, so no attacker-controlled bytes reach the console line.",

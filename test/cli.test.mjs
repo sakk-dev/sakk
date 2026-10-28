@@ -10,13 +10,17 @@ import { reserve, settle } from '../src/ledger.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, '..', 'bin', 'sakk.mjs');
 
+const tdir = () => mkdtempSync(join(tmpdir(), 'sakk-cli-'));
+
+// every run gets its own SAKK_HOME unless the test passes one: init records the
+// ledger in SAKK_HOME/config.json, and the real ~/.sakk must never be touched
 const run = (args, env = {}) =>
   spawnSync(process.execPath, [CLI, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, SAKK_LEDGER_PATH: '', ...env },
+    env: { ...process.env, SAKK_LEDGER_PATH: '', SAKK_HOME: tdir(), ...env },
   });
 
-const tdir = () => mkdtempSync(join(tmpdir(), 'sakk-cli-'));
+const recorded = (home) => JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).ledgerPath;
 
 describe('sakk init', () => {
   test('creates a ledger at --ledger and refuses a second init', () => {
@@ -38,6 +42,70 @@ describe('sakk init', () => {
     const r = run(['init', '--cap', '5'], { SAKK_LEDGER_PATH: p });
     assert.equal(r.status, 0, r.stderr);
     assert.ok(existsSync(p));
+  });
+  test('records the ledger for the hook and never replaces a different one (F-172)', () => {
+    const home = tdir();
+    const d = tdir();
+    const a = join(d, 'a.json');
+    const b = join(d, 'b.json');
+    const first = run(['init', '--cap', '5', '--ledger', a], { SAKK_HOME: home });
+    assert.equal(first.status, 0, first.stderr);
+    assert.match(first.stdout, /hook wired/);
+    assert.equal(recorded(home), a);
+    // a second ledger is created, but the hook keeps the recorded one and init says so
+    const other = run(['init', '--cap', '5', '--ledger', b], { SAKK_HOME: home });
+    assert.equal(other.status, 0, other.stderr);
+    assert.ok(existsSync(b));
+    assert.doesNotMatch(other.stdout, /hook wired/);
+    assert.match(other.stderr, /still reads halts from/);
+    assert.equal(recorded(home), a);
+  });
+  test('re-running init wires an existing ledger without touching it, once (F-172)', () => {
+    const p = join(tdir(), 'l.json');
+    assert.equal(run(['init', '--cap', '5', '--ledger', p]).status, 0);
+    const ledger = readFileSync(p);
+    const home = tdir();
+    const again = run(['init', '--cap', '9', '--ledger', p], { SAKK_HOME: home });
+    assert.equal(again.status, 1);
+    assert.match(again.stderr, /LEDGER_ALREADY_EXISTS/);
+    assert.match(again.stdout, /hook wired/);
+    assert.equal(recorded(home), p);
+    assert.deepEqual(readFileSync(p), ledger, 'the existing ledger is not rewritten');
+    const config = readFileSync(join(home, 'config.json'));
+    const third = run(['init', '--cap', '9', '--ledger', p], { SAKK_HOME: home });
+    assert.equal(third.status, 1);
+    assert.doesNotMatch(third.stdout, /hook wired/);
+    assert.doesNotMatch(third.stderr, /still reads/);
+    assert.deepEqual(readFileSync(join(home, 'config.json')), config, 'nothing to change');
+  });
+  test('a file that is not a ledger is never wired to the hook (F-172)', () => {
+    const p = join(tdir(), 'notes.json');
+    writeFileSync(p, '{"hello":1}\n');
+    const home = tdir();
+    const r = run(['init', '--cap', '5', '--ledger', p], { SAKK_HOME: home });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /not wired/);
+    assert.match(r.stderr, /LEDGER_ALREADY_EXISTS/);
+    assert.equal(existsSync(join(home, 'config.json')), false);
+    assert.equal(readFileSync(p, 'utf8'), '{"hello":1}\n');
+  });
+  test('without --ledger a command uses the recorded ledger from any directory (F-172)', () => {
+    const home = tdir();
+    const p = join(tdir(), 'l.json');
+    assert.equal(run(['init', '--cap', '7', '--ledger', p], { SAKK_HOME: home }).status, 0);
+    const r = spawnSync(process.execPath, [CLI, 'status', '--json'], {
+      encoding: 'utf8',
+      cwd: tdir(),
+      env: { ...process.env, SAKK_HOME: home, SAKK_LEDGER_PATH: join(tdir(), 'other.json') },
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(JSON.parse(r.stdout).cap_usd, 7);
+    // the variable lost to the recorded path, and the CLI says so
+    assert.match(r.stderr, /SAKK_LEDGER_PATH \(.*\) is not used/);
+    assert.equal(
+      run(['status', '--json', '--ledger', join(tdir(), 'x.json')], { SAKK_HOME: home }).status,
+      1,
+    );
   });
 });
 

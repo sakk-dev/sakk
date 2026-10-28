@@ -217,6 +217,12 @@ const BOUNDS = {
       guard:
         'test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)',
     },
+    resolveLedgerPath: {
+      bounded:
+        'picks one of four strings already in memory and resolves it; it reads no file and loops over nothing',
+      guard:
+        'test/kill-switch.test.mjs::J-UAT-030 sakk init wires the ledger into the hook, so a halt from any directory stops the guarded agent',
+    },
     choosePolicy: {
       bounded:
         'loads at most two policies through loadPolicy, which refuses a file over 4 MiB, and copies one of them',

@@ -88,15 +88,18 @@ snapshot by re-running `scripts/prices-trim.mjs` against the LiteLLM table.
 ## Quickstart
 
 ```bash
-npx sakk init --cap 25          # create ./sakk-ledger.json (refuses to overwrite)
+npx sakk init --cap 25          # create ./sakk-ledger.json (refuses to overwrite) and wire it to the guard
 npx sakk status                 # totals, entries, reconciliation state (--json for machines)
 npx sakk reconcile --by alice   # clear a reconciliation halt — takes a name
 npx sakk ledger verify          # check the sealed history's hash chain (exit 1 if broken)
 ```
 
 The ledger commands (`init`, `status`, `reconcile`, `halt`, `resume`,
-`unlock`, `mcp`, `ledger verify|export`) accept `--ledger <path>` (default:
-`./sakk-ledger.json`, or `SAKK_LEDGER_PATH`; set-but-empty refuses).
+`unlock`, `mcp`, `ledger verify|export`) accept `--ledger <path>`. Without
+it they use the absolute path `sakk init` recorded in `~/.sakk/config.json`
+(the guard hook reads the same entry), then `SAKK_LEDGER_PATH`
+(set-but-empty refuses), then `./sakk-ledger.json`. `mcp` still needs the
+flag or the variable.
 
 Settled entries are sealed into an append-only, hash-chained cold trail
 (`<ledger>.cold/`) so the live file stays small and a call costs the same
@@ -232,6 +235,12 @@ npx sakk halt --by alice --reason "runaway agent"   # every new reservation refu
 npx sakk halt --by alice --agent bot-7              # stop one agent only
 npx sakk resume --by alice                          # lift it (named)
 ```
+
+`sakk init` records the ledger's absolute path in `~/.sakk/config.json`,
+so a halt also stops an agent behind the installed guard: every tool call
+except reading the repository is denied until `sakk resume`. Running `init`
+again wires an existing ledger without touching it, and never replaces a
+different recorded path — it says which ledger the hook still reads.
 
 While halted, `reserve()` refuses `LEDGER_HALTED` (or `AGENT_HALTED`),
 every reservation the halt refuses is logged to `sakk-alerts.jsonl`
