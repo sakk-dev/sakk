@@ -3,6 +3,7 @@
 import { chmodSync, lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import {
   initLedger,
@@ -112,6 +113,37 @@ function ledgerPath() {
 /** A name, not whitespace: self-declared and never verified (ledger review N1; F-70; F-126). */
 const named = (by) => typeof by === 'string' && by.trim() !== '';
 
+/**
+ * A change that loosens a control the agent is bound by (lifting or raising
+ * the cap, removing the guard) goes ahead only once a person retypes `word`
+ * at this terminal. A run with no terminal — an agent's tool call, a script —
+ * refuses, and nothing changes (F-171). This is not proof of a person: a
+ * process that makes its own pseudo-terminal can answer; the hook asks before
+ * the commands that do that (docs/GUARD.md).
+ */
+async function confirmByPerson(change, word) {
+  if (!process.stdin.isTTY || !process.stderr.isTTY) {
+    console.error(
+      `HUMAN_CONFIRMATION_REQUIRED: ${change} — a person confirms this at a terminal, and this run has none; nothing changed`,
+    );
+    process.exit(2);
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  const answer = await new Promise((done) => {
+    rl.on('close', () => done(null));
+    rl.on('SIGINT', () => rl.close());
+    rl.question(
+      `${change}.\nAn agent must not make this change, so a person confirms it here. Type ${word} to go ahead: `,
+      done,
+    );
+  });
+  rl.close();
+  if (answer?.trim() !== word) {
+    console.error(`HUMAN_CONFIRMATION_REQUIRED: the answer was not ${word}; nothing changed`);
+    process.exit(2);
+  }
+}
+
 // Human display only — JSON keeps raw numbers. 6 decimals, trailing zeros
 // trimmed, so the 1e-6 reserve guard never prints a float tail.
 const usd = (n) =>
@@ -136,15 +168,15 @@ Usage:
   sakk scan <paths...> | --staged | --install-hook        find secrets (fingerprints only; exit 1 on findings)
 
 The agent guard:
-  sakk guard install|uninstall <agent> [--user]          add or remove the hook (claude-code | cursor | codex)
+  sakk guard install|uninstall <agent> [--user]          add or remove the hook (claude-code | cursor | codex; removing asks you to confirm)
   sakk try "<command>" [--read <path>] [--json]           how the guard would judge a command (nothing runs)
   sakk doctor [--json]                                    check the guard really fires where you work
   sakk hook --agent <agent>                               the hook itself: payload on stdin (installed for you)
   sakk ui [--port N] [--allow-halt] [--ledger <path>]     a local, read-only console on 127.0.0.1 (token in the URL)
 
 Spend and the daily cap (from Claude Code's local logs; an estimate, not the invoice):
-  sakk cap set <usd> [--zone <IANA>]                      a daily cap the hook enforces at the next call (a person sets it)
-  sakk cap off                                            lift the cap
+  sakk cap set <usd> [--zone <IANA>]                      a daily cap the hook enforces at the next call (raising it asks you to confirm)
+  sakk cap off                                            lift the cap (asks you to confirm)
   sakk spend [--day <YYYY-MM-DD>] [--json]                today's spend by model, and what could not be priced
   sakk prices [--json]                                    the price table in use and its source
 
@@ -642,6 +674,10 @@ if (cmd === 'init') {
   }
   let r;
   try {
+    if (action === 'uninstall') {
+      const plan = uninstall(agent, { user: flag('user'), dryRun: true });
+      if (plan.changed) await confirmByPerson(`This removes the guard from ${plan.path}`, agent);
+    }
     r = (action === 'install' ? install : uninstall)(agent, { user: flag('user') });
   } catch (e) {
     console.error(String(e?.message ?? e));
@@ -765,8 +801,9 @@ if (cmd === 'init') {
     }
   }
 } else if (cmd === 'cap') {
-  // set or lift the daily spend cap the hook enforces; a person runs this, the
-  // agent is denied writing ~/.sakk, so it cannot raise its own cap.
+  // set or lift the daily spend cap the hook enforces. A person runs this: the
+  // hook denies the agent `sakk cap` like any write to ~/.sakk, and lifting or
+  // raising a cap, or moving its day, asks a person at the terminal (F-171).
   const sub = argv[1];
   const home = sakkHome();
   if (sub !== 'off' && sub !== 'set') {
@@ -795,6 +832,18 @@ if (cmd === 'init') {
   // a pre-existing malformed/symlinked config.json makes writeConfig's merge
   // read throw; report it as a typed error, not an uncaught stack (spend/cap review)
   try {
+    const was = readConfig(home);
+    if (typeof was.capUsd === 'number') {
+      const day = (z) => z ?? was.timeZone ?? systemZone();
+      if (sub === 'off') await confirmByPerson(`This lifts the daily cap of $${was.capUsd}`, 'off');
+      else if (cap > was.capUsd)
+        await confirmByPerson(`This raises the daily cap from $${was.capUsd} to $${cap}`, argv[2]);
+      else if (day(zone) !== day(undefined))
+        await confirmByPerson(
+          `This moves the cap's day from ${day(undefined)} to ${zone}, which can start a new day early`,
+          zone,
+        );
+    }
     if (sub === 'off') {
       writeConfig(home, { capUsd: undefined });
       console.log(

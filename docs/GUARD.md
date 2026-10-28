@@ -16,7 +16,8 @@ sakk doctor                      # checks the hook really fires
 `install` adds Sakk's hook to the agent's own config in this project
 (`.claude/settings.json`, `.cursor/hooks.json`, `.codex/hooks.json`). It keeps
 whatever is already there and leaves a backup beside the file. Run it again
-and nothing changes; `sakk guard uninstall <agent>` removes only what it added.
+and nothing changes; `sakk guard uninstall <agent>` removes only what it added,
+after you retype the agent's name to confirm.
 
 Claude Code reads project hooks only for sessions **started in this
 folder**. If you start sessions somewhere else, add `--user` to install it in
@@ -42,6 +43,15 @@ The shipped policy (`policies/guard-default.json`):
 | `allow-in-repo`            | everything else                                                                           | allow   |
 
 Codex runs a call when a hook asks, so for Codex "ask you" is a deny.
+
+Sakk's own commands are judged by the write they make. From the agent,
+`sakk cap …` writes Sakk's state, so it is denied; `sakk guard install` or
+`uninstall` writes the agent's config, so it asks you; and `script`, `expect`
+or `unbuffer`, which run a command at a pseudo-terminal and can type into it,
+ask you. At the terminal, lifting or raising the cap, moving its day and
+removing the guard ask you to retype a word; with no terminal they refuse with
+`HUMAN_CONFIRMATION_REQUIRED` (exit 2) and change nothing. Tightening never
+asks.
 
 ## Try a command
 
@@ -115,5 +125,12 @@ normally.
   flag held in a variable (`f=~/.sakk/config.json; rm $f`,
   `o=--force; git push $o`) is allowed wherever it points. A glob that reaches
   outside the project is still refused or asked.
+- The confirmation checks for a terminal, not a person: an agent whose shell
+  runs in a pseudo-terminal, or a script it writes that opens one, can type
+  the word. The guard knows Sakk only by the name `sakk`, so `npx sakk` or
+  `node bin/sakk.mjs` meets the confirmation but not the deny.
+- `sakk resume`, `reconcile` and `unlock` from the agent are allowed, and the
+  default ledger (`./sakk-ledger.json`) is a project file the agent may write,
+  so one agent can lift a halt on another. A global halt holds.
 - Cursor and Codex payloads are taken from their documentation; they have
   not yet been recorded from a running copy (test/fixtures/hooks/).

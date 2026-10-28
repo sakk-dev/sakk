@@ -46,6 +46,11 @@
           "finding": "F-172",
           "answer": "J-UAT-030 is closed: `sakk init`, a person's setup step, records the ledger's absolute path in ~/.sakk/config.json once and never replaces a different recorded path, and that file sits in the guard state the hook denies the agent writing; the CLI, hook and console resolve the ledger through the one function, so a halt from any directory lands where the hook looks. J-UAT-016 still trusts the agent (cap off / cap set / guard uninstall) and stays pinned with its gap label until F-171.",
           "guard": "test/kill-switch.test.mjs::J-UAT-030 sakk init wires the ledger into the hook, so a halt from any directory stops the guarded agent"
+        },
+        {
+          "finding": "F-171",
+          "answer": "J-UAT-016 is closed: the hook now judges `sakk cap` as the write to ~sakk/config.json it makes (denied) and `sakk guard` as the agent-config write it makes (asked), and the CLI lifts or raises the cap, moves its day, or removes the guard only after a person at a terminal retypes the word; tightening never asks. The halt family is the one control the sweep found still reachable by the agent, pinned with a gap label as F-177 rather than passed.",
+          "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
         }
       ]
     },
@@ -88,6 +93,14 @@
     "C-06.1": {
       "answer": "The regenerated snapshot's numbers are community figures from BerriAI/litellm under MIT, not Anthropic's own rate card, and the file records that honestly instead of dressing it up as first-party pricing. scripts/prices-trim.mjs writes the provenance block itself, never by hand: source.sha256 is computed from the exact fetched bytes, source.url is the LiteLLM raw JSON it was fetched from, source.commit is the upstream main sha the maintainer passes with --commit, fetchedAt is the run date, and source.license is the fixed credit 'LiteLLM (MIT, (c) Berri AI)' — the same shape as the gitleaks credit, and pinned by test/release.test.mjs P-ACC-008 so the third-party credit cannot silently drop out of a regenerated snapshot. loadPrices hands that same source block to every reader so `sakk prices` shows operators exactly where the numbers came from, and the README refresh note points them at the `~/.sakk/prices.json` override (and, for maintainers, scripts/prices-trim.mjs re-run against the LiteLLM table) instead of hand-editing the shipped snapshot, so nobody sees a provenance the data does not have.",
       "guard": "test/spend.test.mjs::the price snapshot is small, sourced and never edited in place"
+    },
+    "C-13.1": {
+      "answer": "The guard-resolution rule was measured only on the side it must catch (a guard naming a test that does not exist); closing the J-UAT-016 gap was the first real input from the other side, a guard a revision legitimately superseded, and the rule refused it (F-178). The change is measured on both sides in one test: a renamed gap test still fails while no finding records the rename, fails when the correction sits on a finding the revision does not name, and fails when the current guard itself is missing; it passes only when the superseding revision's finding carries a correction whose from is exactly the old guard with a 20-character why — the same correction the ledger already demands when a mechanism_upgrade changes.",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    },
+    "C-14.1": {
+      "answer": "The retirement lookup reads the ledger, which the change does not otherwise trust: a missing ledger, a revision naming an unknown finding, or a corrections field that is not an array retires nothing and throws nothing, so one malformed finding falls back to the strict rule for that guard alone and every other answer is still checked and reported. The checker never stops on this input; the worst a bad entry can do is leave a stale guard reported as not resolving, which is the pre-change behaviour.",
+      "guard": "test/self-evolution.test.mjs::a malformed corrections field retires nothing and the other guards are still checked (F-178)"
     }
   }
 }

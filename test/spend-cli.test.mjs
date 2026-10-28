@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { daySpend, updateIndex } from '../src/spend.mjs';
 import { loadPrices } from '../src/prices.mjs';
+import { HAS_PTY, atTerminal } from './pty.mjs';
 
 /**
  * The spend / cap / prices CLI (completes M2's documented surface, F-161). The
@@ -76,16 +77,25 @@ describe('spend / cap / prices CLI (F-161)', () => {
     assert.match(answer, /SPEND_CAP_REACHED/);
   });
 
-  test('sakk cap off removes the cap and the hook stops enforcing', () => {
-    const w = world();
-    sakk(w, ['cap', 'set', '0.0001']);
-    seed(w, [callLine({ ts: new Date().toISOString() })]);
-    assert.equal(sakk(w, ['cap', 'off']).status, 0);
-    assert.equal(config(w).capUsd, undefined);
-    const answer = hookAnswer(w, { tool_name: 'Bash', tool_input: { command: 'echo hi' } });
-    // echo is allowed; with no cap there is no spend-cap deny (claude-code allow is silent)
-    assert.doesNotMatch(answer, /SPEND_CAP_REACHED/);
-  });
+  test(
+    'sakk cap off, confirmed at a terminal, removes the cap and the hook stops enforcing',
+    {
+      skip: !HAS_PTY && 'python3 with pty is not installed',
+    },
+    () => {
+      const w = world();
+      sakk(w, ['cap', 'set', '0.0001']);
+      seed(w, [callLine({ ts: new Date().toISOString() })]);
+      // with no terminal it refuses (F-171); a person who types the word lifts it
+      assert.equal(sakk(w, ['cap', 'off']).status, 2);
+      assert.equal(config(w).capUsd, 0.0001);
+      assert.equal(atTerminal(['cap', 'off'], 'off', { env: w.env, cwd: w.base }).status, 0);
+      assert.equal(config(w).capUsd, undefined);
+      const answer = hookAnswer(w, { tool_name: 'Bash', tool_input: { command: 'echo hi' } });
+      // echo is allowed; with no cap there is no spend-cap deny (claude-code allow is silent)
+      assert.doesNotMatch(answer, /SPEND_CAP_REACHED/);
+    },
+  );
 
   test('sakk cap set refuses a bad amount or zone', () => {
     const w = world();

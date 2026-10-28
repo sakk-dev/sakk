@@ -198,15 +198,29 @@ export function resolveRef(ref, read) {
   return name === '' || text.includes(name);
 }
 
-/** Guards in an answers file (answers and revisions) that do not resolve. */
-export function guardResolution(ack, read) {
+/**
+ * Guards in an answers file (answers and revisions) that do not resolve. A
+ * guard a later revision supersedes may stop resolving only when that
+ * revision's finding records a correction from it — a gap test renamed to the
+ * fix (F-178); the current guard always resolves.
+ */
+export function guardResolution(ack, read, ledger) {
   const out = [];
+  const byId = new Map((ledger?.findings ?? []).map((f) => [f?.id, f]));
+  const retires = (r, g) => {
+    const cs = byId.get(r?.finding)?.corrections;
+    return (Array.isArray(cs) ? cs : []).some(
+      (c) => c?.from === g && typeof c.why === 'string' && c.why.trim().length >= 20,
+    );
+  };
   for (const [qid, a] of Object.entries(ack?.answers ?? {})) {
-    for (const [where, g] of [
+    const revisions = Array.isArray(a?.revisions) ? a.revisions : [];
+    for (const [i, [where, g]] of [
       [qid, a?.guard],
-      ...(a?.revisions ?? []).map((r, k) => [`${qid} revision ${k + 1}`, r?.guard]),
-    ]) {
+      ...revisions.map((r, k) => [`${qid} revision ${k + 1}`, r?.guard]),
+    ].entries()) {
       if (typeof g !== 'string' || g.startsWith('none: ')) continue;
+      if (revisions.slice(i).some((r) => retires(r, g))) continue;
       if (!resolveRef(g, read))
         out.push(`${where}: guard ${g} does not resolve (no such file or name)`);
     }

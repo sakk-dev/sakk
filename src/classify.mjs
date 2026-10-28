@@ -265,6 +265,15 @@ const READERS = new Set(
   ),
 );
 const GREPS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack']);
+// commands that run another under a pseudo-terminal, and can type into it: the
+// confirmation `sakk cap off` asks a person for must not be answerable this way (F-171)
+const PTY_DRIVERS = new Set(['script', 'expect', 'unbuffer']);
+/** Where each agent keeps the hook config `sakk guard` writes, from the base folder. */
+export const AGENT_CONFIG = Object.freeze({
+  'claude-code': join('.claude', 'settings.json'),
+  cursor: join('.cursor', 'hooks.json'),
+  codex: join('.codex', 'hooks.json'),
+});
 const INTERPRETERS = /^(python[\d.]*|node|deno|bun|ruby|perl|php)$/;
 const SHELLS = /^(sh|bash|zsh|dash|ksh|fish)$/;
 const DEFAULT_BRANCHES = /^(main|master|trunk|develop)$/;
@@ -307,7 +316,11 @@ const dedupe = (list) => {
  * resolved against the command's own `cd`s; the caller turns them into
  * scopes. A form the classifier does not know is `shell.run`.
  */
-export function shellActions(cmd, cwd, { home = process.env.HOME ?? '', depth = 0 } = {}) {
+export function shellActions(
+  cmd,
+  cwd,
+  { home = process.env.HOME ?? '', sakkHome = '', repoRoot = null, depth = 0 } = {},
+) {
   if (typeof cmd !== 'string')
     throw new ClassifyError('HOOK_PAYLOAD_INVALID', 'the command is not text');
   if (cmd.length > MAX_COMMAND)
@@ -346,7 +359,7 @@ export function shellActions(cmd, cwd, { home = process.env.HOME ?? '', depth = 
       const script = ci >= 0 ? args[ci + 1] : undefined;
       if (script === undefined) add('shell.run');
       else if (/[$`]/.test(script) || depth >= 3) add('shell.constructed');
-      else out.push(...shellActions(script, here, { home, depth: depth + 1 }));
+      else out.push(...shellActions(script, here, { home, sakkHome, repoRoot, depth: depth + 1 }));
       continue;
     }
     if (name === 'git') {
@@ -527,6 +540,19 @@ export function shellActions(cmd, cwd, { home = process.env.HOME ?? '', depth = 
       add('net.download');
     else if (name === 'wget') add('net.download');
     else if (INTERPRETERS.test(name) && has(/^-(c|e)$|^--eval$/)) add('shell.constructed');
+    else if (PTY_DRIVERS.has(name)) add('shell.constructed');
+    // Sakk's own commands that change its controls are the writes they make, so
+    // the agent is judged as if it wrote the file: the cap is guard state (denied),
+    // the hook config is agent config (asked). A person runs them (F-171).
+    else if (name === 'sakk' && verb === 'cap' && sakkHome)
+      add('file.write', join(sakkHome, 'config.json'));
+    else if (
+      name === 'sakk' &&
+      verb === 'guard' &&
+      ['install', 'uninstall'].includes(plain[1]) &&
+      Object.hasOwn(AGENT_CONFIG, plain[2] ?? '')
+    )
+      add('file.write', join(has(/^--user$/) ? home : (repoRoot ?? here), AGENT_CONFIG[plain[2]]));
     // a command the classifier does not model, reading a secret file by name, is
     // still a secret read — the reader list is not the whole world (F-155)
     else if (plain.some((a) => isSecretPath(a))) {

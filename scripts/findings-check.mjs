@@ -375,7 +375,9 @@ if (mode === '--staged') {
       ),
     );
   if (ack?.version === 2)
-    problems.push(...guardResolution(ack, index).map((p) => `self-evolution: ${rel}: ${p}`));
+    problems.push(
+      ...guardResolution(ack, index, ledger).map((p) => `self-evolution: ${rel}: ${p}`),
+    );
   problems.push(
     ...answerFailedProblems(headLedger, ledger, ack, (f) => f.introduced_in === 'worktree').map(
       (p) => `self-evolution: ${p}`,
@@ -503,7 +505,9 @@ if (mode === '--range') {
         `self-evolution: ${f} was this branch's answers file under another name — ${rel} must carry its answers forward: ${p}`,
       );
   if (ack?.version === 2)
-    problems.push(...guardResolution(ack, reader(root)).map((p) => `self-evolution: ${rel}: ${p}`));
+    problems.push(
+      ...guardResolution(ack, reader(root), ledger).map((p) => `self-evolution: ${rel}: ${p}`),
+    );
   // R6: the ledger and the registry only move forward from the base
   let baseRegistry = null;
   try {

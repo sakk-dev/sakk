@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPolicy } from './policy.mjs';
 import { AGENTS, SHIPPED_POLICY, repoRootOf, sakkHome } from './hook.mjs';
+import { AGENT_CONFIG } from './classify.mjs';
 
 export const BIN = realpathSync(
   join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'sakk.mjs'),
@@ -47,9 +48,7 @@ export const CODEX_MATCHER = 'Bash|apply_patch|mcp__.*';
 /** Where each agent reads hooks: the project (repository top) or the user's home. */
 export function configPath(agent, { user = false, cwd = process.cwd(), home = homedir() } = {}) {
   const base = user ? home : (repoRootOf(cwd) ?? cwd);
-  if (agent === 'claude-code') return join(base, '.claude', 'settings.json');
-  if (agent === 'cursor') return join(base, '.cursor', 'hooks.json');
-  if (agent === 'codex') return join(base, '.codex', 'hooks.json');
+  if (Object.hasOwn(AGENT_CONFIG, agent)) return join(base, AGENT_CONFIG[agent]);
   throw new Error(`unknown agent ${agent}`);
 }
 
@@ -178,7 +177,11 @@ export function uninstall(agent, opts = {}) {
   const path = configPath(agent, opts);
   if (!existsSync(path)) return { path, changed: false };
   const before = readJson(path);
-  return writeConfig(path, before, withoutGuard(agent, before));
+  const after = withoutGuard(agent, before);
+  // removing the guard loosens it, so the CLI first asks whether it would change
+  // anything, and asks a person to confirm only if so (F-171)
+  if (opts.dryRun) return { path, changed: JSON.stringify(before) !== JSON.stringify(after) };
+  return writeConfig(path, before, after);
 }
 
 /** The installed guard hook objects of one config file, for one agent (ours only). */

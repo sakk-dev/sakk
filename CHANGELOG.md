@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the agent cannot lift its own cap or remove its own guard (F-171)
+
+- `sakk cap off`, raising the cap, moving its day with `--zone`, and
+  `sakk guard uninstall` (when it would remove something) now ask a person at
+  the terminal to retype a word. With no terminal on stdin and stderr, or a
+  wrong answer, they exit 2 with the new code `HUMAN_CONFIRMATION_REQUIRED`
+  and change nothing. Setting a first cap, lowering it, `guard install` and
+  `init` never ask. Scripts that ran `cap off` or `guard uninstall` unattended
+  must now run them at a terminal.
+- The guard judges Sakk's own commands by the write they make: from the agent,
+  `sakk cap …` is denied (`protect-guard-state`), `sakk guard install|uninstall`
+  asks (`ask-agent-config`), and `script`, `expect` and `unbuffer` ask
+  (`ask-constructed-commands`), because they can type into a prompt.
+- Limits, stated in the README and docs/GUARD.md: the confirmation checks for a
+  terminal, not a person; Sakk is known by the name `sakk` only.
+- Known gap, not yet fixed (F-177): `resume`, `reconcile` and `unlock` from a
+  guarded agent are allowed, and the default ledger is a project file the
+  agent may write, so one agent can lift a halt on another.
+
 ### Changed — the README states the guard's limits (REQ-P04, F-173)
 
 - The README's limits section now leads with the five the requirements name: a

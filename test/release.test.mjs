@@ -255,7 +255,7 @@ describe('P0 UAT backfill — install & accuracy (P-INS / P-ACC)', () => {
     );
   });
 
-  test('P-ACC-003 the README documents the five REQ-P04 limits and the four limits of the core', () => {
+  test('P-ACC-003 the README documents the five REQ-P04 limits, the confirmation limit and the five limits of the core', () => {
     // REQ-P04 (the original requirements, decision D7 2026-10-28) names five
     // limits the README must state, because docs/ does not ship in the npm
     // package: a constructed command is only asked or denied; @ references skip
@@ -312,10 +312,22 @@ describe('P0 UAT backfill — install & accuracy (P-INS / P-ACC)', () => {
       'REQ-P04 4',
     );
     assert.match(words('Older Claude Code fails open.'), /2\.1\.295/, 'REQ-P04 5');
+    // F-171: the terminal check is not proof of a person; F-177: the halt
+    // family is still in the agent's reach (pinned as GAP in kill-switch)
+    assert.match(
+      words('The confirmation checks for a terminal, not a person.'),
+      /pseudo-terminal[\s\S]*`npx sakk cap off`/,
+      'F-171 limit',
+    );
+    assert.match(
+      words("The ledger is in the agent's reach."),
+      /`resume`, `reconcile` and `unlock`[\s\S]*sakk-ledger\.json/,
+      'F-177 limit',
+    );
     assert.equal(
       limits.length,
-      9,
-      `five guard limits and four core limits (found ${limits.length})`,
+      11,
+      `six guard limits and five core limits (found ${limits.length})`,
     );
     // each documented limit is about a real surface — tie the words to the code,
     // so a limit cannot be deleted (or turned into vague prose) unnoticed.

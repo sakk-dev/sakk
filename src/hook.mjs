@@ -265,7 +265,12 @@ const MCP_NAME = /[^A-Za-z0-9_.-]/g;
 /** The Event's actions with canonical scopes. Unknown tools are shell.run (spec input table). */
 export function actionsOf(ev, { repoRoot, sakkHome: home, homeDir }) {
   let raw;
-  if (ev.kind === 'shell') raw = shellActions(ev.command, ev.cwd, { home: homeDir });
+  if (ev.kind === 'shell')
+    raw = shellActions(ev.command, ev.cwd, {
+      home: homeDir,
+      sakkHome: home,
+      repoRoot: repoRoot ?? ev.cwd,
+    });
   else if (ev.kind === 'patch') raw = patchActions(ev.patch, ev.cwd);
   else if (ev.paths.length) {
     const action =

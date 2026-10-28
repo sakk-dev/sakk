@@ -5364,15 +5364,26 @@
       "dt": ["DT-SPEC"],
       "rc": ["RC-05"],
       "es": ["ES-04"],
-      "sweep": "Not swept — the fix (whether cap off/set and guard uninstall should require --by like halt, and/or whether the hook must classify an argv that invokes the sakk binary against its own home as a protected-home write) is a pending product decision; once decided, sweep every sakk subcommand that writes ~/.sakk or the agent hook config (init, cap, guard, scan --install-hook) for the same ungated self-mutation.",
-      "sweep_status": "not_done",
-      "status": "open",
-      "areas": ["bin/sakk.mjs", "src/guard-install.mjs"],
+      "sweep": "Swept every sakk subcommand that writes Sakk's state, the ledger or an agent's hook config. init, scan --install-hook and guard install only tighten (they add a cap, a ledger link or a hook and never replace a recorded one), so the CLI leaves them ungated; guard install is still asked by the hook as an agent-config write. Every form of cap is now denied to the agent by the hook, and its loosening forms need a person at a terminal; the pseudo-terminal drivers that could answer that prompt (script, expect, unbuffer) are asked by the hook. One more control the agent can lift turned up: resume, reconcile and unlock trust a self-declared --by, the hook lets an agent run them, and the default ledger is an in-repo file the agent may write — filed as F-177, because fixing it needs a decision on where the ledger lives and which policy scope names it.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs", "src/guard-install.mjs", "src/classify.mjs", "src/hook.mjs"],
       "mechanism_gap": "The RC-05 detectors defend the trust boundary on the content/model surfaces they were written for (a writer repeating injected instructions, a judge decoding and scoring base64); none treats the agent itself as the untrusted party at the CLI admin boundary, so an agent invoking sakk to disable its own cap and guard was outside every existing RC-05 detector.",
-      "mechanism_upgrade": "test/kill-switch.test.mjs::GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed",
+      "mechanism_upgrade": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal",
       "distinct_from": {
+        "F-177": "F-171 is the cap and the guard: the sakk commands that lift or raise the cap and remove the hook, now denied or asked by the hook and confirmed at a terminal. F-177 is the halt family and the ledger file: resume, reconcile and unlock, and a direct edit of the in-repo ledger, which this fix does not touch and which needs a decision on where the ledger lives.",
         "F-49": "F-49 is a concurrency lost-update: a human-forced unlock during a halt lets a racing reserve overwrite the halt write. F-171 is an authorization gap with no race: the agent simply runs an ungated admin subcommand to delete its own cap and remove its own guard. Different axis — mutual-exclusion loss vs a missing named-human boundary on the controls meant to bind the agent."
-      }
+      },
+      "instance_fix": "this commit: bin/sakk.mjs asks a person at a terminal (stdin and stderr a TTY, the word retyped) before cap off, a raised cap, a moved cap day, or a guard uninstall that would change something, and otherwise exits 2 with HUMAN_CONFIRMATION_REQUIRED and changes nothing; src/classify.mjs makes `sakk cap` a write to ~sakk/config.json (denied by protect-guard-state), `sakk guard install|uninstall` a write to the agent's hook config (asked by ask-agent-config), and script, expect and unbuffer constructed commands (asked). test/kill-switch.test.mjs J-UAT-016 drives the real CLI with no terminal, the real hook evaluate(), and the real CLI under a pseudo-terminal answering right and wrong.",
+      "class_fix": null,
+      "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal",
+      "corrections": [
+        {
+          "field": "mechanism_upgrade",
+          "from": "test/kill-switch.test.mjs::GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed",
+          "why": "The fix commit rewrote the GAP test to assert that the loosening forms refuse without a person at a terminal and renamed it (GAP marker dropped), so the detector-upgrade anchor now names the rewritten standing test — the standard GAP-to-fix workflow."
+        }
+      ]
     },
     {
       "id": "F-172",
@@ -5567,6 +5578,64 @@
       "distinct_from": {
         "F-173": "F-173 is a READ of a secret inside the project whose name the shell picks (glob, brace, variable); D5 keeps it as a documented boundary. F-176 is a DELETE, WRITE or destructive FLAG held in a variable, reaching guard state, the home folder or a force push — protections the cap and the D4 confirmation rest on. A glob outside the project is already refused (its literal prefix is outside), so F-176 is the variable surface only; deciding F-173 did not decide it."
       }
+    },
+    {
+      "id": "F-177",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-11",
+      "title": "An agent the guard binds can lift another agent's halt, clear the books or break the ledger lock (`sakk resume|reconcile|unlock --by <any name>`), and can write the default in-repo ledger directly — the hook judges neither as the ledger write it is",
+      "symptom": "A per-agent halt, a reconciliation hold and the ledger lock are meant to wait for a person. resume, reconcile and unlock ask for --by <name>, but the name is self-declared (README limits), and the hook classifies `sakk resume --by alice --agent bot-7`, `sakk reconcile --by alice` and `sakk unlock --by alice` as a plain shell.run, so an agent that is not itself halted gets them allowed. The default ledger is sakk-ledger.json in the working folder, an in-repo file the shipped policy lets the agent write. A global halt still holds, because it denies every call but reading.",
+      "evidence": "test: test/kill-switch.test.mjs 'GAP F-177 the hook lets an agent run the commands that lift a halt or clear the books' feeds the three commands through the real hook evaluate() in an isolated HOME/SAKK_HOME/project and asserts each is allowed. bin/sakk.mjs ledgerPath() falls back to ledgerFrom('sakk-ledger.json') in the current directory, and policies/guard-default.json protects only .sakk/ and ~sakk/ from file.write.",
+      "direct_cause": "src/classify.mjs maps a sakk command to the write it makes only for cap and guard (F-171); resume, reconcile and unlock fall through to shell.run, and the ledger file is not named by any guard-state scope, so neither the command nor a direct edit of the ledger reaches protect-guard-state.",
+      "why": [
+        "F-171 was scoped to the controls the D4 product decision named (cap and guard), and the halt family was assumed covered because it already demanded --by, though that name only attributes and never authorizes.",
+        "The ledger was designed as the library's spend book for an orchestrator, so its default home is the working folder; when the hook began reading halts from it, it became guard state without moving out of the agent's reach.",
+        "No test drove the halt-family commands from a second, non-halted agent, so the cross-agent lift never surfaced."
+      ],
+      "root_cause": "The hook judges the agent by what a command says, and only cap and guard are taught to say the guard-state write the sakk binary makes; the ledger that holds halts is guard state in meaning but not in scope, so an agent can lift a halt either by running sakk or by editing the file.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — the fix needs a decision: whether the hook denies resume, reconcile and unlock from an agent (as it now denies cap), and whether the ledger moves under ~/.sakk or gets its own guard-state scope in the shipped policy. Once decided, sweep every path that writes the ledger (CLI, MCP gate, console) for the same agent reach.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/classify.mjs", "src/hook.mjs", "bin/sakk.mjs", "policies/guard-default.json"],
+      "mechanism_gap": "The F-171 detectors (J-UAT-016) assert the hook's judgment of cap and guard commands and the CLI's terminal gate; nothing asserts the hook's judgment of the halt-family commands, or that the file holding halts is in a scope the agent may not write, so a control lifted through the ledger was outside every check.",
+      "mechanism_upgrade": "test/kill-switch.test.mjs::GAP F-177 the hook lets an agent run the commands that lift a halt or clear the books",
+      "distinct_from": {
+        "F-49": "F-49 is a concurrency lost-update: a human-forced unlock during a halt lets a racing reserve overwrite the halt write. F-177 has no race: a second agent runs resume, reconcile or unlock under any name, or edits the in-repo ledger, and the hook allows it. Different axis — mutual-exclusion loss vs the agent reaching the ledger that holds its own controls."
+      }
+    },
+    {
+      "id": "F-178",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "T0",
+      "class": "C-13",
+      "title": "The guard-resolution check demanded that a guard a revision had superseded still resolve, so a gap test could not be renamed to its fix",
+      "symptom": "Closing J-UAT-016 (F-171) renamed the gap test 'GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed' to the fix's name and appended a C-11.1 revision naming the new test — the R2 path for a correction. findings-check --staged then refused the commit: the committed top-level C-11.1 guard no longer resolved, and R2 forbids rewriting it. The only ways through were a test or comment that keeps the stale gap name alive, or a rewrite of a committed answer.",
+      "evidence": "node scripts/findings-check.mjs --staged on oss/p0-uat-backfill, 2026-10-28: 'C-11.1: guard test/kill-switch.test.mjs::GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed does not resolve (no such file or name)'. scripts/findings-lib.mjs guardResolution checked the top-level guard and every revision's guard alike.",
+      "direct_cause": "guardResolution required every guard an answer had ever named to resolve, while ackRewrites freezes the committed guard; a revision could add a new guard but never retire the old one.",
+      "why": [
+        "The resolution rule was written and tested from the side it must catch — a guard naming a test that does not exist yet — and never against a guard legitimately superseded.",
+        "Before F-171 no gap-pinned guard had been closed, so the revision path had only carried corrected answers whose old guards still existed.",
+        "The ledger already records a renamed check as a correction (mechanism_upgrade from the old value), but the answers check did not read the ledger."
+      ],
+      "root_cause": "A detector tuned on one side: guard resolution was measured only on missing guards, so the documented correction path for a closed gap was refused as if it were a stale reference.",
+      "dt": ["DT-FP"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: a guard a later revision supersedes is exempt from resolution only when that revision's finding carries a correction whose from is exactly the old guard with a 20-character why; the current guard always resolves, and a missing or malformed ledger retires nothing",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)",
+      "class_fix": null,
+      "sweep": "The other answers-file rules re-read for the same one-sided tuning: ackRewrites (R2) is tested on rewrites and on the legitimate revision path; missingAnswers on missing, short, copied and benign answers (F-119); guardProblem's shape rule on test and non-test paths. Only resolution lacked the legitimate side. Five mutants of the new rule (no retirement, any finding retires, the current guard retirable, any correction retires, no why length) each turn the tests red.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/findings-lib.mjs", "scripts/findings-check.mjs"],
+      "mechanism_gap": "The C-13 detectors (F-119's benign corpus of real answers) cover the answer-text rules; guard resolution was a separate detector whose tests held only failing references, so the first legitimate supersede was outside them.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
     }
   ]
 }

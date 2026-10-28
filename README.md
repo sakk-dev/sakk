@@ -65,12 +65,12 @@ recent decisions, the policy with a try box, and secret blocks:
 sakk ui        # prints http://127.0.0.1:<port>/?t=… — read-only; Ctrl+C to stop
 ```
 
-Cap the day's spend (read from Claude Code's local logs — an estimate, not the invoice). A person sets it; the agent is denied writing `~/.sakk` directly, and a one-command symlink chain that would reach it is not silently allowed (it needs a person's approval), so the agent cannot raise its own cap by a command that names the file (a path held in a shell variable is not caught yet — see the limits at the end of this page):
+Cap the day's spend (read from Claude Code's local logs — an estimate, not the invoice). A person sets it. The guard denies the agent a `sakk cap` command and a write to `~/.sakk`, and a one-command symlink chain that would reach it needs a person's approval. At the terminal, lifting the cap, raising it or moving its day asks you to retype a word; with no terminal it refuses with `HUMAN_CONFIRMATION_REQUIRED` and changes nothing. A path held in a shell variable is not caught yet — see the limits at the end of this page:
 
 ```bash
 sakk cap set 5 --zone Asia/Dubai   # deny paid calls once today's spend reaches $5
 sakk spend                         # today's spend by model
-sakk cap off                       # lift it
+sakk cap off                       # lift it (asks you to confirm)
 sakk prices                        # the price table in use, and where it came from
 ```
 
@@ -404,11 +404,21 @@ The guard and the cap:
 - **Older Claude Code fails open.** Before 2.1.295 a hook that times out or is
   killed lets the call run. `sakk guard install` says so and `sakk doctor`
   warns.
+- **The confirmation checks for a terminal, not a person.** An agent whose
+  shell runs in a pseudo-terminal, or a script it writes that opens one, can
+  type the word. The guard asks before `script`, `expect` and `unbuffer`, and
+  knows Sakk only by the name `sakk`: `npx sakk cap off` meets the
+  confirmation but not the guard's deny. Named approvals are enterprise.
 
 The ledger and the library:
 
 - **Names are self-declared.** `--by` on halt, resume, reconcile and unlock
   records the name the operator typed; nothing authenticates it.
+- **The ledger is in the agent's reach.** The guard allows a guarded agent to
+  run `resume`, `reconcile` and `unlock`, and the default ledger
+  (`./sakk-ledger.json`) is a project file the agent may write, so one agent
+  can lift a halt on another. A global halt holds: it denies every call but
+  reading.
 - **Costs are what the caller reports.** `reserve()` and `settle()` book the
   amounts they are given; nothing reads the provider's usage yet.
 - **Approval-required means refused.** A policy that asks for approval

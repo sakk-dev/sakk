@@ -27,6 +27,7 @@ import {
   LEDGER_SCHEMA_V2,
 } from '../src/ledger.mjs';
 import { normalize, evaluate } from '../src/hook.mjs';
+import { HAS_PTY, atTerminal } from './pty.mjs';
 
 /** One test per row of the specs/kill-switch adversary table. */
 
@@ -669,21 +670,15 @@ describe('RC-08 class: every ledger write declares whether it confirms the books
   });
 });
 
-describe('J-UAT-016: an agent can turn off its own cap and kill switch (GAP)', () => {
-  // The daily cap and an installed guard are meant to bind the AGENT — the design
-  // note in bin/sakk.mjs cap says "the agent is denied writing ~/.sakk, so it
-  // cannot raise its own cap." That defence assumes the only way to change the
-  // config is a classified Bash file-write the hook denies. It is not: `sakk cap
-  // off/set` and `sakk guard uninstall` are ordinary subcommands that write the
-  // config and the hook settings themselves, with NO named-human gate — unlike
-  // halt/resume, which refuse without --by <name>. The installed hook does not
-  // classify a `sakk`-admin invocation as the protected-home write it is, so an
-  // agent allowed to run `sakk` can lift its own ceiling and remove its own kill
-  // switch. This test PINS the current (gap) behaviour so the fix (F-171) has to
-  // change it deliberately; the exact title is the C-11.1 ack guard, not a green
-  // pretending the control is safe.
-  test('GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed', () => {
-    const base = mkdtempSync(join(tmpdir(), 'juat016-'));
+describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (F-171)', () => {
+  // The daily cap and an installed guard bind the AGENT. `sakk cap off/set` and
+  // `sakk guard uninstall` are ordinary subcommands that write that config, so
+  // two layers keep them a person's: the hook judges `sakk cap …` as the write to
+  // ~/.sakk it makes (denied) and `sakk guard …` as the agent-config write it
+  // makes (asked), and the CLI itself refuses a loosening change unless a person
+  // retypes a word at a terminal. Tightening (a first cap, a lower one) never asks.
+  const world = () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'juat016-')));
     const home = join(base, 'sakkhome'); // SAKK_HOME: holds config.json (the cap)
     mkdirSync(home, { recursive: true });
     const proj = join(base, 'proj'); // the agent's cwd: holds .claude/settings.json (the guard)
@@ -693,69 +688,137 @@ describe('J-UAT-016: an agent can turn off its own cap and kill switch (GAP)', (
     const env = { ...process.env, HOME: base, SAKK_HOME: home };
     const run = (args) =>
       spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env, cwd: proj });
+    return {
+      base,
+      home,
+      proj,
+      cwd: proj,
+      configPath,
+      env,
+      run,
+      settings: join(proj, '.claude', 'settings.json'),
+    };
+  };
+  const guarded = (w) =>
+    existsSync(w.settings) && readFileSync(w.settings, 'utf8').includes('sakk.mjs');
 
-    // Contrast: HALT has a named-human gate the agent cannot skip anonymously.
-    const haltNoBy = run(['halt', '--ledger', join(base, 'l.json')]);
-    assert.equal(haltNoBy.status, 2, 'halt rightly refuses without --by');
-    assert.match(haltNoBy.stderr, /requires --by/);
-
-    // GAP 1 — cap off: no --by, no confirmation; the daily ceiling is simply gone.
-    const capOff = run(['cap', 'off']);
-    assert.equal(capOff.status, 0, `cap off should currently succeed: ${capOff.stderr}`);
+  test('J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal', () => {
+    const w = world();
+    for (const args of [
+      ['cap', 'off'],
+      ['cap', 'set', '999999'],
+      ['cap', 'set', '5', '--zone', 'Pacific/Kiritimati'],
+    ]) {
+      const r = w.run(args);
+      assert.equal(r.status, 2, `${args.join(' ')}: ${r.stderr}`);
+      assert.match(r.stderr, /^HUMAN_CONFIRMATION_REQUIRED: .*nothing changed/m, args.join(' '));
+      assert.deepEqual(onDisk(w.configPath), { capUsd: 5 }, `${args.join(' ')} left the cap alone`);
+    }
     assert.equal(
-      onDisk(configPath).capUsd,
-      undefined,
-      'the cap the agent was supposed to be bound by is removed, ungated',
-    );
-
-    // GAP 2 — cap set to an astronomical ceiling: equally ungated.
-    const capSet = run(['cap', 'set', '999999']);
-    assert.equal(capSet.status, 0, `cap set should currently succeed: ${capSet.stderr}`);
-    assert.equal(onDisk(configPath).capUsd, 999999, 'the agent raised its own cap, ungated');
-
-    // GAP 3 — guard uninstall: the kill switch removes itself, ungated.
-    const gInstall = run(['guard', 'install', 'claude-code']);
-    assert.equal(gInstall.status, 0, `guard install: ${gInstall.stderr}`);
-    const settings = join(proj, '.claude', 'settings.json');
-    assert.ok(
-      existsSync(settings) && readFileSync(settings, 'utf8').includes('sakk.mjs'),
-      'precondition: the guard is installed',
-    );
-    const gUninstall = run(['guard', 'uninstall', 'claude-code']);
-    assert.equal(
-      gUninstall.status,
+      w.run(['guard', 'install', 'claude-code']).status,
       0,
-      `guard uninstall should currently succeed: ${gUninstall.stderr}`,
+      'installing tightens: no ask',
     );
-    assert.ok(
-      !existsSync(settings) || !readFileSync(settings, 'utf8').includes('sakk.mjs'),
-      'the guard removed itself with no named human',
-    );
-
-    // And the installed hook does not mediate the self-disable: fed `sakk cap off`
-    // through the REAL hook, none of the dedicated protections (halt / spend-cap /
-    // secret) recognise it, so an agent running the command over Bash is not
-    // stopped by the very guard it is tearing down.
-    const r = evaluate(
-      normalize('claude-code', {
-        hook_event_name: 'PreToolUse',
-        cwd: proj,
-        session_id: 's-juat016',
-        tool_use_id: 'c-juat016',
-        tool_name: 'Bash',
-        tool_input: { command: 'sakk cap off' },
-      }),
-      { env, log: false },
-    );
-    const byDedicatedRule = (r.decisions ?? []).some((d) =>
-      ['halt', 'spend-cap', 'secret'].includes(d.ruleId),
-    );
+    assert.ok(guarded(w), 'precondition: the guard is installed');
+    const off = w.run(['guard', 'uninstall', 'claude-code']);
+    assert.equal(off.status, 2, off.stderr);
+    assert.match(off.stderr, /^HUMAN_CONFIRMATION_REQUIRED: This removes the guard from /m);
+    assert.ok(guarded(w), 'the guard is still installed');
+    // tightening and no-ops never ask: a lower cap, the same zone, nothing to remove
+    assert.equal(w.run(['cap', 'set', '3']).status, 0);
+    assert.equal(onDisk(w.configPath).capUsd, 3);
     assert.equal(
-      byDedicatedRule,
-      false,
-      'no dedicated protection recognises a self-disable command — the gap F-171 records',
+      w.run(['guard', 'uninstall', 'cursor']).status,
+      0,
+      'nothing installed, nothing asked',
     );
   });
+
+  test('J-UAT-016 the hook refuses `sakk cap` and asks before `sakk guard` or a pseudo-terminal', () => {
+    const w = world();
+    const judge = (command) =>
+      evaluate(
+        normalize('claude-code', {
+          hook_event_name: 'PreToolUse',
+          cwd: w.proj,
+          session_id: 's-juat016',
+          tool_use_id: 'c-juat016',
+          tool_name: 'Bash',
+          tool_input: { command },
+        }),
+        { env: w.env, log: false },
+      );
+    for (const command of [
+      'sakk cap off',
+      'sakk cap set 999999',
+      'sudo sakk cap off',
+      'cd /tmp && sakk cap set 1',
+    ]) {
+      const r = judge(command);
+      assert.equal(r.verdict, 'deny', command);
+      assert.ok(
+        r.decisions.some((d) => d.ruleId === 'protect-guard-state'),
+        command,
+      );
+    }
+    for (const command of [
+      'sakk guard uninstall claude-code',
+      'sakk guard uninstall codex --user',
+      'echo claude-code | script -q /dev/null sakk guard uninstall claude-code',
+      'unbuffer sakk cap off',
+      'expect -c "spawn sakk cap off; send off\\r"',
+    ]) {
+      const r = judge(command);
+      assert.equal(r.verdict, 'require_approval', command);
+    }
+  });
+
+  // F-177: the halt family trusts a self-declared --by, and the hook does not
+  // yet judge these commands as the ledger write they make. Pinned, not passed.
+  test('GAP F-177 the hook lets an agent run the commands that lift a halt or clear the books', () => {
+    const w = world();
+    for (const command of [
+      'sakk resume --by alice --agent bot-7',
+      'sakk reconcile --by alice',
+      'sakk unlock --by alice',
+    ]) {
+      const r = evaluate(
+        normalize('claude-code', {
+          hook_event_name: 'PreToolUse',
+          cwd: w.proj,
+          session_id: 's-f177',
+          tool_use_id: 'c-f177',
+          tool_name: 'Bash',
+          tool_input: { command },
+        }),
+        { env: w.env, log: false },
+      );
+      assert.equal(r.verdict, 'allow', command);
+    }
+  });
+
+  test(
+    'J-UAT-016 a person at a terminal who types the word makes the change',
+    { skip: !HAS_PTY && 'python3 with pty is not installed' },
+    () => {
+      const w = world();
+      const wrong = atTerminal(['cap', 'off'], 'yes', w);
+      assert.equal(wrong.status, 2);
+      assert.ok(wrong.asked);
+      assert.match(wrong.out, /HUMAN_CONFIRMATION_REQUIRED: the answer was not off/);
+      assert.deepEqual(onDisk(w.configPath), { capUsd: 5 });
+      const raised = atTerminal(['cap', 'set', '50'], '50', w);
+      assert.equal(raised.status, 0, raised.out);
+      assert.equal(onDisk(w.configPath).capUsd, 50);
+      const lifted = atTerminal(['cap', 'off'], 'off', w);
+      assert.equal(lifted.status, 0, lifted.out);
+      assert.equal(onDisk(w.configPath).capUsd, undefined);
+      assert.equal(w.run(['guard', 'install', 'claude-code']).status, 0);
+      const removed = atTerminal(['guard', 'uninstall', 'claude-code'], 'claude-code', w);
+      assert.equal(removed.status, 0, removed.out);
+      assert.ok(!guarded(w), 'the person removed the guard');
+    },
+  );
 });
 
 describe('J-UAT-030 / G-FN-016 — a halt reaches the hook in a default install (F-172)', () => {
