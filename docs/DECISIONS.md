@@ -18,22 +18,31 @@ where it landed and what it leaves open. Findings are in
 | D8  | The requirements v1 does not implement                                                                   | V2 scope is not set until v1 is complete                                                                          | —                                                                                                               | V2 scope                                                     |
 | D9  | Five design principles drawn from these findings, read against the rules                                 | Two new rules (R-23, R-24); two extend R-10/R-17 and R-12/R-22; one is a detector upgrade under R-03/R-18         | docs/RULES.md (this change); the detector upgrade found F-179 (aa4c524) and the R-24 gate found F-181 (3da04ec) | —                                                            |
 
+## D10 — V1 close-out (2026-10-28)
+
+The black-box acceptance run of 2026-10-28
+(`findings/reviews/2026-10-28-p0-uat-blackbox.md`) failed 37 of the 151 P0
+cases. 17 were features already deferred on 2026-10-27; 20 had been counted
+as passed or covered by a test name rather than by their expected result
+(F-182).
+
+| Question                                   | Decision                                                                                | Landed in                                                                                     | Left open                        |
+| ------------------------------------------ | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------- |
+| Fix the 37 failures in v1, or defer them   | Defer every one to v2. No code changes in v1                                            | findings F-182…F-201; stop-line review `findings/reviews/2026-10-28-v1-closeout-deferrals.md` | The fixes, in docs/V2-BACKLOG.md |
+| The security gaps the run found            | Documented as known limits, not fixed                                                   | README "Limits", docs/GUARD.md "Known open in v1", docs/SPEND.md                              | Same                             |
+| The class detectors the stop line asks for | Waived for C-02, C-05, C-07, C-08; C-13 corpus and C-15 debt moved to v2 with new dates | `findings/classes.json`; the stop-line review names each v2 detector                          | Same                             |
+| What else is in v2                         | Everything still open, in one plan                                                      | docs/V2-BACKLOG.md                                                                            | Order and dates, on the owner    |
+
+The owner's words: "全部放到 V2 吧，全部这一切的全部收尾。其他的都放到 V2
+的开发计划里". D8 (v2 scope not set until v1 is complete) is answered by
+this: v1 is closed as it stands and docs/V2-BACKLOG.md is the v2 plan.
+
 ## Waiting on the owner
 
-- **F-175** — a prices update command is named in the docs, the specs and two
-  CLI hints but was never built: retract the references, or build it.
-- **F-176** — a target or flag held in a shell variable is judged by its bare
-  name: ask on every variable-held target, or keep it a documented limit.
-- **F-177** — `resume`, `reconcile` and `unlock` from the agent are allowed,
-  and the default ledger is a project file the agent may write: where the
-  ledger lives and which policy scope names it.
-- **F-180** — per-request server tools (web search, web fetch) are not in the
-  spend figure: price them, or keep the declared limit.
-- **D1 at merge** — main's checker does not have the F-178 rule (a guard a
-  revision supersedes may stop resolving), so the base-checker will fail this
-  branch's superseded C-11.1 guard until the stack merges; and PR #19's
-  across-names failure is not a pure false positive, because the RC-09
-  answers file is in its range.
+The open owner questions — F-175, F-176, F-177, F-180, F-188, F-195 and the
+D1 merge caveat — now sit in docs/V2-BACKLOG.md, "Decisions for the owner",
+each with what it changes and what either answer costs. The release itself
+(push, merge, tag, npm publish) stays the owner's call.
 
 ## Acceptance
 

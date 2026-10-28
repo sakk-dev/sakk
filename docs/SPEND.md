@@ -7,17 +7,23 @@ once today's spend reaches your cap — stops the agent at its next tool call.
 sakk cap set 40          # dollars per day, in your time zone
 sakk spend               # today's spend by model, from local logs
 sakk prices              # the price table in use
-sakk prices update       # fetch the current list (the only network call)
 ```
+
+`sakk prices update` (fetch a newer list) is planned and not in v1
+(F-175). To price a model the table lacks, copy the shipped
+`prices/snapshot.json` to `~/.sakk/prices.json` and add the model there.
 
 ## Where the numbers come from
 
 - **Calls:** Claude Code's transcripts, `~/.claude/projects/**/*.jsonl`
-  (or `$CLAUDE_CONFIG_DIR/projects`). The folder is fixed when you run
-  `sakk cap set`, so an agent's environment cannot point it elsewhere.
+  (or `$CLAUDE_CONFIG_DIR/projects`). In v1 the folder is found from the
+  environment each time, not recorded by `sakk cap set`, so an agent run with
+  `CLAUDE_CONFIG_DIR` or `HOME` pointed at an empty folder reads $0 and the
+  cap never trips (F-191, planned for v2).
 - **Prices:** a snapshot of LiteLLM's model list ships with Sakk
-  (`prices/snapshot.json`, MIT). `sakk prices update` writes a newer one to
-  `~/.sakk/prices.json`; the package itself is never edited.
+  (`prices/snapshot.json`, MIT). When `~/.sakk/prices.json` exists it is
+  used instead of the snapshot (a malformed one is refused, never skipped);
+  the package itself is never edited.
 - Each call is counted once, at its largest recorded usage. Cache writes are
   priced per their duration (writes the log does not break down count at the
   5-minute price), and past a model's long-context threshold the whole
@@ -43,9 +49,14 @@ counted.
 
 ## When Sakk denies because it cannot be sure
 
-- `PRICE_UNKNOWN`: a call today used a model the table does not list. Run
-  `sakk prices update`, or add the model to `~/.sakk/prices.json`.
+- `PRICE_UNKNOWN`: a call today used a model the table does not list. Add
+  the model to your own table, as above.
 - `SPEND_UNREADABLE`: a log line today could not be read.
+
+In v1 a log file the user cannot read at all (permissions) is handled
+badly: `sakk spend` exits with a raw error, and the hook's deny says it
+cannot read its rules although a log file is what failed (F-192). Fix the
+file's permissions; the cap stays closed meanwhile.
 
 Both deny only when a cap is set: spend that cannot be priced cannot be
 shown to be under it.

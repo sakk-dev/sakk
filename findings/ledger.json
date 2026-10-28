@@ -3822,7 +3822,10 @@
       "status": "open",
       "areas": ["src/ledger.mjs", "src/mcp.mjs", "README.md"],
       "mechanism_gap": "The RC-05 detectors check the SHAPE of caller values (prototype names, control characters, paths); none asks whether an amount is the caller's word or a measured figure.",
-      "mechanism_upgrade": "none: open — the attack row \"under-report actualUsd over MCP\" lands with the price table, as a KNOWN row until then"
+      "mechanism_upgrade": "none: open — the attack row \"under-report actualUsd over MCP\" lands with the price table, as a KNOWN row until then",
+      "distinct_from": {
+        "F-193": "F-193 is an edit of the stored hot summary after booking, which reserve then trusts; F-125 is the cost the caller states at booking time."
+      }
     },
     {
       "date": "2026-10-19",
@@ -3860,7 +3863,10 @@
       "mechanism_upgrade": "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism",
       "distinct_from": {
         "F-104": "F-104 is about durability limits of the lock and fsync promised away in the README; F-126 is about the word signed promising an identity mechanism that does not exist. Different mechanism, different fix.",
-        "F-175": "F-126 is the word signed promising an identity mechanism the kill-switch records do not have; F-175 is a price-table subcommand named in docs, specs and runtime hints that was never implemented. They share only CHANGELOG.md as a surface — different claim, different mechanism, different fix."
+        "F-175": "F-126 is the word signed promising an identity mechanism the kill-switch records do not have; F-175 is a price-table subcommand named in docs, specs and runtime hints that was never implemented. They share only CHANGELOG.md as a surface — different claim, different mechanism, different fix.",
+        "F-196": "F-196 is init printing 'hook wired' without installing the guard; F-126 was the word 'signed' on records that carry only a self-declared name (fixed).",
+        "F-197": "F-197 is an install command line in the README that does not run; F-126 was the 'signed' claim on halt and resume records (fixed).",
+        "F-198": "F-198 is secret-rule counts and checklist ticks that disagree with the code and the package; F-126 was the 'signed' claim on control records (fixed)."
       }
     },
     {
@@ -4445,7 +4451,10 @@
       "status": "fixed",
       "areas": ["src/classify.mjs"],
       "mechanism_gap": "The C-02 detectors check lists against their rules in the ledger and policy code; the classifier's wrapper list is new in M1 and had none.",
-      "mechanism_upgrade": "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)"
+      "mechanism_upgrade": "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)",
+      "distinct_from": {
+        "F-185": "F-185 is the Sakk CLI started through a launcher (npx, node with the script path), so the gate sees another program; F-145 was a wrapper's flag value read as the command (fixed)."
+      }
     },
     {
       "id": "F-146",
@@ -4480,7 +4489,10 @@
       "mechanism_upgrade": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)",
       "distinct_from": {
         "F-173": "F-146 was a path-ALLOW whose scope was too broad — a temp-folder allow canonicalised to also cover $HOME, one file reachable under several spellings by where it lived. F-173 is a path-READ guard that never performs shell expansion, so a glob/brace/variable token opens a secret the matched literal name does not spell. F-146 is canonical-identity / allow-scope at classify time; F-173 is the shell rewriting the token after classify. Different mechanism, different fix.",
-        "F-176": "F-146 was a policy allow (the temp folder) that covered the home folder, and an unnamed delete of the repository itself: the rules saw the right path and judged it wrongly. F-176 is a target the rules never see, because it sits in a shell variable; fixing the temp-folder scope does nothing for a `$d` target."
+        "F-176": "F-146 was a policy allow (the temp folder) that covered the home folder, and an unnamed delete of the repository itself: the rules saw the right path and judged it wrongly. F-176 is a target the rules never see, because it sits in a shell variable; fixing the temp-folder scope does nothing for a `$d` target.",
+        "F-183": "F-183 is a protected name spelled in another case; F-146 was a temp-folder allow covering the home folder and an unnamed repository delete (fixed).",
+        "F-184": "F-184 is a git force flag spelled in a form the rule omits; F-146 was a temp-folder allow that covered the home folder (fixed).",
+        "F-186": "F-186 is a read through a symlink to a secret file; F-146 was the scope of a temp-folder allow and a nameless repository delete (fixed)."
       }
     },
     {
@@ -4545,7 +4557,10 @@
       "status": "fixed",
       "areas": ["specs/guard/spec.md"],
       "mechanism_gap": "The C-05 detectors check that named codes and tests exist; none compared a spec table with the file it describes.",
-      "mechanism_upgrade": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)"
+      "mechanism_upgrade": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)",
+      "distinct_from": {
+        "F-188": "F-188 is the requirement's deny for the agent's own hook config weakened to ask in spec and policy; F-148 was the spec's rule table out of step with the shipped policy (fixed)."
+      }
     },
     {
       "id": "F-149",
@@ -4679,7 +4694,8 @@
       "mechanism_gap": "No test reserved the exact amount status reported.",
       "mechanism_upgrade": "test/cost-bounds.test.mjs::max reservable is 0 when the headroom is below the floor",
       "distinct_from": {
-        "F-104": "F-104 is the lock/crash/fsync durability promises in the ledger; F-152 is a reported status figure (max_reservable) that did not match what reserve accepts — a reporting bug, unrelated to locking."
+        "F-104": "F-104 is the lock/crash/fsync durability promises in the ledger; F-152 is a reported status figure (max_reservable) that did not match what reserve accepts — a reporting bug, unrelated to locking.",
+        "F-196": "F-196 is init's success message claiming a guard it did not install; F-152 was status reporting a reservable amount the estimate floor refuses (fixed)."
       }
     },
     {
@@ -4712,7 +4728,10 @@
       "date": "2026-10-22",
       "introduced_in": "294f391",
       "found_by": "review",
-      "class": "C-02"
+      "class": "C-02",
+      "distinct_from": {
+        "F-185": "F-185 is the R-24 gate missing launchers of the Sakk CLI; F-153 was the classifier allowing any command it did not model (fixed)."
+      }
     },
     {
       "id": "F-154",
@@ -4744,7 +4763,10 @@
       "date": "2026-10-22",
       "introduced_in": "294f391",
       "found_by": "review",
-      "class": "C-02"
+      "class": "C-02",
+      "distinct_from": {
+        "F-185": "F-185 is the Sakk CLI started through a launcher; F-154 was find -exec and xargs running a remover (fixed)."
+      }
     },
     {
       "id": "F-155",
@@ -4776,7 +4798,10 @@
       "date": "2026-10-22",
       "introduced_in": "294f391",
       "found_by": "review",
-      "class": "C-02"
+      "class": "C-02",
+      "distinct_from": {
+        "F-185": "F-185 is the R-24 gate missing launchers; F-155 was a secret read by a command outside the reader list (fixed)."
+      }
     },
     {
       "id": "F-156",
@@ -4805,7 +4830,9 @@
       "areas": ["src/classify.mjs"],
       "mechanism_gap": "The wrapper-flag fix (F-145) covered sudo/env/nice; git's own options were not revisited.",
       "mechanism_upgrade": "test/guard.test.mjs::a git value-option before a destructive subcommand does not hide it (F-156)",
-      "distinct_from": {},
+      "distinct_from": {
+        "F-185": "F-185 is the Sakk CLI started through a launcher; F-156 was a git value-option whose value was read as the subcommand (fixed)."
+      },
       "date": "2026-10-22",
       "introduced_in": "294f391",
       "found_by": "review",
@@ -4958,7 +4985,8 @@
       "mechanism_upgrade": "test/secret-guard.test.mjs::a command that tokenizes to zero actions still cannot carry a secret",
       "distinct_from": {
         "F-124": "F-124 is an empty ledger requiring no acks (absence in the self-evolution gate); F-160 is the secret guard allowing a zero-action or unwired-surface call (absence in the hook's per-action enforcement) — a different mechanism in a different module.",
-        "F-159": "F-159 is the F-105 ledger-archive audit under-checking; F-160 is the M3 secret guard falling open on untested routes — a different feature found by a different review."
+        "F-159": "F-159 is the F-105 ledger-archive audit under-checking; F-160 is the M3 secret guard falling open on untested routes — a different feature found by a different review.",
+        "F-190": "F-190 is a Write whose content is not a string, so the scan has nothing to read; F-160 was a zero-action command and cursor's other write surfaces falling open (fixed)."
       }
     },
     {
@@ -4995,7 +5023,9 @@
       "mechanism_upgrade": "test/release.test.mjs::every command the README shows is a real sakk subcommand",
       "distinct_from": {
         "F-83": "F-83 is a backticked FILE NAME in the README that did not exist; F-161 is a documented CLI COMMAND that the binary does not implement — the same class (docs name something absent) but a different surface, and the new detector covers commands where F-83's covered file names.",
-        "F-175": "F-161 fixed the M2 CHANGELOG overclaim and added the README/CHANGELOG first-token detector; F-175 is the same RC-10 class recurring past that detector, on surfaces it cannot see (later command tokens, two runtime hint strings, docs/SPEND.md, specs/) plus a CHANGELOG line promising the command lands with the gitleaks port, which has shipped without it. A recurrence filed as its own finding, not a re-open of F-161."
+        "F-175": "F-161 fixed the M2 CHANGELOG overclaim and added the README/CHANGELOG first-token detector; F-175 is the same RC-10 class recurring past that detector, on surfaces it cannot see (later command tokens, two runtime hint strings, docs/SPEND.md, specs/) plus a CHANGELOG line promising the command lands with the gitleaks port, which has shipped without it. A recurrence filed as its own finding, not a re-open of F-161.",
+        "F-196": "F-196 is an existing command (init) claiming an outcome it does not produce; F-161 was CHANGELOG naming spend, cap and prices commands that did not exist (fixed).",
+        "F-198": "F-198 is rule counts and checklist ticks; F-161 was CHANGELOG naming commands the binary lacked (fixed)."
       }
     },
     {
@@ -5069,7 +5099,10 @@
       "distinct_from": {
         "F-85": "F-85 is a ledger reached through a symlink/hard link that ALREADY EXISTS (resolved and refused at classify time); F-163 is a link the command CREATES before using it, which the static resolver cannot follow — a run-time TOCTOU, closed by treating a chained link-create as constructed.",
         "F-173": "F-163 is a filesystem-link TOCTOU — the command CREATES a symlink/hard-link then uses it, so the static resolver follows pre-create state to a different target; it mutates the filesystem between classify and open. F-173 mutates nothing: the secret already exists under its real name; the shell merely expands a glob/brace/variable so the written token never spells the path the OS opens. Both are classify-view ≠ run-target, but one is a link race, the other lexical expansion.",
-        "F-176": "F-163 reached ~/.sakk through a symlink or hard link made in the same command, which the guard now treats as constructed and asks. F-176 reaches it through a shell variable (`f=~/.sakk/config.json; rm $f`), which the classifier judges as the bare `$f`; the chain fix does not see a variable, so the same target has a second unguarded name."
+        "F-176": "F-163 reached ~/.sakk through a symlink or hard link made in the same command, which the guard now treats as constructed and asks. F-176 reaches it through a shell variable (`f=~/.sakk/config.json; rm $f`), which the classifier judges as the bare `$f`; the chain fix does not see a variable, so the same target has a second unguarded name.",
+        "F-183": "F-183 is a protected name in another case; F-163 was a link chain built in one command to reach guard state (fixed).",
+        "F-184": "F-184 is a git force flag in an unlisted spelling; F-163 was a link chain built in one command to reach guard state (fixed).",
+        "F-186": "F-186 is a READ through a symlink that already exists, judged by the link's name; F-163 was a command that CREATES a link chain to reach guard state, fixed by refusing link creation toward protected targets."
       }
     },
     {
@@ -5429,7 +5462,8 @@
       ],
       "distinct_from": {
         "F-173": "F-172 is the kill-switch: `sakk halt` writes a cwd-relative ledger while the hook reads halt only from config.ledgerPath ?? SAKK_LEDGER_PATH, so the two never meet and halt is inert. F-173 is the secret-read guard matching the literal argv token while the shell expands a glob/brace/variable to the protected file. Same class (two rules for one target) and same file (src/hook.mjs), but the halt-path divergence and the secret-read expansion blind spot are independent; neither fix touches the other.",
-        "F-176": "F-172 is the halt ledger path resolved two ways by the CLI and the hook; F-176 is the shell classifier judging an unresolved `$name` instead of the target the shell substitutes. Both touch src/hook.mjs, but fixing the ledger-path rule does nothing for variables, and vice versa."
+        "F-176": "F-172 is the halt ledger path resolved two ways by the CLI and the hook; F-176 is the shell classifier judging an unresolved `$name` instead of the target the shell substitutes. Both touch src/hook.mjs, but fixing the ledger-path rule does nothing for variables, and vice versa.",
+        "F-186": "F-186 is a read through a symlink to a secret file; F-172 was the halt written to one ledger path and read from another (fixed)."
       }
     },
     {
@@ -5475,7 +5509,10 @@
       "distinct_from": {
         "F-155": "F-155 (an unlisted READER of a literally-named secret) and F-173 (a listed reader of an expansion-named secret) are different holes in the same guard: F-155 varies the command, F-173 varies the spelling of the path; fixing one does not fix the other.",
         "F-172": "F-172 and F-173 are both C-08 (one target addressed by two divergent rules) and both touch src/hook.mjs, but on unrelated surfaces: F-172 is the HALT/kill-switch ledger path resolved two ways (CLI cwd-default vs the hook reading config.ledgerPath ?? SAKK_LEDGER_PATH) so halt never reaches the hook; F-173 is the secret-FILE-READ classifier matching the literal argv token while the shell expands a glob/brace/variable to the real path. Fixing the halt-path binding does nothing for shell expansion, and vice versa.",
-        "F-176": "F-173 is a READ of a secret inside the project whose name the shell picks (glob, brace, variable), kept as a documented boundary by D5. F-176 is a DELETE, WRITE or destructive FLAG held in a variable that reaches guard state, the home folder or a force push; a glob outside the project is already refused there, so it is the variable surface only, with its own product decision."
+        "F-176": "F-173 is a READ of a secret inside the project whose name the shell picks (glob, brace, variable), kept as a documented boundary by D5. F-176 is a DELETE, WRITE or destructive FLAG held in a variable that reaches guard state, the home folder or a force push; a glob outside the project is already refused there, so it is the variable surface only, with its own product decision.",
+        "F-183": "F-183 is a name written out in another case; F-173 is a name the shell computes (glob, brace, variable) — kept as a documented limit by D5.",
+        "F-184": "F-184 is a git force flag spelled in an unlisted form; F-173 is a secret read whose file name the shell computes (D5 limit).",
+        "F-186": "F-186 is a file system link whose name hides the secret; F-173 is a shell expansion that computes the secret's name (D5 limit)."
       }
     },
     {
@@ -5549,7 +5586,10 @@
       "mechanism_gap": "The RC-10 claims-are-checked detectors resolve backticked file names and error codes in the docs against the code (test/claims-are-checked.test.mjs), and test/release.test.mjs 'every command the README shows is a real sakk subcommand' scans README/CHANGELOG code spans with a first-token-only regex (/\\bsakk ([a-z][a-z-]+)/), so a multi-word command validates on its first word alone and `sakk prices update` passes as `prices`; no detector scans runtime src/*.mjs strings or specs/ for a command reference. The phantom sits in exactly the surfaces and the token position F-161's detector left uncovered.",
       "mechanism_upgrade": "none: whether to retract the `sakk prices update`/`add` references (docs, specs, and the two runtime hint strings) or to implement them as real subcommands is the owner product decision F-161 already routed; widening the release detector to validate every token of a multi-word command and to scan runtime src/*.mjs command strings is deferred until that decision, so the detector does not go red against text that may be about to become true.",
       "distinct_from": {
-        "F-161": "F-161 fixed one instance of this phantom — the M2 CHANGELOG line — marked the spend/cap/prices CLI not-shipped there, and is the detector this finding escaped past; its sweep was scoped to README/CHANGELOG. F-175 is the same RC-10 class recurring on the surfaces that sweep and detector do not cover: the command's later tokens, the two runtime hint strings an operator actually reads, docs/SPEND.md, and specs/. Same class, different surfaces; filing it keeps the escape visible rather than re-opening F-161."
+        "F-161": "F-161 fixed one instance of this phantom — the M2 CHANGELOG line — marked the spend/cap/prices CLI not-shipped there, and is the detector this finding escaped past; its sweep was scoped to README/CHANGELOG. F-175 is the same RC-10 class recurring on the surfaces that sweep and detector do not cover: the command's later tokens, the two runtime hint strings an operator actually reads, docs/SPEND.md, and specs/. Same class, different surfaces; filing it keeps the escape visible rather than re-opening F-161.",
+        "F-195": "F-195 is the console writing files on a GET and missing response headers it claims; F-175 is the prices update/add commands named in hints but not built.",
+        "F-196": "F-196 is init printing 'hook wired' without installing the guard; F-175 is the prices commands that are named but missing.",
+        "F-198": "F-198 is secret-rule counts and checklist ticks that disagree with code and package; F-175 is the missing prices commands named in hints."
       }
     },
     {
@@ -5578,7 +5618,10 @@
       "mechanism_gap": "The guard-state and destructive-command detectors (test/guard.test.mjs 'the agent cannot write the policy it is judged by', the shell-destructive cases, test/spend.test.mjs 'the agent cannot raise its own cap…') assert denies on written-out targets only; none drives a protected target or flag through a shell variable or brace, so a word the classifier cannot resolve but the shell substitutes was outside every existing guard detector.",
       "mechanism_upgrade": "test/guard.test.mjs::GAP G-STATE-001 a guard-state, outside-repo or destructive-git target held in a shell variable is allowed",
       "distinct_from": {
-        "F-173": "F-173 is a READ of a secret inside the project whose name the shell picks (glob, brace, variable); D5 keeps it as a documented boundary. F-176 is a DELETE, WRITE or destructive FLAG held in a variable, reaching guard state, the home folder or a force push — protections the cap and the D4 confirmation rest on. A glob outside the project is already refused (its literal prefix is outside), so F-176 is the variable surface only; deciding F-173 did not decide it."
+        "F-173": "F-173 is a READ of a secret inside the project whose name the shell picks (glob, brace, variable); D5 keeps it as a documented boundary. F-176 is a DELETE, WRITE or destructive FLAG held in a variable, reaching guard state, the home folder or a force push — protections the cap and the D4 confirmation rest on. A glob outside the project is already refused (its literal prefix is outside), so F-176 is the variable surface only; deciding F-173 did not decide it.",
+        "F-183": "F-183 is a protected name written out in full in another case; F-176 is a target held in a shell variable. The variable case needs expansion before judging, the case variant needs case folding.",
+        "F-184": "F-184 is the git force flag written directly in a spelling the rule does not list; F-176 is a flag or target substituted from a variable. Option parsing fixes F-184, expansion fixes F-176.",
+        "F-186": "F-186 is a symlink whose name differs from the secret file it points at; F-176 is a shell variable. A link is resolved by the file system, a variable by the shell."
       }
     },
     {
@@ -5733,8 +5776,576 @@
       "mechanism_upgrade": "test/kill-switch.test.mjs::R-24 every sakk subcommand is declared by its effect on a control, and judged by it",
       "distinct_from": {
         "F-171": "F-171 was the agent lifting its own cap or removing its own guard through sakk cap and guard; F-181 is a third subcommand, init, re-pointing the ledger so another agent's halt stops applying, which the F-171 list did not reach.",
-        "F-177": "F-177 is resume, reconcile and unlock trusting a self-declared --by and the in-repo default ledger, which needs a decision on where the ledger lives; F-181 is init re-pointing the hook's ledger, fixed here by judging it as the config write it makes."
+        "F-177": "F-177 is resume, reconcile and unlock trusting a self-declared --by and the in-repo default ledger, which needs a decision on where the ledger lives; F-181 is init re-pointing the hook's ledger, fixed here by judging it as the config write it makes.",
+        "F-185": "F-185 is the Sakk CLI started through a launcher, so the gate never sees the sakk name; F-181 was init missing from the subcommands the gate judged (fixed)."
       }
+    },
+    {
+      "id": "F-182",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-06",
+      "title": "The 10-27 P0 acceptance counted a case as passed when a test with a matching name existed, not when the case's expected outcome was observed",
+      "symptom": "The 10-27 acceptance report marked 20 of the 37 cases that fail on 10-28 as pass or 'covered by tests'. Run black-box against each case's own expectation, they fail. Some matched tests pin the current behaviour (test/release.test.mjs:177 asserts init's present output, not a working guard); others use narrower input than the case (test/console.test.mjs:763-780 checks redaction with a command field only).",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): of 151 P0 cases, 102 pass, 37 fail, 5 known-open, 5 manual, 2 documented limits. 20 of the 37 failures were reported pass or covered on 10-27; the other 17 were already deferred to V2 on 10-27. The review's per-case table puts the 10-27 verdict next to the 10-28 one.",
+      "direct_cause": "The 10-27 acceptance joined each case to tests by name and keyword and took a found test as the verdict, without running the case's steps against its expected outcome.",
+      "why": [
+        "A matching test name shows the area has a test, not that the test asserts what the case expects; several matched tests pin today's behaviour or use narrower input than the case.",
+        "The acceptance report format accepted 'covered by test X' as a verdict, so no observation per case was required.",
+        "The weak-evidence checks (C-06) were built for eval reports and evidence bundles, not for the acceptance report written for the owner."
+      ],
+      "root_cause": "Acceptance evidence was defined as 'a related test exists' instead of 'the case's expected outcome was observed', and no check on the acceptance report required an observation per case.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-10"],
+      "es": ["ES-05"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: every acceptance verdict cites an observed run (command, exit code, output) of the case's own steps. Done once on 10-28 for all 151 P0 cases; the rule goes into the acceptance template for V2.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["test/release.test.mjs", "test/console.test.mjs"],
+      "mechanism_gap": "The weak-evidence detectors (eval case packs FAKE→HARNESS_ONLY, evidence-bundle METRICS_UNVERIFIABLE) check eval reports and bundles; an acceptance verdict is outside their input, so a verdict backed only by a test-name match reached the owner with no observation behind it.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
+    },
+    {
+      "id": "F-183",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-08",
+      "title": "Command names and protected folders are compared case-sensitively, while the default macOS volume resolves names case-insensitively",
+      "symptom": "On a case-insensitive APFS volume, an upper- or mixed-case spelling of a destructive command's name, or of a protected folder (guard state, agent config, CI workflows), runs the same program or reaches the same file. The guard's rules match only the lower-case spelling and allow it.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): cases G-SEC-003/004 (case variants of the delete and git command names: allow) and G-SEC-006/007/008 (case variants of the guard-state, agent-config and CI-workflow folders: allow, while the lower-case forms deny or ask). Inbox items d24d35 and ded5a4.",
+      "direct_cause": "The classifier compares a command's program name, and the matcher compares canonical paths, byte for byte. Neither folds case, and the canonical-path step resolves symlinks and '..' but not the volume's case-insensitive lookup.",
+      "why": [
+        "The rules assume one spelling names one program or file. That holds on Linux, not on the default macOS and Windows volumes.",
+        "The guard tests drive each protected name with the spelling the rule lists; no test drives a case variant.",
+        "Folding case changes what every scope rule matches, so the change waits on the owner; D10 deferred it to V2."
+      ],
+      "root_cause": "The guard names a protected program or file by its exact bytes, while the operating system finds both through a case-insensitive lookup on the default volumes — two names for one target.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-01"],
+      "es": ["ES-02"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: fold case (or ask on a case variant) for program names and every scope rule when the volume is case-insensitive; drive each protected-name rule with a case variant.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/classify.mjs", "src/match.mjs", "src/policy.mjs"],
+      "mechanism_gap": "The two-names detectors (ledger.test F-85 symlinked ledger file, stranger-regressions relative --out, guard.test 'a delete that takes the repository, the home folder or Sakk state…') cover links and relative forms; none spells a protected program or folder in another case, so a case variant was outside their inputs.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {
+        "F-176": "F-176 is a target substituted from a shell variable, judged by the bare $name; F-183 is a target written out in full whose letters differ only in case — no variable is involved and the fix (case folding on a case-insensitive volume) is different.",
+        "F-184": "F-184 is git option parsing (clustered, abbreviated, aliased flags); F-183 is case folding of names on a case-insensitive volume.",
+        "F-186": "F-186 is a symlink with an unrelated name pointing at a secret file; F-183 is the same name in another case."
+      }
+    },
+    {
+      "id": "F-184",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-08",
+      "title": "A git force push is recognised only in its written-out flag forms; other spellings git accepts for the same flag pass",
+      "symptom": "git accepts its force flag inside a cluster of short options, as an unambiguous prefix of the long option, and through an alias defined inline for one command. The guard's destructive-git rule recognises the separate short and the full long spelling only, and allows the other forms.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): cases G-SEC-005 and J-UAT-015: the clustered, abbreviated and inline-alias forms return allow; the separate flag forms deny. Inbox item 9b254d.",
+      "direct_cause": "The git classifier matches flag tokens against a fixed list of spellings instead of parsing options the way git does (short-option clusters, unique long-option prefixes, inline alias definitions).",
+      "why": [
+        "The rule lists the spellings the git docs show; git's option parser accepts more forms for the same flag.",
+        "The destructive-git tests use the listed spellings only, so only the positive path was driven.",
+        "An inline alias moves the force flag out of the command's own words, which a token list cannot see."
+      ],
+      "root_cause": "One git option has several spellings git treats as the same flag, and the guard recognises it by a partial list of them.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: parse git options as git does (clusters, unique long prefixes) and ask on any inline alias definition; check every flag-keyed git and shell rule for the same forms.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/classify.mjs"],
+      "mechanism_gap": "The destructive-command detectors (guard.test 'every wrapper, with a flag that takes a value, still names the command', the delete-that-takes cases) feed each flag in its listed spellings; none generates the other forms git's parser accepts.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {
+        "F-176": "F-176 is a destructive target or flag held in a variable; F-184 is the force flag written directly in a form git's option parser accepts but the rule's list omits (clusters, prefixes, an inline alias).",
+        "F-183": "F-183 is case folding of program and folder names; F-184 is git option parsing — the flag's spelling, not its case.",
+        "F-186": "F-186 is a read through a symlink to a secret file; F-184 is a git force flag spelled in an unlisted form."
+      }
+    },
+    {
+      "id": "F-185",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-02",
+      "title": "The R-24 subcommand gate recognises the Sakk CLI only when the program is named sakk; the same CLI run through a launcher passes the hook",
+      "symptom": "Commands that loosen a control (cap off, guard uninstall) are judged as protected writes when typed with the sakk command name. Run through npx, or by passing bin/sakk.mjs to node, the hook allows them; only the CLI's own terminal check (HUMAN_CONFIRMATION_REQUIRED) still stops them.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case J-UAT-016: the launcher forms of cap off and guard uninstall return allow from the hook, then the CLI refuses at its terminal check. Inbox item 62c785.",
+      "direct_cause": "The gate compares the command's program name with 'sakk'. A launcher puts the Sakk entry point in an argument, which the gate does not read.",
+      "why": [
+        "The gate was enumerated from the dispatch table for the sakk command name, the way the README shows it.",
+        "The kill-switch tests drive the bare command name only.",
+        "The CLI's terminal check holds today, so the second layer looked like enough; R-24 requires the hook layer to judge it too."
+      ],
+      "root_cause": "The gate's list of ways to start the Sakk CLI has one entry (the bare name), where the rule is every launcher that reaches bin/sakk.mjs.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: resolve launchers (npx, npm exec, node with a script path, a direct path to bin/sakk.mjs) to the Sakk entry point before the subcommand gate; drive each R-24 subcommand through each launcher.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/classify.mjs", "test/kill-switch.test.mjs"],
+      "mechanism_gap": "The partial-list detectors (guard.test 'every wrapper, with a flag that takes a value, still names the command', bundle-absence) unwrap a known list of wrappers before classifying; package launchers and node-with-a-script are not on that list, so the gate saw another program name.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
+    },
+    {
+      "id": "F-186",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-08",
+      "title": "A read through a symlink to a secret file is judged by the link's name, although the guard spec says paths are resolved through symlinks",
+      "symptom": "A symlink with an ordinary name that points at a .env file or an SSH private key can be read with the agent's Read tool; the guard allows it because the link's own name is not secret-shaped.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case K-SEC-044: four reads through such links return allow (empty stdout, exit 0). specs/guard/spec.md:90 says a path that cannot be made canonical after resolving symlinks, '~' and '..' refuses.",
+      "direct_cause": "The secret-read rule matches the path as written. The realpath step in src/classify.mjs resolves the directory part used to name the scope, not the final component the read opens.",
+      "why": [
+        "Resolution was added to name a path's scope (which folder it is in), where only the directory matters.",
+        "The secret-file tests name the secret file directly; no test reads through a link with an ordinary name.",
+        "The spec states the stronger property, so a reader of the spec assumes link reads are covered."
+      ],
+      "root_cause": "One file has two names — the link and its target — and the secret rule judges the link's name while the read reaches the target.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: resolve the final path component before every secret and scope rule (read, write, delete); drive each rule with a link to a protected target.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/classify.mjs", "src/hook.mjs", "specs/guard/spec.md"],
+      "mechanism_gap": "The two-names detector for links (ledger.test F-85 symlinked ledger file) covers the ledger's own write path; no guard detector reads through a link to a secret file.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {
+        "F-176": "F-176 is a variable that hides the target until the shell expands it; F-186 is a symlink on disk whose own name hides the target until the read opens it.",
+        "F-183": "F-183 is two spellings of one name (case); F-186 is two different names for one file (a symlink and its target).",
+        "F-184": "F-184 is git option parsing; F-186 is a file read through a symlink — different tool, different input, different fix."
+      }
+    },
+    {
+      "id": "F-187",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-09",
+      "title": "In a project-local install the policy in use and the hook's code sit under node_modules, which the agent may change or delete",
+      "symptom": "Installed into the project's node_modules, the hook runs that copy's code and reads that copy's default policy. The agent can rewrite the policy or the hook source, or delete the package folder, and the guard allows it.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case J-UAT-017: writes to the installed package's policies/guard-default.json and src/hook.mjs return allow, and a recursive delete of the package folder returns allow; the same kind of target in Sakk's state folders denies (protect-guard-state).",
+      "direct_cause": "The guard-state rule protects ~/.sakk, the project's .sakk/ and agent config, not the install location of the Sakk package being run.",
+      "why": [
+        "The protected set was designed around a global install, where the package lives outside the project.",
+        "The install tests use a global prefix or the source tree, never a project-local node_modules.",
+        "Where the hook's code lives is decided at install time, so the protected set has to come from the install, not a fixed list."
+      ],
+      "root_cause": "The guard assumes it is installed outside the project it guards; in a project-local install its own code and policy are ordinary project files.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: record the installed package root at guard install and protect it like guard state, or refuse a project-local install; run the install tests in a project-local layout.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/guard-install.mjs", "src/classify.mjs", "docs/GUARD.md"],
+      "mechanism_gap": "The environment-assumed detectors (stranger-regressions, secret-scan 'the hook as SHIPPED') run the shipped hook from a global or source layout; none installs Sakk into the project's node_modules and tries to change it as the agent.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
+    },
+    {
+      "id": "F-188",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-05",
+      "title": "The requirement says the agent may not rewrite its own hook configuration; the shipped rules only ask",
+      "symptom": "A write to the agent's user-level settings file gets a person-approval prompt from the generic write-outside rule, and a write to the project's agent config asks (ask-agent-config). Requirement REQ-G13 expects a deny, and the user-level file is not recognised as agent config at all.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case G-SEC-011: the agent's Write and a shell redirect to the user-level settings return ask (ask-write-outside). specs/guard/spec.md:184 defines ask-agent-config as require_approval for the project-relative agent folders only.",
+      "direct_cause": "The guard spec chose ask for agent config and scoped it to project-relative folders, so the requirement's deny for the agent's own hook config reached neither the spec nor the policy.",
+      "why": [
+        "The spec was written from its threat table (turning the guard off asks, and the doctor's fire test catches a removed hook), not line by line from the requirement.",
+        "No check maps requirement ids to spec rules, so a requirement the spec weakens raises nothing.",
+        "The user-level config is outside the project, so it falls to the generic write-outside rule."
+      ],
+      "root_cause": "The guard spec restates the requirement in its own words with a weaker verdict, and nothing ties the requirement's verdict to the shipped rule.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-10"],
+      "es": ["ES-01"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: the owner decides deny or ask for the agent's own hook config; then add the user-level agent config to the rule and map each REQ-G line to the rule and test that keep it.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["policies/guard-default.json", "specs/guard/spec.md"],
+      "mechanism_gap": "The statement detectors (claims-are-checked codes and file names, guard.test 'the spec lists the shipped rules in their order') tie the spec to the code; none ties the original requirement's verdicts to the spec, so a weakened verdict passes both.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
+    },
+    {
+      "id": "F-189",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-02",
+      "title": "sakk guard install writes a tool matcher without Grep or Glob and no permissions deny rules, so a search over secret files is never judged",
+      "symptom": "The matcher that sakk guard install writes for Claude Code lists Bash, PowerShell, Monitor, Read, Edit, Write, MultiEdit, NotebookEdit and mcp tools; Grep and Glob calls never reach the hook. A Grep whose glob selects .env files is allowed. The requirement's permissions deny rules (REQ-G04, reads of .env and similar) are not written. The plugin's own hook uses matcher '*' and is not affected.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): cases G-SEC-012 (no Grep or Glob in the installed matcher; a Grep with an .env glob and a Glob: allow; a Grep whose path is the secret file denies only when fed to the hook directly) and G-INS-008 (install exit 0; the settings file has no permissions key).",
+      "direct_cause": "CLAUDE_MATCHER in src/guard-install.mjs lists the tools the classifier was written for, and install writes only the hook group, not a permissions block.",
+      "why": [
+        "The matcher was built from the tools whose inputs the classifier parses; Grep and Glob read file contents but were not on that list.",
+        "The install tests assert the hook group is written, not that every file-reading tool is matched or that deny rules exist.",
+        "The permissions deny block is the requirement's second layer; the install spec dropped it with no recorded decision."
+      ],
+      "root_cause": "The set of tools that can read a file is listed by hand in the matcher, and the list is shorter than the tools Claude Code ships.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: match every file-reading tool and classify its path and glob inputs; write the REQ-G04 deny rules at install; test the matcher against Claude Code's tool list.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/guard-install.mjs", "specs/guard/spec.md"],
+      "mechanism_gap": "The partial-list detectors (exec-env, bundle-absence, the wrapper case) check lists of wrappers and files; none compares the installed matcher with the tools that can read a file, so Grep and Glob were outside every detector's input.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
+    },
+    {
+      "id": "F-190",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-01",
+      "title": "A Write whose content is not a string skips the secret scan",
+      "symptom": "When the content of a Write is an array, object or number, the hook does not scan it for secrets and decides on the path alone, so secret-shaped content in that form is allowed.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case R-REL-001: a Write with a secret-shaped value inside non-string content returns allow; the same value as a string denies.",
+      "direct_cause": "src/hook.mjs scans content only when it is a string; any other type is treated as having nothing to scan.",
+      "why": [
+        "Claude Code sends content as a string, so the scan was written for that shape.",
+        "Other agents and MCP clients can send structured content, and an absent string was read as 'no secret'.",
+        "The hook tests drive string content only."
+      ],
+      "root_cause": "The scan treats 'not a string' as 'nothing to scan', where an input it cannot read should be serialised and scanned or refused.",
+      "dt": ["DT-FN"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: scan the serialised form of non-string content, or deny it with a code; check every field the hook scans for the same type test.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/hook.mjs"],
+      "mechanism_gap": "The absence detectors (cli-strictness 'every CLI refuses what it does not understand', bundle-absence, ci-honesty) cover CLI arguments, bundles and CI status; none feeds the hook a field of an unexpected type, so an unreadable field passed as clean.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
+    },
+    {
+      "id": "F-191",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-07",
+      "title": "The spend figure finds the agent's logs through the agent's own environment, so a moved log folder reads $0",
+      "symptom": "sakk spend and the cap check find the Claude Code logs through CLAUDE_CONFIG_DIR or HOME. With either pointed at an empty folder, the day's spend reads $0 and the cap never trips. sakk cap set records no log folder, although docs/SPEND.md says the folder is fixed at cap set so an agent's environment cannot move it.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case S-SEC-010: with CLAUDE_CONFIG_DIR, and separately HOME, set to an empty folder, spend reads $0.00 and the hook allows; ~/.sakk/config.json after cap set has no log-folder entry.",
+      "direct_cause": "The log folder is resolved at read time from environment variables the agent controls; cap set writes the cap only.",
+      "why": [
+        "Reading the environment matches how Claude Code finds its own folder, so it looked like the right source.",
+        "For the cap, the agent's environment is untrusted input from the party the cap binds; the docs describe the fix (record at cap set), which was not built.",
+        "The spend tests set the environment to the fixture folder, so a moved folder was never driven."
+      ],
+      "root_cause": "The bound party's environment decides where the guard reads the bound party's spend from.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: record the absolute log folder at cap set and read only that; ask or refuse when the environment points elsewhere; correct docs/SPEND.md in the same change (v1 states it as a limit).",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/spend.mjs", "docs/SPEND.md"],
+      "mechanism_gap": "The untrusted-input detectors (hostile-names, mcp F-82 hostile frames) cover names and MCP frames; none treats the agent's environment variables as input to the spend reader.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
+    },
+    {
+      "id": "F-192",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-14",
+      "title": "One unreadable agent log makes sakk spend crash with a raw stack, and the hook's deny names the wrong cause",
+      "symptom": "With one log file unreadable (mode 000), sakk spend exits 1 with an uncaught EACCES stack trace, and the hook denies with 'the guard cannot read its rules', although the rules are readable and a log file is what failed.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case S-REL-001: sakk spend prints an EACCES stack from headOf (src/spend.mjs:180), exit 1; the hook denies with the rules-unreadable message.",
+      "direct_cause": "headOf opens each log without handling a permission error, and the hook's outer handler maps any exception to the rules-unreadable message.",
+      "why": [
+        "The log reader assumes the agent's own logs are always readable by the same user.",
+        "The hook's outer handler was written for the policy load and covers every later step with the same message.",
+        "The isolation tests cover a crashing classifier and a broken policy, not a failing log read."
+      ],
+      "root_cause": "One failing input (a log file) is not isolated: it ends the whole spend read and is reported as another component's failure.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-09"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: isolate each log read (skip and report the unreadable file with a code; the cap fails closed under that code); give the hook a distinct code for each step that can fail.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/spend.mjs", "src/hook.mjs"],
+      "mechanism_gap": "The isolation detectors (mcp F-82, scorer-rules SCORER_ERROR, self-evolution-cli) isolate a bad frame, a scorer error and a broken CLI; none makes one agent log unreadable, so its failure spread to the whole command.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
+    },
+    {
+      "id": "F-193",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-07",
+      "title": "An edited hot-ledger summary frees cap room; reserve trusts it, and only sakk ledger verify reports the change",
+      "symptom": "Lowering the settled total in the hot ledger summary (for example from $8 to $0) gives that much of the day's cap back, and reserve keeps allowing after a cold segment is lost or altered. Only an explicit sakk ledger verify reports the mismatch.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case L-REL-013: after the summary edit, the next reserve is allowed against the freed $8; after a segment is removed, reserve still allows; ledger verify reports the break.",
+      "direct_cause": "Reserve reads the running total from the summary without checking it against the hash chain or the index; verification is a separate command.",
+      "why": [
+        "The summary exists so reserve stays fast with a large cold ledger (the F-105 design).",
+        "Checking the chain on every reserve was judged too slow, and no cheaper binding (a chain-head hash in the index) was added instead.",
+        "The ledger tests alter cold segments and then run verify; none alters the summary and then reserves."
+      ],
+      "root_cause": "The fast path takes a file the agent can write as the authority for the cap, and the check that would catch an edit runs only when asked.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: bind the summary to the chain head and refuse reserve on a mismatch; check every cached total the cap reads.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/archive.mjs", "src/ledger.mjs"],
+      "mechanism_gap": "The untrusted-input detectors (hostile-names, mcp F-82 hostile frames) and the archive detector (ledger-archive 'verify catches a lost index, and reserve refuses rather than re-admit') cover names, frames and a lost index; none edits the summary and then calls reserve.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {
+        "F-125": "F-125 is the caller stating its own cost when it books; F-193 is an edit of the stored hot summary after booking, which reserve then trusts."
+      }
+    },
+    {
+      "id": "F-194",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-02",
+      "title": "Secrets are redacted only in a decision's command field; paths and scopes are logged, shown and exported raw",
+      "symptom": "decisions.jsonl, the console's API and page, and its CSV and JSONL exports redact a secret only in the command text; a secret in a path or scope field appears in full. A secret deny is recorded as rule 'secret' with no fingerprint, and its reason repeats the dispute line twice.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): cases U-SEC-016/017 (a secret-shaped path shows raw in the API, the page and both exports) and A-ACC-023 (rule 'secret', no fingerprint, the dispute line twice).",
+      "direct_cause": "Redaction is applied to the command field when a decision is logged; the other string fields are copied unchanged.",
+      "why": [
+        "The secret scan was wired where shell commands are judged, and the command was the field known to carry secrets.",
+        "A path or scope can carry a secret too (a file named after a token, an MCP argument).",
+        "test/console.test.mjs:763-780 checks redaction with a command field only."
+      ],
+      "root_cause": "The redacted fields are a list of one, where the rule is every string a decision record stores.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: redact every string field before a decision is written (log, API, page, export), record the fingerprint, print the dispute line once; drive each field with a secret.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/hook.mjs", "src/console.mjs"],
+      "mechanism_gap": "The partial-list detectors (bundle-absence, claims-are-checked file names, exec-env, the wrapper case) check lists of files and wrappers; none plants a secret in each string field of a decision record, so only the command field was checked.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
+    },
+    {
+      "id": "F-195",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-05",
+      "title": "The 'read-only' console writes the spend index on a GET, sends no Cache-Control, and checks Origin only on the halt route",
+      "symptom": "GET /api/try updates the spend day file and file index. No response carries Cache-Control: no-store. API, 403 and 404 responses carry a CSP with an empty nonce. A foreign Origin with a valid token is accepted on GET routes; only POST /api/halt checks it.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): cases U-SEC-021 (the state tree changes after GET /api/try), U-SEC-022 (no Cache-Control on any response; an empty nonce on API, 403 and 404) and A-ACC-010 (GET /api/overview and /api/records with a foreign Origin and a valid token return 200). specs/console/spec.md:105 claims 'the console was read-only'; spec.md:50 requires Origin for non-GET requests only.",
+      "direct_cause": "The try route calls the spend reader, which refreshes its index; the header helper builds the CSP per page render and sets no cache header; the Origin check sits in the non-GET branch.",
+      "why": [
+        "'Read-only' was checked as 'no write route without --allow-halt', not as 'no file changes'.",
+        "The spend reader's index refresh is a side effect its callers do not see.",
+        "The requirement's cases ask for no-store and an Origin check on every route; the spec narrowed both with no recorded decision."
+      ],
+      "root_cause": "The console states 'read-only' and a header policy that no test checks against the file tree and every response.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: give the console a spend read without index writes; set no-store and a real CSP on every response; the owner decides Origin on GET; add a test that snapshots the state tree around every GET route.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/console.mjs", "specs/console/spec.md"],
+      "mechanism_gap": "The statement detectors (claims-are-checked: documented codes and file names exist, no 'signed/immutable' claims) check words against code; 'read-only' is not on their list, and no test compares the state tree before and after a GET.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {
+        "F-175": "F-175 is a prices command the docs and hints name but nobody built; F-195 is the console's read-only claim and its response headers, which the console does not keep."
+      }
+    },
+    {
+      "id": "F-196",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-05",
+      "title": "sakk init prints 'hook wired' but installs no guard, so the one-command setup leaves doctor failing",
+      "symptom": "sakk init with a cap creates the ledger and ~/.sakk/config.json and prints 'hook wired', but writes nothing to the agent's config; sakk doctor then fails with 'no agent has the guard installed'. init without a cap exits 2.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case P-INS-001: init exits 0 printing 'hook wired'; the agent config folder stays empty; doctor exits 1. test/release.test.mjs:177 asserts init's current output, not an installed hook.",
+      "direct_cause": "init records the ledger in Sakk's own config and leaves guard install to a separate command, while its message says the hook is wired.",
+      "why": [
+        "init and guard install were built in different milestones; the message predates the split.",
+        "The release test pins init's text, so the text was never compared with what init does.",
+        "The requirement asks for one command that ends in a working guard."
+      ],
+      "root_cause": "A success message states an outcome the command does not produce, and the test pins the message instead of the outcome.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-10"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: make init run guard install, or say it did not and print the next command; assert doctor passes after init; check every 'done' message against the state it claims.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["bin/sakk.mjs", "test/release.test.mjs"],
+      "mechanism_gap": "The statement detectors check codes and file names in documents; none compares a CLI's success message with the state it claims, so 'hook wired' passed.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {
+        "F-175": "F-175 is a command named in docs that does not exist; F-196 is an existing command (init) whose success message claims a guard it did not install."
+      }
+    },
+    {
+      "id": "F-197",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-05",
+      "title": "The README's plugin install command is not a valid Claude Code command",
+      "symptom": "README.md:58 tells users to run claude plugin install with --plugin-dir and the npm global root. That subcommand does not take the flag, so the documented plugin path fails.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case P-INS-009: the line as written is rejected; --plugin-dir belongs to starting a claude session, not to plugin install.",
+      "direct_cause": "The README combined the session flag that loads a plugin folder with the plugin install subcommand.",
+      "why": [
+        "The plugin path was written from the docs, not run on a real Claude Code.",
+        "claims-are-checked checks file names and codes in the README, not command lines.",
+        "Running the claude CLI needs a person or a real install, which the gate does not have."
+      ],
+      "root_cause": "Install instructions are prose that no check runs.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-01"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: fix the line (add the marketplace and install, or start claude with --plugin-dir); put every README shell line on a list the manual release check runs.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["README.md"],
+      "mechanism_gap": "The statement detectors check backticked file names and codes; a command line in the README is outside their input, so an invalid command passed.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {
+        "F-104": "F-104 is a ledger property the README states and the code does not keep; F-197 is an install command line in the README that the claude CLI rejects.",
+        "F-198": "F-198 is wrong numbers and shipped-feature ticks; F-197 is one install command line that does not run."
+      }
+    },
+    {
+      "id": "F-198",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-05",
+      "title": "Secret-rule counts and the shipped-feature checklist disagree across README, spec and code",
+      "symptom": "README.md:367 says a 222-rule port is pending and :366 says eight recognized formats; specs/secret-guard/spec.md:46 says 222; the code has 195 rules in the source toml, 194 ported and 192 enabled. README.md:362, :372 and :374 mark the eval harness, regulation case packs and evidence bundles as done, but none of them is in the npm package.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): cases K-ACC-068 (the counts above, from src/secret-rules.generated.mjs and the toml) and P-ACC-005 (npm pack --dry-run lists no eval files).",
+      "direct_cause": "Counts were typed into prose when the port started and never derived from the generated rules; the checklist describes the repository, and readers take it as the package.",
+      "why": [
+        "The generated rules file is the source, but the README and spec quote numbers instead of reading them.",
+        "claims-are-checked verifies code names and files, not numbers.",
+        "The checklist does not say whether an item ships in the package or only lives in the repository."
+      ],
+      "root_cause": "Numbers and feature claims are written by hand in several documents, with no single source the documents are checked against.",
+      "dt": ["DT-FACT"],
+      "rc": ["RC-10"],
+      "es": ["ES-01"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: generate or test every count in README and spec from the rules file; label each checklist item by where it ships; check CHANGELOG for the same counts.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["README.md", "specs/secret-guard/spec.md", "CHANGELOG.md"],
+      "mechanism_gap": "The statement detectors check codes and file names; numbers in prose are outside their input, so three different rule counts passed.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {
+        "F-104": "F-104 is a ledger behaviour claim; F-198 is rule counts and a feature checklist that disagree with the code and the npm package.",
+        "F-175": "F-175 names prices commands that were never built; F-198 is the secret-rule counts and the shipped-feature checklist in README, spec and CHANGELOG.",
+        "F-197": "F-197 is an install command that does not run; F-198 is numbers and checklist ticks that disagree with the code and the package."
+      }
+    },
+    {
+      "id": "F-199",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-10",
+      "title": "The package ships code derived from MIT-licensed projects without their notices",
+      "symptom": "src/secret-rules.generated.mjs is ported from gitleaks v8.21.2 (MIT, © Zachary Rice) and src/prices.mjs from LiteLLM's price table (MIT); the package has no NOTICE file and no MIT text for either, and the attribution for cc-safety-net is missing. MIT requires the notice in copies.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case P-ACC-008: npm pack --dry-run lists no NOTICE or third-party licence file; grep finds the origin only in code comments.",
+      "direct_cause": "The port added a provenance comment, and no step in release or pack requires the licence text of a third-party source.",
+      "why": [
+        "Attribution was recorded as provenance (where the data came from), not as a licence obligation.",
+        "The release checks cover version, files and tests, not third-party notices.",
+        "This blocks the public release, which is the owner's call, so it was held for release day."
+      ],
+      "root_cause": "A licence obligation is a required release step that lives only as rule text, with no check in the release path.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-07"],
+      "es": ["ES-01"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: add NOTICE with the MIT texts (gitleaks, LiteLLM) and the cc-safety-net attribution, include it in package files, and add a release test that every ported source has its notice. Release blocker.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["package.json", "src/secret-rules.generated.mjs", "src/prices.mjs"],
+      "mechanism_gap": "The required-step detectors check the certificate and the self-evolution gate; none lists third-party sources and asserts their notices ship, so the obligation stayed rule text.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {
+        "F-111": "F-111 is the release version and changelog discipline; F-199 is the missing third-party licence notices (gitleaks, LiteLLM) — a legal obligation of its own."
+      }
+    },
+    {
+      "id": "F-200",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-03",
+      "title": "The emittable-code check misses codes written in some source forms, so four reachable refusal codes have no test",
+      "symptom": "claims-are-checked's EMIT pattern finds codes in its main source forms but not in 'reason: \"CODE: …\"' strings, nullish defaults or template literals. SPEND_CAP_INVALID (reachable from the hook), HOOK_FAILED, TRY_USAGE and LEDGER_EXPORT_FAILED are emitted but no test asserts them.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case A-ACC-006: the hook's SPEND_CAP_INVALID deny is reachable with a non-numeric cap and no test asserts the code; the other three are emitted in the same unrecognised forms.",
+      "direct_cause": "The EMIT regular expression at test/claims-are-checked.test.mjs:47 lists source forms; a code written another way is not collected, so the 'asserted by a test' check never sees it.",
+      "why": [
+        "The pattern was written from the forms present when the check was added.",
+        "Later code used other forms, and the check reports nothing about codes it cannot see.",
+        "The check has no control that plants a code in each form and expects it found."
+      ],
+      "root_cause": "The check that every emitted code is tested cannot fail for a code in an unrecognised form — it sees nothing to check.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-12"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: collect codes from every source form (or from a code registry) and add a control per form; write the four missing tests.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["test/claims-are-checked.test.mjs"],
+      "mechanism_gap": "The can-it-fail detectors (core-specs drill anchors, scorer-rules, claims-are-checked 'every refusal code a source can emit is asserted by at least one test') test the codes the pattern collects; none plants a code in each source form, so the pattern's blind forms went unchecked.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
+    },
+    {
+      "id": "F-201",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-15",
+      "title": "The console's Stop button reads its token from a cookie the page cannot read, so the halt request is refused and the page hangs",
+      "symptom": "With --allow-halt, the Stop button reads the session token from document.cookie, but the sakk_t cookie is HttpOnly, so the token is empty and the halt request gets 403. The page does not handle the 403; parsing the response fails and the button stays on '…'.",
+      "evidence": "P0 black-box UAT 2026-10-28 at 8edbc8e, run through the sandboxed runner with a throwaway HOME (findings/reviews/2026-10-28-p0-uat-blackbox.md): case U-FN-011: in a browser the button sends an empty token and gets 403, and the page throws on the response. The halt route itself works with the token (curl).",
+      "direct_cause": "The page script reads a cookie the server marks HttpOnly, and the fetch handler assumes a JSON success body.",
+      "why": [
+        "The cookie was made HttpOnly in a later security pass; the page script still reads it.",
+        "The console tests call the halt route with curl-style requests that carry the token, not through the page.",
+        "No test runs the page's script in a browser."
+      ],
+      "root_cause": "The halt path through the page was never run end to end; the route and the script were each tested alone.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-06"],
+      "es": ["ES-07"],
+      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: send the token the page already holds (from the URL or a non-HttpOnly halt token), handle non-200 replies; add a browser run of the Stop button (part of the C-15 debt plan).",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/console.mjs", "test/console.test.mjs"],
+      "mechanism_gap": "The real-path work for this class is the gold v2 debt (REAL-mode cases, F-90/F-112); no detector drives the console page in a browser, so the page-to-route path stayed unrun.",
+      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "distinct_from": {}
     }
   ]
 }

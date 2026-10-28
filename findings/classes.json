@@ -66,7 +66,15 @@
         "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has",
         "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)",
         "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)"
-      ]
+      ],
+      "stopline": {
+        "after": "F-194",
+        "waiver": {
+          "by": "the maintainer (owner)",
+          "on": "2026-10-28",
+          "record": "docs/DECISIONS.md D10: the owner deferred every open P0 UAT failure to V2; the class detector is V2 work in docs/V2-BACKLOG.md"
+        }
+      }
     },
     {
       "id": "C-03",
@@ -143,7 +151,15 @@
         "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
         "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism",
         "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)"
-      ]
+      ],
+      "stopline": {
+        "after": "F-198",
+        "waiver": {
+          "by": "the maintainer (owner)",
+          "on": "2026-10-28",
+          "record": "docs/DECISIONS.md D10: the owner deferred every open P0 UAT failure to V2; the class detector is V2 work in docs/V2-BACKLOG.md"
+        }
+      }
     },
     {
       "id": "C-06",
@@ -182,7 +198,15 @@
       "detectors": [
         "test/hostile-names.test.mjs::callIds and agentIds that are prototype names reserve, settle, halt and resume like any id",
         "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving"
-      ]
+      ],
+      "stopline": {
+        "after": "F-193",
+        "waiver": {
+          "by": "the maintainer (owner)",
+          "on": "2026-10-28",
+          "record": "docs/DECISIONS.md D10: the owner deferred every open P0 UAT failure to V2; the class detector is V2 work in docs/V2-BACKLOG.md"
+        }
+      }
     },
     {
       "id": "C-08",
@@ -200,7 +224,15 @@
         "test/ledger.test.mjs::F-85: a ledger reached through a symlinked or hard-linked FILE refuses",
         "eval/__tests__/stranger-regressions.test.mjs::relative --out stranger",
         "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)"
-      ]
+      ],
+      "stopline": {
+        "after": "F-186",
+        "waiver": {
+          "by": "the maintainer (owner)",
+          "on": "2026-10-28",
+          "record": "docs/DECISIONS.md D10: the owner deferred every open P0 UAT failure to V2; the class detector is V2 work in docs/V2-BACKLOG.md"
+        }
+      }
     },
     {
       "id": "C-09",
@@ -298,9 +330,10 @@
       ],
       "stopline": {
         "after": "F-119",
-        "debt": {
-          "plan": "Open-source v1 M0: a class detector that runs every detection rule set (secret patterns, answer rules, the shell classifier) over a benign corpus and a planted corpus and asserts both rates; covers F-75 and F-119 before M3 changes src/secret-scan.mjs.",
-          "until": "2026-10-28"
+        "waiver": {
+          "by": "the maintainer (owner)",
+          "on": "2026-10-28",
+          "record": "docs/DECISIONS.md D10: the debt due 2026-10-28 moved to V2 unbuilt (docs/V2-BACKLOG.md, C-13 corpus). Original plan: Open-source v1 M0: a class detector that runs every detection rule set (secret patterns, answer rules, the shell classifier) over a benign corpus and a planted corpus and asserts both rates; covers F-75 and F-119 before M3 changes src/secret-scan.mjs."
         }
       }
     },
@@ -336,9 +369,9 @@
       ],
       "detectors": [],
       "stopline": {
-        "after": "F-112",
+        "after": "F-201",
         "debt": {
-          "plan": "Gold v2, pending the owner's decision on the scorer (F-76, F-90): REAL-mode cases that pass honestly and refuse a forged test log; the class detector is named when gold v2 is scoped.",
+          "plan": "Gold v2, pending the owner's decision on the scorer (F-76, F-90): REAL-mode cases that pass honestly and refuse a forged test log; the class detector is named when gold v2 is scoped. Extended by D10 (2026-10-28) to F-201: the same gold v2 work adds a browser run of the console Stop button, so the page-to-route path is driven end to end.",
           "until": "2026-11-30"
         }
       }

@@ -136,3 +136,36 @@ normally.
   so one agent can lift a halt on another. A global halt holds.
 - Cursor and Codex payloads are taken from their documentation; they have
   not yet been recorded from a running copy (test/fixtures/hooks/).
+
+## Known open in v1
+
+Found by the 2026-10-28 acceptance run and deferred to v2 by the owner
+(docs/DECISIONS.md D10). Each has a finding in `findings/ledger.json` and a
+planned fix in [V2-BACKLOG.md](V2-BACKLOG.md).
+
+- **One spelling only (F-183, F-184).** On a case-insensitive disk (the
+  macOS default) a command or a protected folder — guard state, agent
+  config, CI workflows — written in another case is allowed. git's force flag
+  is recognised in its separate short and full long spellings; the other
+  spellings git accepts for it are allowed.
+- **Symlinks are judged by their own name (F-186).** A read through a link
+  with an ordinary name that points at a secret file is allowed.
+- **Sakk by its name only (F-185).** The deny for commands that loosen a
+  control matches the command name `sakk`; a launcher or the script path
+  meets only the CLI's own terminal check.
+- **Project-local install (F-187).** Installed into the project's
+  `node_modules`, the hook's code and default policy are project files the
+  agent may change or delete. Install globally.
+- **Agent settings ask (F-188).** The requirement says deny; v1 asks a person
+  for a write to the project's agent config, and asks through the generic
+  outside-the-project rule for the user-level settings file.
+- **Search tools and deny-read rules (F-189).** `install` writes a matcher
+  without Grep and Glob, and no permissions deny rules for secret files, so a
+  search can read them. The plugin's hook (`matcher: "*"`) is not affected.
+- **Non-text Write content (F-190).** Content that is not a string is not
+  scanned; the decision rests on the path alone.
+- **Secrets in paths (F-194).** The decision log, the console and its exports
+  mask a secret only in the command text, not in a path or scope. A secret
+  deny records the rule but no fingerprint.
+- **`init` (F-196).** `sakk init` prints "hook wired" but installs no guard;
+  run `sakk guard install` after it.

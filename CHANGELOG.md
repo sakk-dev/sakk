@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — v1 close-out: known limits stated, the rest moved to v2
+
+- The 2026-10-28 acceptance run checked all 151 P0 cases by their expected
+  result. The owner closed v1 as it stands (docs/DECISIONS.md D10): no code
+  changes, and every case that did not pass is a finding (F-182…F-201) with
+  its fix in [docs/V2-BACKLOG.md](docs/V2-BACKLOG.md).
+- The gaps an operator should know before relying on v1 are now stated in
+  the README "Limits", docs/GUARD.md "Known open in v1" and docs/SPEND.md:
+  names compared in one spelling, symlinks judged by their own name, search
+  tools outside the hook's matcher, a project-local install in the agent's
+  reach, the console's Stop button, and the spend figure's reliance on the
+  agent's environment.
+- Corrected in the docs: the README plugin line (`claude --plugin-dir`, one
+  session; a persistent install needs a marketplace file, planned for v2),
+  the secret-rule counts (195 upstream, 192 enabled), which roadmap items
+  ship in the npm package, and `sakk prices update`, which is planned and not
+  in v1.
+
 ### Changed — the agent cannot re-point the ledger a halt is read from (F-181)
 
 - From the agent, `sakk init` is now denied (`protect-guard-state`), as

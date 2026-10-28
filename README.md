@@ -50,12 +50,13 @@ a secret, or a command that prints one, is denied too. The guard judges a
 command by what it spells out — see the limits at the end of this page and
 [docs/GUARD.md](docs/GUARD.md).
 
-Or add Sakk to Claude Code as a **plugin** — it bundles the same hook,
-fail-closed (`onFailure: block`):
+Or load Sakk into Claude Code as a **plugin** — it bundles the same hook,
+fail-closed (`onFailure: block`). In v1 this loads it for one session; a
+persistent `/plugin install` needs a marketplace file, planned for v2:
 
 ```bash
 npm install -g sakk
-claude plugin install --plugin-dir "$(npm root -g)/sakk"
+claude --plugin-dir "$(npm root -g)/sakk"
 ```
 
 See what the guard did in a local, read-only console — today's spend and cap,
@@ -359,19 +360,19 @@ count reservations from the books, not allows from the decision log.
 ## Roadmap — honest edition
 
 - [x] CLI (`sakk init / status / reconcile / unlock / halt / resume / scan / mcp`)
-- [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — ships in [`eval/`](eval/)
+- [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — in the repository's [`eval/`](eval/), not in the npm package
 - [x] Policy kernel (`sakk/policy`): declarative `sakk-policy.v1`, pure `decide()`, hash-pinned decision log
 - [x] MCP server enforcer (`sakk mcp`): reserve/settle/status as tools, policy-gated
 - [x] Kill switch (`sakk halt / resume`): named (self-declared `--by`), global or per agent; stop state provable from the books
-- [x] Secret scanning (`sakk scan`, pre-commit hook): eight recognized formats, fingerprints only
-- [x] Secret guard in the hook: a write whose content is a secret, or a command that prints one, is denied (open-source v1 M3; the gitleaks 222-rule port is pending)
+- [x] Secret scanning (`sakk scan`, pre-commit hook): eight hand-written formats plus 192 of gitleaks' 195 rules (194 ported, 192 enabled), fingerprints only
+- [x] Secret guard in the hook: a write whose content is a secret, or a command that prints one, is denied (open-source v1 M3; the same rules as `sakk scan`)
 - [x] Daily spend cap enforced by the hook from local transcripts, an estimate not the invoice (open-source v1 M2); set with `sakk cap set`
 - [x] Local, read-only console `sakk ui`: spend, decisions, policy, secret blocks (open-source v1 M4)
 - [x] Ships as a Claude Code plugin (`.claude-plugin/`) (open-source v1 M5)
 - [x] `sakk cap set/off`, `sakk spend`, `sakk prices` — set the cap, see the day's spend, show the price table (F-161)
-- [x] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts
+- [x] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts — repository only, not in the npm package
 - [ ] `sakk settle` CLI command (late settlement without writing code)
-- [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6)
+- [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6); built from the repository, not in the npm package
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
 - [ ] Named-approver identity, SSO — enterprise
 - [ ] Team console: approvals, roles, audit export, outbound metering — enterprise (the local read-only `sakk ui` above is the open-source edition)
@@ -402,7 +403,9 @@ The guard and the cap:
   transcripts; a direct write to them needs a person's approval and a write to
   `~/.sakk` is denied, but a script the agent runs is not inspected and can
   rewrite them. Spend already counted never goes down; spend not yet counted
-  can be erased. A tamper-evident ledger is enterprise.
+  can be erased. A tamper-evident ledger is enterprise. The cap also finds the
+  logs through the agent's own environment (`CLAUDE_CONFIG_DIR`, `HOME`), so
+  an agent run with either pointed at an empty folder reads $0 spend.
 - **Older Claude Code fails open.** Before 2.1.295 a hook that times out or is
   killed lets the call run. `sakk guard install` says so and `sakk doctor`
   warns.
@@ -420,13 +423,41 @@ The ledger and the library:
   run `resume`, `reconcile` and `unlock`, and the default ledger
   (`./sakk-ledger.json`) is a project file the agent may write, so one agent
   can lift a halt on another. A global halt holds: it denies every call but
-  reading.
+  reading. The reservation cap trusts the ledger's summary: lowering the
+  settled total there gives cap room back, and only `sakk ledger verify`
+  reports the change.
 - **Costs are what the caller reports.** `reserve()` and `settle()` book the
   amounts they are given; nothing reads the provider's usage yet.
 - **Approval-required means refused.** A policy that asks for approval
   answers `POLICY_APPROVAL_REQUIRED`; the open core has no approval service.
 - **Gating is voluntary.** An agent that never calls the MCP tools or the
   library is not gated.
+
+Also open in v1, found by the 2026-10-28 acceptance run and deferred to v2:
+
+The guard compares names in one spelling. On a case-insensitive disk (the
+macOS default) a command or a protected folder written in another case is
+allowed, and so are the spellings of git's force flag other than its two
+common ones. A symlink is judged by its own name, so a link with an ordinary
+name that points at a secret file can be read. `sakk guard install` does not
+route Claude Code's search tools (Grep, Glob) to the hook and adds no
+deny-read rules, so a search can read a secret file; the plugin's hook sees
+every tool. A Write whose content is not text is not scanned. A write to the
+agent's own settings asks a person instead of being denied. Installed into
+the project's `node_modules`, the hook's code and default policy are project
+files the agent may change, so install globally. `sakk init` prints "hook
+wired" but installs no guard: run `sakk guard install` after it.
+
+The console (`sakk ui`) masks a secret only in command text, not in a
+decision's path or scope, on screen or in an export. Its try box refreshes
+the spend cache on disk, its responses carry no `Cache-Control: no-store`,
+and its Origin check covers only the Stop route. Its Stop button does not
+work in v1, because the page cannot read its own session token: use
+`sakk halt` at the terminal.
+
+[docs/GUARD.md](docs/GUARD.md), "Known open in v1", has the detail, and
+[docs/V2-BACKLOG.md](docs/V2-BACKLOG.md) lists every known gap with the fix
+planned for it.
 
 ## License
 
