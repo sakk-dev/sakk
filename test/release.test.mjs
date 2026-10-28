@@ -255,21 +255,67 @@ describe('P0 UAT backfill — install & accuracy (P-INS / P-ACC)', () => {
     );
   });
 
-  test('P-ACC-003 the README documents the limits of the open core (necessary condition)', () => {
-    // NOTE (the maintainer decision, surfaced in the report): REQ-P04 is said to require a
-    // specific set of design-required limitations; that requirements doc is not
-    // in this repo, so this test pins only the NECESSARY condition — a
-    // substantive limitations section exists and each limit names a real
-    // behaviour the code has. It does NOT (cannot) assert the exact REQ-P04 set
-    // is complete. Pinning to that set needs the requirements doc.
+  test('P-ACC-003 the README documents the five REQ-P04 limits and the four limits of the core', () => {
+    // REQ-P04 (the original requirements, decision D7 2026-10-28) names five
+    // limits the README must state, because docs/ does not ship in the npm
+    // package: a constructed command is only asked or denied; @ references skip
+    // the hook; the cap acts at the next tool call; the agent can change local
+    // logs; older Claude Code fails open. Each is pinned by its heading and the
+    // words that make it concrete, so it cannot be dropped or blurred unnoticed.
     const readme = read('README.md');
     const anchor = /^Know these limits of the open core before relying on it:/m;
     assert.match(readme, anchor, 'the README has a "limits of the open core" section');
-    const section = readme.slice(readme.search(anchor));
+    const section = readme.slice(readme.search(anchor), readme.search(/^## License/m));
     const limits = [...section.matchAll(/^- \*\*([^*]+)\*\*/gm)].map((m) => m[1].trim());
-    assert.ok(
-      limits.length >= 4,
-      `the section lists several concrete limits (found ${limits.length})`,
+    assert.deepEqual(
+      limits.slice(0, 5),
+      [
+        'It reads a command as written.',
+        '`@` references skip the hook.',
+        'The cap stops the next call, not the one that crosses it.',
+        'The logs are local files the agent can reach.',
+        'Older Claude Code fails open.',
+      ],
+      'the five REQ-P04 limits lead the section, in order',
+    );
+    const words = (heading) => {
+      const at = section.indexOf(`- **${heading}**`);
+      const next = section.indexOf('\n- **', at + 1);
+      return section.slice(at, next === -1 ? undefined : next);
+    };
+    const constructed = words('It reads a command as written.');
+    assert.match(constructed, /can only be asked or\s+denied/, 'REQ-P04 1: constructed → ask/deny');
+    // the F-173 boundary (D5) and the F-176 gap: each form named here is pinned
+    // as allowed in test/secret-guard.test.mjs or test/guard.test.mjs (GAP
+    // G-STATE-001), so the README and the guard cannot drift apart.
+    for (const form of [
+      'cat .e*',
+      'cat .e{nv,x}',
+      'f=.env; cat $f',
+      'grep -r',
+      'find … -exec cat',
+      'xargs',
+      'f=~/.sakk/config.json; rm $f',
+      'o=--force; git push $o',
+    ]) {
+      assert.ok(constructed.includes(form), `the boundary names ${form}`);
+    }
+    assert.match(words('`@` references skip the hook.'), /@-mention/, 'REQ-P04 2');
+    assert.match(
+      words('The cap stops the next call, not the one that crosses it.'),
+      /go over by one\s+response/,
+      'REQ-P04 3',
+    );
+    assert.match(
+      words('The logs are local files the agent can reach.'),
+      /can\s+rewrite them/,
+      'REQ-P04 4',
+    );
+    assert.match(words('Older Claude Code fails open.'), /2\.1\.295/, 'REQ-P04 5');
+    assert.equal(
+      limits.length,
+      9,
+      `five guard limits and four core limits (found ${limits.length})`,
     );
     // each documented limit is about a real surface — tie the words to the code,
     // so a limit cannot be deleted (or turned into vague prose) unnoticed.

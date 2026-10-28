@@ -46,7 +46,8 @@ sakk try 'git push --force origin main'   # what the guard would answer
 Every Edit, Write and shell call of the agent is judged before it runs:
 force pushes, deletes outside the project, reading secrets and deploys are
 refused or asked by a policy you can read and change. A write whose content is
-a secret, or a command that prints one, is denied too. See
+a secret, or a command that prints one, is denied too. The guard judges a
+command by what it spells out — see the limits at the end of this page and
 [docs/GUARD.md](docs/GUARD.md).
 
 Or add Sakk to Claude Code as a **plugin** — it bundles the same hook,
@@ -64,7 +65,7 @@ recent decisions, the policy with a try box, and secret blocks:
 sakk ui        # prints http://127.0.0.1:<port>/?t=… — read-only; Ctrl+C to stop
 ```
 
-Cap the day's spend (read from Claude Code's local logs — an estimate, not the invoice). A person sets it; the agent is denied writing `~/.sakk` directly, and a one-command symlink chain that would reach it is not silently allowed (it needs a person's approval), so the agent cannot silently raise its own cap:
+Cap the day's spend (read from Claude Code's local logs — an estimate, not the invoice). A person sets it; the agent is denied writing `~/.sakk` directly, and a one-command symlink chain that would reach it is not silently allowed (it needs a person's approval), so the agent cannot raise its own cap by a command that names the file (a path held in a shell variable is not caught yet — see the limits at the end of this page):
 
 ```bash
 sakk cap set 5 --zone Asia/Dubai   # deny paid calls once today's spend reaches $5
@@ -376,6 +377,35 @@ count reservations from the books, not allows from the decision log.
 Not planned: orchestration frameworks, model-level safety (prompt-injection detection). Sakk is the change-control and evidence layer, not another agent platform.
 
 Know these limits of the open core before relying on it:
+
+The guard and the cap:
+
+- **It reads a command as written.** A command built at run time — `eval`,
+  backticks, `bash -c "$X"`, `python -c`, `source` — can only be asked or
+  denied, never judged by what it does. A file the shell or a program picks at
+  run time is judged by the name written in the command, so a read of `.env`
+  spelled any other way is allowed: a glob (`cat .e*`), a brace
+  (`cat .e{nv,x}`), a variable (`f=.env; cat $f`), `grep -r`,
+  `find … -exec cat`, `xargs`. The same holds for a write, a delete or a flag
+  held in a variable: `f=~/.sakk/config.json; rm $f` and
+  `o=--force; git push $o` are not caught. A script the agent runs is one
+  `shell.run` call.
+  Only isolation (a container) answers what a command does.
+- **`@` references skip the hook.** Files you @-mention in Claude Code are read
+  without a tool call, so the guard never sees them.
+- **The cap stops the next call, not the one that crosses it.** A response
+  already in progress completes, so a running agent can go over by one
+  response.
+- **The logs are local files the agent can reach.** The cap reads Claude Code's
+  transcripts; a direct write to them needs a person's approval and a write to
+  `~/.sakk` is denied, but a script the agent runs is not inspected and can
+  rewrite them. Spend already counted never goes down; spend not yet counted
+  can be erased. A tamper-evident ledger is enterprise.
+- **Older Claude Code fails open.** Before 2.1.295 a hook that times out or is
+  killed lets the call run. `sakk guard install` says so and `sakk doctor`
+  warns.
+
+The ledger and the library:
 
 - **Names are self-declared.** `--by` on halt, resume, reconcile and unlock
   records the name the operator typed; nothing authenticates it.

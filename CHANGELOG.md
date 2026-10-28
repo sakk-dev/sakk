@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the README states the guard's limits (REQ-P04, F-173)
+
+- The README's limits section now leads with the five the requirements name: a
+  command built at run time is only asked or denied; `@` references skip the
+  hook; the cap stops the next call; the agent can reach the local logs; older
+  Claude Code fails open. The first states where the secret guard stops: a
+  name the shell or a program picks at run time (glob, brace, variable,
+  `grep -r`, `find -exec`, `xargs`) is judged as written, so such a read of
+  `.env` is allowed. The behaviour is unchanged; a test pins both sides.
+- Known gap, not yet fixed (F-176): a delete, write or flag held in a shell
+  variable is allowed wherever it points, including `~/.sakk` and
+  `git push --force`. The README, docs/GUARD.md and docs/SPEND.md say so.
+
 ### Fixed — `sakk halt` now stops the guarded agent (F-172)
 
 - No command wrote `ledgerPath` into `~/.sakk/config.json`, so the hook never
@@ -86,7 +99,8 @@ install` now says so, and `sakk doctor` warns on any installed Claude Code
   writing `~/.sakk` directly by the guard (rule `protect-guard-state`), and a
   one-command symlink/hard-link chain that would reach it is not silently
   allowed (it is treated as constructed and needs a person's approval, F-163),
-  so the agent cannot silently raise its own cap. The amount must be a positive
+  so the agent cannot raise its own cap by a command that names the file (a
+  path held in a shell variable is not caught yet, F-176). The amount must be a positive
   plain decimal (`CAP_USAGE`) and the zone a real IANA name (`CAP_ZONE_INVALID`).
 - `sakk spend [--day <YYYY-MM-DD>] [--json]`: a day's spend by model and what
   could not be priced, read from Claude Code's local logs and labelled an

@@ -4479,7 +4479,8 @@
       "mechanism_gap": "The C-08 detectors check that aliases of one path reach one name; none checked what a folder rule covers when the folder contains another protected one.",
       "mechanism_upgrade": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)",
       "distinct_from": {
-        "F-173": "F-146 was a path-ALLOW whose scope was too broad — a temp-folder allow canonicalised to also cover $HOME, one file reachable under several spellings by where it lived. F-173 is a path-READ guard that never performs shell expansion, so a glob/brace/variable token opens a secret the matched literal name does not spell. F-146 is canonical-identity / allow-scope at classify time; F-173 is the shell rewriting the token after classify. Different mechanism, different fix."
+        "F-173": "F-146 was a path-ALLOW whose scope was too broad — a temp-folder allow canonicalised to also cover $HOME, one file reachable under several spellings by where it lived. F-173 is a path-READ guard that never performs shell expansion, so a glob/brace/variable token opens a secret the matched literal name does not spell. F-146 is canonical-identity / allow-scope at classify time; F-173 is the shell rewriting the token after classify. Different mechanism, different fix.",
+        "F-176": "F-146 was a policy allow (the temp folder) that covered the home folder, and an unnamed delete of the repository itself: the rules saw the right path and judged it wrongly. F-176 is a target the rules never see, because it sits in a shell variable; fixing the temp-folder scope does nothing for a `$d` target."
       }
     },
     {
@@ -5067,7 +5068,8 @@
       "mechanism_upgrade": "test/spend-cli.test.mjs::the agent cannot set its own cap (writing ~/.sakk is denied)",
       "distinct_from": {
         "F-85": "F-85 is a ledger reached through a symlink/hard link that ALREADY EXISTS (resolved and refused at classify time); F-163 is a link the command CREATES before using it, which the static resolver cannot follow — a run-time TOCTOU, closed by treating a chained link-create as constructed.",
-        "F-173": "F-163 is a filesystem-link TOCTOU — the command CREATES a symlink/hard-link then uses it, so the static resolver follows pre-create state to a different target; it mutates the filesystem between classify and open. F-173 mutates nothing: the secret already exists under its real name; the shell merely expands a glob/brace/variable so the written token never spells the path the OS opens. Both are classify-view ≠ run-target, but one is a link race, the other lexical expansion."
+        "F-173": "F-163 is a filesystem-link TOCTOU — the command CREATES a symlink/hard-link then uses it, so the static resolver follows pre-create state to a different target; it mutates the filesystem between classify and open. F-173 mutates nothing: the secret already exists under its real name; the shell merely expands a glob/brace/variable so the written token never spells the path the OS opens. Both are classify-view ≠ run-target, but one is a link race, the other lexical expansion.",
+        "F-176": "F-163 reached ~/.sakk through a symlink or hard link made in the same command, which the guard now treats as constructed and asks. F-176 reaches it through a shell variable (`f=~/.sakk/config.json; rm $f`), which the classifier judges as the bare `$f`; the chain fix does not see a variable, so the same target has a second unguarded name."
       }
     },
     {
@@ -5413,7 +5415,8 @@
         }
       ],
       "distinct_from": {
-        "F-173": "F-172 is the kill-switch: `sakk halt` writes a cwd-relative ledger while the hook reads halt only from config.ledgerPath ?? SAKK_LEDGER_PATH, so the two never meet and halt is inert. F-173 is the secret-read guard matching the literal argv token while the shell expands a glob/brace/variable to the protected file. Same class (two rules for one target) and same file (src/hook.mjs), but the halt-path divergence and the secret-read expansion blind spot are independent; neither fix touches the other."
+        "F-173": "F-172 is the kill-switch: `sakk halt` writes a cwd-relative ledger while the hook reads halt only from config.ledgerPath ?? SAKK_LEDGER_PATH, so the two never meet and halt is inert. F-173 is the secret-read guard matching the literal argv token while the shell expands a glob/brace/variable to the protected file. Same class (two rules for one target) and same file (src/hook.mjs), but the halt-path divergence and the secret-read expansion blind spot are independent; neither fix touches the other.",
+        "F-176": "F-172 is the halt ledger path resolved two ways by the CLI and the hook; F-176 is the shell classifier judging an unresolved `$name` instead of the target the shell substitutes. Both touch src/hook.mjs, but fixing the ledger-path rule does nothing for variables, and vice versa."
       }
     },
     {
@@ -5435,15 +5438,31 @@
       "dt": ["DT-SPEC"],
       "rc": ["RC-01"],
       "es": ["ES-04"],
-      "sweep": "Not swept — the fix (whether the classifier should expand globs/braces/variables against the real cwd before matching, or conservatively treat any word containing glob/brace/variable/command-substitution metacharacters near a secret-shaped stem as a secret read and deny, or refuse to classify a command it cannot fully resolve) is a pending product decision. Once decided, sweep every reader the guard classifies (cat, grep, cp, head, tail, less, dd, and any unlisted reader per F-155) for the same expansion blind spot, and sweep the write/exec classifications for the symmetric case (a glob/variable that expands to a protected write target or an exec of an expanded path).",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept 2026-10-28 over the shipped hook (normalize+evaluate) with HOME outside the project. Readers: cat/head with ./, ../, quotes and a backslash are denied; $(…) and bash -c \"cat .env\" are denied (the inner literal is parsed); backticks, eval, bash -c \"$X\", source, python -c and node -e are asked (shell.constructed); glob, brace and variable reads (cat .e*, .en?, .??*, .e{nv,x}, f=.env; cat $f, cat \"$F\", sh -c \"cat .e*\", cp .e* /tmp/x) and readers that pick the file themselves (grep -r, find -exec cat, xargs cat) are allowed — the boundary decision D5 keeps and the README now states. Symmetric write/delete/exec case: a glob outside the project is still refused or asked, because its literal prefix is outside (rm ~/.sak*/config.json deny, echo x > ~/.sa*/config.json ask, mv ~/.sa*/… deny); a target or flag held in a variable is allowed wherever it points (f=~/.sakk/config.json; rm $f, … echo {} > $f, d=~; rm -rf $d, o=--force; git push $o, git push --for{ce,}) — a different surface whose fix is a separate product decision, filed as F-176.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "instance_fix": "this commit: not a code fix — by decision D5=A (2026-10-28) the behaviour is kept: the README limit \"It reads a command as written\" states the boundary (glob, brace, variable, grep -r, find -exec, xargs), test/release.test.mjs P-ACC-003 pins that text, test/secret-guard.test.mjs pins both sides of the boundary, and runtime interception is enterprise. The defect closed is the undocumented, unpinned boundary, not the expansion itself.",
+      "class_fix": null,
+      "guard": "test/secret-guard.test.mjs::K-SEC-043/K-SEC-045 spelled-out secret reads are denied, constructed ones asked, run-time-picked names allowed",
       "areas": ["src/classify.mjs", "src/hook.mjs"],
       "mechanism_gap": "The secret-read detectors (test/secret-scan.test.mjs, test/secret-guard.test.mjs) assert denies on spelled-out readers and paths, and F-155 widened them to an unlisted reader; none drives a command whose protected target is produced by shell expansion (glob/brace/variable) rather than written literally, so a word that the classifier cannot match but the shell expands to a secret was outside every existing secret-guard detector.",
-      "mechanism_upgrade": "test/secret-guard.test.mjs::GAP K-SEC-043/K-SEC-045 glob, brace and variable expansions that resolve to a secret are not classified as a secret read",
+      "mechanism_upgrade": "test/secret-guard.test.mjs::K-SEC-043/K-SEC-045 spelled-out secret reads are denied, constructed ones asked, run-time-picked names allowed",
+      "corrections": [
+        {
+          "field": "mechanism_upgrade",
+          "from": "test/secret-guard.test.mjs::GAP K-SEC-043/K-SEC-045 glob, brace and variable expansions that resolve to a secret are not classified as a secret read",
+          "why": "Decision D5=A keeps the expansion behaviour as a documented boundary, so the GAP test became a two-sided boundary test (denied / asked / allowed) under a new title; it is the same check, widened."
+        },
+        {
+          "field": "sweep",
+          "from": "Not swept — the fix (whether the classifier should expand globs/braces/variables against the real cwd before matching, or conservatively treat any word containing glob/brace/variable/command-substitution metacharacters near a secret-shaped stem as a secret read and deny, or refuse to classify a command it cannot fully resolve) is a pending product decision. Once decided, sweep every reader the guard classifies (cat, grep, cp, head, tail, less, dd, and any unlisted reader per F-155) for the same expansion blind spot, and sweep the write/exec classifications for the symmetric case (a glob/variable that expands to a protected write target or an exec of an expanded path).",
+          "why": "The sweep the old text deferred to a product decision ran once D5 was decided; the new text records what it found, including F-176."
+        }
+      ],
       "distinct_from": {
         "F-155": "F-155 (an unlisted READER of a literally-named secret) and F-173 (a listed reader of an expansion-named secret) are different holes in the same guard: F-155 varies the command, F-173 varies the spelling of the path; fixing one does not fix the other.",
-        "F-172": "F-172 and F-173 are both C-08 (one target addressed by two divergent rules) and both touch src/hook.mjs, but on unrelated surfaces: F-172 is the HALT/kill-switch ledger path resolved two ways (CLI cwd-default vs the hook reading config.ledgerPath ?? SAKK_LEDGER_PATH) so halt never reaches the hook; F-173 is the secret-FILE-READ classifier matching the literal argv token while the shell expands a glob/brace/variable to the real path. Fixing the halt-path binding does nothing for shell expansion, and vice versa."
+        "F-172": "F-172 and F-173 are both C-08 (one target addressed by two divergent rules) and both touch src/hook.mjs, but on unrelated surfaces: F-172 is the HALT/kill-switch ledger path resolved two ways (CLI cwd-default vs the hook reading config.ledgerPath ?? SAKK_LEDGER_PATH) so halt never reaches the hook; F-173 is the secret-FILE-READ classifier matching the literal argv token while the shell expands a glob/brace/variable to the real path. Fixing the halt-path binding does nothing for shell expansion, and vice versa.",
+        "F-176": "F-173 is a READ of a secret inside the project whose name the shell picks (glob, brace, variable), kept as a documented boundary by D5. F-176 is a DELETE, WRITE or destructive FLAG held in a variable that reaches guard state, the home folder or a force push; a glob outside the project is already refused there, so it is the variable surface only, with its own product decision."
       }
     },
     {
@@ -5518,6 +5537,35 @@
       "mechanism_upgrade": "none: whether to retract the `sakk prices update`/`add` references (docs, specs, and the two runtime hint strings) or to implement them as real subcommands is the owner product decision F-161 already routed; widening the release detector to validate every token of a multi-word command and to scan runtime src/*.mjs command strings is deferred until that decision, so the detector does not go red against text that may be about to become true.",
       "distinct_from": {
         "F-161": "F-161 fixed one instance of this phantom — the M2 CHANGELOG line — marked the spend/cap/prices CLI not-shipped there, and is the detector this finding escaped past; its sweep was scoped to README/CHANGELOG. F-175 is the same RC-10 class recurring on the surfaces that sweep and detector do not cover: the command's later tokens, the two runtime hint strings an operator actually reads, docs/SPEND.md, and specs/. Same class, different surfaces; filing it keeps the escape visible rather than re-opening F-161."
+      }
+    },
+    {
+      "id": "F-176",
+      "date": "2026-10-28",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-08",
+      "title": "A delete, write or flag held in a shell variable is judged by the bare `$name`, so `f=~/.sakk/config.json; rm $f`, `d=~; rm -rf $d` and `o=--force; git push $o` are allowed while the same command written out is denied — the agent can remove its own cap and the guard state the D4 confirmation rests on",
+      "symptom": "Over the installed hook (bin/sakk.mjs hook, HOME outside the project), `rm ~/.sakk/config.json`, `echo {} > ~/.sakk/config.json`, `rm -rf ~` and `git push --force origin main` are each denied, but `f=~/.sakk/config.json; rm $f`, `f=~/.sakk/config.json; echo {} > $f`, `d=~; rm -rf $d`, `o=--force; git push $o origin main` and `git push --for{ce,} origin main` are each allowed with no reason. The README's cap paragraph promised that the agent cannot silently raise its own cap; with a variable it can delete or blank the config that holds the cap.",
+      "evidence": "test test/guard.test.mjs 'GAP G-STATE-001 …' runs the real CLI hook (spawnSync bin/sakk.mjs hook --agent claude-code) in a mkdtemp world with HOME and the repo apart: the written-out forms return deny; a glob outside the project (`rm ~/.sak*/config.json`) is not allowed; the five variable/brace forms return allow (empty stdout). Found while running the F-173 sweep for the symmetric write/delete/exec case (probe over normalize+evaluate, 2026-10-28).",
+      "direct_cause": "shellActions takes each argument and redirect target as a literal path or flag; `$f` is resolved against the cwd as a relative name inside the project and `$o` / `--for{ce,}` match no destructive flag, so protect-guard-state, deny-rm-outside-repo, deny-delete-protected and shell-destructive never see the target the shell substitutes before the command runs.",
+      "why": [
+        "The guard's write, delete and destructive-git rules were built to recognise a protected target by the path or flag written in the command, on the assumption that the word the agent types is the word the command receives.",
+        "The shell substitutes variables (and expands braces) after the hook has classified the word; the classifier resolves none of it and treats an unresolved word as an ordinary relative path or argument, which names nothing protected — so the decision falls through to allow instead of to ask.",
+        "The guard-state and destructive-command tests drove only written-out targets, and the one test of run-time-built commands (shell.constructed) covers a variable in command position (`bash -c \"$X\"`), not in argument position; no detector fed a protected target through a variable, so the gap between the judged word and the used word was never exercised."
+      ],
+      "root_cause": "An unresolved shell word is classified as if it were the literal it spells, so the protected target is addressed by two names — the `$name` the guard judges and the path the shell substitutes — and absent a rule that a word the guard cannot resolve is asked rather than allowed, every protection keyed on a target's name stops at the spellings it recognises.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "sweep": "Not swept — the fix is a pending product decision (the maintainer): keep it as a documented boundary like F-173 (D5), or ask a person whenever a delete or write target, or a git push argument, holds an unresolved variable or brace (fail closed, more asks on ordinary commands such as rm -rf $TMPDIR/x). Once decided, sweep every target-keyed rule (protect-guard-state, protect-guard-state-delete, deny-rm-outside-repo, deny-delete-protected, shell-destructive, ask-write-outside, the deploy rules) for the same variable/brace blind spot.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/classify.mjs", "src/hook.mjs", "README.md", "docs/GUARD.md", "docs/SPEND.md"],
+      "mechanism_gap": "The guard-state and destructive-command detectors (test/guard.test.mjs 'the agent cannot write the policy it is judged by', the shell-destructive cases, test/spend.test.mjs 'the agent cannot raise its own cap…') assert denies on written-out targets only; none drives a protected target or flag through a shell variable or brace, so a word the classifier cannot resolve but the shell substitutes was outside every existing guard detector.",
+      "mechanism_upgrade": "test/guard.test.mjs::GAP G-STATE-001 a guard-state, outside-repo or destructive-git target held in a shell variable is allowed",
+      "distinct_from": {
+        "F-173": "F-173 is a READ of a secret inside the project whose name the shell picks (glob, brace, variable); D5 keeps it as a documented boundary. F-176 is a DELETE, WRITE or destructive FLAG held in a variable, reaching guard state, the home folder or a force push — protections the cap and the D4 confirmation rest on. A glob outside the project is already refused (its literal prefix is outside), so F-176 is the variable surface only; deciding F-173 did not decide it."
       }
     }
   ]

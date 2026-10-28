@@ -190,34 +190,55 @@ describe('reading a protected secret file is denied (M3, protect-secret-files)',
   });
 });
 
-describe('K-SEC-043 / K-SEC-045: a shell expansion that resolves to a secret evades the read guard (GAP)', () => {
+describe('K-SEC-043 / K-SEC-045: the secret read guard judges the name a command spells out (documented boundary, F-173)', () => {
   // protect-secret-files matches the LITERAL argv token against the secret-name
   // pattern; the shell performs glob, brace and variable expansion only AFTER the
   // hook has classified the pre-expansion word, and the classifier resolves none
-  // of it. So `cat .env` is denied (its spelled-out name matches) but `cat .e*`,
-  // `cat .e{nv,xample}` and `f=.env; cat $f` are allowed, though each opens .env
-  // at run time. `cat "$HOME/.env"` is denied only incidentally — its literal tail
-  // is `.env` — which is exactly why a plain-variable form that hides that tail
-  // slips through. This test PINS the current (gap) behaviour so the fix (F-173)
-  // has to change it deliberately; the title is the mechanism_upgrade guard, not a
-  // green pretending the guard is expansion-aware.
-  test('GAP K-SEC-043/K-SEC-045 glob, brace and variable expansions that resolve to a secret are not classified as a secret read', () => {
+  // of it. Decision D5 (2026-10-28) keeps that behaviour: the README limit "It
+  // reads a command as written" states the boundary, runtime interception is
+  // enterprise, and this test pins BOTH sides so a change to either the guard or
+  // the README is deliberate. The allowed list below is the README's list.
+  test('K-SEC-043/K-SEC-045 spelled-out secret reads are denied, constructed ones asked, run-time-picked names allowed', () => {
     const w = world();
+    const at = (cmd) => run(w, bashEv(w, cmd));
     const deniedAsSecret = (cmd) => {
-      const r = run(w, bashEv(w, cmd));
+      const r = at(cmd);
       return r.verdict === 'deny' && /protect-secret-files|secret\.read/.test(r.reason || '');
     };
-    // precondition: the literal spelling IS caught, so the gap below is about the
-    // spelling of the path, not the rule being absent.
-    assert.ok(deniedAsSecret('cat .env'), 'precondition: the literal .env read is denied');
-
-    // GAP — each of these opens .env (or a secret) once the shell expands it, yet
-    // none is classified as a secret read:
-    for (const cmd of ['cat .e*', 'cat .en?', 'cat .??*', 'cat .e{nv,xample}', 'f=.env; cat $f']) {
+    // denied: the secret's name is written in the command, however it is quoted
+    for (const cmd of [
+      'cat .env',
+      'cat ./.env',
+      'cat src/../.env',
+      'cat ".env"',
+      "cat '.env'",
+      'cat \\.env',
+      'head -n1 .env',
+      'cat $(echo .env)',
+      'bash -c "cat .env"',
+    ]) {
+      assert.ok(deniedAsSecret(cmd), `${cmd} spells out .env and is denied`);
+    }
+    // asked: a command built at run time is never judged by what it does
+    for (const cmd of ['cat `echo .env`', 'eval "cat .env"', 'bash -c "$X"', 'source .env']) {
+      assert.equal(at(cmd).verdict, 'require_approval', `${cmd} is constructed and is asked`);
+    }
+    // allowed — the boundary: the shell or a program picks the file at run time
+    for (const cmd of [
+      'cat .e*',
+      'cat .en?',
+      'cat .??*',
+      'cat .e{nv,x}',
+      'cat .e{nv,xample}',
+      'f=.env; cat $f',
+      'grep -r KEY .',
+      'find . -name .env -exec cat {} \\;',
+      'xargs cat < list.txt',
+    ]) {
       assert.equal(
-        deniedAsSecret(cmd),
-        false,
-        `GAP F-173: ${cmd} expands to a secret but is currently allowed`,
+        at(cmd).verdict,
+        'allow',
+        `F-173 boundary: ${cmd} is judged by its written name`,
       );
     }
   });

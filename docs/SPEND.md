@@ -28,8 +28,10 @@ Your provider's own spend limits remain the backstop.
 ## When the cap is reached
 
 Every tool call is denied with `SPEND_CAP_REACHED` until midnight in your
-time zone, or until a person raises the cap with `sakk cap set`. The agent
-cannot change the cap: writing to `~/.sakk/` is denied by the guard.
+time zone, or until a person raises the cap with `sakk cap set`. A command
+that names a file in `~/.sakk/` is denied by the guard, so the agent cannot
+change the cap that way. A path held in a shell variable
+(`f=~/.sakk/config.json; rm $f`) is not caught yet.
 
 The cap applies at the **next** tool call. A response already in progress
 completes, so a running agent can go over by one response.

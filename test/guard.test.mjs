@@ -369,6 +369,34 @@ describe('the hook as an agent runs it', () => {
     assert.equal(run(w, 'echo {} > ~/.sakk/config.json').v, 'deny');
     assert.equal(run(w, 'rm -rf ~/.sakk').v, 'deny');
   });
+  // The classifier resolves no shell variable, so a target or flag the shell
+  // reads from one is judged by the bare `$name`, which names nothing protected.
+  // A glob outside the project is still caught (its literal prefix is outside),
+  // so the gap is the variable (and a brace on a flag). This pins the current
+  // behaviour so the fix (F-176) has to change it deliberately; the title is
+  // F-176's mechanism_upgrade guard, not a green pretending the guard is
+  // variable-aware.
+  test('GAP G-STATE-001 a guard-state, outside-repo or destructive-git target held in a shell variable is allowed', () => {
+    const w = world();
+    // precondition: each target, written out, is refused
+    for (const cmd of [
+      'rm ~/.sakk/config.json',
+      'echo {} > ~/.sakk/config.json',
+      'rm -rf ~',
+      'git push --force origin main',
+    ])
+      assert.equal(run(w, cmd).v, 'deny', cmd);
+    // and a glob outside the project is not silently allowed
+    assert.notEqual(run(w, 'rm ~/.sak*/config.json').v, 'allow');
+    for (const cmd of [
+      'f=~/.sakk/config.json; rm $f',
+      'f=~/.sakk/config.json; echo {} > $f',
+      'd=~; rm -rf $d',
+      'o=--force; git push $o origin main',
+      'git push --for{ce,} origin main',
+    ])
+      assert.equal(run(w, cmd).v, 'allow', `GAP F-176: ${cmd} is currently allowed`);
+  });
   test('writes to agent hook configs are asked', () => {
     const w = world();
     const p = tool(w, 'Edit', {

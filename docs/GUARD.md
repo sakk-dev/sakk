@@ -110,5 +110,10 @@ normally.
 - The guard reads what a command **says**. A script that deletes your home
   folder runs as `shell.run`. Only isolation (a container) answers what a
   script **does**.
+- A name the shell fills in at run time is judged as written. A glob or brace
+  that reaches a secret inside the project (`cat .e*`) is allowed; a target or
+  flag held in a variable (`f=~/.sakk/config.json; rm $f`,
+  `o=--force; git push $o`) is allowed wherever it points. A glob that reaches
+  outside the project is still refused or asked.
 - Cursor and Codex payloads are taken from their documentation; they have
   not yet been recorded from a running copy (test/fixtures/hooks/).
