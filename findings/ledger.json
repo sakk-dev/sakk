@@ -6860,20 +6860,54 @@
       "dt": ["DT-LOGIC"],
       "rc": ["RC-05"],
       "es": ["ES-04"],
-      "sweep": "Pending the ruling: once the booking rule for past-claimed lines is decided, sweep the same shapes as F-205 (fresh install, index horizon, midnight re-read) in whichever direction the ruling picks, and re-read the README's REQ-P04 limit ('The logs are local files the agent can reach') against it.",
-      "sweep_status": "not_done",
-      "status": "open",
-      "areas": ["src/spend.mjs", "specs/spend/spec.md"],
+      "sweep": "Swept the same shapes as F-205 in the past direction: fresh install (amnesty keeps history on its claimed day, cap stays open), upgrade with an index but no baseline (re-seals without moving booked money), half scan (never sealed — unlistable dirs block the baseline), rewrite re-read after sealing (covers() keeps it on the claimed day, not doubled), key-collision with inflated usage (cannot add money to the old day), and the scan boundary itself — which fell: file mtime is agent-settable (utimes), so a planted file faking an old mtime escaped the since window entirely. Filed and fixed as F-211 in the same commit.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/spend.mjs", "bin/sakk.mjs", "docs/SPEND.md", "specs/spend/spec.md"],
       "mechanism_gap": "C-07's spend detector (since F-205) drives exactly one adversarial timestamp — tomorrow — so the symmetric past-direction shape passed; the deeper gap is that F-205's sweep closed that direction with a written justification nobody could test: a sweep ruling resting on an unstated precondition ('that day was counted') had no detector shape to falsify it.",
-      "mechanism_upgrade": "none: the right booking for a past-claimed line is an open product ruling (docs/DECISIONS.md, waiting on the owner) — the detector lands with the fix once the ruling picks a direction.",
+      "mechanism_upgrade": "test/spend.test.mjs::a forged old-dated line appearing after the baseline lands in today, flagged, and hits the cap",
       "distinct_from": {
         "F-191": "F-191 is where the log folder is found (the agent’s environment chooses the root). F-210 is when a line inside whatever folder was found counts: the timestamp field chooses the cap window. Same class, different trusted field — fixing either leaves the other open.",
         "F-125": "F-125 is the MCP caller stating its own cost figure into the books. F-210 is a log line's time field choosing its bucket: the amount is genuine, the day is authored.",
         "F-205": "F-205 pinned the FUTURE direction (ts > now books to the observation day, flagged). F-210 contests F-205's sweep ruling for the PAST direction, which F-205 explicitly left as 'no follow-up needed' — this entry is that follow-up, filed because the justification fails on a fresh install or past the index horizon."
       },
+      "instance_fix": "this commit (owner ruling 2026-10-29: b+baseline): updateIndex seals a baseline (SAKK_HOME/spend/baseline.json) on its first whole scan — everything already on disk keeps its claimed day (amnesty); after sealing, a line claiming a day before today that the claimed day's bucket does not already cover books to the observation day with backdated: true (sticky through mergeCall, like future). covers() requires the old bucket's usage to meet every field, so a rewrite re-read stays on its claimed day while a key-collision with inflated usage cannot add money to the past. daySpend counts backdated; sakk spend and the SPEND_CAP_REACHED reason report it.",
+      "guard": "test/spend.test.mjs::a forged old-dated line appearing after the baseline lands in today, flagged, and hits the cap",
       "answer_failed": {
         "qid": "C-07.1",
         "why": "C-07.1 bounded agent-written future timestamps but treated a past date as honest history, so a line stamped into an already-closed day booked outside every cap window still open."
+      }
+    },
+    {
+      "id": "F-211",
+      "date": "2026-10-29",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-07",
+      "title": "The spend index trusts file mtime as its scan boundary, so a planted file faking an old mtime is never read",
+      "symptom": "updateIndex skips any file whose mtime is older than `since` (the hook passes the start of today). mtime is set with utimes by the same party the cap binds: a new log file planted with a faked old mtime is skipped by every hook check and its spend never meets the cap; pinning an active log's mtime old hides appended lines the same way.",
+      "evidence": "Found during the F-210 fix sweep (the scan boundary was the last trusted input standing). Red baseline on the tree with the F-210 booking fix but the old skip: test/spend.test.mjs 'a file planted with a faked old mtime is still read — mtime is not a trust boundary' failed — capCheck allowed and backdated read 0 because the planted file was never indexed. specs/spend/spec.md's Hook-budget row promised the mtime window as a feature.",
+      "direct_cause": "The since comparison read `if (st.mtimeMs < since) continue;` — a pure mtime test, before the index was consulted, so an unknown file with an old mtime was skipped as if it had been read before.",
+      "why": [
+        "The since window was built as a cost optimization (read only what changed today) and the spec wrote it down as a feature, so it was reasoned about as a budget, not as a boundary an adversary can steer.",
+        "mtime feels like an observation the filesystem makes, but utimes hands it to the file's owner — the same party the cap binds — so it is authored input in exactly the C-07 sense, like the line timestamp F-205/F-210 pinned.",
+        "The spend tests always touched fixture files to NOW to opt into the scan, so the opt-out direction — faking old to stay out — was never driven."
+      ],
+      "root_cause": "The same C-07 boundary as F-205/F-210 one layer down: a field the guarded party can author (the file's mtime) decided whether the guard read the file at all, so authored metadata chose the cap's field of view.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: the since skip now requires the index to already know the file at an unchanged size (`st.mtimeMs < since && prev && prev.size === st.size`) — since is an optimization, never a trust boundary. A planted unknown file is read whatever its mtime claims; new bytes behind a pinned mtime change the size and are read.",
+      "guard": "test/spend.test.mjs::a file planted with a faked old mtime is still read — mtime is not a trust boundary",
+      "sweep": "Swept what updateIndex trusts from the filesystem: mtime (this fix — only an already-indexed file at an unchanged size may be skipped), size (used only to detect change; growth or shrink forces a read, and a rewrite is caught by the head hash once read), and the residual same-size rewrite under a pinned mtime — it can hide only content no hook check has seen, and every hook check runs before the agent's next command, so counted money stays counted ('spend never goes down'); rewriting local logs at all remains the README's standing REQ-P04 limit. The directory the files live in is F-191 (v2).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/spend.mjs", "specs/spend/spec.md"],
+      "mechanism_gap": "C-07's spend detectors drove fields inside the log line (timestamp, usage, key) and never filesystem metadata around it; the spec's Hook-budget row stated the mtime window as a promise, so no check could contradict it — a spec row asserting an optimization as behaviour had no adversarial shape behind it.",
+      "mechanism_upgrade": "test/spend.test.mjs::a file planted with a faked old mtime is still read — mtime is not a trust boundary",
+      "distinct_from": {
+        "F-210": "F-210 is a field inside a line choosing WHICH day's window the money lands in once read. F-211 is metadata around the file choosing WHETHER the guard reads it at all — it defeats any booking rule, including F-210's fix, by starving it of input.",
+        "F-191": "F-191 is the agent's environment choosing where the log ROOT is. F-211 is a file inside an honest root hiding from the scan via its own mtime. Fixing either leaves the other."
       }
     },
     {

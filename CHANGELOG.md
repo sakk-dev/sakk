@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2026-10-29
 
+### Fixed — a backdated log line cannot escape the daily cap (F-210, F-211)
+
+- The spend index booked every log line to the day its own timestamp
+  claimed, so a line first seen today claiming an old day landed outside
+  every cap window (the F-205 fix covered the future direction only). The
+  first whole scan now seals a baseline (`$SAKK_HOME/spend/baseline.json`):
+  history already on disk keeps its claimed day, and after sealing a line
+  first seen today claiming an earlier day is counted today and flagged
+  `backdated` — unless the claimed day's bucket already covers that call's
+  usage (a legitimately rewritten log). `sakk spend` reports the count (a
+  new `backdated` field in `--json`), and a `SPEND_CAP_REACHED` deny says
+  when backdated lines are included (both shapes are additive).
+- The index also trusted file mtime as its scan boundary, so a planted
+  file faking an old mtime was never read. The incremental skip now
+  requires the index to already know the file at an unchanged size; mtime
+  is an optimization input, never a trust boundary (F-211).
+
 ### Changed — the release describes one artifact (F-111)
 
 - Version 0.1.0 is cut: package.json, the plugin manifest and this

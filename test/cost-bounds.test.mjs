@@ -557,8 +557,8 @@ const BOUNDS = {
     },
     updateIndex: {
       bounded:
-        'reads each changed file incrementally from a stored offset, bounded by MAX_FILES and MAX_LINE; unchanged files are skipped',
-      guard: 'test/spend.test.mjs::a hook check reads only what changed today',
+        'reads each changed file incrementally from a stored offset, bounded by MAX_FILES and MAX_LINE; unchanged files are skipped (only when the index knows them at an unchanged size, F-211); the one-time sealing scan reads everything once',
+      guard: 'test/spend.test.mjs::a hook check after the baseline reads only what changed today',
     },
     daySpend: {
       bounded: "sums over one day's recorded calls, each priced once",

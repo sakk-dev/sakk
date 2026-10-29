@@ -50,6 +50,16 @@ counted. A call stamped with a future date is counted on the day it is
 observed and flagged (`sakk spend` says how many), so a forged timestamp
 cannot move spend out of today's cap window (F-205).
 
+The past direction is pinned the same way (F-210). The first whole scan
+seals a baseline: history already on disk keeps its claimed day, so a
+fresh install never dumps old spend into its first day's cap. After that,
+a line first seen today claiming an earlier day is counted today and
+flagged `backdated` (`sakk spend` says how many, and a cap deny says so in
+its reason) — unless the claimed day's bucket already covers that call's
+usage, which is what a legitimately rewritten log looks like. mtime is
+never trusted either: a planted file faking an old modification time is
+still read (F-211).
+
 ## When Sakk denies because it cannot be sure
 
 - `PRICE_UNKNOWN`: a call today used a model the table does not list. Add

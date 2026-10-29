@@ -170,8 +170,21 @@ export function mergeCall(a, b) {
   for (const k of ['service_tier', 'speed', 'inference_geo']) usage[k] = b.usage[k] ?? a.usage[k];
   const merged = { ...a, model: a.model ?? b.model, usage, ts: Math.min(a.ts, b.ts) };
   if (a.future || b.future) merged.future = true; // once flagged future-dated, stays flagged (F-205)
+  if (a.backdated || b.backdated) merged.backdated = true; // once flagged backdated, stays flagged (F-210)
   return merged;
 }
+
+// A re-read of an already-counted call: the stored row covers the line when
+// every count is at least the line's, so merging could not grow it. A line
+// that would grow the row — a new key included — is new money, and new money
+// claiming an old day must not ride that day's already-checked bucket (F-210).
+const covers = (prev, c) => {
+  if (!prev) return false;
+  for (const k of USAGE_FIELDS) if ((c.usage[k] ?? 0) > (prev.usage?.[k] ?? 0)) return false;
+  for (const k of CACHE_SPLIT_FIELDS)
+    if ((c.usage.cache_creation?.[k] ?? 0) > (prev.usage?.cache_creation?.[k] ?? 0)) return false;
+  return true;
+};
 
 const readJson = (p, empty) => {
   try {
@@ -201,6 +214,11 @@ const headOf = (file) => {
  * whose own timestamp lies beyond it is booked to the day of observation and
  * flagged `future` — an agent-authored timestamp must not move spend out of
  * today's cap window (F-205, UAT S-REL-005; spec row "counted today, flagged").
+ * The same rule runs backward once a baseline is sealed: the first complete
+ * scan books everything already on disk to its claimed day (history that
+ * predates sakk's watch) and seals `baseline.json`; after that, a line first
+ * seen claiming an earlier day books the observation day, flagged `backdated`,
+ * unless the claimed day's bucket already covers it (a pure re-read) (F-210).
  * Returns { rewritten: [paths], unreadable: n, unlistable: [{ path, code }] }.
  */
 export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() }) {
@@ -208,6 +226,10 @@ export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() })
   mkdirSync(join(dir, 'days'), { recursive: true });
   const filesPath = join(dir, 'files.json');
   const files = readJson(filesPath, {});
+  const baselinePath = join(dir, 'baseline.json');
+  const sealed = readJson(baselinePath, null) !== null;
+  if (!sealed) since = 0; // the sealing scan must be whole, never today-only
+  const today = dayOf(now, zone);
   const days = new Map();
   const day = (d) => {
     if (!days.has(d)) days.set(d, readJson(join(dir, 'days', `${d}.json`), {}));
@@ -247,8 +269,11 @@ export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() })
       unlistable.push({ path: file, code: e.code ?? 'UNREADABLE' });
       continue;
     }
-    if (st.mtimeMs < since) continue;
     const prev = files[file];
+    // mtime is agent-touchable (utimes), so `since` is an optimization, never a
+    // trust boundary: only a file the index already knows at an unchanged size
+    // may be skipped — a planted file faking an old mtime is still read (F-211)
+    if (st.mtimeMs < since && prev && prev.size === st.size) continue;
     if (prev && prev.size === st.size && prev.mtimeMs === st.mtimeMs) continue;
     let offset = prev?.offset ?? 0;
     const head = headOf(file);
@@ -279,9 +304,21 @@ export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() })
         continue;
       }
       // a timestamp beyond the observing clock books to the observation day,
-      // flagged — never ahead, out of today's cap window (F-205)
+      // flagged — never ahead (F-205) — and once the baseline is sealed,
+      // never behind either: new money claiming an earlier day books the
+      // observation day, flagged (F-210); YYYY-MM-DD compares as day order
       if (r.call.ts > now) r.call.future = true;
-      const d = day(dayOf(r.call.future ? now : r.call.ts, zone));
+      let bookDay = dayOf(r.call.future ? now : r.call.ts, zone);
+      if (
+        sealed &&
+        !r.call.future &&
+        bookDay < today &&
+        !covers(day(bookDay)[r.call.key], r.call)
+      ) {
+        r.call.backdated = true;
+        bookDay = today;
+      }
+      const d = day(bookDay);
       d[r.call.key] = mergeCall(d[r.call.key], r.call);
     }
     files[file] = {
@@ -293,6 +330,9 @@ export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() })
   }
   for (const [d, calls] of days) writeAtomic(join(dir, 'days', `${d}.json`), calls);
   writeAtomic(filesPath, files);
+  // seal only a whole scan: a directory that could not be listed holds history
+  // this scan never saw, and freezing now would strip that history's amnesty
+  if (!sealed && unlistable.length === 0) writeAtomic(baselinePath, { sealedAt: now, day: today });
   return { rewritten, unreadable, unlistable };
 }
 
@@ -304,11 +344,13 @@ export function daySpend({ home, day, table }) {
   const byModel = {};
   let n = 0;
   let future = 0;
+  let backdated = 0;
   let unreadable = calls['~unreadable'] ?? 0;
   for (const [key, c] of Object.entries(calls)) {
     if (key === '~unreadable') continue;
     n += 1;
     if (c.future) future += 1;
+    if (c.backdated) backdated += 1;
     const entry = priceOf(table, c.model);
     if (!entry) {
       unpriced.set(c.model ?? '(no model)', (unpriced.get(c.model ?? '(no model)') ?? 0) + 1);
@@ -333,6 +375,7 @@ export function daySpend({ home, day, table }) {
     usd,
     calls: n,
     future,
+    backdated,
     unpriced: Object.fromEntries(unpriced),
     unreadable,
     byModel,
@@ -375,10 +418,14 @@ export function capCheck({ home, config, table, now = Date.now(), env = process.
       deny: true,
       reason: `SPEND_UNREADABLE: ${s.unreadable} log line(s) today could not be read, so the cap cannot be checked`,
     };
-  if (s.usd >= cap)
+  if (s.usd >= cap) {
+    const back = s.backdated
+      ? ` — includes ${s.backdated} line(s) first seen today claiming an earlier day, counted today (F-210)`
+      : '';
     return {
       deny: true,
-      reason: `SPEND_CAP_REACHED: $${s.usd.toFixed(2)} ≥ $${cap.toFixed(2)} today (${today}, ${zone}, from local logs) — a person raises it with sakk cap set <usd>; it resets at midnight`,
+      reason: `SPEND_CAP_REACHED: $${s.usd.toFixed(2)} ≥ $${cap.toFixed(2)} today (${today}, ${zone}, from local logs)${back} — a person raises it with sakk cap set <usd>; it resets at midnight`,
     };
+  }
   return null;
 }

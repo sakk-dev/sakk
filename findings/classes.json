@@ -190,22 +190,48 @@
         {
           "id": "C-07.1",
           "ask": "Which inputs come from someone else — the agent under test, operator text, hand-edited files, repository state? Each crosses a trust boundary: validate, escape, or do not trust it.",
-          "learned_from": ["F-01", "F-12", "F-13", "F-18", "F-70", "F-71", "F-82", "F-110"]
+          "learned_from": [
+            "F-01",
+            "F-110",
+            "F-12",
+            "F-13",
+            "F-18",
+            "F-205",
+            "F-210",
+            "F-211",
+            "F-70",
+            "F-71",
+            "F-82"
+          ]
         },
         {
           "id": "C-07.2",
           "ask": "Can the party this gate constrains perform the step that clears it? A person must.",
-          "learned_from": ["F-01", "F-12", "F-13", "F-18", "F-70", "F-71", "F-82", "F-110"]
+          "learned_from": [
+            "F-01",
+            "F-110",
+            "F-12",
+            "F-13",
+            "F-18",
+            "F-205",
+            "F-210",
+            "F-211",
+            "F-70",
+            "F-71",
+            "F-82"
+          ]
         }
       ],
       "detectors": [
         "test/hostile-names.test.mjs::callIds and agentIds that are prototype names reserve, settle, halt and resume like any id",
         "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving",
-        "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap"
+        "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap",
+        "test/spend.test.mjs::a forged old-dated line appearing after the baseline lands in today, flagged, and hits the cap",
+        "test/spend.test.mjs::a file planted with a faked old mtime is still read — mtime is not a trust boundary"
       ],
       "stopline": {
-        "after": "F-205",
-        "detector": "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap"
+        "after": "F-211",
+        "detector": "test/spend.test.mjs::a file planted with a faked old mtime is still read — mtime is not a trust boundary"
       }
     },
     {

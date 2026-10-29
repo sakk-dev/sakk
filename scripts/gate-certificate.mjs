@@ -57,7 +57,7 @@ export function parseSuiteSummary(out) {
  * witness. `test/certificate.test.mjs` links it to the drill's real count
  * and to the freshness parser's reach — the latter caught the MUT-AA
  * two-letter regex gap that made 12 mutants' hashes invisible (F-167). */
-export const EXPECTED_MUTANTS = 38;
+export const EXPECTED_MUTANTS = 40;
 
 /** F8, machine-enforced: every `sha256 before=` the drill report testifies
  * about must equal the file's CURRENT hash — a drill that ran on different

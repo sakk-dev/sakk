@@ -981,6 +981,7 @@ if (cmd === 'init') {
     spend_usd: s.usd,
     calls: s.calls,
     future: s.future,
+    backdated: s.backdated,
     by_model: s.byModel,
     unpriced: s.unpriced,
     unreadable: s.unreadable,
@@ -998,6 +999,10 @@ if (cmd === 'init') {
       );
     if (s.future)
       console.log(`  ${s.future} call(s) dated in the future — counted on the day observed`);
+    if (s.backdated)
+      console.log(
+        `  ${s.backdated} call(s) first seen today claiming an earlier day — counted today`,
+      );
     if (s.unreadable) console.log(`  ${s.unreadable} log line(s) unreadable today`);
   }
 } else if (cmd === 'prices') {
