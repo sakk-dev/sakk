@@ -1,0 +1,66 @@
+{
+ "version": 2,
+ "branch": "oss/v2-line-c",
+ "answers": {
+  "C-01.1": {
+   "answer": "C 线最核心的缺席就是 F-204：日志目录下有读不开的子目录时，listLogs 捕获 readdirSync 异常后直接 return，花费读成「不存在」，上限照常放行。修复把枚举失败变成带类型码的显式信号：updateIndex 返回 unlistable 清单，capCheck 对非空 unlistable 一律 deny，sakk spend 非零退出并点名读不到的路径，缺席不再读成 0。",
+   "guard": "none: 该检测器（chmod 000 子目录夹具下 capCheck 必须 deny）随 F-204 修复红先行落地，落地前仓库没有覆盖不可枚举目录的测试"
+  },
+  "C-01.2": {
+   "answer": "每条新检测器先在未修复代码上跑出红：把日志子目录 chmod 000 再跑 capCheck，旧代码读出 $0 且 allow 就是红基线；未来时间戳一行写进日志，旧代码把它记到明天、今天 calls 不变也是红基线。删输入重跑仍 PASS 的行为被修复翻转后，同一夹具必须拒绝或标记，红基线输出摘进提交说明。",
+   "guard": "none: 红基线证据写进 F-204/F-205 修复提交说明，检测器建成后即为守卫，建成之前没有可引用的测试名"
+  },
+  "C-02.1": {
+   "answer": "不再逐个补命令名：classify 对 sakk 子命令按「它造成的写」判定（沿 F-171 的 R-24 路子），这次把 resume、reconcile、unlock 三个解除控制的子命令整类映射为对账本所在守护状态的 file.write，由 protect-guard-state 统一 deny，而不是在 shell.run 之外再补三个字符串特例；CLI 侧三条走同一个 confirmByPerson 函数，不各写各的。",
+   "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
+  },
+  "C-02.2": {
+   "answer": "同一规则的其他出现点随 sweep 核对：写账本的路径有 CLI、MCP 网关、console 三处，console 只发 halt（收紧方向，保留），MCP 工具面只有 reserve/settle/status/halt 类读写各自有闸，逐一核对后写进 F-177 的 sweep 字段；账本默认路径只改 resolveLedgerPath 一处的 fallback 语义，init 与读写两侧都走这同一个函数，不留第二份路径逻辑。",
+   "guard": "none: sweep 结论落在 findings/ledger.json F-177 条目的 sweep 字段并由 findings-ledger 测试强制 schema，三处写账本路径的核对在修复提交内完成"
+  },
+  "C-03.1": {
+   "answer": "每条检测器都能因名字声称的原因变红：把 capCheck 里 unlistable 的 deny 分支删掉，chmod 000 用例必红；把未来时间戳改回按行时间入账，counted-today 用例必红；把 classify 新增的三个子命令映射去掉，hook 判定用例从 deny 回到 allow 必红。不写只断言函数被调用的测试。",
+   "guard": "none: 三条翻转验证在红先行阶段用未修复代码真实跑出，检测器落地前无既有测试名可引用"
+  },
+  "C-03.2": {
+   "answer": "攻击用例打到活目标：hook 判定用例走真实 evaluate() 带隔离 HOME/SAKK_HOME 的进程内调用，不是单测一个映射表；CLI 的真人终端闸用无 TTY 的真子进程跑 sakk resume/reconcile/unlock，断言 HUMAN_CONFIRMATION_REQUIRED 且账本文件逐字节不变；spend 用例用真实文件系统 chmod 000 的目录与真实 jsonl 行。",
+   "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
+  },
+  "C-03.3": {
+   "answer": "修完即把台账记录钉到能解析的东西上：F-177 条目的 guard 与 mechanism_upgrade 改为指向新的修复测试的 路径::测试名，findings-ledger 测试会真解析；F-204/F-205 新条目同样只在检测器落地后写双冒号引用，不用描述文字顶替；GAP 测试名被取代时在同一提交里改掉引用它的台账字段，不留悬空名。",
+   "guard": "test/findings-ledger.test.mjs::every class-mechanism reference resolves"
+  },
+  "C-04.1": {
+   "answer": "新增路径的工作量都有计数上界：listLogs 的 MAX_FILES 上界保留，unlistable 清单随同一次遍历收集、条数受 MAX_FILES 约束不另开遍历；未来时间戳判定是每行一次的比较，不加新的循环或时钟等待；测试断言用计数与拒绝码，不用 stopwatch 判超时。",
+   "guard": "none: 既有 SPEND_TOO_MANY_LOGS 上界已有测试，新增分支不改变界，由修复提交里的定点回归覆盖"
+  },
+  "C-05.1": {
+   "answer": "动 src/spend.mjs 前先写 specs/ 三表文件（现行为/目标行为/每条差异的判定依据与 D11 出处），spec 的 input-space 行「未来时间戳 counted today, flagged」「unreadable 子目录→类型化错误」每句都配同名可失败测试；docs/SPEND.md 与 README 里被本线修掉的限制文字同提交删改，release 测试里钉住旧限制的断言一并更新，不留代码不守的句子。",
+   "guard": "none: 三表文件与对应断言随本线修复提交落地，集成侧对三表做独立对抗审查，落地前无既有测试"
+  },
+  "C-05.2": {
+   "answer": "报出的数字和退出码照做必须走得通：sakk spend 在有读不到的子目录时不再报一个看似可信的偏小数字，而是点名路径并非零退出，照它说的恢复权限后重跑即得真值；HUMAN_CONFIRMATION_REQUIRED 的提示告诉人到终端重跑即可通过；deny 理由里的码在 refusal-codes 口径内。",
+   "guard": "none: 不完整读数非零退出与点名路径的断言随 F-204 修复红先行落地，现有 spend-cli 测试未覆盖该路径"
+  },
+  "C-06.1": {
+   "answer": "证据来源如实标注：F-204/F-205 的 evidence 写明来自 2026-10-28 黑盒 UAT（沙箱 HOME）的 case S-REL-002/S-REL-005，2026-10-29 D11 解冻后补档；台账与提交说明只写类别级描述，可执行的绕过形态只进回归测试 fixture；红基线来自旧代码真实运行输出，不以口头声称顶替。",
+   "guard": "none: 来源标注是台账 evidence 字段的文字内容，由 findings-ledger 测试的 schema 强制存在，无可执行测试能核对 UAT 时间本身"
+  },
+  "C-07.1": {
+   "answer": "跨信任边界的输入这次有两个：agent 自己日志里的 timestamp 被信任来选记账日，未来时间把花费挪出今天的上限窗口——修复后未来时间一律记在观察当日并标记，时间戳不再决定能否逃出今日窗口；resume/reconcile/unlock 的 --by 名字是自报的，不再被当成授权，授权只来自真人终端确认与 hook 的 deny。",
+   "guard": "none: 未来时间戳 counted-today 检测器与 halt 族 deny 检测器随 F-205/F-177 修复红先行落地，落地前没有覆盖这两个边界的测试"
+  },
+  "C-07.2": {
+   "answer": "被约束方不能自己清闸：解除停机、清账对账、破锁解锁正是 agent 被约束的三个逆操作，修复后 hook 把它们判成守护状态写入直接 deny（不走 ask，agent 无法靠会话里点确认通过），CLI 侧无终端即拒、有终端要真人重打确认词；账本默认路径移到 ~/.sakk 之下后，直接改账本文件也落在 protect-guard-state 的 deny 范围。",
+   "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
+  },
+  "C-10.1": {
+   "answer": "「agent 不得解除停机/清账/解锁」这次从 README 限制文字变成机器强制：classify 的子命令映射加 hook 的 deny 是第一道，CLI 的 confirmByPerson 是第二道，两道各有缺了就红的测试；「账本默认在 ~/.sakk」由 init 与 resolveLedgerPath 的同一函数执行并有路径断言，不靠文档约定。",
+   "guard": "none: 两道强制的缺失即红测试随 F-177 修复红先行落地，现有 kill-switch 测试只覆盖 cap 与 guard 两族"
+  },
+  "C-10.2": {
+   "answer": "绕路逐条封：hook 的判定按子命令效果映射，对 sakk 的三个解除子命令生效而不看参数拼写顺序；直接编辑账本文件这条旁路靠账本移入 ~/.sakk 后的 protect-guard-state deny 封住；旧路径仍存在时 CLI 不静默二选一而是类型化拒绝，防止换个目录起会话就绕开新默认；MCP 与 console 两条写账本路径在 sweep 里核对后记录。",
+   "guard": "none: 旧路径歧义拒绝与三子命令 hook deny 的用例随 F-177 修复红先行落地，建成前没有枚举这些旁路的测试"
+  }
+ }
+}
