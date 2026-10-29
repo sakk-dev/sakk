@@ -1103,6 +1103,26 @@ describe('F-177 — lifting a halt, clearing the books and breaking a lock are p
     assert.equal(readFileSync(w.lp, 'utf8'), before, 'the ledger bytes did not move');
   });
 
+  test('resume with nothing halted never enters the write path (F-209)', () => {
+    // The no-op read must not reach resume(): called anyway, it would lift a
+    // halt that landed AFTER the unlocked read above it, with no confirmation.
+    // A held lock makes the write path observable: entering it spins on the
+    // lock and fails, while the honest no-op answers at once and exits 0.
+    const w = world();
+    mkdirSync(`${w.lp}.lock`);
+    try {
+      const r = w.run(['resume', '--by', 'bot']);
+      assert.equal(r.status, 0, `the no-op must not touch the lock: ${r.stderr}`);
+      assert.match(r.stdout, /nothing halted \(all spending\)/);
+      const scoped = w.run(['resume', '--by', 'bot', '--agent', 'a1']);
+      assert.equal(scoped.status, 0, `scoped no-op must not touch the lock: ${scoped.stderr}`);
+      assert.match(scoped.stdout, /nothing halted \(agent "a1"\)/);
+      assert.ok(existsSync(`${w.lp}.lock`), 'the lock is untouched');
+    } finally {
+      rmSync(`${w.lp}.lock`, { recursive: true, force: true });
+    }
+  });
+
   test('with nothing to lift, clear or break, each command answers honestly without asking', () => {
     const w = world();
     const resume0 = w.run(['resume', '--by', 'bot']);

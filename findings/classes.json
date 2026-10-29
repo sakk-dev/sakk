@@ -41,7 +41,8 @@
         "test/cli-strictness.test.mjs::every CLI refuses what it does not understand",
         "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
         "test/ci-honesty.test.mjs::no workflow turns a skip or a failure into a green check",
-        "test/spend.test.mjs::chmod 000 on a log subdirectory is a typed deny, not $0"
+        "test/spend.test.mjs::chmod 000 on a log subdirectory is a typed deny, not $0",
+        "test/spend.test.mjs::chmod 000 on the log root PARENT is a typed deny, not \"no logs\""
       ]
     },
     {
@@ -288,7 +289,8 @@
         }
       ],
       "detectors": [
-        "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option"
+        "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option",
+        "test/kill-switch.test.mjs::resume with nothing halted never enters the write path (F-209)"
       ]
     },
     {

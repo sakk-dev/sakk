@@ -62,8 +62,19 @@ The release itself (push to main, tag, npm publish) stays the owner's call.
 ## Waiting on the owner
 
 F-175, F-176, F-177, F-188 and F-195 were answered by D11 above. Still
-open: F-180, the D1 merge caveat, and the release itself (push, merge,
-tag, npm publish), which stays the owner's call.
+open: F-180, the D1 merge caveat, F-210, and the release itself (push,
+merge, tag, npm publish), which stays the owner's call.
+
+F-210 (from the 2026-10-29 adversarial review of the money diff) needs a
+booking ruling: a log line first seen today whose own timestamp claims an
+old day currently books to that claimed day, so on a fresh install — or
+past the index horizon — that money never meets a cap window. The two
+options trade against each other: (a) keep booking to the claimed day —
+simple, but a fabricated old timestamp escapes every cap; (b) book lines
+whose claimed day was never counted to the observation day, flagged like
+F-205 — closes the escape, but a fresh install's first read would dump
+legitimately old history into that day's cap and could halt an innocent
+agent. The detector and fix land together once ruled.
 
 ## Acceptance
 

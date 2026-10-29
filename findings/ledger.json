@@ -40,6 +40,11 @@
           "kind": "detector",
           "since": "F-204",
           "ref": "test/spend.test.mjs::chmod 000 on a log subdirectory is a typed deny, not $0"
+        },
+        {
+          "kind": "detector",
+          "since": "F-208",
+          "ref": "test/spend.test.mjs::chmod 000 on the log root PARENT is a typed deny, not \"no logs\""
         }
       ]
     },
@@ -300,6 +305,11 @@
           "kind": "detector",
           "ref": "test/kill-switch.test.mjs::each writeLedger call sits in a classified function, with the matching option",
           "since": "F-70"
+        },
+        {
+          "kind": "detector",
+          "since": "F-209",
+          "ref": "test/kill-switch.test.mjs::resume with nothing halted never enters the write path (F-209)"
         }
       ]
     },
@@ -6105,7 +6115,9 @@
       "areas": ["src/spend.mjs", "docs/SPEND.md"],
       "mechanism_gap": "The untrusted-input detectors (hostile-names, mcp F-82 hostile frames) cover names and MCP frames; none treats the agent's environment variables as input to the spend reader.",
       "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
-      "distinct_from": {}
+      "distinct_from": {
+        "F-210": "F-210 is when a line counts: its timestamp field chooses the cap window (the past direction F-205 left open). F-191 is where the folder holding the lines is found at all: the agent’s own environment names the root, so a moved folder reads $0 with every line honest. Different trusted input; fixing either leaves the other."
+      }
     },
     {
       "id": "F-192",
@@ -6514,7 +6526,8 @@
       "mechanism_gap": "C-07's detectors probe hostile names and hostile MCP frame shapes; no detector treated a log line's timestamp as input the guarded party authors, and the spec row that named the required behaviour had no test behind it, so spec and code diverged unnoticed until black-box UAT.",
       "mechanism_upgrade": "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap",
       "distinct_from": {
-        "F-191": "F-191 is where the logs are found: the pipeline resolves the log root from the agent's own environment, so a moved folder reads $0. F-205 is when a line counts: a timestamp inside the line chose the cap window. Different trusted input — the directory path from env vs the time field the line carries."
+        "F-191": "F-191 is where the logs are found: the pipeline resolves the log root from the agent's own environment, so a moved folder reads $0. F-205 is when a line counts: a timestamp inside the line chose the cap window. Different trusted input — the directory path from env vs the time field the line carries.",
+        "F-210": "F-205 fixed the FUTURE direction: ts > now books to the observation day, flagged. F-210 is the PAST direction this entry’s sweep ruled no-follow-up-needed; the 2026-10-29 adversarial review contested that ruling (the already-counted-day justification fails on a fresh install or past the index horizon), so the past direction is now its own open finding awaiting the owner’s booking ruling."
       }
     },
     {
@@ -6546,6 +6559,99 @@
       "mechanism_upgrade": "test/guard.test.mjs::R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)",
       "distinct_from": {
         "F-174": "F-174 is the missing WARNING on a degraded fresh install: old Claude Code forces a fail-open hook and nobody is told. F-206 is the REPAIR path: once the host is new enough, reinstalling must actually fix the entry — before this fix, install read the degraded entry as already protected and changed nothing, so even an operator who followed the F-174 warning and reinstalled stayed fail-open. Different seam (warn vs converge); the F-174 fix left this one open."
+      }
+    },
+    {
+      "id": "F-208",
+      "date": "2026-10-29",
+      "introduced_in": "0dd328d",
+      "found_by": "review",
+      "class": "C-01",
+      "title": "An unreachable log ROOT was read as absent, so the spend pipeline reported an honest-looking $0 instead of failing the cap closed",
+      "symptom": "updateIndex skipped the walk whenever existsSync(logDir) said false — but existsSync answers false for an unreadable parent (EACCES), a dangling symlink and a loop just as for a truly absent folder, so chmod 000 on the log root's parent made every cap read $0 with unlistable empty, and capCheck allowed instead of denying; F-204 had closed exactly this hole for subdirectories, leaving the root itself on the old path.",
+      "evidence": "2026-10-29 independent adversarial review of the line-C money diff (CONSTITUTION #4), blocker B-1. Red baseline on the unfixed tree: test/spend.test.mjs 'chmod 000 on the log root PARENT is a typed deny, not \"no logs\"' failed 'the unreachable root is reported: 0 !== 1' and capCheck returned null (allow); the dangling-symlink case failed the same way.",
+      "direct_cause": "The guard clause read existsSync(logDir)===false as 'no logs yet' and returned an empty index without consulting the error: ENOENT, EACCES on a parent, ELOOP and a dangling link were all collapsed into the one honest-absence branch.",
+      "why": [
+        "existsSync was chosen for the root because 'no logs yet' is a legitimate first-run state, and the convenience boolean erased the distinction between absence and failure that the rest of the pipeline (listLogs) already kept per subdirectory.",
+        "The F-204 fix swept subdirectory listability but scoped the sweep to the walk below the root; the root check sat one line above the walk, in the same function, and was not re-read as an instance of the same rule.",
+        "No test drove an unreachable or link-shaped root: the suite's root cases were 'absent' and 'present', so the failure shapes between them went undriven (ES-04)."
+      ],
+      "root_cause": "A failed reading of the log root was read as a successful reading of zero logs: one boolean collapsed 'the folder is not there' and 'the folder cannot be reached' into the same success branch, so the cap's fail-closed rule (F-204) never saw the error (C-01: absence of the guarantee read as success).",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: the root is read like any subdirectory — statSync success walks, ENOENT with no directory entry at all (lstat) is honest absence ($0), and everything else (EACCES parent, dangling link, loop, a file in the way) lands in unlistable, which capCheck already turns into a SPEND_LOGS_UNLISTABLE deny.",
+      "guard": "test/spend.test.mjs::chmod 000 on the log root PARENT is a typed deny, not \"no logs\"",
+      "sweep": "Swept every absence-vs-failure read in the spend pipeline: subdirectories and files below the root already go through listLogs' unlistable channel (F-204); an unpriced model is a typed PRICE_UNKNOWN deny, not $0; an unreadable index is SPEND_INDEX_UNREADABLE; the root was the one remaining existsSync collapse. A root that is a file, not a directory, falls through to readdir's ENOTDIR and lands in the same unlistable channel; a truly absent root stays an honest $0 — both asserted in the new tests.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/spend.mjs"],
+      "mechanism_gap": "C-01's spend detector (since F-204) drives chmod 000 on a SUBDIRECTORY of the log root — the walk — and never the root lookup one line above it, so the same collapse at the root raised nothing; the class question asks about absence read as success, but the branch answer scoped it to the paths the F-204 test already covered.",
+      "mechanism_upgrade": "test/spend.test.mjs::chmod 000 on the log root PARENT is a typed deny, not \"no logs\"",
+      "distinct_from": {
+        "F-191": "F-191 is WHERE the root path comes from: the agent's own environment chooses it, so a moved folder legitimately resolves elsewhere (C-07, open). F-208 is HOW a failed read of whatever root was chosen is reported: as $0 instead of a deny. Fixing F-208 does not decide F-191's trust question."
+      }
+    },
+    {
+      "id": "F-209",
+      "date": "2026-10-29",
+      "introduced_in": "80ecc4b",
+      "found_by": "review",
+      "class": "C-11",
+      "title": "sakk resume decided 'nothing halted' from an unlocked read, then entered the write path anyway — a halt landing in between was lifted with zero confirmation",
+      "symptom": "With nothing halted at the moment of the CLI's pre-lock read, resume skipped the person-confirmation (there was nothing to confirm) but still called resume(), which re-reads under the lock and lifts whatever halt is there NOW — so a halt that landed between the read and the lock was lifted silently, and in a no-TTY run the only confirmation barrier was gone exactly when it mattered.",
+      "evidence": "2026-10-29 independent adversarial review of the line-C money diff (CONSTITUTION #4), blocker B-3. Red baseline on the unfixed tree: test/kill-switch.test.mjs 'resume with nothing halted never enters the write path (F-209)' entered acquireLock against a held lock, spun ~43.7s and failed via LEDGER_LOCK_UNAVAILABLE — proving the no-op took the write path; after the fix the same test answers 'nothing halted' in ~118ms with the lock untouched.",
+      "direct_cause": "The confirmation gate keyed off haltedNow, a value read before the lock, while the write keyed off the state under the lock: between the two the value's meaning had expired, and the branch that skipped confirmation did not also skip the write.",
+      "why": [
+        "The F-177 rework made resume person-confirmed, and the 'nothing halted' case was seen as not needing the confirmation — true — without noticing that the same branch still reached resume(), whose in-lock re-read can see a different world.",
+        "resume() itself is correct in isolation (it returns wasHalted:false without writing when nothing is halted under the lock), which made the CLI's unlocked pre-read look like a harmless optimization rather than the authority deciding whether the person is asked.",
+        "reconcile and unlock both exit their no-op before their confirmation and their write, so the asymmetry in resume was invisible to a reader pattern-matching the three siblings — and no test held the lock to observe which path the no-op takes (ES-04)."
+      ],
+      "root_cause": "A pre-lock read was allowed to stand in for the in-lock state when deciding whether the person-confirmation runs: the value outlived the only scope in which it was true, so the confirmation and the write could disagree about whether a halt exists (C-11: a value whose meaning outlives its scope).",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-08"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: the nothing-halted branch answers and exits before resume() is ever reachable — same output string and exit code as before — so the write path now sits strictly behind confirmByPerson, matching reconcile and unlock; a halt landing after the pre-read is simply still there, waiting for a confirmed resume.",
+      "guard": "test/kill-switch.test.mjs::resume with nothing halted never enters the write path (F-209)",
+      "sweep": "Swept the siblings that pair an unlocked pre-read with an in-lock write: reconcile exits its no-op before confirmation and write; unlock likewise; halt takes no confirmation by design (engaging the brake must never wait); reserve and settle decide everything under the lock. resume was the one command whose confirmation gate and write disagreed about which read is authoritative.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["bin/sakk.mjs"],
+      "mechanism_gap": "C-11's detector asserts every writeLedger call sits in a classified function with the matching option — it polices WHAT the write path does, not WHO may reach it: no detector held the lock and asserted that a no-op CLI run never enters acquireLock, so the expired pre-read deciding the confirmation was invisible to it.",
+      "mechanism_upgrade": "test/kill-switch.test.mjs::resume with nothing halted never enters the write path (F-209)",
+      "distinct_from": {
+        "F-49": "F-49 is unlock erasing a live halt through the manual override path — a lost update past the mutual exclusion. F-209 is resume's confirmation gate keyed to a read taken OUTSIDE the lock: nothing is lost or overwritten; the wrong thing is that the write path (which itself locks correctly) was reachable with no person in the loop. Fixing F-209 does not touch F-49's override semantics."
+      }
+    },
+    {
+      "id": "F-210",
+      "date": "2026-10-29",
+      "introduced_in": "0dd328d",
+      "found_by": "review",
+      "class": "C-07",
+      "title": "A past-dated log line books to an already-closed day's bucket, so money first seen today can land outside every cap window it could still trip",
+      "symptom": "A line whose timestamp claims a past day (mtime today, ts days old) is booked to that past day: today's daySpend never includes it, and if the claimed day predates the index horizon the money never meets a cap window at all — the F-205 fix pinned the future direction only.",
+      "evidence": "2026-10-29 independent adversarial review of the line-C money diff (CONSTITUTION #4), blocker B-2: a fabricated timestamp far in the past escapes all cap windows. F-205's sweep had ruled 'no follow-up needed: a past-dated line is indistinguishable from a legitimately late-read line and books to its own already-counted day'; the review contests that ruling for the line that is NEW today but CLAIMS the past.",
+      "direct_cause": "updateIndex books every line to the day its own timestamp claims; the F-205 comparison flags only ts > now, so ts < now falls through to the claimed day however old the claim is.",
+      "why": [
+        "The F-205 sweep weighed the past direction and accepted it because a genuinely late-read old line SHOULD book to its already-counted day — on an established install that day was already spent against its own cap.",
+        "That reasoning silently assumed the claimed day was once inside a cap window: on a fresh install, or past the index horizon, a past-dated line's day was never counted anywhere, so 'already-counted' does not hold for the adversarial shape the review drove.",
+        "Which behaviour is right is a genuine product tradeoff — counting old-claimed lines on the observation day would dump legitimately old history into a fresh install’s first day and halt an innocent agent — so the code kept the simple rule and the tradeoff never reached the owner as a decision."
+      ],
+      "root_cause": "The same unguarded trust boundary as F-205, in the other direction: a field the guarded party can author (the line's timestamp) still chooses which cap window money lands in when it claims the past, and the sweep's 'already-counted day' justification only holds when that day was in fact counted (C-07: input the guarded party authors, trusted at a boundary).",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "sweep": "Pending the ruling: once the booking rule for past-claimed lines is decided, sweep the same shapes as F-205 (fresh install, index horizon, midnight re-read) in whichever direction the ruling picks, and re-read the README's REQ-P04 limit ('The logs are local files the agent can reach') against it.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": ["src/spend.mjs", "specs/spend/spec.md"],
+      "mechanism_gap": "C-07's spend detector (since F-205) drives exactly one adversarial timestamp — tomorrow — so the symmetric past-direction shape passed; the deeper gap is that F-205's sweep closed that direction with a written justification nobody could test: a sweep ruling resting on an unstated precondition ('that day was counted') had no detector shape to falsify it.",
+      "mechanism_upgrade": "none: the right booking for a past-claimed line is an open product ruling (docs/DECISIONS.md, waiting on the owner) — the detector lands with the fix once the ruling picks a direction.",
+      "distinct_from": {
+        "F-191": "F-191 is where the log folder is found (the agent’s environment chooses the root). F-210 is when a line inside whatever folder was found counts: the timestamp field chooses the cap window. Same class, different trusted field — fixing either leaves the other open.",
+        "F-125": "F-125 is the MCP caller stating its own cost figure into the books. F-210 is a log line's time field choosing its bucket: the amount is genuine, the day is authored.",
+        "F-205": "F-205 pinned the FUTURE direction (ts > now books to the observation day, flagged). F-210 contests F-205's sweep ruling for the PAST direction, which F-205 explicitly left as 'no follow-up needed' — this entry is that follow-up, filed because the justification fails on a fresh install or past the index horizon."
       }
     }
   ]

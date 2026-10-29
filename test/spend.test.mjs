@@ -8,6 +8,7 @@ import {
   readFileSync,
   realpathSync,
   statSync,
+  symlinkSync,
   truncateSync,
   utimesSync,
   writeFileSync,
@@ -801,6 +802,62 @@ describe('F-204 — a log directory that cannot be listed fails the cap closed (
       assert.equal(r2, null, 'under the cap once the directory is listable');
     },
   );
+});
+
+describe('F-208 — an unreachable log ROOT fails the cap closed; only a truly absent root is $0', () => {
+  const asRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+  test(
+    'chmod 000 on the log root PARENT is a typed deny, not "no logs"',
+    { skip: asRoot && 'root ignores file modes' },
+    () => {
+      const w = world();
+      writeFileSync(w.file, line());
+      utimesSync(w.file, NOW / 1000, NOW / 1000);
+      const parent = join(w.base, 'claude'); // parent of the log root itself
+      chmodSync(parent, 0o000);
+      try {
+        const idx = updateIndex({
+          home: w.home,
+          logDir: w.config.claudeLogDir,
+          zone: 'UTC',
+          now: NOW,
+        });
+        assert.equal(idx.unlistable.length, 1, 'the unreachable root is reported');
+        assert.equal(idx.unlistable[0].path, w.config.claudeLogDir);
+        assert.equal(idx.unlistable[0].code, 'EACCES');
+        const r = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+        assert.equal(r?.deny, true, 'the cap fails closed, never an honest-looking $0');
+        assert.match(r.reason, /SPEND_LOGS_UNLISTABLE/);
+      } finally {
+        chmodSync(parent, 0o700);
+      }
+      // permissions fixed → the same spend counts again and the cap can decide
+      const r2 = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+      assert.equal(r2, null, 'under the cap once the parent is traversable');
+    },
+  );
+
+  test('a dangling symlink at the log root is a failed reading, not $0', () => {
+    const w = world();
+    const link = join(w.base, 'claude-link');
+    symlinkSync(join(w.base, 'nowhere'), link);
+    const config = { ...w.config, claudeLogDir: link };
+    const idx = updateIndex({ home: w.home, logDir: link, zone: 'UTC', now: NOW });
+    assert.equal(idx.unlistable.length, 1, 'the dangling root is reported');
+    assert.equal(idx.unlistable[0].path, link);
+    const r = capCheck({ home: w.home, config, table: TABLE, now: NOW });
+    assert.equal(r?.deny, true, 'the cap fails closed');
+    assert.match(r.reason, /SPEND_LOGS_UNLISTABLE/);
+  });
+
+  test('a truly absent log root stays an honest $0 under the cap', () => {
+    const w = world();
+    const config = { ...w.config, claudeLogDir: join(w.base, 'never-created') };
+    const idx = updateIndex({ home: w.home, logDir: config.claudeLogDir, zone: 'UTC', now: NOW });
+    assert.equal(idx.unlistable.length, 0, 'absence is not an error');
+    const r = capCheck({ home: w.home, config, table: TABLE, now: NOW });
+    assert.equal(r, null, 'no logs anywhere means $0 spent today');
+  });
 });
 
 describe('F-205 — a future-dated log line is counted on the day observed (UAT S-REL-005)', () => {

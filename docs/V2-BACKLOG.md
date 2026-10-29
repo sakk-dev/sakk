@@ -177,6 +177,18 @@ which the acceptance machine had. Each is a few minutes.
 | P-ACC-009 | Fetch dcg's rule list and diff its patterns against `policies/` and the guard rules; only the exclusion note in `specs/guard/decide.md` may mention it. The text check already passes                                                                                                                                           |
 | P-INS-004 | With a real Node 18 (simulated so far): `sakk init` must exit non-zero, say Node 20 or later is needed, and write nothing                                                                                                                                                                                                       |
 
+## 2026-10-29 review notes (non-blocking)
+
+From the independent adversarial review of the money diff (CONSTITUTION
+#4). Its three blockers became F-208 and F-209 (fixed) and F-210 (open,
+owner ruling — see docs/DECISIONS.md). These notes stayed non-blocking:
+
+| Note                                                                                                                                                                                                                    | Why it can wait                                                                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| A resume/reconcile/unlock run inside a constructed PTY classifies as shell.constructed and is denied outright; the second layer (the command's own TTY confirmation) already holds, so "ask" may fit better than "deny" | Fail-closed today; loosening is a product choice                                                                 |
+| `LEDGER_PATH_LEGACY` refuses `sakk halt` and `sakk init` too, which sits oddly beside "engaging the brake is never blocked"                                                                                             | The refusal is loud and typed; the operator can re-point the path                                                |
+| `SPEND_INDEX_UNREADABLE` reports and exits 0 while `SPEND_LOGS_UNLISTABLE` exits 1 — two failed-reading shapes, two severities                                                                                          | Both deny the cap check (fail closed); only the CLI exit codes differ, and exit codes are public API (CHANGELOG) |
+
 ## Suggested order
 
 The owner sets the order and dates (D10). A suggestion:

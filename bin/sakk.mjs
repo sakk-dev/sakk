@@ -445,7 +445,15 @@ if (cmd === 'init') {
       agentId !== undefined
         ? Boolean(h?.agents && Object.hasOwn(h.agents, agentId))
         : Boolean(h?.global);
-    if (haltedNow) await confirmByPerson(`This lifts the halt on ${scopeText} (${p})`, 'resume');
+    if (!haltedNow) {
+      // Answer here, without calling resume(): entering the write path now
+      // would lift a halt that landed after the unlocked read above, with no
+      // confirmation (F-209). reconcile and unlock exit their no-op the same
+      // way, before their confirmation and their write.
+      console.log(`nothing halted (${scopeText})`);
+      process.exit(0);
+    }
+    await confirmByPerson(`This lifts the halt on ${scopeText} (${p})`, 'resume');
   }
   // A runaway storm is exactly when the lock is contended: retry rather
   // than let a kill switch lose a race (specs/kill-switch row 5).

@@ -14,7 +14,7 @@
 import { createHash } from 'node:crypto';
 import {
   closeSync,
-  existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -216,7 +216,29 @@ export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() })
   const rewritten = [];
   let unreadable = 0;
   const unlistable = [];
-  for (const file of existsSync(logDir) ? listLogs(logDir, unlistable) : []) {
+  // The root itself is read like any subdirectory: only a root that is truly
+  // absent (ENOENT with no link entry in the way) is an honest "$0, no logs".
+  // An unreachable parent, a dangling link, a loop — anything else — is a
+  // failed reading, and read as absence it would read as $0 spend (F-208).
+  let rootPresent = false;
+  try {
+    statSync(logDir);
+    rootPresent = true;
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      let entryExists = false;
+      try {
+        lstatSync(logDir);
+        entryExists = true;
+      } catch {
+        /* nothing there at all: absence is not an error */
+      }
+      if (entryExists) unlistable.push({ path: logDir, code: 'ENOENT' });
+    } else {
+      unlistable.push({ path: logDir, code: e.code ?? 'UNREADABLE' });
+    }
+  }
+  for (const file of rootPresent ? listLogs(logDir, unlistable) : []) {
     let st;
     try {
       st = statSync(file);
