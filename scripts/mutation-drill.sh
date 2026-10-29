@@ -4,10 +4,17 @@
 # Mutation drill: prove the test suite can actually fail.
 #
 # For each named mutant, this script copies the repo to a temp directory,
-# breaks EXACTLY ONE scoring/safety rule, reruns the suite, and requires
-# (a) a non-zero exit AND (b) the named guardian test to be the one that
-# goes red. Then it runs one pristine copy to prove the green baseline.
-# "MUTANT KILLED" without this evidence is just vibes.
+# breaks EXACTLY ONE scoring/safety rule, reruns the guardian test files, and
+# requires (a) a non-zero exit AND (b) the named guardian test to be the one
+# that goes red. Then it runs one pristine copy of BOTH whole suites to prove
+# the green baseline. "MUTANT KILLED" without this evidence is just vibes.
+#
+# Guardian files (F-219): the files of the named suite whose source contains
+# the named test (scripts/drill-guardians.mjs), run with the suite's own
+# command. The verdict only reads the named test, and node runs each file in
+# its own process, so the rest of the suite cannot change it; rerunning all of
+# it per mutant made the drill grow as mutants x suite. A name no file
+# contains is DRILL BROKEN.
 #
 # Usage: sh scripts/mutation-drill.sh [report-file]
 set -u
@@ -35,6 +42,11 @@ run_drill() {
   id="$1"; file="$2"; anchor="$3"; replacement="$4"; named="$5"; ts="${6:-test:eval}"
   TOTAL=$((TOTAL + 1))
   dir="$(copy_repo)"
+  cmd="$(node "$ROOT/scripts/drill-guardians.mjs" "$dir" "$ts" "$named" 2>&1)"
+  if [ $? -ne 0 ]; then
+    log "[$id] DRILL BROKEN: $cmd"
+    FAILED=1; rm -rf "$dir"; return
+  fi
   target="$dir/$file"
   before_hash="$(shasum -a 256 "$target" | cut -d' ' -f1)"
   node -e '
@@ -50,14 +62,14 @@ run_drill() {
     FAILED=1; rm -rf "$dir"; return
   fi
   after_hash="$(shasum -a 256 "$target" | cut -d' ' -f1)"
-  out="$(cd "$dir" && npm run --silent "$ts" 2>&1)"
+  out="$(cd "$dir" && sh -c "$cmd" 2>&1)"
   status=$?
   if [ $status -eq 0 ]; then
-    log "[$id] MUTANT SURVIVED: suite stayed green after mutating $file — the guarding test does not exist"
+    log "[$id] MUTANT SURVIVED: guardian files stayed green after mutating $file — the guarding test does not exist"
     FAILED=1
   elif ! printf '%s' "$out" | grep -F "$named" | grep -Eq '✖|not ok'; then
     # node --test prints '✖ name' on a TTY and TAP 'not ok N - name' otherwise (CI)
-    log "[$id] WRONG KILLER: suite went red (exit=$status) but the named test '$named' is not among the failures"
+    log "[$id] WRONG KILLER: guardian files went red (exit=$status) but the named test '$named' is not among the failures"
     printf '%s\n' "$out" | grep -E '✖|not ok' | head -5 | tee -a "$REPORT"
     FAILED=1
   else
@@ -67,6 +79,7 @@ run_drill() {
     printf '[%s] file=%s\n' "$id" "$file"
     printf '[%s] anchor: %s\n' "$id" "$anchor"
     printf '[%s] sha256 before=%s after=%s\n' "$id" "$before_hash" "$after_hash"
+    printf '[%s] ran: %s\n' "$id" "$cmd"
     printf '%s\n' "$out" | grep -E '✖|not ok|tests [0-9]+|pass [0-9]+|fail [0-9]+' | sed "s/^/[$id] /"
     printf '\n'
   } >> "$REPORT"

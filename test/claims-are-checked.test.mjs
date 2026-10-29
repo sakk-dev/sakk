@@ -280,12 +280,15 @@ describe('nothing hangs instead of failing (findings F-15)', () => {
     assert.ok(jobs >= 4, `only ${jobs} jobs found`);
   });
   test('the drill job has time for every mutant it runs (F-166)', () => {
-    // The drill reruns a whole suite per mutant, so its cost grows with the
-    // mutant count; CI cancels it at timeout-minutes and the check reads red.
-    // Budget per mutant, measured on CI (PR #24, Node 22): 2705 s for 38
-    // mutants, about 71 s; 100 s leaves room for runner variance and the
-    // fuzz and campaign steps. Adding mutants without raising the limit fails here.
-    const PER_MUTANT_S = 100;
+    // Each mutant runs only the files that hold its named test (F-219), so
+    // the drill still grows with the mutant count; CI cancels it at
+    // timeout-minutes and the check reads red. Measured on one commit,
+    // locally: 366 s for 40 mutants and the full control, against 1698 s when
+    // each mutant reran its whole suite; CI ran that older drill 1.8-2.4x
+    // slower than local, so about 15 minutes is expected there. 40 s per
+    // mutant leaves about twice that for runner variance and the fuzz and
+    // campaign steps. Adding mutants without raising the limit fails here.
+    const PER_MUTANT_S = 40;
     const mutants = (read('scripts/mutation-drill.sh').match(/^run_drill MUT-/gm) ?? []).length;
     assert.ok(mutants >= 30, `found only ${mutants} mutants — the count is broken`);
     const ci = read(join('.github', 'workflows', 'ci.yml'));
