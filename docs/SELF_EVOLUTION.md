@@ -231,19 +231,25 @@ For every finding a pull request fixes, CI runs its guard test twice
 (R7, `scripts/findings-proof.mjs`). This is the FAIL_TO_PASS rule SWE-bench
 uses to validate a fix:
 
-1. On the base, the code before the fix, with the new test file copied in,
-   the guard must fail.
+1. Before the fix, with the new test file copied in, the guard must fail.
+   "Before" is the commit the finding's `introduced_in` names when that
+   commit is in the pull request's range (a bug born and fixed in one
+   stack or integration branch), and the base otherwise (F-217).
 2. On the branch, it must pass.
 
 A guard that already passes before the fix does not guard the bug, so it
-is refused.
+is refused. When the fix rewrote a test and that test is the guard, the
+rewritten copy passes where the bug was introduced: guard it with a test
+that runs the tree's own suite or detector in the condition that broke it
+(`test/spend-clock.test.mjs`, `test/bounded-spawn-detector.test.mjs`).
 
 A bug that predates the branch needs a guard that **runs** on the old code
 and fails by its own assertion. A test that cannot even load there, because
 it imports what the fix added, shows nothing about the old code. Drive the
 command instead of the new function (`test/self-evolution-cli.test.mjs` is
-written that way). A bug introduced in the same branch may have a guard
-that needs the new code to load.
+written that way). A bug introduced in the same branch is proven on the
+commit that introduced it, so its guard may need code from that commit,
+not code the fix added.
 
 ## Logging every problem
 

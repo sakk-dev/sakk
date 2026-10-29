@@ -104,7 +104,8 @@
         "test/claims-are-checked.test.mjs::every refusal code a source can emit is asserted by at least one test",
         "eval/__tests__/scorer-rules.test.mjs::fires on its trigger, and not without it",
         "test/ledger-archive.test.mjs::verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id",
-        "test/bounded-spawn.test.mjs::every node --test run loads the bound, whatever flags come first (F-215)"
+        "test/bounded-spawn.test.mjs::every node --test run loads the bound, whatever flags come first (F-215)",
+        "test/bounded-spawn-detector.test.mjs::the bounded-spawn detector sees a launch with another --import first (F-215)"
       ]
     },
     {
@@ -253,7 +254,9 @@
         "test/core-specs.test.mjs::every drill entry is recognised, however many letters its id has (F-147)",
         "test/range-topology.test.mjs::a stack merged into main as one pull request: the parents' answers files are inherited, not carried forward",
         "test/pre-push.test.mjs::a push from a linked worktree: the suite gets no GIT_ variables, so a fixture cannot write into the repository (F-214)",
-        "test/claims-are-checked.test.mjs::every node --test launch in package.json and the hooks loads test/clean-git-env.mjs first"
+        "test/claims-are-checked.test.mjs::every node --test launch in package.json and the hooks loads test/clean-git-env.mjs first",
+        "test/spend-clock.test.mjs::the spend suite passes with the clock 400 days past its fixtures (F-165)",
+        "test/self-evolution-cli.test.mjs::F-217: a bug introduced and fixed in the range is proven on the commit that introduced it"
       ]
     },
     {
