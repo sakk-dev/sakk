@@ -5833,6 +5833,10 @@
         "F-171": "F-171 was the agent lifting its own cap or removing its own guard through sakk cap and guard; F-181 is a third subcommand, init, re-pointing the ledger so another agent's halt stops applying, which the F-171 list did not reach.",
         "F-177": "F-177 is resume, reconcile and unlock trusting a self-declared --by and the in-repo default ledger, which needs a decision on where the ledger lives; F-181 is init re-pointing the hook's ledger, fixed here by judging it as the config write it makes.",
         "F-185": "F-185 is the Sakk CLI started through a launcher, so the gate never sees the sakk name; F-181 was init missing from the subcommands the gate judged (fixed)."
+      },
+      "answer_failed": {
+        "qid": "C-02.1",
+        "why": "C-02.1 covered the payload fields the hook scans; the ledger path the hook reads halts from was configuration, not a scanned field, so sakk init could re-point it and the coverage test never saw that input."
       }
     },
     {
@@ -6596,6 +6600,10 @@
       "mechanism_upgrade": "test/spend.test.mjs::chmod 000 on the log root PARENT is a typed deny, not \"no logs\"",
       "distinct_from": {
         "F-191": "F-191 is WHERE the root path comes from: the agent's own environment chooses it, so a moved folder legitimately resolves elsewhere (C-07, open). F-208 is HOW a failed read of whatever root was chosen is reported: as $0 instead of a deny. Fixing F-208 does not decide F-191's trust question."
+      },
+      "answer_failed": {
+        "qid": "C-01.1",
+        "why": "C-01.1 made an unreadable subdirectory inside the log root fail closed, but stopped at the walk: an unreachable root itself still took the no-logs-yet branch, and no red-first case removed the root."
       }
     },
     {
@@ -6627,6 +6635,10 @@
       "mechanism_upgrade": "test/kill-switch.test.mjs::resume with nothing halted never enters the write path (F-209)",
       "distinct_from": {
         "F-49": "F-49 is unlock erasing a live halt through the manual override path — a lost update past the mutual exclusion. F-209 is resume's confirmation gate keyed to a read taken OUTSIDE the lock: nothing is lost or overwritten; the wrong thing is that the write path (which itself locks correctly) was reachable with no person in the loop. Fixing F-209 does not touch F-49's override semantics."
+      },
+      "answer_failed": {
+        "qid": "C-11.1",
+        "why": "C-11.1 settled who may lift a halt (a person at a terminal), not when the decision is taken: the read that decided nothing was halted ran outside the lock, so a halt landing in between was lifted."
       }
     },
     {
@@ -6658,6 +6670,10 @@
         "F-191": "F-191 is where the log folder is found (the agent’s environment chooses the root). F-210 is when a line inside whatever folder was found counts: the timestamp field chooses the cap window. Same class, different trusted field — fixing either leaves the other open.",
         "F-125": "F-125 is the MCP caller stating its own cost figure into the books. F-210 is a log line's time field choosing its bucket: the amount is genuine, the day is authored.",
         "F-205": "F-205 pinned the FUTURE direction (ts > now books to the observation day, flagged). F-210 contests F-205's sweep ruling for the PAST direction, which F-205 explicitly left as 'no follow-up needed' — this entry is that follow-up, filed because the justification fails on a fresh install or past the index horizon."
+      },
+      "answer_failed": {
+        "qid": "C-07.1",
+        "why": "C-07.1 bounded agent-written future timestamps but treated a past date as honest history, so a line stamped into an already-closed day booked outside every cap window still open."
       }
     }
   ]
