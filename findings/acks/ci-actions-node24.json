@@ -1,0 +1,66 @@
+{
+  "version": 2,
+  "branch": "ci/actions-node24",
+  "answers": {
+    "C-01.1": {
+      "answer": "A workflow folder with no uses: lines at all refuses ('no uses: lines found') instead of reading as a clean pass, and an action that is absent from the Node 24 table is refused rather than waved through.",
+      "guard": "test/action-pins.test.mjs::a workflow set with no uses: lines refuses instead of passing"
+    },
+    "C-01.2": {
+      "answer": "Deleting the release-tag comment or shortening the SHA on any one line turns the test red; I planted both on the real ci.yml and the pin test failed each time, so neither part of a pin is optional.",
+      "guard": "test/action-pins.test.mjs::a SHA without its release tag comment, or a short SHA, is refused"
+    },
+    "C-02.1": {
+      "answer": "The workflow files come from readdirSync of .github/workflows (.yml and .yaml) and every uses: line in them is read. NODE24_FROM is a hand table, but its completeness is enforced: an action used anywhere and missing from it is refused.",
+      "guard": "test/action-pins.test.mjs::an action missing from the Node 24 table is refused"
+    },
+    "C-02.2": {
+      "answer": "All eleven uses: lines were bumped (ten in ci.yml, one in pr-review.yml); git ls-files shows no composite action or other YAML that runs actions. The one-pin-per-action rule catches any copy a later bump leaves behind.",
+      "guard": "test/action-pins.test.mjs::a half-done bump — two pins of one action — is refused"
+    },
+    "C-03.1": {
+      "answer": "A clean planted workflow passes first, so each refusal test fails only from its planted fault; each asserts exactly one problem and its message. Seven faults planted in the real files and the test's own rules were all killed.",
+      "guard": "test/action-pins.test.mjs::a clean planted workflow passes, so the refusals below come from the planted fault (control)"
+    },
+    "C-03.2": {
+      "answer": "The control counts raw 'uses:' occurrences in each workflow file and asserts the reader parsed every one, and that the real files hold more than zero, so a reader that silently skips '- uses:' lines cannot pass.",
+      "guard": "test/action-pins.test.mjs::the reader sees every uses: line in every workflow file (control)"
+    },
+    "C-03.3": {
+      "answer": "The main test reads the real workflow files, not a record of the bump: leaving any action on v4 (Node 20), tag-only or pinned two ways turns it red, whatever the PR text or the commit message claim.",
+      "guard": "test/action-pins.test.mjs::every action in .github/workflows is pinned to a full SHA with its tag, one pin per action, at a Node 24 major"
+    },
+    "C-04.1": {
+      "answer": "The bump changes no job, timeout or matrix, so each commit's runner-minutes stay under the ceiling the cost test already asserts; the new test reads a few small files with anchored line regexes and no network.",
+      "guard": "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget"
+    },
+    "C-05.1": {
+      "answer": "No docs change; the only prose is the test header and the PR body. Its one factual claim, that both actions run on Node 24 from v5, is the NODE24_FROM table, and a v4 pin is refused by the test against it.",
+      "guard": "test/action-pins.test.mjs::an action still on its Node 20 major is refused"
+    },
+    "C-05.2": {
+      "answer": "Each refusal names the file and line plus the pin it saw, and for a mixed pin the other file:line and its pin, so whoever reads the red test knows which line to change to what; the half-bump test asserts that pair.",
+      "guard": "test/action-pins.test.mjs::a half-done bump — two pins of one action — is refused"
+    },
+    "C-09.1": {
+      "answer": "Runner side: v5+ needs runner 2.327.1+, which GitHub-hosted runners have; sakk has no packageManager field or lockfile, so setup-node's automatic cache stays off; checkout v6+ keeps credentials in a separate file and our only git use is fetch of the base. The test resolves the repo from its own path, not cwd.",
+      "guard": "test/action-pins.test.mjs::every action in .github/workflows is pinned to a full SHA with its tag, one pin per action, at a Node 24 major"
+    },
+    "C-09.2": {
+      "answer": "It runs where it matters on this PR itself: every job of this PR's CI uses the new checkout and setup-node, so a broken action fails this PR before merge. The test runs under npm test (test/*.test.mjs), hence in the gate, pre-push and CI.",
+      "guard": "test/action-pins.test.mjs::the reader sees every uses: line in every workflow file (control)"
+    },
+    "C-10.1": {
+      "answer": "Pinning by SHA was only a habit before; now npm test, run by the gate, the pre-push hook and CI, fails when a pin is tag-only, mixed, or on a Node 20 major, so the rule no longer lives in text alone.",
+      "guard": "test/action-pins.test.mjs::a tag-only pin is refused"
+    },
+    "C-10.2": {
+      "answer": "Every workflow file is read through the folder listing, so a new workflow, a reusable-workflow uses: line or a web-UI edit meets the same rule on its own PR; only local ./ actions are exempt, because the commit itself pins them.",
+      "guard": "test/action-pins.test.mjs::a clean planted workflow passes, so the refusals below come from the planted fault (control)"
+    },
+    "C-16.1": {
+      "answer": "No: one model (Claude Opus 5.5) wrote and checked this change and no independent reviewer has run on it; the PR says so. What does not rest on my word is this PR's own CI, which runs every job on the new actions.",
+      "guard": "test/action-pins.test.mjs::an action still on its Node 20 major is refused"
+    }
+  }
+}
