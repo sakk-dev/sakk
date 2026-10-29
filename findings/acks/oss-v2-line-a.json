@@ -4,7 +4,14 @@
   "answers": {
     "C-05.1": {
       "answer": "本线只在 docs/README 增补与守卫实际判定一致的句子，每条新描述都对应 guard/classify 回归测试里先红后绿的断言（不可静态解析的展开判 ask、.env 变读法判 secret.read），不写没有测试背书的承诺。",
-      "guard": "none: 本提交新增的检测器测试尚未落地，落地后 guard 更新为 test/guard.test.mjs 的具体测试名"
+      "guard": "none: 本提交新增的检测器测试尚未落地，落地后 guard 更新为 test/guard.test.mjs 的具体测试名",
+      "revisions": [
+        {
+          "finding": "F-176",
+          "answer": "检测器已落地：docs/README 的边界描述与守卫判定由 release 钉子和 guard 检测器双向锁定，描述的每个命令形态都有先红后绿的断言。",
+          "guard": "test/guard.test.mjs::an unresolved variable or brace expansion anywhere in a command is constructed (F-176)"
+        }
+      ]
     },
     "C-05.2": {
       "answer": "本线不新增 CLI 数字输出或退出码；hook 的 deny/ask 理由沿用 reasonOf 既有路径，新增判定只复用既有 action 词汇 secret.read 与 shell.constructed，策略文件已有对应规则，用户照理由行动即可生效。",
@@ -12,15 +19,36 @@
     },
     "C-10.1": {
       "answer": "类级规则（静态解析不了的变量展开/花括号展开/命令替换一律 ask；密钥路径出现在任意命令的任意参数位按 secret.read）由 classify/guard 单元测试钉死，pre-commit 跑 findings-ledger 测试强制台账 guard 字段可解析，不靠文档约定执行。",
-      "guard": "none: 检测器随本提交落地，落地前以此说明占位，提交前核对测试名可解析"
+      "guard": "none: 检测器随本提交落地，落地前以此说明占位，提交前核对测试名可解析",
+      "revisions": [
+        {
+          "finding": "F-203",
+          "answer": "两条类级规则的检测器均已落地并可解析：展开一律 ask 由 F-176 检测器钉死，任意参数位的密钥名按 secret.read 由 F-203 检测器钉死，台账 guard 字段经 findings-ledger 测试强制解析。",
+          "guard": "test/secret-guard.test.mjs::K-SEC-049/K-SEC-050 a secret filename inside an upload reference, git path, copy or mount is denied"
+        }
+      ]
     },
     "C-10.2": {
       "answer": "修在 shellActions/toDecisions 这一层，claude-code、cursor、codex 三个 agent 的 shell 事件走同一 classifier；Bash/PowerShell/Monitor 与 sh -c 递归、env/sudo 包装路径同样过这段代码，测试里专门加包装器与子 shell 组合用例防旁路。",
-      "guard": "none: 旁路用例（包装器、子 shell、xargs）写进本提交新增测试，落地前占位"
+      "guard": "none: 旁路用例（包装器、子 shell、xargs）写进本提交新增测试，落地前占位",
+      "revisions": [
+        {
+          "finding": "F-176",
+          "answer": "旁路用例已落地：包装器/子 shell/展开组合在 guard 检测器里断言，三个 agent 的 shell 事件共用这条 classifier 路径。",
+          "guard": "test/guard.test.mjs::wrappers are unwrapped before the command is named"
+        }
+      ]
     },
     "C-01.1": {
       "answer": "$VAR 在静态期取不到值正是输入缺失情形：现状把它当字面路径解析后放行，修复把含不可解析展开的段改判 shell.constructed→ask，缺失即保守；密钥名由变量拼出同样落到 ask 而不是滑进默认 allow。",
-      "guard": "none: 缺失即 ask 的断言在本提交新增的红先行测试里，落地前占位说明"
+      "guard": "none: 缺失即 ask 的断言在本提交新增的红先行测试里，落地前占位说明",
+      "revisions": [
+        {
+          "finding": "F-176",
+          "answer": "缺失即保守已落地：不可解析展开改判 constructed→ask 的断言在 F-176 检测器里，钩子层断言 ask 不降级既有 deny。",
+          "guard": "test/guard.test.mjs::a guard-state, outside-repo or destructive-git target held in a shell variable or brace is asked, never allowed (F-176)"
+        }
+      ]
     },
     "C-04.1": {
       "answer": "新增的展开检测是逐字符一次判断加每词一次有界正则（词长受 MAX_COMMAND 64KiB 上限约束，正则无回溯嵌套），不引入新的循环或 IO；超限输入仍走 HOOK_INPUT_TOO_LARGE 拒绝路径，由计数上限而非秒表断言，cost-bounds 的 shellSegments 条目继续成立。",
@@ -104,7 +132,14 @@
     },
     "C-01.2": {
       "answer": "新检测器先在未修复代码上跑红并把红基线一行写进提交说明；删除修复代码这些测试必然再红，台账条目 guard 字段指向这些测试且由 findings-ledger.test.mjs 校验可解析，检查被删会在 pre-commit 处失败。",
-      "guard": "none: 红基线将记录在提交说明里，测试名落地后由台账 guard 字段钉住"
+      "guard": "none: 红基线将记录在提交说明里，测试名落地后由台账 guard 字段钉住",
+      "revisions": [
+        {
+          "finding": "F-203",
+          "answer": "红先行已完成并入账：F-176 与 F-203 的检测器都先在未修复代码上红（红基线行在各自提交说明里），台账 F-176/F-203 的 guard 字段指向这些测试并由 findings-ledger 测试强制解析。",
+          "guard": "test/secret-guard.test.mjs::K-SEC-049/K-SEC-050 a secret filename inside an upload reference, git path, copy or mount is denied"
+        }
+      ]
     }
   }
 }
