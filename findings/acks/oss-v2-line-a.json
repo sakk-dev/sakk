@@ -1,0 +1,82 @@
+{
+  "version": 2,
+  "branch": "oss/v2-line-a",
+  "answers": {
+    "C-05.1": {
+      "answer": "本线只在 docs/README 增补与守卫实际判定一致的句子，每条新描述都对应 guard/classify 回归测试里先红后绿的断言（不可静态解析的展开判 ask、.env 变读法判 secret.read），不写没有测试背书的承诺。",
+      "guard": "none: 本提交新增的检测器测试尚未落地，落地后 guard 更新为 test/guard.test.mjs 的具体测试名"
+    },
+    "C-05.2": {
+      "answer": "本线不新增 CLI 数字输出或退出码；hook 的 deny/ask 理由沿用 reasonOf 既有路径，新增判定只复用既有 action 词汇 secret.read 与 shell.constructed，策略文件已有对应规则，用户照理由行动即可生效。",
+      "guard": "none: 不改输出口径，无新增数字可验，依赖既有 policy.test.mjs 与 guard.test.mjs 回归"
+    },
+    "C-10.1": {
+      "answer": "类级规则（静态解析不了的变量展开/花括号展开/命令替换一律 ask；密钥路径出现在任意命令的任意参数位按 secret.read）由 classify/guard 单元测试钉死，pre-commit 跑 findings-ledger 测试强制台账 guard 字段可解析，不靠文档约定执行。",
+      "guard": "none: 检测器随本提交落地，落地前以此说明占位，提交前核对测试名可解析"
+    },
+    "C-10.2": {
+      "answer": "修在 shellActions/toDecisions 这一层，claude-code、cursor、codex 三个 agent 的 shell 事件走同一 classifier；Bash/PowerShell/Monitor 与 sh -c 递归、env/sudo 包装路径同样过这段代码，测试里专门加包装器与子 shell 组合用例防旁路。",
+      "guard": "none: 旁路用例（包装器、子 shell、xargs）写进本提交新增测试，落地前占位"
+    },
+    "C-01.1": {
+      "answer": "$VAR 在静态期取不到值正是输入缺失情形：现状把它当字面路径解析后放行，修复把含不可解析展开的段改判 shell.constructed→ask，缺失即保守；密钥名由变量拼出同样落到 ask 而不是滑进默认 allow。",
+      "guard": "none: 缺失即 ask 的断言在本提交新增的红先行测试里，落地前占位说明"
+    },
+    "C-04.1": {
+      "answer": "新增的展开检测是逐字符一次判断加每词一次有界正则（词长受 MAX_COMMAND 64KiB 上限约束，正则无回溯嵌套），不引入新的循环或 IO；超限输入仍走 HOOK_INPUT_TOO_LARGE 拒绝路径，由计数上限而非秒表断言，cost-bounds 的 shellSegments 条目继续成立。",
+      "guard": "test/cost-bounds.test.mjs::every exported function shows how its work is bounded"
+    },
+    "C-02.1": {
+      "answer": "本修复刻意用结构规则替代逐词补列：展开检测写在 shellSegments 分词层，对每条命令的每个词一次判定，不列命令名单；密钥碎片扫描对任意命令的任意参数按 =@: 切片统一适用。仅剩两个闭集——BINDERS（只绑定名字不读文件的 shell 内建）与凭据打印命令表——都按语义封闭、在测试里逐条钉死，新增成员必须连测试一起改。",
+      "guard": "test/guard.test.mjs::an unresolved variable or brace expansion anywhere in a command is constructed (F-176)"
+    },
+    "C-02.2": {
+      "answer": "同一规则铺到所有同类路径：F-176 在分词层打旗，READERS/git/rm/重定向/包装器/sh -c 递归全部继承；F-203 把整词密钥扫描从 else 兜底挪到判定链之后，已建模分支（curl -o、tar、mv）同样生效，碎片扫描一条规则覆盖上传引用、git 版本路径、scp 远端、docker 挂载，/proc environ 进 isSecretPath 后 Read 工具、dd、cd 相对路径经 toDecisions 一并覆盖。",
+      "guard": "none: F-203 检测器随下一提交落地，落地后更新为 test/secret-guard.test.mjs 的 K-SEC-049/050 测试名"
+    },
+    "C-08.1": {
+      "answer": "多名同物按单一规则收敛：/proc/self、/proc/<pid>、/proc/self/task/N 的 environ 由一个正则在 basename 之前统一判定；碎片经 abs() 按本段自己的 cd 解析，相对与绝对同名同判；变量/花括号这种「第二个名字」不再按未展开拼写判读，而是整条命令转 constructed→ask，杜绝换名绕过。",
+      "guard": "none: F-203 检测器随下一提交落地，落地后更新为 test/secret-guard.test.mjs 的 K-SEC-051 测试名"
+    },
+    "C-11.1": {
+      "answer": "本改动不新增任何写入或状态，只加宽读判定（secret.read）与 ask 下限（shell.constructed）；判定合成仍是最坏者胜，新增的 ask 永远不能把既有 deny 降级，测试专门断言 deny 压过 ask（x=1 后跟删 ~/.sakk 仍 deny）；能触发新判定的只有命令文本本身，无跨界写者。",
+      "guard": "test/guard.test.mjs::a guard-state, outside-repo or destructive-git target held in a shell variable or brace is asked, never allowed (F-176)"
+    },
+    "C-09.1": {
+      "answer": "检测纯词法、只看命令文本：不依赖仓库顶、PATH、git config，也不依赖文件真实存在——realOf 对不存在路径已有回退，测试在 mkdtemp 沙箱 HOME 下跑（macOS 根本没有 /proc），证明 deny 不靠目标文件存在才成立；两种状态（文件在/不在、仓库内/外）都有用例。",
+      "guard": "none: F-203 检测器随下一提交落地，落地后更新为 test/secret-guard.test.mjs 的 K-SEC-051 测试名"
+    },
+    "C-09.2": {
+      "answer": "改动落在 shellActions/isSecretPath/toDecisions 这条唯一分类路径上，claude-code、cursor、codex 三个 agent 的 shell 事件与 Read 工具都经它；测试不是只验配置，而是用 evaluate(normalize(agent,payload)) 驱动真实 hook 在沙箱世界里实际开火，含 Read 工具 payload 用例。",
+      "guard": "none: F-203 检测器随下一提交落地，落地后更新为 test/secret-guard.test.mjs 的 K-SEC-050 测试名"
+    },
+    "C-06.1": {
+      "answer": "README 限制段的每条主张都来自守卫实际行为：release 测试把 README 里点名的每个命令形态与守卫测试断言的是同一字符串、同一判定（展开→ask、字面 glob→allow），读者看到的来源就是测试观察到的来源，不借更强的口径；叙述里不写测试没覆盖的承诺。",
+      "guard": "test/release.test.mjs::P-ACC-003 the README documents the five REQ-P04 limits, the confirmation limit and the five limits of the core"
+    },
+    "C-03.1": {
+      "answer": "红先行已执行：六个新增/翻转测试先在未修复代码上跑红，红因与声称一致（本应 ask/deny 的形态实际 allow），红基线行写进提交说明；把 expands 旗标或碎片扫描删掉这些测试必然重新变红，失败原因就是名字声称的原因。",
+      "guard": "test/guard.test.mjs::an unresolved variable or brace expansion anywhere in a command is constructed (F-176)"
+    },
+    "C-03.2": {
+      "answer": "测试驱动真实 hook（evaluate(normalize(agent,payload))）并断言 agent 真正读到的 verdict，不是查名字；对照组齐全——写明的形态仍 deny、仓库外 glob 不 allow、普通邻居命令仍 allow、deny 压过 ask 的组合单独断言，证明观察到的是判定本身。",
+      "guard": "test/guard.test.mjs::a guard-state, outside-repo or destructive-git target held in a shell variable or brace is asked, never allowed (F-176)"
+    },
+    "C-03.3": {
+      "answer": "检查钉在会跑的东西上：README 钉子解析的是当下 README 文本与 forms 列表逐词比对，守卫行为回归时检测器测试自己变红，不是只在文书缺失时才失败；台账 guard 字段由 findings-ledger 测试强制解析到存在的测试名，删检查即提交失败。",
+      "guard": "test/release.test.mjs::P-ACC-003 the README documents the five REQ-P04 limits, the confirmation limit and the five limits of the core"
+    },
+    "C-07.1": {
+      "answer": "被判定的命令文本正是受约束 agent 的敌意输入，全程按不可信处理：静态解析不了的展开一律 ask 不默认放行，引号/转义变体在分词层统一判定，碎片扫描不信任参数的拼写形态；没有任何操作员文本或手编文件在新路径里被当真。",
+      "guard": "test/secret-guard.test.mjs::K-SEC-043/K-SEC-045 spelled-out secret reads are denied, constructed ones asked, run-time-picked names allowed"
+    },
+    "C-07.2": {
+      "answer": "ask 下限由策略规则 shell.constructed→require_approval 落地，清障的是人而不是被约束的 agent：agent 换拼写回不到 allow（分词层旗标），判定最坏者胜使它也不能借 ask 降级既有 deny；守卫状态文件的写入仍被拒，agent 改不了规则本身。",
+      "guard": "test/guard.test.mjs::a guard-state, outside-repo or destructive-git target held in a shell variable or brace is asked, never allowed (F-176)"
+    },
+    "C-01.2": {
+      "answer": "新检测器先在未修复代码上跑红并把红基线一行写进提交说明；删除修复代码这些测试必然再红，台账条目 guard 字段指向这些测试且由 findings-ledger.test.mjs 校验可解析，检查被删会在 pre-commit 处失败。",
+      "guard": "none: 红基线将记录在提交说明里，测试名落地后由台账 guard 字段钉住"
+    }
+  }
+}

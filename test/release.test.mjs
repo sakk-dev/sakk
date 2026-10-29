@@ -285,9 +285,10 @@ describe('P0 UAT backfill — install & accuracy (P-INS / P-ACC)', () => {
     };
     const constructed = words('It reads a command as written.');
     assert.match(constructed, /can only be asked or\s+denied/, 'REQ-P04 1: constructed → ask/deny');
-    // the F-173 boundary (D5) and the F-176 gap: each form named here is pinned
-    // as allowed in test/secret-guard.test.mjs or test/guard.test.mjs (GAP
-    // G-STATE-001), so the README and the guard cannot drift apart.
+    // the F-173 boundary (D5), narrowed by F-176: a variable or brace
+    // expansion is asked, never allowed (test/guard.test.mjs), while a glob or
+    // a program's own run-time pick stays allowed (test/secret-guard.test.mjs).
+    // Each form is named here so the README and the guard cannot drift apart.
     for (const form of [
       'cat .e*',
       'cat .e{nv,x}',
@@ -300,6 +301,11 @@ describe('P0 UAT backfill — install & accuracy (P-INS / P-ACC)', () => {
     ]) {
       assert.ok(constructed.includes(form), `the boundary names ${form}`);
     }
+    assert.match(
+      constructed,
+      /asked, never\s+allowed/,
+      'F-176: an expansion-held form is asked, never allowed',
+    );
     assert.match(words('`@` references skip the hook.'), /@-mention/, 'REQ-P04 2');
     assert.match(
       words('The cap stops the next call, not the one that crosses it.'),

@@ -23,8 +23,9 @@ export class ClassifyError extends Error {
 
 /**
  * Split a command into segments (arrays of words) outside quotes, collecting
- * output-redirect targets and whether anything opaque (heredoc, command
- * substitution) appears. Linear in the length; no backtracking.
+ * output-redirect targets, whether anything opaque (heredoc, command
+ * substitution) appears, and whether a variable or brace expansion the guard
+ * cannot resolve statically does (F-176). Linear in the length; no backtracking.
  */
 export function shellSegments(cmd) {
   const segs = [];
@@ -34,11 +35,15 @@ export function shellSegments(cmd) {
   let inWord = false;
   let q = null;
   let opaque = false;
+  let expands = false; // a variable or brace expansion the guard cannot resolve (F-176)
+  let uq = ''; // the word's unquoted text: quoted or escaped braces never expand
   let wantTarget = false;
   let heredoc = null; // delimiter waiting for the end of the line
   let hasRedirect = false;
   const endWord = () => {
     if (inWord) {
+      // a brace with a comma or range in the word's unquoted text expands (F-176)
+      if (/\{[^{}]*(,|\.\.)[^{}]*\}/.test(uq)) expands = true;
       if (wantTarget) {
         redirects.push({ seg: segs.length, target: w }); // resolved in its own segment's directory
         wantTarget = false;
@@ -46,6 +51,7 @@ export function shellSegments(cmd) {
       } else words.push(w);
     }
     w = '';
+    uq = '';
     inWord = false;
   };
   const endSeg = () => {
@@ -66,6 +72,7 @@ export function shellSegments(cmd) {
       else if (c === '\\' && i + 1 < cmd.length) w += cmd[++i];
       else {
         if (c === '`' || (c === '$' && cmd[i + 1] === '(')) opaque = true;
+        else if (c === '$' && /[\w{@*#?$!-]/.test(cmd[i + 1] ?? '')) expands = true;
         w += c;
       }
       continue;
@@ -131,6 +138,7 @@ export function shellSegments(cmd) {
     if (c === '>') {
       if (inWord && /^\d+$/.test(w)) {
         w = '';
+        uq = '';
         inWord = false;
       } else endWord();
       if (cmd[i + 1] === '>' || cmd[i + 1] === '|') i++;
@@ -154,8 +162,12 @@ export function shellSegments(cmd) {
     if (c === '|' || c === '&' || c === ';' || c === '(' || c === ')' || c === '{' || c === '}') {
       if ((c === '{' || c === '}') && inWord) {
         w += c;
+        uq += c;
         continue;
       }
+      // a word-start brace holding anything but a lone `}` (a `{}` placeholder,
+      // a `{ group; }`) is a brace expansion the shell performs later (F-176)
+      if (c === '{' && /[^\s}]/.test(cmd[i + 1] ?? '')) expands = true;
       endSeg();
       continue;
     }
@@ -163,12 +175,14 @@ export function shellSegments(cmd) {
       endWord();
       continue;
     }
+    if (c === '$' && /[\w{@*#?$!-]/.test(cmd[i + 1] ?? '')) expands = true;
     w += c;
+    uq += c;
     inWord = true;
   }
   endSeg();
   if (q !== null) opaque = true; // unterminated quote: cannot be read
-  return { segs, redirects, opaque };
+  return { segs, redirects, opaque, expands };
 }
 
 // --- scopes -------------------------------------------------------------------
@@ -330,8 +344,12 @@ export function shellActions(
     );
   const out = [];
   const add = (action, path) => out.push(path === undefined ? { action } : { action, path });
-  const { segs, redirects, opaque } = shellSegments(cmd);
+  const { segs, redirects, opaque, expands } = shellSegments(cmd);
   if (opaque) add('shell.constructed'); // command substitution, a heredoc or an unterminated quote
+  // a variable or brace expansion the guard cannot resolve statically: the
+  // shell substitutes it after the hook judged the written word, so the
+  // command is constructed — asked, never allowed (F-176)
+  if (expands) add('shell.constructed');
   // curl … | sh, base64 -d | bash: the text that runs is built at run time
   if (/\|\s*(sudo\s+)?(sh|bash|zsh|dash|python[\d.]*|node|perl|ruby)\b/.test(cmd))
     add('shell.constructed');

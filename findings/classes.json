@@ -223,15 +223,12 @@
       "detectors": [
         "test/ledger.test.mjs::F-85: a ledger reached through a symlinked or hard-linked FILE refuses",
         "eval/__tests__/stranger-regressions.test.mjs::relative --out stranger",
-        "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)"
+        "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)",
+        "test/guard.test.mjs::a guard-state, outside-repo or destructive-git target held in a shell variable or brace is asked, never allowed (F-176)"
       ],
       "stopline": {
         "after": "F-186",
-        "waiver": {
-          "by": "the maintainer (owner)",
-          "on": "2026-10-28",
-          "record": "docs/DECISIONS.md D10: the owner deferred every open P0 UAT failure to V2; the class detector is V2 work in docs/V2-BACKLOG.md"
-        }
+        "detector": "test/guard.test.mjs::a guard-state, outside-repo or destructive-git target held in a shell variable or brace is asked, never allowed (F-176)"
       }
     },
     {

@@ -5600,7 +5600,7 @@
       "class": "C-08",
       "title": "A delete, write or flag held in a shell variable is judged by the bare `$name`, so `f=~/.sakk/config.json; rm $f`, `d=~; rm -rf $d` and `o=--force; git push $o` are allowed while the same command written out is denied — the agent can remove its own cap and the guard state the D4 confirmation rests on",
       "symptom": "Over the installed hook (bin/sakk.mjs hook, HOME outside the project), `rm ~/.sakk/config.json`, `echo {} > ~/.sakk/config.json`, `rm -rf ~` and `git push --force origin main` are each denied, but `f=~/.sakk/config.json; rm $f`, `f=~/.sakk/config.json; echo {} > $f`, `d=~; rm -rf $d`, `o=--force; git push $o origin main` and `git push --for{ce,} origin main` are each allowed with no reason. The README's cap paragraph promised that the agent cannot silently raise its own cap; with a variable it can delete or blank the config that holds the cap.",
-      "evidence": "test test/guard.test.mjs 'GAP G-STATE-001 …' runs the real CLI hook (spawnSync bin/sakk.mjs hook --agent claude-code) in a mkdtemp world with HOME and the repo apart: the written-out forms return deny; a glob outside the project (`rm ~/.sak*/config.json`) is not allowed; the five variable/brace forms return allow (empty stdout). Found while running the F-173 sweep for the symmetric write/delete/exec case (probe over normalize+evaluate, 2026-10-28).",
+      "evidence": "test test/guard.test.mjs 'a guard-state, outside-repo or destructive-git target held in a shell variable or brace is asked, never allowed (F-176)' runs the real CLI hook (spawnSync bin/sakk.mjs hook --agent claude-code) in a mkdtemp world with HOME and the repo apart: the written-out forms return deny; a glob outside the project (`rm ~/.sak*/config.json`) is not allowed; before the fix the five variable/brace forms returned allow (empty stdout — red baseline re-run 2026-10-29), after it they return ask, and a deny beside an expansion still wins. Found while running the F-173 sweep for the symmetric write/delete/exec case (probe over normalize+evaluate, 2026-10-28); D11 (2026-10-29) decided ask, never allow.",
       "direct_cause": "shellActions takes each argument and redirect target as a literal path or flag; `$f` is resolved against the cwd as a relative name inside the project and `$o` / `--for{ce,}` match no destructive flag, so protect-guard-state, deny-rm-outside-repo, deny-delete-protected and shell-destructive never see the target the shell substitutes before the command runs.",
       "why": [
         "The guard's write, delete and destructive-git rules were built to recognise a protected target by the path or flag written in the command, on the assumption that the word the agent types is the word the command receives.",
@@ -5611,18 +5611,32 @@
       "dt": ["DT-SPEC"],
       "rc": ["RC-01"],
       "es": ["ES-04"],
-      "sweep": "Not swept — the fix is a pending product decision (the maintainer): keep it as a documented boundary like F-173 (D5), or ask a person whenever a delete or write target, or a git push argument, holds an unresolved variable or brace (fail closed, more asks on ordinary commands such as rm -rf $TMPDIR/x). Once decided, sweep every target-keyed rule (protect-guard-state, protect-guard-state-delete, deny-rm-outside-repo, deny-delete-protected, shell-destructive, ask-write-outside, the deploy rules) for the same variable/brace blind spot.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept per D11 (ask, never allow): the expansion flag is raised in shellSegments, the single tokenizer every target-keyed rule reads, so protect-guard-state, protect-guard-state-delete, deny-rm-outside-repo, deny-delete-protected, shell-destructive, ask-write-outside and the deploy rules all inherit it — a variable or brace expansion in any argument, redirect target, flag, double-quoted word or wrapped (sudo/env) command makes the command shell.constructed. Sibling paths exercised in the detector: redirect targets, flags, word-start braces, double quotes, sh -c recursion; the non-expanding look-alikes stay unflagged (single-quoted and backslash-escaped text, the find placeholder, fd redirects, a trailing dollar sign). Deny still outranks the new ask (worst-wins), asserted in the detector; the F-173 run-time-pick boundary (glob, recursive grep, find -exec, xargs) is deliberately kept allowed and re-pinned in test/secret-guard.test.mjs. no follow-up needed: every target-keyed rule reads the same tokenizer flag.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "instance_fix": "this commit",
+      "guard": "test/guard.test.mjs::an unresolved variable or brace expansion anywhere in a command is constructed (F-176)",
       "areas": ["src/classify.mjs", "src/hook.mjs", "README.md", "docs/GUARD.md", "docs/SPEND.md"],
       "mechanism_gap": "The guard-state and destructive-command detectors (test/guard.test.mjs 'the agent cannot write the policy it is judged by', the shell-destructive cases, test/spend.test.mjs 'the agent cannot raise its own cap…') assert denies on written-out targets only; none drives a protected target or flag through a shell variable or brace, so a word the classifier cannot resolve but the shell substitutes was outside every existing guard detector.",
-      "mechanism_upgrade": "test/guard.test.mjs::GAP G-STATE-001 a guard-state, outside-repo or destructive-git target held in a shell variable is allowed",
+      "mechanism_upgrade": "test/guard.test.mjs::a guard-state, outside-repo or destructive-git target held in a shell variable or brace is asked, never allowed (F-176)",
       "distinct_from": {
         "F-173": "F-173 is a READ of a secret inside the project whose name the shell picks (glob, brace, variable); D5 keeps it as a documented boundary. F-176 is a DELETE, WRITE or destructive FLAG held in a variable, reaching guard state, the home folder or a force push — protections the cap and the D4 confirmation rest on. A glob outside the project is already refused (its literal prefix is outside), so F-176 is the variable surface only; deciding F-173 did not decide it.",
         "F-183": "F-183 is a protected name written out in full in another case; F-176 is a target held in a shell variable. The variable case needs expansion before judging, the case variant needs case folding.",
         "F-184": "F-184 is the git force flag written directly in a spelling the rule does not list; F-176 is a flag or target substituted from a variable. Option parsing fixes F-184, expansion fixes F-176.",
         "F-186": "F-186 is a symlink whose name differs from the secret file it points at; F-176 is a shell variable. A link is resolved by the file system, a variable by the shell."
-      }
+      },
+      "corrections": [
+        {
+          "field": "evidence",
+          "from": "test test/guard.test.mjs 'GAP G-STATE-001 …' runs the real CLI hook (spawnSync bin/sakk.mjs hook --agent claude-code) in a mkdtemp world with HOME and the repo apart: the written-out forms return deny; a glob outside the project (`rm ~/.sak*/config.json`) is not allowed; the five variable/brace forms return allow (empty stdout). Found while running the F-173 sweep for the symmetric write/delete/exec case (probe over normalize+evaluate, 2026-10-28).",
+          "why": "D11 implemented 2026-10-29: the GAP pin was flipped into the enforcing detector, so the evidence now records the red baseline and the enforced ask under the test's new name; the original red observation is preserved verbatim inside the new text."
+        },
+        {
+          "field": "mechanism_upgrade",
+          "from": "test/guard.test.mjs::GAP G-STATE-001 a guard-state, outside-repo or destructive-git target held in a shell variable is allowed",
+          "why": "the GAP test that pinned the allow was rewritten into the detector that enforces ask-never-allow when D11 was implemented; same file and world, the name changed with the flipped assertions."
+        }
+      ]
     },
     {
       "id": "F-177",

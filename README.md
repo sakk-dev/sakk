@@ -385,14 +385,14 @@ The guard and the cap:
 
 - **It reads a command as written.** A command built at run time — `eval`,
   backticks, `bash -c "$X"`, `python -c`, `source` — can only be asked or
-  denied, never judged by what it does. A file the shell or a program picks at
-  run time is judged by the name written in the command, so a read of `.env`
-  spelled any other way is allowed: a glob (`cat .e*`), a brace
-  (`cat .e{nv,x}`), a variable (`f=.env; cat $f`), `grep -r`,
-  `find … -exec cat`, `xargs`. The same holds for a write, a delete or a flag
-  held in a variable: `f=~/.sakk/config.json; rm $f` and
-  `o=--force; git push $o` are not caught. A script the agent runs is one
-  `shell.run` call.
+  denied, never judged by what it does. A variable or brace expansion anywhere
+  in a command counts: a read, write, delete or flag held in one —
+  `cat .e{nv,x}`, `f=.env; cat $f`, `f=~/.sakk/config.json; rm $f`,
+  `o=--force; git push $o` — is asked, never allowed. A file the shell or a
+  program picks at run time from literal text is still judged by the name
+  written in the command, so a read of `.env` spelled as a glob (`cat .e*`),
+  `grep -r`, `find … -exec cat` or `xargs` is allowed. A script the agent runs
+  is one `shell.run` call.
   Only isolation (a container) answers what a command does.
 - **`@` references skip the hook.** Files you @-mention in Claude Code are read
   without a tool call, so the guard never sees them.
