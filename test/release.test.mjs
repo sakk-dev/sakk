@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, relative } from 'node:path';
@@ -450,5 +450,159 @@ describe('P0 UAT backfill — install & accuracy (P-INS / P-ACC)', () => {
     // (P-INS-010), and that a denied call is blocked end-to-end in the product
     // (P-INS-011). These need a live Claude Code and are verified by hand.
     assert.ok(true, 'automatable half pinned; CC-side install/uninstall/fire verified manually');
+  });
+});
+
+/**
+ * V2 fix batch, line D — release honesty. Three detectors, each born red:
+ * F-175 (a real command advertised with a subcommand it does not have),
+ * F-111 (version, changelog and tag format telling different stories),
+ * F-199 (MIT-derived material shipping without its notice).
+ */
+describe('release honesty (V2 line D)', () => {
+  test('F-175 every multi-word sakk command in docs, specs and runtime strings is real', () => {
+    // The M5 test above catches `sakk <fake>`; this one catches `sakk prices
+    // update` — a REAL command advertised with a subcommand it does not have.
+    // The map below is pinned against bin/sakk.mjs in both directions, so it
+    // cannot drift from the source.
+    const SUBS = {
+      ledger: ['verify', 'export', 'reindex'],
+      cap: ['set', 'off'],
+      guard: ['install', 'uninstall'],
+      prices: [], // no subcommands — the advertised updater was retracted (F-175)
+    };
+    const literals = new Set(
+      [...read('bin/sakk.mjs').matchAll(/(?:sub|action) === '([a-z-]+)'/g)].map((m) => m[1]),
+    );
+    for (const [cmd, subs] of Object.entries(SUBS))
+      for (const s of subs)
+        assert.ok(literals.has(s), `SUBS says \`sakk ${cmd} ${s}\` exists; bin/sakk.mjs has no such literal`);
+    for (const lit of literals)
+      assert.ok(
+        Object.values(SUBS).some((subs) => subs.includes(lit)),
+        `bin/sakk.mjs handles a subcommand this test's map does not know: ${lit}`,
+      );
+    // Scan surface: command contexts (backticks) of every user-facing markdown
+    // file, and the full text of the shipped sources (their strings are what a
+    // user is told to run). The three governance records are excluded by name:
+    // docs/DECISIONS.md, docs/V2-BACKLOG.md and docs/RULES.md legitimately name
+    // a retracted command while recording its retraction.
+    const GOVERNANCE = new Set(['docs/DECISIONS.md', 'docs/V2-BACKLOG.md', 'docs/RULES.md']);
+    const mdFiles = [
+      'README.md',
+      'CHANGELOG.md',
+      ...readdirSync(join(ROOT, 'docs'))
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => `docs/${f}`),
+      ...readdirSync(join(ROOT, 'specs'), { recursive: true })
+        .map(String)
+        .filter((f) => f.endsWith('.md'))
+        .map((f) => `specs/${f}`),
+    ].filter((f) => !GOVERNANCE.has(f));
+    const srcFiles = [
+      'bin/sakk.mjs',
+      ...readdirSync(join(ROOT, 'src'))
+        .filter((f) => f.endsWith('.mjs'))
+        .map((f) => `src/${f}`),
+    ];
+    const offenders = [];
+    const check = (file, text) => {
+      for (const m of text.matchAll(/\bsakk ([a-z][a-z-]*) ([a-z][a-z-]*)\b/g))
+        if (m[1] in SUBS && !SUBS[m[1]].includes(m[2])) offenders.push(`${file}: sakk ${m[1]} ${m[2]}`);
+    };
+    for (const f of mdFiles) check(f, codeSpans(read(f)));
+    for (const f of srcFiles) check(f, read(f));
+    assert.deepEqual(
+      [...new Set(offenders)],
+      [],
+      'a doc, spec or runtime string advertises a subcommand the CLI does not have',
+    );
+    // control: the detector can fail — the retracted phrase is caught when put back
+    const probe = [];
+    const checkProbe = (file, text) => {
+      for (const m of text.matchAll(/\bsakk ([a-z][a-z-]*) ([a-z][a-z-]*)\b/g))
+        if (m[1] in SUBS && !SUBS[m[1]].includes(m[2])) probe.push(`${file}: sakk ${m[1]} ${m[2]}`);
+    };
+    checkProbe('probe', 'run `sakk prices update` to refresh');
+    assert.deepEqual(probe, ['probe: sakk prices update']);
+  });
+
+  test('F-111 the changelog, the package version and the tag format describe one release', () => {
+    const log = read('CHANGELOG.md');
+    const heads = [...log.matchAll(/^## \[([^\]]+)\](?: - (\d{4}-\d{2}-\d{2}))?\s*$/gm)].map(
+      (m) => ({ name: m[1], date: m[2] }),
+    );
+    assert.ok(heads.length >= 2, 'the changelog has [Unreleased] and at least one release');
+    assert.equal(heads[0].name, 'Unreleased', '[Unreleased] leads the changelog');
+    assert.equal(heads[0].date, undefined, '[Unreleased] carries no date');
+    const released = heads.slice(1);
+    for (const r of released) {
+      assert.match(r.name, /^\d+\.\d+\.\d+$/, `a released section is a plain semver: ${r.name}`);
+      assert.ok(r.date, `a released section carries its date: ${r.name}`);
+    }
+    const num = (v) => v.split('.').map(Number);
+    const gt = (a, b) => {
+      const [x, y] = [num(a), num(b)];
+      for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i];
+      return false;
+    };
+    for (let i = 1; i < released.length; i++)
+      assert.ok(
+        gt(released[i - 1].name, released[i].name),
+        `released versions descend: ${released[i - 1].name} then ${released[i].name}`,
+      );
+    const latest = released[0].name;
+    // one artifact: an empty [Unreleased] means the package IS the latest
+    // release; a loaded one means the version must already be bumped past it.
+    const unreleased = log
+      .slice(log.indexOf('## [Unreleased]') + '## [Unreleased]'.length, log.indexOf(`## [${latest}]`))
+      .trim();
+    if (unreleased === '')
+      assert.equal(pkg.version, latest, 'with an empty [Unreleased], package.json names the latest release');
+    else
+      assert.ok(
+        gt(pkg.version, latest),
+        `[Unreleased] holds entries, so package.json (${pkg.version}) must be bumped past ${latest}`,
+      );
+    // the link refs pin the tag-name format: v<semver>
+    const esc = (v) => v.replace(/\./g, '\\.');
+    assert.match(
+      log,
+      new RegExp(`^\\[Unreleased\\]: https://github\\.com/\\S+/compare/v${esc(latest)}\\.\\.\\.HEAD$`, 'm'),
+      'the Unreleased link compares from the v-prefixed latest tag',
+    );
+    for (const r of released)
+      assert.match(
+        log,
+        new RegExp(
+          `^\\[${esc(r.name)}\\]: https://github\\.com/\\S+/(?:releases/tag/v${esc(r.name)}|compare/v\\d+\\.\\d+\\.\\d+\\.\\.\\.v${esc(r.name)})$`,
+          'm',
+        ),
+        `the ${r.name} link ref names the v${r.name} tag`,
+      );
+  });
+
+  test('F-199 the NOTICE file ships and carries the MIT notices the package derives from', () => {
+    const notice = read('NOTICE');
+    assert.ok(packedFiles().includes('NOTICE'), 'NOTICE is in the npm package');
+    // the MIT licence requires its permission notice to travel with the
+    // material — once per derived source.
+    const mitCount = notice.match(/Permission is hereby granted, free of charge/g)?.length ?? 0;
+    assert.ok(mitCount >= 2, `NOTICE carries the MIT permission notice per derived source (found ${mitCount})`);
+    // gitleaks: NOTICE pins the same upstream tag+commit the generated rules pin
+    const pin = read('src/secret-rules.generated.mjs').match(/tag (v\d+\.\d+\.\d+) commit ([0-9a-f]{7,})/);
+    assert.ok(pin, 'the generated rules pin their upstream tag and commit');
+    assert.ok(
+      notice.includes(pin[1]) && notice.includes(pin[2]),
+      `NOTICE names the gitleaks source the rules were ported from (${pin[1]} ${pin[2]})`,
+    );
+    assert.match(notice, /Zachary Rice/, 'NOTICE carries the gitleaks copyright holder');
+    // LiteLLM: the shipped snapshot names its source; NOTICE credits it
+    assert.match(read('prices/snapshot.json'), /LiteLLM \(MIT/, 'the snapshot names its source and licence');
+    assert.match(notice, /LiteLLM/, 'NOTICE credits LiteLLM');
+    assert.match(notice, /Berri AI/, 'NOTICE carries the LiteLLM copyright holder');
+    // cc-safety-net: studied, not copied — the acknowledgment stays on the record
+    assert.match(notice, /cc-safety-net/, 'NOTICE records the cc-safety-net acknowledgment');
+    assert.match(notice, /No code was copied/, 'and says no code was copied');
   });
 });

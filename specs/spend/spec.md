@@ -15,7 +15,7 @@ The guard hook then stops the agent once today's spend reaches the cap:
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `sakk spend [--day YYYY-MM-DD] [--json]` | Today's (or that day's) spend by model, session and project, with the count of unpriced calls       |
 | `sakk cap set <usd>` / `sakk cap off`    | Sets the daily cap in `$SAKK_HOME/config.json`                                                      |
-| `sakk prices` / `sakk prices update`     | Shows the price table in use; updating it fetches the current upstream list (the only network call) |
+| `sakk prices`                            | Shows the price table in use (a fetching updater was retracted — F-175; edit `$SAKK_HOME/prices.json` by hand) |
 
 ## Source: Claude Code's logs
 
@@ -81,15 +81,18 @@ trimmed to the providers coding agents use. It records:
 - the licence notice.
 
 It stays under 256 KiB, the plugin-directory file limit.
-`sakk prices update` writes `$SAKK_HOME/prices.json`. It validates the
-schema, shows the diff and never edits the package. Owner decision 4,
-2026-10-21: a bundled snapshot plus a manual update, never a silent fetch.
+A newer table is applied by hand: copy `prices/snapshot.json` to
+`$SAKK_HOME/prices.json` and edit it; that file, when present, is used
+instead of the package snapshot, which is never edited. Owner decision 4,
+2026-10-21: a bundled snapshot plus a manual override, never a silent
+fetch. (A fetching updater subcommand was advertised but never built, and
+was retracted — F-175, D11 2026-10-29.)
 
 **Unknown model** (not in the table): the call is counted as **unpriced**.
 With a cap set, any unpriced call today makes the cap check **deny**
 (`PRICE_UNKNOWN <model>`), because spend that cannot be priced cannot be
-shown to be under the cap. The reason names the two ways out:
-`sakk prices update`, or a `sakk prices add` row. This matches v10:
+shown to be under the cap. The reason names the way out: add the model to
+`$SAKK_HOME/prices.json` by hand. This matches v10:
 "calls to an unlisted model are refused, not guessed".
 
 ## Cap

@@ -122,6 +122,55 @@ describe('sakk ui console (M4): security', () => {
     }
   });
 
+  test('F-195 a cross-site Origin is refused on every route, not just the write', async () => {
+    const w = world({ decisions: [dec()], ledger: true });
+    const c = await startConsole({ ...w, allowHalt: true });
+    try {
+      const own = { Host: `127.0.0.1:${c.port}`, Cookie: cookie(c.token) };
+      const foreign = { ...own, Origin: 'http://attacker.example' };
+      // every GET route — plus a path outside the route table, so the gate is
+      // provably before dispatch and covers routes that do not exist yet
+      const paths = [
+        '/',
+        '/api/overview',
+        '/api/records',
+        '/api/rules',
+        '/api/secret',
+        '/api/agents',
+        '/api/prices',
+        '/api/try?cmd=ls',
+        '/api/forbidden',
+        '/api/not-a-route',
+      ];
+      for (const path of paths) {
+        const r = await hit(c.port, { path, headers: foreign });
+        assert.equal(r.status, 403, `${path} must refuse a cross-site Origin`);
+      }
+      // the write too, even with a valid token header
+      const haltR = await hit(c.port, {
+        path: '/api/halt',
+        method: 'POST',
+        headers: { ...foreign, 'Content-Type': 'application/json', 'X-Sakk-Token': c.token },
+        body: '{}',
+      });
+      assert.equal(haltR.status, 403, 'halt must refuse a cross-site Origin');
+      // our own Origin, and an absent Origin (typed URL / curl), still read
+      for (const headers of [{ ...own, Origin: `http://127.0.0.1:${c.port}` }, own]) {
+        const ok = await hit(c.port, { path: '/api/overview', headers });
+        assert.equal(ok.status, 200);
+      }
+      // every response — page, JSON and refusal alike — is no-store, and a
+      // non-HTML response's CSP carries no empty-nonce allowance
+      for (const path of ['/', '/api/overview', '/api/not-a-route']) {
+        const r = await hit(c.port, { path, headers: own });
+        assert.equal(r.headers['cache-control'], 'no-store', path);
+        assert.doesNotMatch(r.headers['content-security-policy'], /'nonce-'/, path);
+      }
+    } finally {
+      await c.close();
+    }
+  });
+
   test('the server listens on loopback only', async () => {
     const w = world();
     const c = await startConsole({ ...w });

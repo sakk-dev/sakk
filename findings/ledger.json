@@ -3441,15 +3441,15 @@
       "dt": ["DT-PROC"],
       "rc": ["RC-07"],
       "es": ["ES-06"],
-      "instance_fix": "open",
+      "instance_fix": "this commit",
       "class_fix": null,
-      "guard": "",
-      "sweep": "Needs the publish decision (version number, tag) — the maintainer's.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "guard": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release",
+      "sweep": "Swept in this commit (version 0.1.0 per D11): package.json, the plugin manifest and the CHANGELOG's newest released section all say 0.1.0, [Unreleased] is kept empty on top, and the link refs name the v0.1.0 tag format. Publishing the tag and npm stays the owner's step; the consistency test goes red if the three drift, or if [Unreleased] fills without a version bump.",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": ["package.json", "CHANGELOG.md"],
       "mechanism_gap": "RC-07 detectors pin codes, keys and the gate; release mechanics have no detector.",
-      "mechanism_upgrade": "none: open — release decision",
+      "mechanism_upgrade": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release",
       "class": "C-10"
     },
     {
@@ -5595,9 +5595,11 @@
       "dt": ["DT-FACT"],
       "rc": ["RC-10"],
       "es": ["ES-01"],
-      "sweep": "Swept the phantom's whole footprint (grep `prices update`/`prices add`): CHANGELOG.md, specs/spend/{spec,contract,decide}.md, docs/SPEND.md, findings/acks/oss-m2-spend.json, and the two runtime strings src/spend.mjs (PRICE_UNKNOWN hint) and src/console.mjs (approximate-cost note). The real refresh paths that already exist are `sakk prices [--json]` (read-only view), re-running scripts/prices-trim.mjs (maintainers) and dropping a sakk-prices.v1 table at SAKK_HOME/prices.json (operators). Resolution is the same owner product decision F-161 already routed (wire the spend/cap/prices CLI vs keep `prices` read-only); until it is made, no surface is edited, so retracting references is not pre-judged against a possible decision to implement the command.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Retracted in this commit under owner decision D11 (2026-10-29) across the phantom's whole footprint: the two runtime strings src/spend.mjs (PRICE_UNKNOWN hint) and src/console.mjs (approximate-cost note) now point to editing $SAKK_HOME/prices.json by hand, docs/SPEND.md and specs/spend/{spec,contract,decide}.md name the same manual route, and CHANGELOG.md records the retraction. The governance records (docs/DECISIONS.md, docs/V2-BACKLOG.md, docs/RULES.md) keep naming the retracted command as history and are excluded from the detector by name. no follow-up needed: the multi-word detector goes red the moment any scanned surface re-advertises a subcommand the CLI does not have.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "instance_fix": "this commit",
+      "guard": "test/release.test.mjs::F-175 every multi-word sakk command in docs, specs and runtime strings is real",
       "areas": [
         "src/spend.mjs",
         "src/console.mjs",
@@ -5609,7 +5611,7 @@
         "test/release.test.mjs"
       ],
       "mechanism_gap": "The RC-10 claims-are-checked detectors resolve backticked file names and error codes in the docs against the code (test/claims-are-checked.test.mjs), and test/release.test.mjs 'every command the README shows is a real sakk subcommand' scans README/CHANGELOG code spans with a first-token-only regex (/\\bsakk ([a-z][a-z-]+)/), so a multi-word command validates on its first word alone and `sakk prices update` passes as `prices`; no detector scans runtime src/*.mjs strings or specs/ for a command reference. The phantom sits in exactly the surfaces and the token position F-161's detector left uncovered.",
-      "mechanism_upgrade": "none: whether to retract the `sakk prices update`/`add` references (docs, specs, and the two runtime hint strings) or to implement them as real subcommands is the owner product decision F-161 already routed; widening the release detector to validate every token of a multi-word command and to scan runtime src/*.mjs command strings is deferred until that decision, so the detector does not go red against text that may be about to become true.",
+      "mechanism_upgrade": "test/release.test.mjs::F-175 every multi-word sakk command in docs, specs and runtime strings is real",
       "distinct_from": {
         "F-161": "F-161 fixed one instance of this phantom — the M2 CHANGELOG line — marked the spend/cap/prices CLI not-shipped there, and is the detector this finding escaped past; its sweep was scoped to README/CHANGELOG. F-175 is the same RC-10 class recurring on the surfaces that sweep and detector do not cover: the command's later tokens, the two runtime hint strings an operator actually reads, docs/SPEND.md, and specs/. Same class, different surfaces; filing it keeps the escape visible rather than re-opening F-161.",
         "F-195": "F-195 is the console writing files on a GET and missing response headers it claims; F-175 is the prices update/add commands named in hints but not built.",
@@ -6221,12 +6223,14 @@
       "dt": ["DT-SPEC"],
       "rc": ["RC-10"],
       "es": ["ES-04"],
-      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: give the console a spend read without index writes; set no-store and a real CSP on every response; the owner decides Origin on GET; add a test that snapshots the state tree around every GET route.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept in this commit per the D11 scope: the Origin gate now sits before dispatch and covers every route (GET, every /api read, the halt write and even unknown paths), every response carries Cache-Control: no-store, and a non-HTML response's CSP allows no script or style instead of an empty nonce; specs/console/spec.md rules 4 and 6 now state the gate and the header. The GET-write half of the symptom (the try box refreshing the spend index) was fixed earlier in the V2 batch and is pinned by test/console.test.mjs 'U-SEC-021 no GET endpoint writes anything, not even the try box', green on this branch. no follow-up needed: the coverage test probes a non-existent route to prove the gate is ahead of the route table, so a route added later is covered.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "instance_fix": "this commit",
+      "guard": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write",
       "areas": ["src/console.mjs", "specs/console/spec.md"],
       "mechanism_gap": "The statement detectors (claims-are-checked: documented codes and file names exist, no 'signed/immutable' claims) check words against code; 'read-only' is not on their list, and no test compares the state tree before and after a GET.",
-      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "mechanism_upgrade": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write",
       "distinct_from": {
         "F-175": "F-175 is a prices command the docs and hints name but nobody built; F-195 is the console's read-only claim and its response headers, which the console does not keep."
       }
@@ -6340,12 +6344,14 @@
       "dt": ["DT-SPEC"],
       "rc": ["RC-07"],
       "es": ["ES-01"],
-      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: add NOTICE with the MIT texts (gitleaks, LiteLLM) and the cc-safety-net attribution, include it in package files, and add a release test that every ported source has its notice. Release blocker.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept in this commit: NOTICE carries the full MIT text with the copyright line for each derived source (gitleaks, (c) Zachary Rice, pinned to the same tag v8.21.2 and commit the generated rules pin; LiteLLM, (c) Berri AI, for the shipped price snapshot) plus the cc-safety-net studied-not-copied acknowledgment; package.json files lists NOTICE so it ships; the README License section links it. no follow-up needed: the release test reads the pin out of src/secret-rules.generated.mjs and fails if NOTICE drifts from it, drops an MIT text, or falls out of the packed file list.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "instance_fix": "this commit",
+      "guard": "test/release.test.mjs::F-199 the NOTICE file ships and carries the MIT notices the package derives from",
       "areas": ["package.json", "src/secret-rules.generated.mjs", "src/prices.mjs"],
       "mechanism_gap": "The required-step detectors check the certificate and the self-evolution gate; none lists third-party sources and asserts their notices ship, so the obligation stayed rule text.",
-      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "mechanism_upgrade": "test/release.test.mjs::F-199 the NOTICE file ships and carries the MIT notices the package derives from",
       "distinct_from": {
         "F-111": "F-111 is the release version and changelog discipline; F-199 is the missing third-party licence notices (gitleaks, LiteLLM) — a legal obligation of its own."
       }
