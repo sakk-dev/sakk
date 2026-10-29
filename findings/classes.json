@@ -294,9 +294,10 @@
       ],
       "stopline": {
         "after": "F-119",
-        "debt": {
-          "plan": "Open-source v1 M0: a class detector that runs every detection rule set (secret patterns, answer rules, the shell classifier) over a benign corpus and a planted corpus and asserts both rates; covers F-75 and F-119 before M3 changes src/secret-scan.mjs.",
-          "until": "2026-10-28"
+        "waiver": {
+          "by": "the maintainer (owner)",
+          "on": "2026-10-28",
+          "record": "docs/DECISIONS.md D10: the debt due 2026-10-28 moved to V2 unbuilt (docs/V2-BACKLOG.md, C-13 corpus). Original plan: Open-source v1 M0: a class detector that runs every detection rule set (secret patterns, answer rules, the shell classifier) over a benign corpus and a planted corpus and asserts both rates; covers F-75 and F-119 before M3 changes src/secret-scan.mjs."
         }
       }
     },

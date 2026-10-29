@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "branch": "evolve/port-f178",
+  "answers": {
+    "C-01.1": {
+      "answer": "本改动新增的输入是台账里 finding 的 corrections 字段：缺席、不是数组、元素为 null、from 对不上、why 不足 20 个字符、finding 不存在，一律读作「没有记录改名」，旧守卫照常必须能解析——缺席落在收紧的一侧，从不读作放行。第三个参数 ledger 缺席时同样什么都不豁免。",
+      "guard": "test/self-evolution.test.mjs::a malformed corrections field retires nothing and the other guards are still checked (F-178)"
+    },
+    "C-01.2": {
+      "answer": "把台账里那条 correction 删掉再跑：结果必须从通过变回「旧守卫不能解析」的拒绝。测试在同一个临时仓库里先断言没有 correction 时被拒、再加上 correction 后通过、再把 correction 挪到别的 finding 上又被拒，两个分支都真的被走到。",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    },
+    "C-02.1": {
+      "answer": "没有手写清单：豁免规则只写一次，在 guardResolution 里，对每个答案的当前守卫和每个修订守卫统一适用；查哪些 finding 有 correction 是从台账本身枚举，不是列一份 ID。三种模式（暂存、范围的继承文件、范围的本分支文件）都调用同一个函数。",
+      "guard": "test/self-evolution.test.mjs::every answer names a guard that resolves, or says none with a reason"
+    },
+    "C-02.2": {
+      "answer": "同一条「被修订取代的旧守卫可以不再解析，但必须有记录」的规则在三处调用都要生效：暂存检查、范围检查里继承来的答案文件、范围检查里本分支的答案文件。本次三处都把台账传进去，一处不漏；main 上原本只有这三处调用 guardResolution，已用 grep 核过。",
+      "guard": "test/range-topology.test.mjs::an inherited answers file may not be removed, rewritten or keep a guard that no longer resolves"
+    },
+    "C-03.1": {
+      "answer": "红先行：先把测试补丁放到未改动的 main 上跑，F-178 用例因「旧守卫不能解析」这个原因失败（fail 1），再落规则后变绿。把豁免那一行去掉，用例必须在「有 correction 仍被拒」那一步红；把当前守卫也纳入豁免，用例必须在「当前守卫不能解析」那一步红。",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    },
+    "C-03.2": {
+      "answer": "用例打的是活目标：在临时 git 仓库里写真的测试文件、真的台账和答案文件，git add 后跑真的 findings-check --staged 进程，断言退出码和 stderr 原文，不是只测一个纯函数的返回值；纯函数断言只用来补「当前守卫自己的 finding 有 correction 也不豁免」这一角。",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    },
+    "C-03.3": {
+      "answer": "豁免不是靠文书：只有当前守卫照样必须能解析（指向真实存在的测试），被取代的旧守卫才可以消失；而且豁免要求台账 finding 上有 from 等于旧守卫、why 至少 20 字的 correction，这条记录随台账进同一个 diff，审查看得到。只写了记录却没有能解析的新守卫，照样被拒。",
+      "guard": "test/self-evolution-cli.test.mjs::F-136: a guard must be a test, not a document"
+    },
+    "C-04.1": {
+      "answer": "新增的工作量由输入大小约束：先把台账 findings 建成一张 Map（一次线性遍历），每个守卫只查它之后的修订，每个修订只查它那条 finding 的 corrections；没有循环依赖网络或时钟。不新增任何按耗时判断的断言。",
+      "guard": "test/claims-are-checked.test.mjs::no test or check script asserts speed with a tight wall clock"
+    },
+    "C-05.1": {
+      "answer": "本次只改检查器代码和测试，没有新增或改写任何文档、spec 或 pack 里的句子；这条规则的文字说明在 v2-fixes 分支里随 F-178 一起写，那边合并时随它的测试进来。",
+      "guard": "none: 本次没有文档改动，规则说明随 v2-fixes 分支的 F-178 条目合入"
+    },
+    "C-05.2": {
+      "answer": "检查器报出的拒绝原文不变：仍然是「<问题> revision N: guard <引用> does not resolve (no such file or name)」，照做（把守卫改成真实测试，或在台账 finding 上记下改名 correction）就能解除。退出码不变。测试逐字断言了这两条消息。",
+      "guard": "test/self-evolution.test.mjs::a malformed corrections field retires nothing and the other guards are still checked (F-178)"
+    },
+    "C-06.1": {
+      "answer": "豁免依据只来自被检查那一版的台账：暂存模式读暂存区台账，范围模式读分支头的台账，都是 PR diff 里审查者看得到的同一份文件，没有更强的内部来源；改名 correction 必须写 why，读者能看到为什么旧守卫消失了。",
+      "guard": "test/self-evolution-cli.test.mjs::F-136: a guard must be a test, not a document"
+    },
+    "C-09.1": {
+      "answer": "假定的环境逐个试另一边：本地暂存检查、范围检查读分支头、以及 CI 把 PR 当合并提交检出的情形都已有用例；本次另外手跑了真实场景——用这份移植后的检查器对 oss/v2-fixes 相对 origin/main 跑范围检查，三条「does not resolve」消失、退出码 0。",
+      "guard": "test/range-topology.test.mjs::a pull request merge commit, as CI checks it out, passes the same way"
+    },
+    "C-09.2": {
+      "answer": "真实运行位置是 CI 的 base-checker：它取 main 上的检查器脚本去判 PR。这正是 PR #27 红的原因（main 的检查器没有这条规则）。本 PR 合并后会只重跑 #27 的 base-checker 作业，看它在真实位置变绿，结果写进 PR 说明。",
+      "guard": "test/range-topology.test.mjs::two lines developed in parallel and merged are each compared with their own parents"
+    },
+    "C-10.1": {
+      "answer": "规则写在代码里，不是规则文字：guardResolution 在暂存、范围两种模式的三处调用里执行，提交钩子、推送钩子和 CI 都走它；测试在规则缺失时变红（红先行已确认）。",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    },
+    "C-10.2": {
+      "answer": "绕道清点：改台账来豁免必须进同一个 diff 且要写 why，审查看得到；只能豁免被后续修订取代的旧守卫，当前守卫永远要解析，所以不能靠「记一笔」把正在用的守卫删掉；CI 的 base-checker 用 main 的检查器判 PR，本分支改检查器放宽不了自己——本 PR 是用 main 现有的更严的检查器判的。",
+      "guard": "test/range-topology.test.mjs::an inherited answers file may not be removed, rewritten or keep a guard that no longer resolves"
+    },
+    "C-13.1": {
+      "answer": "两边都量过：必须拦的——没有 correction、correction 挂在别的 finding 上、当前守卫不解析、当前守卫自己的 finding 有 correction、corrections 字段格式坏掉；必须放的——修订所指 finding 上有 from 对得上且 why 足够长的 correction。两条用例分别覆盖两边。",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    }
+  }
+}
