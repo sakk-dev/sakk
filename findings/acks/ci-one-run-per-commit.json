@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "branch": "ci/one-run-per-commit",
+  "answers": {
+    "C-01.1": {
+      "answer": "The cost test refuses every absence instead of reading it as cheap: a workflow with no on: block, an event it does not know, a concurrency block that is missing or spelled another way, a job with no timeout-minutes, and a strategy whose matrix it cannot count all fail the test with the workflow and job named. An empty workflows folder fails too.",
+      "guard": "test/ci-cost.test.mjs::a workflow without triggers, a job without a timeout or an unreadable matrix refuses"
+    },
+    "C-01.2": {
+      "answer": "Deleting the branches filter on push, or the concurrency block, turns the trigger and cancel tests red; I put back on: [push, pull_request] and removed the concurrency block locally and watched both go red. Adding a job, a matrix entry or a longer timeout turns the budget test red until the ceiling is raised in the same diff.",
+      "guard": "test/ci-cost.test.mjs::every workflow runs once per commit: a push only on main, a pull request on its own event"
+    },
+    "C-02.1": {
+      "answer": "No hand list of workflows: the test reads every .yml file in .github/workflows, so a workflow added later meets the same three rules. Jobs are enumerated from each file's jobs: block and matrix sizes from each strategy, not named in the test.",
+      "guard": "test/ci-cost.test.mjs::a newer commit on a pull request cancels its older run; a run on main is never cancelled"
+    },
+    "C-02.2": {
+      "answer": "The same double trigger is in ci.yml and in the review workflow's lack of concurrency here, both fixed and both under the test. host-app has the same on: [push, pull_request]; that repository's CI belongs to its other maintainer (Codex), so it is listed for the owner instead of edited from this branch.",
+      "guard": "test/ci-cost.test.mjs::a newer commit on a pull request cancels its older run; a run on main is never cancelled"
+    },
+    "C-03.1": {
+      "answer": "Each test fails for the reason it names: the trigger test only on a push without the main filter or an unknown event, the cancel test only on a group that is missing, misses the workflow name or can repeat on main, the budget test only when worst-case runner-minutes pass the ceiling. Each was planted locally and went red with that message.",
+      "guard": "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget"
+    },
+    "C-03.2": {
+      "answer": "The tests read the workflow files GitHub executes, not a copy. The parser is also run on planted text (the old on: [push, pull_request], a workflow without concurrency, a job without a timeout) inside the test, so the test shows it can see each bad shape, not only that today's files pass.",
+      "guard": "test/ci-cost.test.mjs::a workflow without triggers, a job without a timeout or an unreadable matrix refuses"
+    },
+    "C-03.3": {
+      "answer": "The file check is backed by the run itself: after pushing this branch I list the Actions runs for its head commit through the API and confirm one ci run (pull_request) and no push run; a second push confirms the older run was cancelled. That evidence goes into the PR, read from GitHub, not written by me.",
+      "guard": "test/ci-cost.test.mjs::every workflow runs once per commit: a push only on main, a pull request on its own event"
+    },
+    "C-04.1": {
+      "answer": "The bound is a counter, not a clock: the test adds timeout-minutes times matrix size over every job a pull request commit can start, and separately a merge to main, and compares with fixed ceilings (262 and 220 runner-minutes). No duration is measured. A timeout is the most a job can bill, so the sum is a true worst case.",
+      "guard": "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget"
+    },
+    "C-05.1": {
+      "answer": "The one CONTRIBUTING sentence says a commit runs CI once (on its pull request, then on main after merge), a newer push cancels the older run, a branch without a pull request is checked only by the pre-push hook, and the worst case per commit is capped. Each clause maps to one of the four cost tests or the existing pre-push test.",
+      "guard": "test/ci-cost.test.mjs::every workflow runs once per commit: a push only on main, a pull request on its own event"
+    },
+    "C-05.2": {
+      "answer": "When the budget test fails it prints the new worst case in runner-minutes and in dollars at the $0.006 Linux rate, and which jobs make it up, so the person can either cut the job or raise the ceiling in the same diff with the cost stated in the pull request. The finding's month figures are recomputed from GitHub's job timings by a script, not estimated.",
+      "guard": "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget"
+    },
+    "C-06.1": {
+      "answer": "The October minutes in F-218 come from GitHub's Actions API: every job's started_at and completed_at, rounded up per job the way billing rounds. The bill itself needs a token scope this session does not have, so the ledger calls the figure computed from job timings, which is weaker than the invoice, and says so.",
+      "guard": "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget"
+    },
+    "C-09.1": {
+      "answer": "Assumed: GitHub fills github.event.pull_request.number on pull_request events and leaves it empty on push, so the group falls back to the run id, which is unique; this is the documented fallback. Tried the other way: the test asserts the fallback is there, so a push run never shares a group and is never cancelled or queued behind another.",
+      "guard": "test/ci-cost.test.mjs::a newer commit on a pull request cancels its older run; a run on main is never cancelled"
+    },
+    "C-09.2": {
+      "answer": "It runs on GitHub's runners for this repository. The first live firing is this pull request: its own head commit must show one ci run and no push run, read through the API after the push. The merge to main afterwards is the first push run under the new trigger, also checked.",
+      "guard": "test/ci-cost.test.mjs::every workflow runs once per commit: a push only on main, a pull request on its own event"
+    },
+    "C-10.1": {
+      "answer": "Running CI once per commit and capping its cost were nowhere written down, not even as rule text; now three tests in the unit suite enforce them and fail when a workflow drifts. A red check still does not block a merge until branch protection is on (F-116, the owner's decision).",
+      "guard": "test/ci-cost.test.mjs::every workflow runs once per commit: a push only on main, a pull request on its own event"
+    },
+    "C-10.2": {
+      "answer": "Other routes: a branch pushed without a pull request now gets no CI run, by design; the pre-push hook still runs the gate locally, and nothing merges without a pull request once protection is on. A workflow added later meets the same tests because the folder is enumerated. Manual triggers are refused by the trigger test until added on purpose.",
+      "guard": "test/ci-cost.test.mjs::every workflow runs once per commit: a push only on main, a pull request on its own event"
+    },
+    "C-16.1": {
+      "answer": "No: one model wrote and checked this change; no independent reviewer has run on it, and the PR says so. The live evidence (one run per commit, the older run cancelled) is GitHub's own run list, not my claim, and the owner sees the next month's minutes on the bill.",
+      "guard": "test/ci-cost.test.mjs::every workflow runs once per commit: a push only on main, a pull request on its own event"
+    }
+  }
+}

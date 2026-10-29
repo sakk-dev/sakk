@@ -1,5 +1,16 @@
 name: ci
-on: [push, pull_request]
+# One run per commit (F-218): a pull request commit runs here once, on its
+# pull_request event; main runs again after the merge. A branch without a
+# pull request is checked by the pre-push hook only. A newer push to a pull
+# request cancels its older run; a run on main has its own group (run_id) and
+# is never cancelled. test/ci-cost.test.mjs holds the budget.
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

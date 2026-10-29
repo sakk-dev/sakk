@@ -125,7 +125,8 @@
         "test/claims-are-checked.test.mjs::every node --test script carries --test-timeout",
         "test/cost-bounds.test.mjs::every exported function shows how its work is bounded",
         "test/bounded-spawn.test.mjs::every node --test run loads the bound",
-        "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)"
+        "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)",
+        "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget"
       ],
       "stopline": {
         "after": "F-107",
