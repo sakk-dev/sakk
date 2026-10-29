@@ -90,7 +90,7 @@ snapshot by re-running `scripts/prices-trim.mjs` against the LiteLLM table.
 ## Quickstart
 
 ```bash
-npx sakk init --cap 25          # create ./sakk-ledger.json (refuses to overwrite) and wire it to the guard
+npx sakk init --cap 25          # create ~/.sakk/sakk-ledger.json (refuses to overwrite) and wire it to the guard
 npx sakk status                 # totals, entries, reconciliation state (--json for machines)
 npx sakk reconcile --by alice   # clear a reconciliation halt — takes a name
 npx sakk ledger verify          # check the sealed history's hash chain (exit 1 if broken)
@@ -100,8 +100,11 @@ The ledger commands (`init`, `status`, `reconcile`, `halt`, `resume`,
 `unlock`, `mcp`, `ledger verify|export`) accept `--ledger <path>`. Without
 it they use the absolute path `sakk init` recorded in `~/.sakk/config.json`
 (the guard hook reads the same entry), then `SAKK_LEDGER_PATH`
-(set-but-empty refuses), then `./sakk-ledger.json`. `mcp` still needs the
-flag or the variable.
+(set-but-empty refuses), then `~/.sakk/sakk-ledger.json` — out of the
+project tree the agent writes. A leftover `./sakk-ledger.json` in the
+current directory refuses with `LEDGER_PATH_LEGACY` until you pass
+`--ledger` or move it, so a halt never lands in a file nothing reads.
+`mcp` still needs the flag or the variable.
 
 Settled entries are sealed into an append-only, hash-chained cold trail
 (`<ledger>.cold/`) so the live file stays small and a call costs the same
@@ -419,13 +422,13 @@ The ledger and the library:
 
 - **Names are self-declared.** `--by` on halt, resume, reconcile and unlock
   records the name the operator typed; nothing authenticates it.
-- **The ledger is in the agent's reach.** The guard allows a guarded agent to
-  run `resume`, `reconcile` and `unlock`, and the default ledger
-  (`./sakk-ledger.json`) is a project file the agent may write, so one agent
-  can lift a halt on another. A global halt holds: it denies every call but
-  reading. The reservation cap trusts the ledger's summary: lowering the
-  settled total there gives cap room back, and only `sakk ledger verify`
-  reports the change.
+- **The ledger's summary is trusted.** The guard denies a guarded agent
+  `resume`, `reconcile` and `unlock` — each asks a person at a terminal —
+  and the default ledger (`~/.sakk/sakk-ledger.json`) sits outside the
+  project tree, but a process that is not the guarded agent can still edit
+  the file directly. The reservation cap trusts the ledger's summary:
+  lowering the settled total there gives cap room back, and only
+  `sakk ledger verify` reports the change.
 - **Costs are what the caller reports.** `reserve()` and `settle()` book the
   amounts they are given; nothing reads the provider's usage yet.
 - **Approval-required means refused.** A policy that asks for approval

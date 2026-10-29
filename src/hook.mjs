@@ -114,8 +114,8 @@ export function writeConfig(home, patch) {
  * Where the ledger is — one rule for every command and the hook, so a halt
  * the CLI writes lands where the hook reads (F-172): --ledger, else the
  * absolute path `sakk init` recorded in config.json, else SAKK_LEDGER_PATH,
- * else the caller's fallback (the CLI's ./sakk-ledger.json; the hook and the
- * console have none). The config outranks the environment because it is the
+ * else the caller's fallback (the CLI's SAKK_HOME/sakk-ledger.json; the hook
+ * and the console have none). The config outranks the environment because it is the
  * one source the CLI and the hook are both sure to see. `from` names the
  * source; a set-but-empty SAKK_LEDGER_PATH resolves to no path, from 'env-empty'.
  */

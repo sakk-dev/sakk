@@ -5,7 +5,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { reserve, settle } from '../src/ledger.mjs';
+import { initLedger, reserve, settle } from '../src/ledger.mjs';
+import { HAS_PTY, atTerminal } from './pty.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, '..', 'bin', 'sakk.mjs');
@@ -152,21 +153,45 @@ describe('sakk status', () => {
 });
 
 describe('sakk reconcile', () => {
-  test('requires --by (exit 2); clears the flag with a signature', () => {
+  test('requires --by (exit 2); without a terminal a signed clear refuses and changes nothing', () => {
     const p = join(tdir(), 'l.json');
     run(['init', '--cap', '10', '--ledger', p]);
     reserve({ ledgerPath: p, callId: 'x', estimatedMaxUsd: 2 });
     settle({ ledgerPath: p, callId: 'x', failedUnknownCost: true });
     assert.equal(run(['reconcile', '--ledger', p]).status, 2);
-    // Entry still unresolved: the signed clear must refuse (E2 semantics)
-    const blocked = run(['reconcile', '--by', 'maintainer', '--ledger', p]);
-    assert.equal(blocked.status, 1);
-    assert.match(blocked.stderr, /RECONCILIATION_ENTRIES_OPEN/);
-    settle({ ledgerPath: p, callId: 'x', actualUsd: 1.5 });
-    const r = run(['reconcile', '--by', 'maintainer', '--ledger', p]);
-    assert.equal(r.status, 0, r.stderr);
-    assert.equal(run(['status', '--ledger', p]).status, 0);
+    // F-177: an agent's run has no terminal — the signed clear refuses before
+    // the books are touched, and the flag stays set.
+    const refused = run(['reconcile', '--by', 'maintainer', '--ledger', p]);
+    assert.equal(refused.status, 2);
+    assert.match(refused.stderr, /HUMAN_CONFIRMATION_REQUIRED/);
+    assert.equal(run(['status', '--ledger', p]).status, 3, 'the flag is still set');
   });
+  test(
+    'at a terminal: open entries still block the clear (E2), then a signed clear succeeds',
+    { skip: !HAS_PTY && 'python3 with pty is not installed' },
+    () => {
+      const p = join(tdir(), 'l.json');
+      const home = tdir();
+      run(['init', '--cap', '10', '--ledger', p]);
+      reserve({ ledgerPath: p, callId: 'x', estimatedMaxUsd: 2 });
+      settle({ ledgerPath: p, callId: 'x', failedUnknownCost: true });
+      const env = { ...process.env, SAKK_LEDGER_PATH: '', SAKK_HOME: home };
+      // Entry still unresolved: the signed clear must refuse (E2 semantics)
+      const blocked = atTerminal(['reconcile', '--by', 'maintainer', '--ledger', p], 'reconcile', {
+        env,
+        cwd: home,
+      });
+      assert.equal(blocked.status, 1, blocked.out);
+      assert.match(blocked.out, /RECONCILIATION_ENTRIES_OPEN/);
+      settle({ ledgerPath: p, callId: 'x', actualUsd: 1.5 });
+      const r = atTerminal(['reconcile', '--by', 'maintainer', '--ledger', p], 'reconcile', {
+        env,
+        cwd: home,
+      });
+      assert.equal(r.status, 0, r.out);
+      assert.equal(run(['status', '--ledger', p]).status, 0);
+    },
+  );
   test('stranger finding: reconcile on a clean ledger says "nothing to clear", never "cleared"', () => {
     const p = join(tdir(), 'l.json');
     run(['init', '--cap', '10', '--ledger', p]);
@@ -202,7 +227,7 @@ describe('usage surface', () => {
 });
 
 describe('sakk unlock', () => {
-  test('requires --by; removes a stuck lock and reports a missing one', () => {
+  test('requires --by; reports a missing lock without asking; refuses to break one with no terminal', () => {
     const p = join(tdir(), 'l.json');
     run(['init', '--cap', '10', '--ledger', p]);
     assert.equal(run(['unlock', '--ledger', p]).status, 2);
@@ -210,10 +235,29 @@ describe('sakk unlock', () => {
     assert.equal(r0.status, 0, r0.stderr);
     assert.match(r0.stdout, /no lock present/);
     mkdirSync(`${p}.lock`);
+    // F-177: breaking the lock is a person's move — an agent's run refuses.
     const r1 = run(['unlock', '--by', 'maintainer', '--ledger', p]);
-    assert.equal(r1.status, 0, r1.stderr);
-    assert.match(r1.stdout, /lock removed by maintainer/);
+    assert.equal(r1.status, 2);
+    assert.match(r1.stderr, /HUMAN_CONFIRMATION_REQUIRED/);
+    assert.ok(existsSync(`${p}.lock`), 'the lock is untouched');
   });
+  test(
+    'at a terminal, a signed unlock removes a stuck lock',
+    { skip: !HAS_PTY && 'python3 with pty is not installed' },
+    () => {
+      const p = join(tdir(), 'l.json');
+      const home = tdir();
+      run(['init', '--cap', '10', '--ledger', p]);
+      mkdirSync(`${p}.lock`);
+      const env = { ...process.env, SAKK_LEDGER_PATH: '', SAKK_HOME: home };
+      const r1 = atTerminal(['unlock', '--by', 'maintainer', '--ledger', p], 'unlock', {
+        env,
+        cwd: home,
+      });
+      assert.equal(r1.status, 0, r1.out);
+      assert.match(r1.out, /lock removed by maintainer/);
+    },
+  );
 });
 
 describe('review fix F3: flag parsing', () => {
@@ -261,15 +305,24 @@ describe('2026-10-17 regression: status and reconcile tell the truth about spend
     const r = run(['status', '--ledger', p]);
     assert.ok(!r.stdout.includes('\u001b'), JSON.stringify(r.stdout));
   });
-  test('review S3: a signed reconcile confirms a stale ledger, and spending resumes', () => {
-    const p = fresh();
-    stale(p);
-    const r = run(['reconcile', '--by', 'alice', '--ledger', p]);
-    assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /stale books confirmed by alice/);
-    assert.equal(run(['status', '--ledger', p]).status, 0);
-    reserve({ ledgerPath: p, callId: 'after', estimatedMaxUsd: 1 });
-  });
+  test(
+    'review S3: a signed reconcile at a terminal confirms a stale ledger, and spending resumes',
+    { skip: !HAS_PTY && 'python3 with pty is not installed' },
+    () => {
+      const p = fresh();
+      stale(p);
+      const home = tdir();
+      const env = { ...process.env, SAKK_LEDGER_PATH: '', SAKK_HOME: home };
+      const r = atTerminal(['reconcile', '--by', 'alice', '--ledger', p], 'reconcile', {
+        env,
+        cwd: home,
+      });
+      assert.equal(r.status, 0, r.out);
+      assert.match(r.out, /stale books confirmed by alice/);
+      assert.equal(run(['status', '--ledger', p]).status, 0);
+      reserve({ ledgerPath: p, callId: 'after', estimatedMaxUsd: 1 });
+    },
+  );
   test('review N1/N2/N12: blank signatures, an empty SAKK_LEDGER_PATH and a hex cap refuse', () => {
     const p = fresh();
     for (const args of [
@@ -280,5 +333,40 @@ describe('2026-10-17 regression: status and reconcile tell the truth about spend
       ['status'],
     ])
       assert.equal(run(args, { SAKK_LEDGER_PATH: '' }).status, 2, args.join(' '));
+  });
+});
+
+describe('F-177 — the default ledger lives under SAKK_HOME, never in the project cwd', () => {
+  const bare = (args, env, cwd) =>
+    spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env, cwd });
+  const noEnvPath = (home) => {
+    const env = { ...process.env, SAKK_HOME: home };
+    delete env.SAKK_LEDGER_PATH;
+    return env;
+  };
+
+  test('init with no --ledger and no SAKK_LEDGER_PATH creates and records SAKK_HOME/sakk-ledger.json', () => {
+    const home = tdir();
+    const cwd = tdir();
+    const r = bare(['init', '--cap', '10'], noEnvPath(home), cwd);
+    assert.equal(r.status, 0, r.stderr);
+    const lp = join(home, 'sakk-ledger.json');
+    assert.ok(existsSync(lp), 'the ledger is under SAKK_HOME');
+    assert.equal(existsSync(join(cwd, 'sakk-ledger.json')), false, 'nothing lands in the cwd');
+    assert.equal(recorded(home), lp, 'config.json records the SAKK_HOME path');
+  });
+
+  test('a leftover ./sakk-ledger.json refuses with LEDGER_PATH_LEGACY instead of being silently ignored', () => {
+    const home = tdir();
+    const cwd = tdir();
+    initLedger({ ledgerPath: join(cwd, 'sakk-ledger.json'), capUsd: 10 });
+    const r = bare(['status'], noEnvPath(home), cwd);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /LEDGER_PATH_LEGACY/);
+    assert.match(r.stderr, /nothing was read or changed/);
+    // Named explicitly, the old file still works and the refusal does not fire.
+    const ok = bare(['status', '--ledger', join(cwd, 'sakk-ledger.json')], noEnvPath(home), cwd);
+    assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+    assert.doesNotMatch(ok.stderr, /LEDGER_PATH_LEGACY/);
   });
 });

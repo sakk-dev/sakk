@@ -548,6 +548,12 @@ export function shellActions(
     // declared by its effect in test/kill-switch.test.mjs (R-24).
     else if (name === 'sakk' && (verb === 'cap' || verb === 'init') && sakkHome)
       add('file.write', join(sakkHome, 'config.json'));
+    // resume, reconcile and unlock lift a halt, clear the books or break the
+    // lock — the inverse of the controls that bind the agent, judged as the
+    // guard-state write they make: denied, never asked (F-177, D11). `halt`
+    // tightens and stays allowed.
+    else if (name === 'sakk' && ['resume', 'reconcile', 'unlock'].includes(verb) && sakkHome)
+      add('file.write', join(sakkHome, 'sakk-ledger.json'));
     else if (
       name === 'sakk' &&
       verb === 'guard' &&

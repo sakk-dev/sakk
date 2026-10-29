@@ -5642,7 +5642,7 @@
       "class": "C-11",
       "title": "An agent the guard binds can lift another agent's halt, clear the books or break the ledger lock (`sakk resume|reconcile|unlock --by <any name>`), and can write the default in-repo ledger directly — the hook judges neither as the ledger write it is",
       "symptom": "A per-agent halt, a reconciliation hold and the ledger lock are meant to wait for a person. resume, reconcile and unlock ask for --by <name>, but the name is self-declared (README limits), and the hook classifies `sakk resume --by alice --agent bot-7`, `sakk reconcile --by alice` and `sakk unlock --by alice` as a plain shell.run, so an agent that is not itself halted gets them allowed. The default ledger is sakk-ledger.json in the working folder, an in-repo file the shipped policy lets the agent write. A global halt still holds, because it denies every call but reading.",
-      "evidence": "test: test/kill-switch.test.mjs 'GAP F-177 the hook lets an agent run the commands that lift a halt or clear the books' feeds the three commands through the real hook evaluate() in an isolated HOME/SAKK_HOME/project and asserts each is allowed. bin/sakk.mjs ledgerPath() falls back to ledgerFrom('sakk-ledger.json') in the current directory, and policies/guard-default.json protects only .sakk/ and ~sakk/ from file.write.",
+      "evidence": "test: test/kill-switch.test.mjs 'GAP F-177 the hook lets an agent run the commands that lift a halt or clear the books' feeds the three commands through the real hook evaluate() in an isolated HOME/SAKK_HOME/project and asserts each is allowed. bin/sakk.mjs ledgerPath() falls back to ledgerFrom('sakk-ledger.json') in the current directory, and policies/guard-default.json protects only .sakk/ and ~sakk/ from file.write. Fixed 2026-10-29 under docs/DECISIONS.md D11: the GAP test became the deny test of the same five command forms (including sudo- and cd-prefixed), red on the unfixed tree ('allow' !== 'deny' for `sakk resume --by alice --agent bot-7`); test/kill-switch.test.mjs 'F-177 — lifting a halt, clearing the books and breaking a lock are person-only at the CLI' drives the real CLI with no terminal, with nothing to lift, and under a pseudo-terminal with the wrong and the right word; test/cli.test.mjs pins the SAKK_HOME default path and the LEDGER_PATH_LEGACY refusal.",
       "direct_cause": "src/classify.mjs maps a sakk command to the write it makes only for cap and guard (F-171); resume, reconcile and unlock fall through to shell.run, and the ledger file is not named by any guard-state scope, so neither the command nor a direct edit of the ledger reaches protect-guard-state.",
       "why": [
         "F-171 was scoped to the controls the D4 product decision named (cap and guard), and the halt family was assumed covered because it already demanded --by, though that name only attributes and never authorizes.",
@@ -5653,15 +5653,29 @@
       "dt": ["DT-SPEC"],
       "rc": ["RC-05"],
       "es": ["ES-04"],
-      "sweep": "Not swept — the fix needs a decision: whether the hook denies resume, reconcile and unlock from an agent (as it now denies cap), and whether the ledger moves under ~/.sakk or gets its own guard-state scope in the shipped policy. Once decided, sweep every path that writes the ledger (CLI, MCP gate, console) for the same agent reach.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept every surface that can lift a halt, clear the books or break the lock. Hook: the three CLI commands are denied as the guard-state write they make, R-24 declares them loosens/deny, and direct edits of the default ledger are covered because it now lives under ~sakk/ (protect-guard-state scope). CLI: each command asks a person at a terminal; the J-UAT-030 default install proves init never writes the project cwd. MCP: no halt/resume/reconcile/unlock tool exists (pinned by test/mcp.test.mjs 'row 7'). Console: sends only halt, which tightens. no follow-up needed: a ledger placed elsewhere by --ledger or SAKK_LEDGER_PATH is the operator's own explicit choice, and the self-declared --by name remains a documented README limit (Names are self-declared).",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": ["src/classify.mjs", "src/hook.mjs", "bin/sakk.mjs", "policies/guard-default.json"],
       "mechanism_gap": "The F-171 detectors (J-UAT-016) assert the hook's judgment of cap and guard commands and the CLI's terminal gate; nothing asserts the hook's judgment of the halt-family commands, or that the file holding halts is in a scope the agent may not write, so a control lifted through the ledger was outside every check.",
-      "mechanism_upgrade": "test/kill-switch.test.mjs::GAP F-177 the hook lets an agent run the commands that lift a halt or clear the books",
+      "mechanism_upgrade": "test/kill-switch.test.mjs::F-177 the hook denies the commands that lift a halt or clear the books",
       "distinct_from": {
         "F-49": "F-49 is a concurrency lost-update: a human-forced unlock during a halt lets a racing reserve overwrite the halt write. F-177 has no race: a second agent runs resume, reconcile or unlock under any name, or edits the in-repo ledger, and the hook allows it. Different axis — mutual-exclusion loss vs the agent reaching the ledger that holds its own controls."
-      }
+      },
+      "instance_fix": "this commit: src/classify.mjs classifies `sakk resume`, `reconcile` and `unlock` as the file.write each makes to SAKK_HOME/sakk-ledger.json, which protect-guard-state denies (the fe936ca F-171/D4 pattern — judged as the write they make; `halt` tightens and stays allowed); bin/sakk.mjs asks a person at a terminal (confirmByPerson, the word retyped) before lifting a halt, clearing the books or breaking the lock, and with no terminal exits 2 with HUMAN_CONFIRMATION_REQUIRED changing nothing — no-op paths (nothing halted / nothing to clear / no lock) answer honestly without asking; the default ledger moves to SAKK_HOME/sakk-ledger.json through the single resolution function the hook already used, init/read/write consistent, and a leftover ./sakk-ledger.json refuses with LEDGER_PATH_LEGACY (exit 2, nothing read or changed) instead of being silently preferred.",
+      "guard": "test/kill-switch.test.mjs::F-177 the hook denies the commands that lift a halt or clear the books",
+      "corrections": [
+        {
+          "field": "evidence",
+          "from": "test: test/kill-switch.test.mjs 'GAP F-177 the hook lets an agent run the commands that lift a halt or clear the books' feeds the three commands through the real hook evaluate() in an isolated HOME/SAKK_HOME/project and asserts each is allowed. bin/sakk.mjs ledgerPath() falls back to ledgerFrom('sakk-ledger.json') in the current directory, and policies/guard-default.json protects only .sakk/ and ~sakk/ from file.write.",
+          "why": "Appended the 2026-10-29 D11 fix record (the red line, the deny test and the person-only CLI tests) to the original account of the hole; nothing in the original text was removed or reworded."
+        },
+        {
+          "field": "mechanism_upgrade",
+          "from": "test/kill-switch.test.mjs::GAP F-177 the hook lets an agent run the commands that lift a halt or clear the books",
+          "why": "The GAP test documented the hole and was replaced by the deny test of the same five command forms when D11 closed it, so the upgrade now names the check that actually runs in the suite."
+        }
+      ]
     },
     {
       "id": "F-178",

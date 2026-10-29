@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
-import { chmodSync, lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -52,9 +60,10 @@ import { startConsole } from '../src/console.mjs';
  *
  * Path resolution (resolveLedgerPath, shared with the hook): --ledger flag >
  * the absolute path `sakk init` recorded in ~/.sakk/config.json >
- * SAKK_LEDGER_PATH > ./sakk-ledger.json (the CLI's one explicit convenience
- * default — always printed, never guessed silently; the library itself keeps
- * no default at all).
+ * SAKK_LEDGER_PATH > ~/.sakk/sakk-ledger.json (the CLI's one explicit
+ * default, inside the guard's protected zone since D11/F-177 — always
+ * printed, never guessed silently; a leftover ./sakk-ledger.json refuses
+ * with LEDGER_PATH_LEGACY; the library itself keeps no default at all).
  *
  * Exit codes: 0 ok · 1 ledger error (every refusal code on stderr) ·
  * 2 usage error · 3 status: reconciliation required (gate your CI on it) ·
@@ -102,10 +111,27 @@ function ledgerFrom(fallback) {
 }
 
 function ledgerPath() {
-  const r = ledgerFrom('sakk-ledger.json');
+  // The default ledger lives under SAKK_HOME (D11, F-177): a ledger in the
+  // project cwd is a file the agent may write, so one agent could lift a
+  // halt on another by editing it. Under ~/.sakk it sits in the guard's
+  // protected zone (protect-guard-state denies the write).
+  const r = ledgerFrom(join(sakkHome(), 'sakk-ledger.json'));
   // set-but-empty is a mistake, not "use the current directory" (ledger review N2)
   if (r.from === 'env-empty') {
     console.error('LEDGER_PATH_REQUIRED: SAKK_LEDGER_PATH is set but empty');
+    process.exit(2);
+  }
+  // Migration (three-tables spec, specs/spend/v2-line-c-three-tables.md): a
+  // ledger at the pre-v2 default must not be silently abandoned OR silently
+  // kept authoritative — refuse and let a person choose.
+  if (
+    r.from === 'default' &&
+    resolve('sakk-ledger.json') !== r.path &&
+    existsSync(resolve('sakk-ledger.json'))
+  ) {
+    console.error(
+      `LEDGER_PATH_LEGACY: ./sakk-ledger.json exists here, but the default ledger now lives at ${r.path} — pass --ledger ./sakk-ledger.json to keep using this file, or move it to ${r.path}; nothing was read or changed`,
+    );
     process.exit(2);
   }
   return r.path;
@@ -180,7 +206,8 @@ Spend and the daily cap (from Claude Code's local logs; an estimate, not the inv
   sakk spend [--day <YYYY-MM-DD>] [--json]                today's spend by model, and what could not be priced
   sakk prices [--json]                                    the price table in use and its source
 
-Ledger path: --ledger > the one init recorded in ~/.sakk/config.json (the hook reads it too) > $SAKK_LEDGER_PATH > ./sakk-ledger.json
+Ledger path: --ledger > the one init recorded in ~/.sakk/config.json (the hook reads it too) > $SAKK_LEDGER_PATH > ~/.sakk/sakk-ledger.json
+  (a leftover ./sakk-ledger.json refuses with LEDGER_PATH_LEGACY until you pass --ledger or move it)
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status) · 4 halted (status; wins over 3, both shown)
 max_reservable_usd of 0 means nothing fits under the cap (reserve requires a positive amount)
 `;
@@ -378,6 +405,10 @@ if (cmd === 'init') {
     console.log(`nothing to clear: no reconciliation required on ${p}`);
     process.exit(0);
   }
+  // Clearing the books loosens a control the agent is bound by, so a person
+  // confirms it at this terminal; the hook denies the command from an agent
+  // (F-177, D11). The no-op path above never asks.
+  await confirmByPerson(`This clears the books (reconciliation) on ${p}`, 'reconcile');
   try {
     clearReconciliation({ ledgerPath: p, by });
   } catch (e) {
@@ -399,6 +430,23 @@ if (cmd === 'init') {
     console.error(`AGENT_ID_INVALID: --agent needs a non-empty id (exact, case-sensitive)`);
     process.exit(2);
   }
+  const scopeText = agentId !== undefined ? `agent ${JSON.stringify(agentId)}` : 'all spending';
+  if (cmd === 'resume') {
+    // Read first: lifting nothing asks no one (the guard-uninstall precedent).
+    // Lifting a halt loosens the control that binds the agent, so a person
+    // confirms it; the hook denies the command from an agent (F-177, D11).
+    let h;
+    try {
+      h = readLedger({ ledgerPath: p, maxAgeMs: Number.POSITIVE_INFINITY }).halt;
+    } catch (e) {
+      fail(e);
+    }
+    const haltedNow =
+      agentId !== undefined
+        ? Boolean(h?.agents && Object.hasOwn(h.agents, agentId))
+        : Boolean(h?.global);
+    if (haltedNow) await confirmByPerson(`This lifts the halt on ${scopeText} (${p})`, 'resume');
+  }
   // A runaway storm is exactly when the lock is contended: retry rather
   // than let a kill switch lose a race (specs/kill-switch row 5).
   let r;
@@ -415,7 +463,7 @@ if (cmd === 'init') {
       fail(e);
     }
   }
-  const scope = agentId !== undefined ? `agent ${JSON.stringify(agentId)}` : 'all spending';
+  const scope = scopeText;
   if (cmd === 'halt')
     console.log(
       r.alreadyHalted
@@ -435,6 +483,14 @@ if (cmd === 'init') {
     process.exit(2);
   }
   const p = ledgerPath();
+  // No lock, nothing to break, no one asked (the guard-uninstall precedent).
+  // Breaking a live lock loosens the serialization every write relies on, so
+  // a person confirms it; the hook denies the command from an agent (F-177).
+  if (!existsSync(`${p}.lock`)) {
+    console.log(`no lock present: ${p}.lock`);
+    process.exit(0);
+  }
+  await confirmByPerson(`This breaks the lock on ${p}`, 'unlock');
   let r;
   try {
     r = forceUnlock({ ledgerPath: p, by });

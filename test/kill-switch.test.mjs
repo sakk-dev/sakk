@@ -773,14 +773,17 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
     }
   });
 
-  // F-177: the halt family trusts a self-declared --by, and the hook does not
-  // yet judge these commands as the ledger write they make. Pinned, not passed.
-  test('GAP F-177 the hook lets an agent run the commands that lift a halt or clear the books', () => {
+  // F-177 (D11): resume, reconcile and unlock loosen the controls that bind
+  // the agent, so the hook judges them as the guard-state write they make —
+  // denied, never asked. `sakk halt` tightens and stays allowed (R-24 below).
+  test('F-177 the hook denies the commands that lift a halt or clear the books', () => {
     const w = world();
     for (const command of [
       'sakk resume --by alice --agent bot-7',
       'sakk reconcile --by alice',
       'sakk unlock --by alice',
+      'sudo sakk resume --by alice',
+      'cd /tmp && sakk unlock --by alice',
     ]) {
       const r = evaluate(
         normalize('claude-code', {
@@ -793,7 +796,11 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
         }),
         { env: w.env, log: false },
       );
-      assert.equal(r.verdict, 'allow', command);
+      assert.equal(r.verdict, 'deny', command);
+      assert.ok(
+        r.decisions.some((d) => d.ruleId === 'protect-guard-state'),
+        command,
+      );
     }
   });
 
@@ -849,17 +856,17 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
     // records the ledger the hook reads halts from (F-181)
     init: { effect: 'loosens', judged: [['sakk init --cap 5 --ledger ./x.json', 'deny']] },
     status: { effect: 'none', judged: [['sakk status --json', 'allow']] },
+    // the halt family loosens the control that binds the agent: judged as the
+    // guard-state write it makes, denied (F-177, D11)
     reconcile: {
       effect: 'loosens',
-      gap: 'F-177',
-      judged: [['sakk reconcile --by alice', 'allow']],
+      judged: [['sakk reconcile --by alice', 'deny']],
     },
-    unlock: { effect: 'loosens', gap: 'F-177', judged: [['sakk unlock --by alice', 'allow']] },
+    unlock: { effect: 'loosens', judged: [['sakk unlock --by alice', 'deny']] },
     halt: { effect: 'tightens', judged: [['sakk halt --by alice --agent cursor', 'allow']] },
     resume: {
       effect: 'loosens',
-      gap: 'F-177',
-      judged: [['sakk resume --by alice --agent cursor', 'allow']],
+      judged: [['sakk resume --by alice --agent cursor', 'deny']],
     },
     // the reserve gate an agent calls by choice; its own server holds nothing back
     mcp: { effect: 'none', judged: [['sakk mcp --ledger ./sakk-ledger.json', 'allow']] },
@@ -991,11 +998,17 @@ describe('J-UAT-030 / G-FN-016 — a halt reaches the hook in a default install 
       spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env, cwd });
 
     // The operator sets up in the project with no --ledger and no SAKK_LEDGER_PATH:
-    // init creates ./sakk-ledger.json and records its absolute path for the hook.
+    // init creates the ledger under SAKK_HOME (F-177: never in the agent-writable
+    // project cwd) and records its absolute path for the hook.
     const inited = run(['init', '--cap', '100', '--by', 'alice']);
     assert.equal(inited.status, 0, `init should succeed: ${inited.stderr}`);
-    const wrote = join(realpathSync(proj), 'sakk-ledger.json');
-    assert.ok(existsSync(wrote), 'init wrote ./sakk-ledger.json');
+    const wrote = join(home, 'sakk-ledger.json');
+    assert.ok(existsSync(wrote), 'init wrote SAKK_HOME/sakk-ledger.json');
+    assert.equal(
+      existsSync(join(proj, 'sakk-ledger.json')),
+      false,
+      'nothing lands in the project cwd',
+    );
     assert.equal(
       JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).ledgerPath,
       wrote,
@@ -1027,8 +1040,97 @@ describe('J-UAT-030 / G-FN-016 — a halt reaches the hook in a default install 
     assert.ok(byHalt(stopped), 'the default-install hook honors the halt');
     assert.equal(stopped.verdict, 'deny', 'the halted call is denied');
 
-    const resumed = run(['resume', '--by', 'alice'], elsewhere);
-    assert.equal(resumed.status, 0, `resume should succeed: ${resumed.stderr}`);
+    // F-177: lifting the halt is a person's move — without a terminal the CLI
+    // refuses and changes nothing.
+    const refused = run(['resume', '--by', 'alice'], elsewhere);
+    assert.equal(refused.status, 2, `no-TTY resume must refuse: ${refused.stderr}`);
+    assert.match(refused.stderr, /^HUMAN_CONFIRMATION_REQUIRED: /m);
+    assert.ok(byHalt(decide()), 'the refused resume left the halt in place');
+
+    if (HAS_PTY) {
+      const resumed = atTerminal(['resume', '--by', 'alice'], 'resume', { env, cwd: elsewhere });
+      assert.equal(resumed.status, 0, `resume at a terminal should succeed: ${resumed.out}`);
+    } else {
+      resume({ ledgerPath: wrote, by: 'alice' }); // no pty available: lift via the library
+    }
     assert.equal(byHalt(decide()), false, 'resume lifts the halt the hook reads');
   });
+});
+
+describe('F-177 — lifting a halt, clearing the books and breaking a lock are person-only at the CLI', () => {
+  const world = () => {
+    const base = mkdtempSync(join(tmpdir(), 'ks-f177-'));
+    const home = join(base, 'sakkhome');
+    mkdirSync(home, { recursive: true });
+    const lp = join(home, 'sakk-ledger.json');
+    initLedger({ ledgerPath: lp, capUsd: 100 });
+    const env = { ...process.env, HOME: base, SAKK_HOME: home, SAKK_LEDGER_PATH: lp };
+    const run = (args) =>
+      spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env, cwd: base });
+    return { base, home, lp, env, run };
+  };
+
+  test('without a terminal, resume / reconcile / unlock refuse and change nothing', () => {
+    const w = world();
+    halt({ ledgerPath: w.lp, by: 'maintainer', reason: 'stop' });
+    markReconciliationRequired({ ledgerPath: w.lp, reason: 'books diverged' });
+    const before = readFileSync(w.lp, 'utf8');
+    mkdirSync(`${w.lp}.lock`);
+    for (const args of [
+      ['resume', '--by', 'bot'],
+      ['reconcile', '--by', 'bot'],
+      ['unlock', '--by', 'bot'],
+    ]) {
+      const r = w.run(args);
+      assert.equal(r.status, 2, `${args[0]} must refuse without a TTY: ${r.stderr}`);
+      assert.match(r.stderr, /^HUMAN_CONFIRMATION_REQUIRED: /m, args[0]);
+    }
+    assert.ok(existsSync(`${w.lp}.lock`), 'the lock is still in place');
+    rmSync(`${w.lp}.lock`, { recursive: true });
+    assert.equal(readFileSync(w.lp, 'utf8'), before, 'the ledger bytes did not move');
+  });
+
+  test('with nothing to lift, clear or break, each command answers honestly without asking', () => {
+    const w = world();
+    const resume0 = w.run(['resume', '--by', 'bot']);
+    assert.equal(resume0.status, 0, resume0.stderr);
+    assert.match(resume0.stdout, /nothing halted/);
+    const reco0 = w.run(['reconcile', '--by', 'bot']);
+    assert.equal(reco0.status, 0, reco0.stderr);
+    assert.match(reco0.stdout, /nothing to clear/);
+    const unlock0 = w.run(['unlock', '--by', 'bot']);
+    assert.equal(unlock0.status, 0, unlock0.stderr);
+    assert.match(unlock0.stdout, /no lock present/);
+  });
+
+  test(
+    'a person at the terminal retypes the word; the wrong word refuses',
+    { skip: !HAS_PTY && 'python3 with pty is not installed' },
+    () => {
+      const w = world();
+      halt({ ledgerPath: w.lp, by: 'maintainer', reason: 'stop' });
+
+      const wrong = atTerminal(['resume', '--by', 'maintainer'], 'yes', { env: w.env, cwd: w.base });
+      assert.equal(wrong.status, 2, wrong.out);
+      assert.match(wrong.out, /HUMAN_CONFIRMATION_REQUIRED: the answer was not resume/);
+
+      const resumed = atTerminal(['resume', '--by', 'maintainer'], 'resume', { env: w.env, cwd: w.base });
+      assert.equal(resumed.status, 0, resumed.out);
+      assert.ok(resumed.asked, 'resume asked before acting');
+      assert.match(resumed.out, /resumed all spending by maintainer/);
+
+      markReconciliationRequired({ ledgerPath: w.lp, reason: 'books diverged' });
+      const cleared = atTerminal(['reconcile', '--by', 'maintainer'], 'reconcile', {
+        env: w.env,
+        cwd: w.base,
+      });
+      assert.equal(cleared.status, 0, cleared.out);
+      assert.match(cleared.out, /reconciliation cleared by maintainer/);
+
+      mkdirSync(`${w.lp}.lock`);
+      const unlocked = atTerminal(['unlock', '--by', 'maintainer'], 'unlock', { env: w.env, cwd: w.base });
+      assert.equal(unlocked.status, 0, unlocked.out);
+      assert.equal(existsSync(`${w.lp}.lock`), false, 'the lock is gone');
+    },
+  );
 });
