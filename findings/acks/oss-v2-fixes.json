@@ -1,0 +1,46 @@
+{
+ "version": 2,
+ "branch": "oss/v2-fixes",
+ "answers": {
+  "C-01.1": {
+   "answer": "这批改动里「缺东西」的典型是花费账本读不到（目录没权限、文件被挪走）和钩子配置缺字段。两处都按缺席即拒绝处理：spend 的目录遍历遇到打不开的子目录不再跳过，而是把该次读数标为不完整并让上限判定失败关闭；钩子读不到自己的配置或保护名单时输出 deny 而不是放行。新检测器先验证删掉输入后结果必须变红。",
+   "guard": "none: 检测器随本批 F-204/F-207 的修复红先行落地（spend 不可读目录、hook 配置缺失两条用例），落地前没有既有测试覆盖缺席路径"
+  },
+  "C-01.2": {
+   "answer": "每个新检测器都按红先行写：先在未修复的代码上跑、确认它因为我声称的原因变红，再改代码让它变绿。对账本一类，专门加「把被测目录权限清零再跑」的用例，删除输入后旧代码读出零花费照样 PASS 的行为就是红基线；修复后同一输入必须拒绝。",
+   "guard": "none: 红基线记录写进每个修复提交的说明里，检测器本身即是落地后的守卫，落地前无可指"
+  },
+  "C-03.1": {
+   "answer": "新加的每条测试都要能因为它名字里说的那个原因失败：MCP 参数扫描的清单测试，把扫描函数短路掉必须变红；变体表测试，把分类器退回程序名单版必须变红；Origin 校验测试，去掉校验头必须变红。不允许只验证「函数被调用过」这种副作用。",
+   "guard": "none: 这些检测器在本批各线（A/B/D）内红先行新建，建成前没有既有测试名可引用"
+  },
+  "C-03.2": {
+   "answer": "攻击类用例必须打到活目标：Origin 检查用真实起一个 console 实例发带伪 Origin 的 GET/Stop 请求，不是单测一个纯函数；账本的未来时间戳用例真写一条未来时间的记录再让 cap 判定读它。凡是测不到活路径的，降级标注为单元层并另配一条端到端用例。",
+   "guard": "none: console 起真实 http 服务与真实账本文件的用例随 F-195/F-205 修复落地，当前仓库无此两条"
+  },
+  "C-03.3": {
+   "answer": "stopline 记录这次全部钉到能解析的东西上：每个被重新触发的类，classes.json 里 stopline 的 detector 写成 路径::测试名，findings-lib 的 resolveRef 必须真能找到那条测试才算解除停线；不允许再用一句描述文字顶替。F-202 之后各条的 mechanism_upgrade 也只在落地后改成双冒号引用。",
+   "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+  },
+  "C-05.1": {
+   "answer": "docs 这条线（撤回 prices update、README 五项标未发布、CHANGELOG 切 0.1.0）每句新文案都配可失败的测试：发布测试断言 CHANGELOG 最新节等于 package.json 版本；README 里每个声称已有的能力必须有对应测试在清单里，标了未发布的必须不出现在 CLI help 里。",
+   "guard": "none: release-consistency 测试是本批 F-111 的交付物，红先行新建，建成前仓库里没有版本一致性测试"
+  },
+  "C-05.2": {
+   "answer": "工具报出的数字和退出码要经得起照做：spend 在数据不完整时不再报一个看起来可信的偏小数字，而是非零退出并写明哪个目录没读到；console 的 Stop 返回码区分「真停了」与「没权限」。按报错照做能到达修复，这是 UAT 里 S-REL-002 的直接教训。",
+   "guard": "none: 不完整读数非零退出的断言随 F-204 修复红先行落地，现有 spend 测试未覆盖该路径"
+  },
+  "C-06.1": {
+   "answer": "这批证据的来源都如实标注：七条新 finding 的 evidence 写明来自 2026-10-28 黑盒 UAT 的沙箱运行和具体 case 编号，绕过命令只留在本地测试记录、台账里只写类别描述；检测器的红基线来自旧代码真实运行，不用口头声称顶替。D11 决策记录写明七项是 the maintainer 2026-10-29 拍板，不冒充更早的授权。",
+   "guard": "none: 台账条目与决策记录是文字证据，来源标注写在 evidence 字段和 D11 本身里，没有可执行测试能核对拍板时间"
+  },
+  "C-10.1": {
+   "answer": "这次的三条「规则」全部落为机器强制：agent 不得解除停机、清账、解锁（F-177）写进 policy 的硬编码拒绝路径而不是文档；agent 改自己钩子配置直接 deny（F-188）由 hook 的保护区判定执行；版本与 CHANGELOG 一致（F-111）由发布测试在 CI 里强制。每条都配缺了就红的测试。",
+   "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
+  },
+  "C-10.2": {
+   "answer": "绕路问题逐条封：保护区判定对所有写入工具生效（Write、Edit、Bash、MCP 任何携带内容的调用都过同一判定），不是只拦某个工具名；未解析变量展开一律 ask（F-176）在规范化之后判，换一种拼法也落到同一条路径；console 的 Origin 在 GET 和 Stop 两条路由都查，不留只查一条的侧门。",
+   "guard": "none: 工具乘字段清单用例与双路由 Origin 用例随 F-202/F-195 修复红先行落地，建成前没有既有测试枚举全部路由"
+  }
+ }
+}

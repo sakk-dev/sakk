@@ -37,12 +37,33 @@ The owner's words: "全部放到 V2 吧，全部这一切的全部收尾。其�
 的开发计划里". D8 (v2 scope not set until v1 is complete) is answered by
 this: v1 is closed as it stands and docs/V2-BACKLOG.md is the v2 plan.
 
+## D11 — V2 fixes go-ahead (2026-10-29)
+
+The owner lifted the D10 code freeze for this batch ("好了，那个全部开工按推荐",
+2026-10-29 10:11 +0400) and took every recommended answer on the open
+decisions. Work lands on `oss/v2-fixes`, detector-first: each class that
+re-triggers its stop line gets its detector (red first, then green) before
+the fix.
+
+| Question | Decision | Lands in |
+| --- | --- | --- |
+| F-176 — unresolved expansion in a command | Always "ask": an expansion the guard cannot resolve is never judged safe | line A (canonicalization) |
+| F-177 — what the agent may never do | The agent never lifts a halt, reconciles, or unlocks; the default ledger moves under `~/.sakk` | line C (spend/ledger) |
+| F-188 — agent edits its own hook config | Deny outright, not ask | line B (hook entry + protected zone) |
+| F-195 — console checks Origin | On GET as well as Stop | line D (console) |
+| F-175 — `sakk prices update` | Retract the command and remove it from docs | line D (docs) |
+| F-111 — version and CHANGELOG | Version is 0.1.0; cut CHANGELOG from [Unreleased]; a release test ties version, CHANGELOG and tag together | line D (release) |
+| README features not built (P-ACC-001/002/004/012, P-INS-004) | Build what fits the window; mark the rest 未发布 in the README | line D (docs) |
+
+The seven unfiled UAT escapes (K-INS-026, K-SEC-049/050/051, S-REL-005,
+S-REL-002 follow-on, R-REL-015) are filed as F-202… under this decision.
+The release itself (push to main, tag, npm publish) stays the owner's call.
+
 ## Waiting on the owner
 
-The open owner questions — F-175, F-176, F-177, F-180, F-188, F-195 and the
-D1 merge caveat — now sit in docs/V2-BACKLOG.md, "Decisions for the owner",
-each with what it changes and what either answer costs. The release itself
-(push, merge, tag, npm publish) stays the owner's call.
+F-175, F-176, F-177, F-188 and F-195 were answered by D11 above. Still
+open: F-180, the D1 merge caveat, and the release itself (push, merge,
+tag, npm publish), which stays the owner's call.
 
 ## Acceptance
 
