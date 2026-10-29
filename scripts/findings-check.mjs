@@ -45,6 +45,8 @@ const {
   ackRewrites,
   answerFailedProblems,
   dataRegressions,
+  debtsDueSoon,
+  debtWarning,
   branchOf,
   classifyShell,
   DISPUTE,
@@ -155,6 +157,11 @@ const fail = (msg, code = 1) => {
 };
 // the stop-line's debt records fall due by the calendar (R5); nothing else reads the clock
 const TODAY = new Date().toISOString().slice(0, 10);
+/** Stop-line debts close to their date (R5): a warning only, never the verdict. */
+const warnDebts = (registry) => {
+  const actions = process.env.GITHUB_ACTIONS === 'true';
+  for (const d of debtsDueSoon(registry, TODAY)) console.log(debtWarning(d, { actions }));
+};
 
 /** Read a repository file from the working tree, the index (rev ''), or a commit. */
 const reader = (root, rev) => (p) => {
@@ -390,6 +397,7 @@ if (mode === '--staged') {
     problems.push(
       `self-evolution: ${items.length} untriaged item(s) in findings/inbox/ (${items.join(', ')}) — log each in findings/ledger.json (new finding or an occurrence of its class) and delete it, or record why it is not a problem in findings/dismissed.jsonl`,
     );
+  warnDebts(registry);
   if (problems.length) fail(problems.join('\n\n'));
   process.exit(0);
 }
@@ -648,6 +656,7 @@ if (mode === '--range') {
     const p = messageProblem(git(root, 'log', '-1', '--format=%B', c), atC);
     if (p) problems.push(`commit ${c.slice(0, 7)}: ${p}`);
   }
+  warnDebts(registry);
   if (problems.length) fail(problems.join('\n\n'));
   console.log(
     `self-evolution: ${files.length} changed file(s) answered in findings/acks/${slug(branch)}.json; answers append-only, guards resolve, no stopped class; commit messages follow the finding rule`,
