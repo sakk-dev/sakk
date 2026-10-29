@@ -317,7 +317,7 @@ export function capCheck({ home, config, table, now = Date.now(), env = process.
   if (models.length)
     return {
       deny: true,
-      reason: `PRICE_UNKNOWN: ${models.join(', ')} has no price, so today's spend cannot be shown to be under the cap — run sakk prices update, or add the model to ${home}/prices.json`,
+      reason: `PRICE_UNKNOWN: ${models.join(', ')} has no price, so today's spend cannot be shown to be under the cap — add the model to ${home}/prices.json (copy prices/snapshot.json there first)`,
     };
   if (s.unreadable)
     return {

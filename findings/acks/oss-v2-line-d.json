@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "branch": "oss/v2-line-d",
+  "answers": {
+    "C-05.1": {
+      "answer": "D 线改 CHANGELOG/README/NOTICE/docs 的每条叙述都对照代码再写：F-175 撤回 prices update 前先 grep 运行时字符串与 specs 引用逐处核对删净；F-111 新增 release 一致性测试把 package.json 版本与 CHANGELOG 最新节钉死，版本叙述脱钩即红；README 未建功能只标注不虚构，标注措辞由我亲手对照 V2-BACKLOG 核实。",
+      "guard": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release"
+    },
+    "C-05.2": {
+      "answer": "F-175 撤回后用户照提示执行 sakk prices update 会得到明确的不存在报错而非半截行为，我会删掉所有指向它的运行时提示，确保提示里报的命令都真实可跑；F-195 修复后 console 的 403 拒绝路径带可读 refusal，curl 实测 GET 与 Stop 两条路由在伪 Origin 下都真拒绝。",
+      "guard": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write"
+    },
+    "C-10.1": {
+      "answer": "发布一致性以前只是口头约定（版本号、CHANGELOG 节、tag 格式各自为政），本次 F-111 把它做成 test/release.test.mjs 的硬测试：package.json 版本、CHANGELOG 最新 released 节、tag 命名规则三者互相校验，缺一即红并进 pre-commit 门禁，不再靠人记得同步。",
+      "guard": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release"
+    },
+    "C-10.2": {
+      "answer": "console 的 Origin 校验若只挡一条路由，攻击者换另一条路由（Stop）就绕过了同一道门——这正是 F-195 的类问题。修法是把 Origin 校验做成两条路由共用的同一入口检查并配覆盖面测试：对每条有副作用或读敏感数据的路由逐一用伪 Origin 打，任何一条放行即红，新增路由漏接也会被测试点名。",
+      "guard": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write"
+    },
+    "C-01.1": {
+      "answer": "Origin 头缺席时不能当可信处理：浏览器跨站请求可能不带 Origin，但本地工具和 curl 也不带，F-195 修复里缺 Origin 的请求按现有 GET 路由的既定语义处理并在测试里钉死该语义，不允许「没带 Origin 就默认放行跨站写操作」；release 测试里 CHANGELOG 缺 released 节即红，不读成 0.1.0 已发布。",
+      "guard": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write"
+    },
+    "C-04.1": {
+      "answer": "F-195 的改动只在既有请求门里加一个 Origin 字符串等值比较和每响应固定头，不新增任何循环、子进程或按输入增长的工作量；请求行长度仍由 MAX_QUERY 的 414 拒绝路径封顶，拒绝计数仍走 state.forbidden 计数器，测试断言的是 403/计数而不是秒表。",
+      "guard": "none: 本改动不引入新的工作量维度，沿用既有 MAX_QUERY/forbidden 计数的测试覆盖"
+    },
+    "C-02.1": {
+      "answer": "正是为了不用手写路由清单才把 Origin 校验放在 dispatch 之前的共用门里：规则写一次（带了 Origin 且不是本机回环即 403），对现有每条 GET、halt、未来新增路由一体生效；覆盖面测试还打一条不存在的 /api 路径证明门在路由表之外，不依赖逐条列举。",
+      "guard": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write"
+    },
+    "C-02.2": {
+      "answer": "同一规则的其他落点查过：halt 已有更严的存在性 Origin 检查（保留）；Cache-Control 和非 HTML 响应的空 nonce CSP 属于同一「响应头按路由零散配置」类问题，这次一并在共用 headers() 里修掉，所有响应统一 no-store 与收紧的 CSP；带 cap 时 GET /api/try 经 spendCap 写索引属花费侧（C 线），在 README Limits 保留如实陈述。",
+      "guard": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write"
+    },
+    "C-15.1": {
+      "answer": "红基线和覆盖面测试都打真实路径：startConsole 起真 HTTP 服务器，用原始 http.request 带伪 Origin、真 token cookie 逐条路由打，断言真实返回码与真实响应头，不 mock 请求门；红基线已在未修复代码上实跑（GET 全 200），修后同一脚本路径变 403 才算绿。",
+      "guard": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write"
+    },
+    "C-06.1": {
+      "answer": "F-195 用例的证据来源是对真实 startConsole 服务器的原始 HTTP 请求返回码与响应头，不是「存在同名测试」或 mock 返回值；断言逐路径带消息报出是哪条路由放行，读测试输出的人看到的来源就是真实服务器行为本身，红基线也在未修复代码上实跑过同一路径集。",
+      "guard": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write"
+    },
+    "C-07.1": {
+      "answer": "本次对 src/spend.mjs 的改动只替换 PRICE_UNKNOWN 拒绝文案里指向不存在命令的半句，不新读任何输入；文案里引用的 ${home}/prices.json 路径来自既有 sakkHome 解析，不新增对 agent 环境或外部文件的信任；拒绝语义、fail-closed 行为与错误码一字不动。",
+      "guard": "none: 纯文案撤回不改数据流，PRICE_UNKNOWN 拒绝路径已有既有测试覆盖"
+    },
+    "C-07.2": {
+      "answer": "PRICE_UNKNOWN 这道闸的清除步骤仍然是人手动把模型价格写进 ~/.sakk/prices.json——被约束的 agent 不能通过改自己的环境清掉它；撤回 sakk prices update 提示反而消除了「提示 agent 去跑一个会写价格表的命令」的误导，清闸动作保持在人手里。",
+      "guard": "none: 既有 spend 测试已钉 PRICE_UNKNOWN 为 deny，本改动不触碰清除路径"
+    },
+    "C-14.1": {
+      "answer": "改动只在拒绝 reason 字符串内，不涉及任何逐文件/逐行处理循环，单元失败隔离行为（unreadable 行计数、SPEND_UNREADABLE 独立报因）保持原样；新增的 release 检测器本身逐文件扫描、断言消息点名具体文件与命令短语，一个文件的幻影命令不会把报错混成一团。",
+      "guard": "test/release.test.mjs::F-175 every multi-word sakk command in docs, specs and runtime strings is real"
+    },
+    "C-03.1": {
+      "answer": "本次新增的两个检测器都做过「把 bug 放回去」的红证明：F-175 多词命令检测器在撤回前的现状（docs/specs/src 里仍有 prices update 幻影）直接跑红、点名文件与短语，撤回后变绿；F-195 覆盖面测试的红基线在未修复 console 上实跑（伪 Origin GET 全 200），修后同一路径集 403 才绿——红的原因就是名字声称的原因。",
+      "guard": "test/release.test.mjs::F-175 every multi-word sakk command in docs, specs and runtime strings is real"
+    },
+    "C-03.2": {
+      "answer": "命令诚实检测器观察的就是它声称的对象：直接读 README/CHANGELOG/docs/specs 的码段与 src 字符串原文抽取 sakk 短语，再对照 bin/sakk.mjs 的子命令字面量集合，攻击面（写了用户会去跑的假命令）与检测面（同一批用户可见文本）重合；console 用例打的是真起的 HTTP 服务器，非 mock。",
+      "guard": "test/release.test.mjs::F-175 every multi-word sakk command in docs, specs and runtime strings is real"
+    },
+    "C-03.3": {
+      "answer": "检测器不认暂存的台账文字或注释声明：F-175 用例扫描的是发布工件里真实存在的文本，哪个文件再写出不存在的子命令就再红，与台账状态无关；F-111 用例钉的是 package.json 与 CHANGELOG 的真实内容关系（最新 released 节=当前版本、Unreleased 有内容必须已 bump），不是「有没有一条记录说做过」。",
+      "guard": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release"
+    },
+    "C-08.1": {
+      "answer": "docs/SPEND.md 本次只改叙述文字，不引入路径或别名判断；新增检测器里对文件的遍历用仓库相对路径白名单目录（docs/specs/src 固定前缀）逐一读取，不解析符号链接也不接受外部输入的路径，同一文件只有一个相对名；价格覆盖路径叙述统一写 $SAKK_HOME/prices.json 一个名字。",
+      "guard": "none: 本改动是纯文档叙述与测试内固定相对路径集，不新增任何可被双名（符号链接/相对路径别名）到达的判断面"
+    },
+    "C-16.1": {
+      "answer": "本次 D 线改动不自评通过：红基线来自对未修复代码的实跑输出而非我的声明，提交后由集成侧统一跑全量门禁与 CI，再经 MiniMax 独立评审（评委与作者不同模型，仓库既定流程）复核；RULES.md 本条只更新 F-175 状态为已裁定事实（D11 记录在 docs/DECISIONS.md），裁定者是 owner 不是我。",
+      "guard": "none: 判定独立性由仓库的 CI+MiniMax 审查流程保证，不是单条测试能钉的"
+    },
+    "C-09.1": {
+      "answer": "package.json files 数组新增 NOTICE 的假设只有一个：npm pack 以包根为基准解析 files 清单。新增的 release 测试不信配置而验真实行为——用 execFileSync 跑真实 npm pack --dry-run --json（cwd 钉死为仓库根绝对路径），断言 NOTICE 出现在真实打包文件列表里且磁盘上存在；若 npm 行为或大小写敏感文件系统有差异，测试直接红。",
+      "guard": "test/release.test.mjs::F-199 the NOTICE file ships and carries the MIT notices the package derives from"
+    },
+    "C-09.2": {
+      "answer": "真实运行点是 node --test 的 test/release.test.mjs：ROOT 由 import.meta.url 推导为绝对路径，npm pack 的 cwd 显式传 ROOT，与会话起始目录、worktree 位置无关；我已在本 worktree 用定点回归命令实跑该用例证明它在真实环境触发（42 过 0 败），而不是只改了配置就当生效。",
+      "guard": "test/release.test.mjs::F-199 the NOTICE file ships and carries the MIT notices the package derives from"
+    },
+    "C-01.2": {
+      "answer": "做过删除重跑的设想：把 CHANGELOG 的 0.1.0 节删掉，release 一致性测试必须变红而非跳过——红先行阶段已用未切节的基线 126d421 实证它红（Unreleased 满载且版本未 bump）；把 console 的 Origin 校验从 Stop 路由上删掉，覆盖面测试必须红，这就是 F-195 的红基线本身，证明检查是必需而非可选。",
+      "guard": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release"
+    }
+  }
+}

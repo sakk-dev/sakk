@@ -9,9 +9,10 @@ sakk spend               # today's spend by model, from local logs
 sakk prices              # the price table in use
 ```
 
-`sakk prices update` (fetch a newer list) is planned and not in v1
-(F-175). To price a model the table lacks, copy the shipped
-`prices/snapshot.json` to `~/.sakk/prices.json` and add the model there.
+There is no fetching updater: an advertised update subcommand was never
+built and is retracted (F-175). To price a model the table lacks, copy the
+shipped `prices/snapshot.json` to `~/.sakk/prices.json` and add the model
+there.
 
 ## Where the numbers come from
 

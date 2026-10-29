@@ -216,9 +216,11 @@ export function startConsole({
   const state = { forbidden: 0 };
   let bound = port;
   const headers = (nonce) => ({
-    'Content-Security-Policy': `default-src 'none'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'nonce-${nonce}'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'`,
+    // non-HTML responses carry no script/style, so their CSP allows none at all
+    'Content-Security-Policy': `default-src 'none'; script-src ${nonce ? `'self' 'nonce-${nonce}'` : "'none'"}; style-src ${nonce ? `'self' 'nonce-${nonce}'` : "'none'"}; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'`,
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
+    'Cache-Control': 'no-store', // tokens and log data never land in a shared cache
   });
   const send = (res, status, type, body, extra = {}) => {
     res.writeHead(status, { 'Content-Type': type, ...headers(''), ...extra });
@@ -238,6 +240,12 @@ export function startConsole({
       const url = new URL(req.url, `http://127.0.0.1:${bound}`);
       // 2. Host must be our loopback address (blocks DNS rebinding)
       if (!hostOk(req.headers.host, bound)) return forbid(res);
+      // 2b. a cross-site Origin is refused on EVERY route, GET included, before
+      // dispatch — one gate for current and future routes (F-195). An absent
+      // Origin (typed URL, curl, same-origin GET) stays allowed; the halt write
+      // below still requires the Origin to be present.
+      if (req.headers.origin !== undefined && !originOk(req.headers.origin, bound))
+        return forbid(res);
       // 3. the token, from the first-load query or the cookie after that
       const fromQuery = url.searchParams.get('t');
       const cookie = parseCookie(req.headers.cookie).sakk_t;
@@ -452,7 +460,7 @@ const PAGES={
   const c=$("div",{class:"card"});const bar=$("div",{class:"row"});const mk=(fmt,label)=>{const b=$("button",{class:"act",text:label});b.addEventListener("click",()=>exportRows(d.decisions,fmt));return b;};bar.append(mk("jsonl","Export JSONL"),mk("csv","Export CSV"));
   c.append(bar,$("div",{class:"src",text:(d.truncated?"most recent "+d.decisions.length+" lines":d.decisions.length+" lines")+(d.unreadable?" \u00b7 "+d.unreadable+" unreadable":"")}));
   c.append(tableOf(["When","Agent","Verdict","Action","Scope"],d.decisions,r=>[esc(r.at),esc(r.by),vpill(r.verdict),esc(r.context&&r.context.action),esc(r.context&&r.context.scope)]));m.append(c);},
- prices:async m=>{const d=await api("prices");m.append($("h1",{text:"Model prices"}),$("p",{class:"sub",text:"The price table in use."+(d.approximate?" Approximate \u2014 run sakk prices update.":"")}));
+ prices:async m=>{const d=await api("prices");m.append($("h1",{text:"Model prices"}),$("p",{class:"sub",text:"The price table in use."+(d.approximate?" Approximate \u2014 add exact prices to ~/.sakk/prices.json.":"")}));
   if(d.error){m.append($("p",{class:"deny",text:esc(d.error)+": "+esc(d.message)}));return;}
   const c=$("div",{class:"card"});c.append($("div",{class:"src",text:"source: "+esc(d.source)+" \u00b7 "+esc(d.count)+" model(s)"}),tableOf(["Model","Input","Output"],d.models,r=>[esc(r.id),esc(r.input),esc(r.output)]));m.append(c);},
  enterprise:async m=>{m.append($("h1",{text:"Enterprise \u00b7 coming soon"}));const c=$("div",{class:"card cs"});

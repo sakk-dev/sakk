@@ -172,7 +172,9 @@ them, so the answer was the detector, not more doctrine; two were real gaps.
   pattern drifted from the drill; both are now checked against it. F-175: a
   prices update command is named in docs, specs and two CLI hints but was
   never built, and the release check reads only a command's first word —
-  open, pending the owner's choice to retract or build it.
+  retracted (D11, 2026-10-29): the hints and references are removed and the
+  release check now validates multi-word command phrases across docs, specs
+  and runtime strings.
 
 ## Evolution loop
 

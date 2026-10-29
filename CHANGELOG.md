@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-29
+
+### Changed — the release describes one artifact (F-111)
+
+- Version 0.1.0 is cut: package.json, the plugin manifest and this
+  changelog's newest released section now name the same version, and a
+  release test pins them together with the `v0.1.0` tag-name format the
+  links below use. Publishing (the tag and npm) remains the owner's step.
+
+### Fixed — the console refuses a cross-site Origin on every route (F-195)
+
+- `sakk ui` now refuses a request whose Origin header is not the console's
+  own loopback origin on every route — the page, every `/api/*` read and
+  the halt write — in one gate ahead of dispatch, so a route added later is
+  covered too. A request without an Origin header (a typed URL, curl) still
+  works, and the halt write still requires the Origin to be present.
+- Every console response now carries `Cache-Control: no-store`, and a
+  non-HTML response's CSP no longer carries an empty-nonce script or style
+  allowance.
+
+### Removed — the advertised prices updater (F-175)
+
+- The update subcommand of `sakk prices` named in earlier notes was never
+  built and is retracted (owner decision D11, 2026-10-29): the hints in
+  `sakk ui` and in the PRICE_UNKNOWN refusal no longer point to it, and the
+  spend spec and docs name the one real route — copy `prices/snapshot.json`
+  to `~/.sakk/prices.json` and edit it by hand.
+- The release check now validates every multi-word `sakk` phrase in the
+  README, this changelog, docs, specs and the runtime's user-facing strings
+  against the CLI's real subcommands, so an advertised-but-unbuilt command
+  cannot recur.
+
+### Changed — agent edits of guard config are denied, not asked (F-188)
+
+- The `ask-agent-config` policy is renamed and tightened to
+  `deny-agent-config`: from the agent, `sakk guard install|uninstall` is now
+  denied instead of asked. Mentions of the old name further down this file
+  describe the behavior as it was when those notes were written.
+
+### Added — a NOTICE file for the MIT-derived material (F-199)
+
+- A NOTICE file now states the MIT-licensed material this AGPL-3.0-only
+  package derives from — the secret-scanning rules ported from gitleaks and
+  the price snapshot derived from LiteLLM's model list — with their
+  attributions, and ships in the npm package.
+
+### Added — spend failures and oddities get public names
+
+- New public error code `SPEND_LOGS_UNLISTABLE`: a spend-log directory that
+  cannot be listed now fails closed under its own name.
+- New public error code `LEDGER_PATH_LEGACY`: the legacy `./sakk-ledger.json`
+  default path is refused by name instead of being silently read.
+- `sakk spend --json` adds a `future` field: a log line stamped in the
+  future counts toward the day it is observed, and is flagged there.
+
+### Changed — unattended runs stop at the human gate
+
+- `sakk resume`, `sakk reconcile` and `sakk unlock` without a real terminal
+  now exit 2 with `HUMAN_CONFIRMATION_REQUIRED` instead of succeeding, since
+  each needs a person's confirmation.
+- The default ledger path moves to `~/.sakk/sakk-ledger.json`.
+
 ### Changed — v1 close-out: known limits stated, the rest moved to v2
 
 - The 2026-10-28 acceptance run checked all 151 P0 cases by their expected
@@ -22,8 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected in the docs: the README plugin line (`claude --plugin-dir`, one
   session; a persistent install needs a marketplace file, planned for v2),
   the secret-rule counts (195 upstream, 192 enabled), which roadmap items
-  ship in the npm package, and `sakk prices update`, which is planned and not
-  in v1.
+  ship in the npm package, and the fetching prices updater, which was
+  advertised but never built (retracted in this release — F-175).
 
 ### Changed — the agent cannot re-point the ledger a halt is read from (F-181)
 
@@ -59,7 +121,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   must now run them at a terminal.
 - The guard judges Sakk's own commands by the write they make: from the agent,
   `sakk cap …` is denied (`protect-guard-state`), `sakk guard install|uninstall`
-  asks (`ask-agent-config`), and `script`, `expect` and `unbuffer` ask
+  asks (`ask-agent-config`; renamed and tightened to `deny-agent-config` in
+  this release — F-188), and `script`, `expect` and `unbuffer` ask
   (`ask-constructed-commands`), because they can type into a prompt.
 - Limits, stated in the README and docs/GUARD.md: the confirmation checks for a
   terminal, not a person; Sakk is known by the name `sakk` only.
@@ -168,8 +231,9 @@ install` now says so, and `sakk doctor` warns on any installed Claude Code
   malformed `--day` is `SPEND_USAGE`.
 - `sakk prices [--json]`: the price table in use and its source file.
 - These complete M2's documented surface (the library and the hook's
-  enforcement already shipped; see F-161). `sakk prices update` — the one
-  network fetch — lands with the gitleaks rule port.
+  enforcement already shipped; see F-161). A fetching prices updater — the
+  one network call — was then still planned; it was never built and is
+  retracted (F-175).
 
 ### Added — release packaging (open-source v1, M5)
 
@@ -267,8 +331,8 @@ install` now says so, and `sakk doctor` warns on any installed Claude Code
   `SPEND_TOO_MANY_LOGS`.
 - M2 itself shipped the library and the hook's enforcement, not the CLI; the
   `sakk cap set/off`, `sakk spend` and `sakk prices` commands followed (see the
-  F-161 section above). `sakk prices update` — the one network fetch — lands
-  with the gitleaks rule port.
+  F-161 section above). A fetching prices updater — the one network call —
+  was then still planned; it was never built and is retracted (F-175).
 
 ### Fixed — F-105 archive, from the independent review (F-159)
 
@@ -895,9 +959,7 @@ against the running code:
 - CI toolchain pinned (prettier exact version, actions by commit SHA);
   platform support declared (macOS/Linux).
 
-## [0.1.0] - 2026-10-13
-
-### Added
+### Added — the ledger, the first cut (2026-10-13)
 
 - Fail-closed spend ledger (`src/ledger.mjs`): `initLedger`, `reserve`,
   `settle`, `markReconciliationRequired`, `clearReconciliation`, `readLedger`,

@@ -47,9 +47,11 @@ The prior art is Playwright's `show-report` and UK AISI's Inspect view.
    - A request without it gets 403 and no data.
 3. **Host check.** `Host` must be `127.0.0.1:<port>` or
    `localhost:<port>`, which blocks DNS rebinding.
-4. **Origin check.** Any non-GET request must carry
-   `Origin: http://127.0.0.1:<port>` (or the `localhost` form) and the
-   token header.
+4. **Origin check.** On every route, GET included, a request that carries an
+   `Origin` header other than `http://127.0.0.1:<port>` (or the `localhost`
+   form) gets 403 before dispatch (F-195). A request without an Origin header
+   (a typed URL, curl, a same-origin GET) passes this gate. Any non-GET
+   request must additionally carry the local `Origin` and the token header.
 5. **Read-only by default.** The only write is stopping an agent, behind
    `--allow-halt`.
    - It calls the ledger's `halt()` with `by` set to the OS user name and
@@ -62,6 +64,8 @@ The prior art is Playwright's `show-report` and UK AISI's Inspect view.
 img-src 'self' data:; frame-ancestors 'none'`
    - `X-Content-Type-Options: nosniff`
    - `Referrer-Policy: no-referrer`
+   - `Cache-Control: no-store` on every response (F-195), and a non-HTML
+     response — which carries no nonce — allows no script or style at all.
 7. **Output.** Every string from the logs is escaped before it reaches the
    page, and no log text is ever used as HTML. Commands and file contents
    are not in the logs in the first place (M1).

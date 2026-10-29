@@ -376,6 +376,10 @@ count reservations from the books, not allows from the decision log.
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
 - [ ] Named-approver identity, SSO — enterprise
 - [ ] Team console: approvals, roles, audit export, outbound metering — enterprise (the local read-only `sakk ui` above is the open-source edition)
+- [ ] README demo: a one-line install at the top and a screenshot or GIF of a deny — not in this release (v2)
+- [ ] Sourced figures: each accuracy number in this README backed by a linked measurement — not in this release (v2)
+- [ ] Packaging sweep at pack time: a stray-file check plus a secret scan over the packed files — not in this release (v2)
+- [ ] A clear startup refusal on Node older than 20, instead of a raw syntax error — not in this release (v2)
 
 Not planned: orchestration frameworks, model-level safety (prompt-injection detection). Sakk is the change-control and evidence layer, not another agent platform.
 
@@ -450,10 +454,10 @@ wired" but installs no guard: run `sakk guard install` after it.
 
 The console (`sakk ui`) masks a secret only in command text, not in a
 decision's path or scope, on screen or in an export. Its try box refreshes
-the spend cache on disk, its responses carry no `Cache-Control: no-store`,
-and its Origin check covers only the Stop route. Its Stop button does not
-work in v1, because the page cannot read its own session token: use
-`sakk halt` at the terminal.
+the spend cache on disk. Its Stop button does not work in v1, because the
+page cannot read its own session token: use `sakk halt` at the terminal.
+(Since this release every response is sent `Cache-Control: no-store` and a
+cross-site Origin is refused on every route, not only Stop — F-195.)
 
 [docs/GUARD.md](docs/GUARD.md), "Known open in v1", has the detail, and
 [docs/V2-BACKLOG.md](docs/V2-BACKLOG.md) lists every known gap with the fix
@@ -461,7 +465,9 @@ planned for it.
 
 ## License
 
-AGPL-3.0-only. Commercial licenses (closed-source embedding, enterprise features) are available — open an issue or contact the author. Contributions require a CLA (see CONTRIBUTING.md).
+AGPL-3.0-only. Shipped third-party notices are in [NOTICE](NOTICE). Commercial licenses (closed-source embedding, enterprise features) are available — open an issue or contact the author. Contributions require a CLA (see CONTRIBUTING.md).
+
+Enterprise edition — team console, SSO, named approvers, hash-chained ledger: coming soon (the unchecked roadmap items above).
 
 ---
 
