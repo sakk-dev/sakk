@@ -5,7 +5,9 @@
 // local run for twenty minutes with no diagnosis. Every spawnSync,
 // execFileSync and execSync a test makes therefore carries a time bound: its
 // own `timeout` if it sets one, this default if it does not. A child killed
-// by the default says so on stderr, so the failure names its cause.
+// by the default says so on stderr, so the failure names its cause: the whole
+// command and the start of its stdin, not just the program — "node killed"
+// named no test when a guard was starved beside a drill (F-220).
 
 import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
@@ -15,6 +17,16 @@ const fromEnv = Number(process.env.SAKK_TEST_SPAWN_TIMEOUT_MS);
 export const DEFAULT_SPAWN_TIMEOUT_MS = fromEnv > 0 ? fromEnv : 240_000;
 
 const isOptions = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+const CLIP = 200;
+const clip = (s) => (s.length > CLIP ? `${s.slice(0, CLIP)}…` : s);
+/** The command a killed child ran, and the start of what it was given on stdin. */
+function command(args, options) {
+  const [file, argv] = args;
+  const words = [String(file), ...(Array.isArray(argv) ? argv.map(String) : [])].join(' ');
+  const input =
+    options.input === undefined ? '' : ` with stdin ${JSON.stringify(clip(String(options.input)))}`;
+  return `${clip(words)}${input}`;
+}
 
 function bounded(name, original) {
   return function (...args) {
@@ -30,7 +42,7 @@ function bounded(name, original) {
     const call = hasOptions ? [...args.slice(0, -1), withBound] : [...args, withBound];
     const say = () =>
       process.stderr.write(
-        `bounded-spawn: ${name}(${String(args[0])}) killed after ${DEFAULT_SPAWN_TIMEOUT_MS} ms (F-143)\n`,
+        `bounded-spawn: ${name}(${command(args, options)}) killed after ${DEFAULT_SPAWN_TIMEOUT_MS} ms (F-143)\n`,
       );
     try {
       const r = original.apply(this, call);

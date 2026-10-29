@@ -24,6 +24,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { acquire, LOCK_ENV, refusal, release } from './heavy-lock.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -167,6 +168,12 @@ if (isMain) {
     console.error(`${code}: ${msg} — no certificate emitted`);
     process.exit(2);
   };
+  // F-220: one heavy run at a time on this machine; the drill and the suites
+  // it starts run in this lock
+  const lock = acquire(`gate certificate in ${ROOT}`);
+  if (!lock.ok) refuse('CERT_LOCKED', refusal('npm run certificate', lock));
+  process.env[LOCK_ENV] = String(lock.owner);
+  process.on('exit', () => release());
   const run = (cmd, args, label, timeout = 900_000) => {
     process.stderr.write(`· ${label} ...\n`);
     const r = spawnSync(cmd, args, { cwd: ROOT, encoding: 'utf8', timeout, maxBuffer: 1 << 26 });

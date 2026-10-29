@@ -44,7 +44,14 @@ const NPM = which('npm', process.env.PATH ?? '');
 const ENV = Object.fromEntries(
   Object.entries(process.env).filter(
     ([k]) =>
-      !k.startsWith('GIT_') && !['SAKK_PR_BASE', 'SAKK_BRANCH', 'XDG_CONFIG_HOME'].includes(k),
+      !k.startsWith('GIT_') &&
+      ![
+        'SAKK_PR_BASE',
+        'SAKK_BRANCH',
+        'XDG_CONFIG_HOME',
+        'SAKK_HEAVY_LOCK',
+        'SAKK_HEAVY_LOCK_PID',
+      ].includes(k),
   ),
 );
 
@@ -52,12 +59,22 @@ const ENV = Object.fromEntries(
 const SUITE = 'node ../ctl/suite.mjs';
 // the fake suite does what a test fixture does: a throwaway repository, made with the
 // environment the suite was given, and it records which GIT_ variables it saw
-const suite = (ctl) => `import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+const suite = (
+  ctl,
+) => `import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const ctl = ${JSON.stringify(ctl)};
 appendFileSync(join(ctl, 'suite.log'), 'ran\\n');
+// who held the machine-wide lock while the suite ran (F-220)
+appendFileSync(
+  join(ctl, 'suite.lock'),
+  JSON.stringify({
+    pid: process.env.SAKK_HEAVY_LOCK_PID ?? null,
+    held: existsSync(process.env.SAKK_HEAVY_LOCK ?? ''),
+  }) + '\\n',
+);
 appendFileSync(
   join(ctl, 'suite.env'),
   Object.keys(process.env).filter((k) => k.startsWith('GIT_')).sort().join(' ') + '\\n',
@@ -92,6 +109,7 @@ function setup(t) {
     ...ENV,
     HOME: join(root, 'home'),
     SAKK_PR_BASE: 'main',
+    SAKK_HEAVY_LOCK: join(root, 'heavy.lock'),
     npm_config_cache: join(root, 'npm-cache'),
     npm_config_update_notifier: 'false',
   };
@@ -105,6 +123,9 @@ function setup(t) {
 
   for (const h of ['pre-push', 'pre-push.mjs'])
     copyFileSync(join(REPO, 'scripts', 'hooks', h), join(work, 'scripts', 'hooks', h));
+  // the hook takes the machine-wide lock with the real lock module (F-220)
+  const lockModule = join(REPO, 'scripts', 'heavy-lock.mjs');
+  if (existsSync(lockModule)) copyFileSync(lockModule, join(work, 'scripts', 'heavy-lock.mjs'));
   chmodSync(join(work, 'scripts', 'hooks', 'pre-push'), 0o755);
   writeFileSync(join(work, 'scripts', 'findings-check.mjs'), checker(ctl));
   writeFileSync(join(ctl, 'suite.mjs'), suite(ctl));
@@ -152,6 +173,8 @@ function setup(t) {
     },
     ranges: () => lines('range.log').map((l) => JSON.parse(l)),
     suiteRuns: () => lines('suite.log').length,
+    suiteLocks: () => lines('suite.lock').map((l) => JSON.parse(l)),
+    lock: join(root, 'heavy.lock'),
   };
 }
 
@@ -282,6 +305,34 @@ test('without gh or SAKK_PR_BASE the base falls back to main and says so', (t) =
   assert.match(p.out, /base branch main \(fallback: [^)]*gh is not installed\)/);
   assert.deepEqual(r.ranges(), [{ args: ['--range', 'origin/main'], branch: 'feat/y' }]);
   assert.equal(r.suiteRuns(), 1);
+});
+
+test('a push while another heavy run holds the machine-wide lock is refused before the suite runs, and the suite runs in the lock otherwise (F-220)', (t) => {
+  const r = setup(t);
+  r.change('2');
+  // a live run (this test process) holds the lock, as a drill or a gate would
+  mkdirSync(r.lock);
+  writeFileSync(join(r.lock, 'owner'), `${process.pid} 2026-10-29T00:00:00.000Z mutation drill\n`);
+  let p = r.push(['origin', 'feat/y']);
+  assert.notEqual(p.status, 0, p.out);
+  assert.match(p.out, /heavy-lock: refused the pre-push suite/);
+  assert.match(p.out, new RegExp(`mutation drill \\(pid ${process.pid}`));
+  assert.equal(r.suiteRuns(), 0);
+  assert.equal(r.remoteHead('feat/y'), null);
+  // the refusal left the holder's lock in place
+  assert.match(readFileSync(join(r.lock, 'owner'), 'utf8'), new RegExp(`^${process.pid} `));
+
+  // once it is free, the suite runs holding the lock and the hook releases it
+  rmSync(r.lock, { recursive: true, force: true });
+  p = r.push(['origin', 'feat/y']);
+  assert.equal(p.status, 0, p.out);
+  assert.equal(r.suiteRuns(), 1);
+  const [seen] = r.suiteLocks();
+  assert.equal(seen.held, true);
+  assert.match(String(seen.pid), /^[1-9]\d*$/);
+  assert.notEqual(Number(seen.pid), process.pid);
+  assert.equal(existsSync(r.lock), false);
+  assert.equal(r.remoteHead('feat/y'), r.head());
 });
 
 test('deleting a remote branch runs nothing', (t) => {

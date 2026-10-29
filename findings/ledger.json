@@ -7213,21 +7213,27 @@
       "dt": ["DT-PROC", "DT-TOOL"],
       "rc": ["RC-01"],
       "es": ["ES-06"],
-      "instance_fix": "open",
-      "class_fix": "open: the gate, the drill and the audit take one machine-wide lock before they start, so a second heavy run waits or refuses instead of sharing the machine; the spawn bound names the input it killed",
-      "guard": "none: open",
-      "sweep": "Not swept yet: the callers that start whole-suite runs are npm run gate (scripts/gate.sh), npm run drill (scripts/mutation-drill.sh), npm run audit (scripts/audit.mjs) and the pre-push hook; CI runs each job on its own runner and is not affected.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "instance_fix": "this commit: scripts/heavy-lock.mjs takes one machine-wide lock (a directory published by an atomic rename, holding the owner's pid, start time and command) before the gate, the drill (before it resets its report), the audit, the gate certificate and the pre-push suite start; a second heavy run refuses with the holder's pid and command instead of waiting; a lock whose pid is dead, or that nobody can read, is taken over; a run started inside the holder (the drill inside the audit, the suites inside the certificate) gets the holder's pid in SAKK_HEAVY_LOCK_PID and runs in its lock; test/bounded-spawn.mjs names the whole command and the start of its stdin when it kills a child, so the next kill says which payload hung; with a planted holder each of the five callers refuses and runs nothing, and 13 bugs planted in the lock and its callers were all caught",
+      "class_fix": "every caller that starts whole-suite runs on this machine takes the same lock before its first step and refuses, never waits, while another holds it, so two heavy runs never share the machine and a waiting run never looks hung (mkdir-style mutex: https://mywiki.wooledge.org/BashFAQ/045); a planted holder makes each caller refuse in test/heavy-run-lock.test.mjs",
+      "guard": "test/heavy-run-lock.test.mjs::the gate refuses to start while another heavy run holds the machine-wide lock, and runs nothing (F-220)",
+      "sweep": "Swept: the callers that start whole-suite runs on this machine are npm run gate (scripts/gate.sh), npm run drill (scripts/mutation-drill.sh), npm run audit (scripts/audit.mjs), the gate certificate (scripts/gate-certificate.mjs) and the pre-push hook (scripts/hooks/pre-push.mjs); each takes the lock and each has a refusal test. A bare npm test typed by hand does not take it: one suite alone is the case the bounds were set for. CI runs each job on its own runner and is not affected.",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": [
         "scripts/gate.sh",
         "scripts/mutation-drill.sh",
         "scripts/audit.mjs",
-        "test/bounded-spawn.mjs"
+        "scripts/gate-certificate.mjs",
+        "scripts/hooks/pre-push.mjs",
+        "scripts/heavy-lock.mjs",
+        "test/bounded-spawn.mjs",
+        "test/heavy-run-lock.test.mjs"
       ],
       "mechanism_gap": "No detector looks at what else runs on the machine; bounded-spawn (F-143) bounds each child and did kill this one, but a bound that fires under load reads as a product failure.",
-      "mechanism_upgrade": "none: open — a lock shared by gate, drill and audit, with a test that a second run refuses while the first holds it",
-      "distinct_from": {}
+      "mechanism_upgrade": "test/heavy-run-lock.test.mjs::of many runs that start at once, exactly one takes the lock",
+      "distinct_from": {
+        "F-123": "F-123 is the hooks assuming Sakk's folder layout, so another project that copies them cannot commit; F-220 is two heavy runs sharing one machine in Sakk itself, where the layout is right and the runs starve each other."
+      }
     }
   ]
 }
