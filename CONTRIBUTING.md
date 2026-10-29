@@ -23,6 +23,11 @@ Thanks for your interest! Two ground rules keep this project sustainable:
   touch `src/ledger.mjs`.
 - `npm run format:check` — Prettier (config in `.prettierrc.json`). CI
   enforces it.
+- CI runs once per commit: on its pull request, and on `main` after the
+  merge. A newer push to a pull request cancels the older run. A branch
+  without a pull request gets no CI run; the pre-push hook checks it. The
+  worst-case runner-minutes of one commit are capped by
+  `test/ci-cost.test.mjs` — raising the cap states the cost in the PR.
 
 ## Commit messages
 

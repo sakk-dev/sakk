@@ -7118,6 +7118,44 @@
       }
     },
     {
+      "id": "F-218",
+      "date": "2026-10-29",
+      "introduced_in": "8e796fb",
+      "found_by": "human",
+      "class": "C-04",
+      "title": "Every pull request commit ran CI twice (branch push and pull_request) and an older run was never cancelled, so the drill ran double and the Actions budget ran out",
+      "symptom": "The owner raised the account's Actions spending limit to $50 and it still ran out in October. The workflow fired on every push to every branch and again on the pull request for the same commit, and a newer push did not cancel the older run, so each commit paid for the drill (Node 20 and 22, about 45 minutes each) two or more times.",
+      "evidence": "Job timings from GitHub's Actions API for October 2026, each job rounded up to the minute as billing rounds (scratchpad minutes.py / minutes2.py; the invoice itself needs a token scope this session does not have): sakk 10,111 runner-minutes, of which the drill job 9,087; push runs on a branch that also had a pull request 4,541 minutes (45%), push runs on a branch with no pull request 697. host-app 1,848 more with the same trigger. Total about 11,959 against the 3,000 included in the plan.",
+      "direct_cause": ".github/workflows/ci.yml had `on: [push, pull_request]` and no concurrency block, and pr-review.yml had no concurrency block.",
+      "why": [
+        "The trigger was written for the first release, when CI was a few minutes of unit tests and running it twice cost nothing anyone noticed.",
+        "The drill and the Node matrix were added later and made one run cost about 90 runner-minutes, but the trigger was never revisited, so the duplicate grew with it.",
+        "Nothing measured or bounded what one commit costs in CI: job timeouts bound a single job, and no check added them up, looked at the triggers, or required an older run to be cancelled."
+      ],
+      "root_cause": "The cost of CI per commit was assumed to be small and never measured or bounded; the workflows' triggers and concurrency were outside every check, so a duplicated trigger grew with the drill until the bill showed it.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: ci.yml runs on push only for main and on pull_request; both workflows cancel an older run of the same pull request (group keyed by pull request number, falling back to the run id so a run on main is never cancelled); CONTRIBUTING says a branch without a pull request is checked by the pre-push hook only",
+      "class_fix": "test/ci-cost.test.mjs",
+      "guard": "test/ci-cost.test.mjs::every workflow runs once per commit: a push only on main, a pull request on its own event",
+      "sweep": "Every workflow in .github/workflows is read by the new test (ci.yml and pr-review.yml today). The worst-case runner-minutes for one pull request commit (262) and one merge to main (220) are now ceilings that fail when a job, matrix entry or timeout is added without raising them in the same diff. host-app has the same `on: [push, pull_request]`; its CI is maintained by its other owner, so it is listed for them rather than changed here. Cutting the drill itself (one Node version per pull request, mutants only for changed files, or a nightly run) weakens the gate and is the owner's decision.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/pr-review.yml",
+        "test/ci-cost.test.mjs",
+        "CONTRIBUTING.md"
+      ],
+      "mechanism_gap": "The C-04 detectors bound product code by counters and the drill job by its mutant count (F-166), but none looked at how many times a commit runs CI or what all the jobs of one run add up to.",
+      "mechanism_upgrade": "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget",
+      "distinct_from": {
+        "F-166": "F-166 is one job's clock limit not covering its own work; F-218 is the same work started twice per commit, with no bound on what all the jobs of a commit cost together.",
+        "F-91": "F-91 is a review job with no timeout; F-218 is jobs that each had a timeout but ran more times than the commit needed."
+      }
+    },
+    {
       "id": "F-219",
       "date": "2026-10-29",
       "introduced_in": "b2119ec",

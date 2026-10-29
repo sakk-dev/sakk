@@ -16,6 +16,10 @@ name: pr-adversarial-review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+# a newer push to the pull request cancels the older review (F-218)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   review-key:
