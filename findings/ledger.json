@@ -6379,6 +6379,37 @@
       "distinct_from": {
         "F-194": "F-194 is the outbound face: a decision record already written is redacted in one field only when logged, shown and exported. F-202 is the inbound face: payload fields are never scanned at all, so the deny never happens. Different seam and different fix; closing one does not close the other."
       }
+    },
+    {
+      "id": "F-206",
+      "date": "2026-10-29",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-01",
+      "title": "After the host tool is upgraded or reinstalled, the guard hook entry can sit stale, degraded or in another spelling — and `sakk guard install` reads it as already protected, so the repair path is a no-op and the fail-open state persists",
+      "symptom": "An entry written before a Claude Code upgrade (no onFailure), an entry pointing at an old install location, or an entry in a spelling the recognizer does not know is counted as protection: a reinstall reports nothing to change, so the hook stays fail-open or dead even after following the doctor own advice to reinstall; an unrecognized spelling also survives uninstall and gets a duplicate stacked beside it.",
+      "evidence": "2026-10-28 black-box UAT (sandboxed runner, throwaway HOME) case R-REL-015; filed 2026-10-29 after D11 lifted the V1 freeze (docs/DECISIONS.md D11).",
+      "direct_cause": "withGuard adds the entry only when no entry of ours is present, so a degraded or stale entry blocks the repair; and ours() recognizes only the one spelling install writes (the script filename plus the agent flag), so alternate spellings are invisible to install, uninstall and the doctor inventory.",
+      "why": [
+        "The install was written as merge-only (never replaces), so presence of any own-looking entry was treated as success; the possibility that the present entry is itself the broken thing — stale path, missing onFailure after a host upgrade — had no code path.",
+        "ours() was derived from the one command line install writes, not from the set of spellings a hook of ours can legitimately have (old locations, a PATH-installed bare name), so recognition and reality diverged as soon as the host or the install location changed.",
+        "No test drove a second install over a degraded or stale entry: the suite asserted a fresh install and an identical reinstall (changed:false), so the repair path being a no-op was invisible."
+      ],
+      "root_cause": "Presence of an entry is read as presence of protection: install checks that something of ours exists instead of converging the config to the known-good form, so every way an entry can rot — host upgrade, moved install, alternate spelling — is read as success (C-01: absence of the guarantee read as success).",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit",
+      "guard": "test/guard.test.mjs::R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)",
+      "sweep": "Swept the rule other faces: the cursor branch had the same per-event presence check and now converges too; uninstall and the doctor inventory share the one broadened recognizer, so a spelling install converges is also one uninstall removes and the doctor fires; the doctor already fails on a fully absent hook and its fire test catches a dead command, both asserted in the same detector; and a reinstall never downgrades an existing fail-closed entry (onFailure block is kept when the host probe says old).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/guard-install.mjs"],
+      "mechanism_gap": "C-01 detectors cover CLI strictness, bundle keys and CI honesty; none drives the guard repair path over a degraded, stale or re-spelt hook entry, so an install that reads rot as protection raised nothing — the idempotency test only ever reinstalled over a healthy entry.",
+      "mechanism_upgrade": "test/guard.test.mjs::R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)",
+      "distinct_from": {
+        "F-174": "F-174 is the missing WARNING on a degraded fresh install: old Claude Code forces a fail-open hook and nobody is told. F-206 is the REPAIR path: once the host is new enough, reinstalling must actually fix the entry — before this fix, install read the degraded entry as already protected and changed nothing, so even an operator who followed the F-174 warning and reinstalled stayed fail-open. Different seam (warn vs converge); the F-174 fix left this one open."
+      }
     }
   ]
 }

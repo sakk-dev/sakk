@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // `sakk guard install|uninstall <agent>` and `sakk doctor` (specs/guard/spec.md,
-// "Install" and "Doctor"). Install merges into the agent's own hook config and
-// never replaces it; uninstall removes only what install added. The doctor
-// checks that the hook would really fire, not only that it is configured
-// (F-132: a hook can be configured and never run).
+// "Install" and "Doctor"). Install merges into the agent's own hook config:
+// other tools' hooks are never touched, and the guard's OWN entries converge to
+// the canonical form (F-206) — a reinstall after a host upgrade repairs a stale
+// path, a missing onFailure or an alternate spelling instead of reading the
+// degraded entry as "already protected" and changing nothing. Uninstall removes
+// only the guard's own entries. The doctor checks that the hook would really
+// fire, not only that it is configured (F-132: a hook can be configured and
+// never run).
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
@@ -31,9 +35,18 @@ const q = (s) => `"${s.replace(/(["\\$`])/g, '\\$1')}"`;
 /** The installed command line: absolute node and sakk, so PATH at hook time does not matter. */
 export const hookCommand = (agent, node = process.execPath) =>
   `${q(node)} ${q(BIN)} hook --agent ${agent}`;
-/** Ours: the command names this kind of hook, whichever installation wrote it. */
+/**
+ * Ours: the command names this kind of hook, whichever installation wrote it —
+ * the canonical quoted absolute path, a stale path from an older location, or
+ * the bare `sakk` of a PATH install (F-206: an unrecognised spelling made
+ * uninstall leave it and install stack a duplicate or read it as protection).
+ * `sakk` must stand as its own word: `mysakk` and a mere directory named
+ * `sakk/` are someone else's.
+ */
 const ours = (cmd, agent) =>
-  typeof cmd === 'string' && cmd.includes('sakk.mjs') && cmd.includes(`hook --agent ${agent}`);
+  typeof cmd === 'string' &&
+  cmd.includes(`hook --agent ${agent}`) &&
+  /(^|[\s"'=/\\])sakk(\.mjs)?["']?(\s|$)/.test(cmd);
 
 export const CLAUDE_MATCHER =
   'Bash|PowerShell|Monitor|Read|Edit|Write|MultiEdit|NotebookEdit|mcp__.*';
@@ -87,40 +100,46 @@ const readJson = (p) => {
   }
 };
 
-/** The config with the guard added (pure). */
+/**
+ * The config with the guard added (pure). Convergence, not presence (F-206):
+ * the guard's own entries are stripped and the canonical entry appended, so a
+ * reinstall repairs a stale path, a duplicate, an alternate spelling or a
+ * missing onFailure instead of reading a degraded entry as already protected.
+ * An identical reinstall still changes nothing, and an existing fail-closed
+ * entry is never downgraded to fail-open.
+ */
 export function withGuard(agent, cfg, { command, onFailure = false }) {
-  const c = structuredClone(cfg);
   if (agent === 'claude-code' || agent === 'codex') {
+    const keepClosed = (cfg.hooks?.PreToolUse ?? []).some((g) =>
+      (g.hooks ?? []).some((h) => ours(h.command, agent) && h.onFailure === 'block'),
+    );
+    const c = withoutGuard(agent, cfg);
     c.hooks ??= {};
     c.hooks.PreToolUse ??= [];
-    const present = c.hooks.PreToolUse.some((g) =>
-      (g.hooks ?? []).some((h) => ours(h.command, agent)),
-    );
-    if (!present) {
-      const hook = {
-        type: 'command',
-        command,
-        timeout: 10,
-        ...(onFailure ? { onFailure: 'block' } : {}),
-      };
-      c.hooks.PreToolUse.push({
-        matcher: agent === 'codex' ? CODEX_MATCHER : CLAUDE_MATCHER,
-        hooks: [hook],
-      });
-    }
+    c.hooks.PreToolUse.push({
+      matcher: agent === 'codex' ? CODEX_MATCHER : CLAUDE_MATCHER,
+      hooks: [
+        {
+          type: 'command',
+          command,
+          timeout: 10,
+          ...(onFailure || keepClosed ? { onFailure: 'block' } : {}),
+        },
+      ],
+    });
     return c;
   }
+  const c = withoutGuard(agent, cfg);
   c.version ??= 1;
   c.hooks ??= {};
   for (const [event, matcher] of Object.entries(CURSOR_EVENTS)) {
     c.hooks[event] ??= [];
-    if (!c.hooks[event].some((h) => ours(h.command, agent)))
-      c.hooks[event].push({
-        command,
-        timeout: 10,
-        failClosed: true,
-        ...(matcher ? { matcher } : {}),
-      });
+    c.hooks[event].push({
+      command,
+      timeout: 10,
+      failClosed: true,
+      ...(matcher ? { matcher } : {}),
+    });
   }
   return c;
 }
