@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -1080,6 +1081,30 @@ describe('R6: the data the gate reads only moves forward', () => {
     // and everything that copies the gate reads the list instead of its own
     const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');
     assert.match(ci, /scripts\/gate-files\.json/, 'the CI base-checker step reads the list');
+    // ...and so does every test or script that copies it: a hand-written pair of the checker's
+    // files misses the next file the checker loads (F-216: a test written on a base without
+    // the list copied two files, and on a branch whose checker loads src/classify.mjs it
+    // could not start the checker at all)
+    const handList = (text) =>
+      [...text.matchAll(/\[[^[\]]*\]/g)].some(
+        ([a]) =>
+          /['"][^'"]*findings-check\.mjs['"]/.test(a) && /['"][^'"]*findings-lib\.mjs['"]/.test(a),
+      );
+    assert.ok(
+      handList("for (const f of ['findings-check.mjs', 'findings-lib.mjs'])"),
+      'control: a hand-written list is seen',
+    );
+    const sources = ['test', 'scripts', join('eval', '__tests__')].flatMap((dir) =>
+      readdirSync(join(REPO, dir), { recursive: true })
+        .map((f) => join(dir, String(f)))
+        .filter((f) => /\.(mjs|js|sh)$/.test(f) && !GATE_FILES.includes(f.split('\\').join('/'))),
+    );
+    assert.ok(sources.length >= 20, `only ${sources.length} test and script files scanned`);
+    const own = sources.filter((f) => {
+      const text = readFileSync(join(REPO, f), 'utf8');
+      return handList(text) && !text.includes('gate-files.json');
+    });
+    assert.deepEqual(own, [], 'copy the files scripts/gate-files.json lists instead');
   });
   test("the base branch's checker judges the pull request too", () => {
     const ci = readFileSync(join(REPO, '.github', 'workflows', 'ci.yml'), 'utf8');

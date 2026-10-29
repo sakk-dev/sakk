@@ -1,0 +1,66 @@
+{
+  "version": 2,
+  "branch": "evolve/history-aware-range",
+  "answers": {
+    "C-01.1": {
+      "answer": "An absent parent branch is not read as inherited: a file whose branch has no live ref counts as a rename and must carry its answers forward; an inherited file that disappears is refused; a base answers file removed in range is refused; no gh and no SAKK_PR_BASE falls back to main and prints which base it used.",
+      "guard": "test/range-topology.test.mjs::a parent whose branch is gone counts as a rename and must carry its answers forward"
+    },
+    "C-01.2": {
+      "answer": "Each new rule has a control that removes its input and expects red: removing an inherited file, rewriting it, renaming a guard it names, removing a base answers file, or moving a file all turn the range check red in the topology tests, and a failing check or suite turns the push red.",
+      "guard": "test/range-topology.test.mjs::an inherited answers file may not be removed, rewritten or keep a guard that no longer resolves"
+    },
+    "C-02.1": {
+      "answer": "No list of history shapes is matched. The rule is stated once: files are those that differ from the base at the tip and since the fork point, and every commit is compared with every parent. Rename detection is off in every gate diff so a moved file is asked about by both paths.",
+      "guard": "test/range-topology.test.mjs::moving a file asks about its old path too"
+    },
+    "C-02.2": {
+      "answer": "The same straight-line assumption lived in --staged and findings-brief diffs (rename detection), in the CI merge commit, in parents kept only on the remote and in parents squash- or rebase-merged first; each is now covered and each has its own topology test.",
+      "guard": "test/range-topology.test.mjs::a pull request merge commit, as CI checks it out, passes the same way"
+    },
+    "C-03.1": {
+      "answer": "Each topology test was run against the old checker and the new one: the stack, parallel-merge and moved-file tests fail on the old checker for the reason they name and pass on the new one; the pre-push hook was broken twelve ways by hand and each break turned a test red.",
+      "guard": "test/range-topology.test.mjs::a stack merged into main as one pull request: the parents' answers files are inherited, not carried forward"
+    },
+    "C-03.2": {
+      "answer": "The topology tests build real git repositories with real merges, a real remote and the merge commit CI checks out, then run the shipped checker as a child process; the pre-push tests run the real hook through git push to a local bare remote, so nothing is simulated.",
+      "guard": "test/range-topology.test.mjs::two lines developed in parallel and merged are each compared with their own parents"
+    },
+    "C-03.3": {
+      "answer": "Inheritance is tied to something that resolves: the parent's ref must exist, hold the same file at the same path and agree on shared answers, and every guard it names must resolve at the tip; a record alone never passes.",
+      "guard": "test/range-topology.test.mjs::an inherited answers file may not be removed, rewritten or keep a guard that no longer resolves"
+    },
+    "C-04.1": {
+      "answer": "The work is one git diff per parent for each commit in the pull request's own range, plus one ref lookup per answers file added in range; the input is the repository's own history and git bounds each call.",
+      "guard": "none: the input is the pull request's own git history, not data from outside the repository, so no hostile size exists to bound"
+    },
+    "C-05.1": {
+      "answer": "The new docs section states the four rules (files, every parent, inherited, renamed) and the base append-only rule, and each sentence maps to a topology test; the pre-push paragraph maps to the pre-push tests.",
+      "guard": "test/range-topology.test.mjs::an answers file already on the base may not be removed or rewritten"
+    },
+    "C-05.2": {
+      "answer": "Every refusal names the file and what to do: carry the answers forward under the current name, restore the inherited file, or point the guard at the current test; the pre-push hook prints which base it compared with so a wrong base can be set with SAKK_PR_BASE.",
+      "guard": "test/pre-push.test.mjs::without gh or SAKK_PR_BASE the base falls back to main and says so"
+    },
+    "C-06.1": {
+      "answer": "The evidence is the shipped checker and the shipped hook run on real git histories in the tests, plus the checker run on PR #27's own history and the merge commit CI checks out; no reader sees a stronger source than that.",
+      "guard": "test/range-topology.test.mjs::a stack merged into main as one pull request: the parents' answers files are inherited, not carried forward"
+    },
+    "C-09.1": {
+      "answer": "The check assumed one straight line and one answers file. It now handles parallel merges, stacks, a parent on the remote only, a parent already merged, a deleted parent branch and the CI merge commit, each tested.",
+      "guard": "test/range-topology.test.mjs::a stack merged into main as one pull request: the parents' answers files are inherited, not carried forward"
+    },
+    "C-09.2": {
+      "answer": "It runs in CI on the pull request merge commit, and now also before every push through the pre-push hook; both paths are exercised by tests that run the real checker and the real hook through git.",
+      "guard": "test/range-topology.test.mjs::a pull request merge commit, as CI checks it out, passes the same way"
+    },
+    "C-10.1": {
+      "answer": "Running the range check and the full suite before a push was rule text. The pre-push hook now runs both and refuses the push when either fails, and a test fails when the hook does not.",
+      "guard": "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails"
+    },
+    "C-10.2": {
+      "answer": "Another route: pushing a commit that is not HEAD or a dirty tree would test something other than what is pushed, so both are refused; there is no skip switch; --no-verify is refused by the edit hook and CI still runs the range check.",
+      "guard": "test/pre-push.test.mjs::a dirty working tree or a push of a commit that is not HEAD is refused"
+    }
+  }
+}
