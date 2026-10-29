@@ -506,3 +506,76 @@ describe('MCP enforcer: startup is fail-closed', () => {
     assert.equal(existsSync(ledgerPath), false);
   });
 });
+
+describe('X-SEC-003: the MCP enforcer never starts a subprocess', () => {
+  // X-SEC-003 (已实现 — a passing pin of correct behaviour, NOT a gap). The MCP
+  // enforcer is a pure stdin/stdout protocol-and-ledger surface: it must never
+  // shell out, because a subprocess is the one thing that could run a cost the
+  // ledger does not see (spend outside the books) or execute agent-supplied text.
+  // A running assertion can only prove "no subprocess on the paths I exercised";
+  // the invariant is "never, on any path", so the faithful check is a source scan
+  // of the whole module closure the running MCP service loads — mcp.mjs and every
+  // local module it transitively imports — for any subprocess API. The TEST file
+  // spawns the server binary (child_process at the top of THIS file) — that is the
+  // test harness, deliberately outside the scanned closure.
+  //
+  // Closure built by hand from the import graph on 2026-10-27 and pinned here so a
+  // new local import that reaches a subprocess API has to be added to this list
+  // (and pass the scan) deliberately:
+  //   mcp.mjs -> ledger.mjs, policy.mjs
+  //   ledger.mjs -> append.mjs, archive.mjs
+  //   policy.mjs -> append.mjs, match.mjs
+  const CLOSURE = ['mcp', 'ledger', 'policy', 'append', 'archive', 'match'];
+
+  test('no module in the MCP service closure imports or calls a subprocess API', () => {
+    // call-shaped / name-anchored patterns: they catch real subprocess use but not
+    // prose — `exec(` not the word "executed", `fork(` not "fork the books".
+    const FORBIDDEN = [
+      [/\bchild_process\b/, 'imports node:child_process'],
+      [/\bcluster\b/, 'uses node:cluster (cluster.fork spawns workers)'],
+      [/\bspawnSync\b/, 'calls spawnSync'],
+      [/\bspawn\b/, 'calls spawn'],
+      [/\bexecFileSync\b/, 'calls execFileSync'],
+      [/\bexecFile\b/, 'calls execFile'],
+      [/\bexecSync\b/, 'calls execSync'],
+      [/\bfork\s*\(/, 'calls fork(...)'],
+      [/\bexec\s*\(/, 'calls exec(...)'],
+    ];
+    for (const name of CLOSURE) {
+      const path = join(HERE, '..', 'src', `${name}.mjs`);
+      const src = readFileSync(path, 'utf8');
+      for (const [re, what] of FORBIDDEN) {
+        assert.doesNotMatch(
+          src,
+          re,
+          `src/${name}.mjs ${what} — the MCP service must start no subprocess (X-SEC-003)`,
+        );
+      }
+    }
+  });
+
+  test('the import closure pinned above is still the whole closure (a new local import must be scanned too)', () => {
+    // guard the CLOSURE list itself: if a scanned module grows a local import that
+    // is not already in CLOSURE, the scan above would silently stop covering the
+    // whole service. Re-derive the closure from the imports and compare.
+    const localImports = (src) =>
+      [...src.matchAll(/from\s+['"](\.[^'"]+)['"]/g)].map((m) =>
+        m[1].replace(/^\.\//, '').replace(/\.mjs$/, ''),
+      );
+    const seen = new Set();
+    const queue = ['mcp'];
+    while (queue.length) {
+      const name = queue.shift();
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const src = readFileSync(join(HERE, '..', 'src', `${name}.mjs`), 'utf8');
+      for (const dep of localImports(src)) if (!seen.has(dep)) queue.push(dep);
+    }
+    const derived = [...seen].sort();
+    assert.deepEqual(
+      derived,
+      [...CLOSURE].sort(),
+      `the MCP service's actual local-import closure is ${JSON.stringify(derived)}; update CLOSURE (and the scan) to match — X-SEC-003 must cover every module the service loads`,
+    );
+  });
+});

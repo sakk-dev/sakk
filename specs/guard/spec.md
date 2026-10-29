@@ -78,8 +78,14 @@ the only shape the kernel matches. Paths outside become
 `~outside/<absolute path without the leading slash>`, so a rule can target
 "outside the repository" by prefix. Paths under `$SAKK_HOME` (cap, price
 table, decision log, spend index) become `~sakk/<relative path>`, so the
-shipped policy can protect Sakk's own state wherever it lives. The kernel
-needs no change. A repository path never starts with `~`; one that does
+shipped policy can protect Sakk's own state wherever it lives. Paths under
+the home folder become `~home/<relative path>`, named before the absolute
+form so that a folder allow (a temp folder) never covers the home folder,
+wherever `HOME` lives (`HOME=/tmp` in containers; F-146). A delete whose
+target contains the repository, the home folder or `$SAKK_HOME` becomes
+`~protected/repo`, `~protected/home` or `~protected/sakk`: deleting a
+parent deletes what is under it, so the delete is named for what it takes.
+The kernel needs no change. A repository path never starts with `~`; one that does
 refuses as ambiguous. A path that
 cannot be made canonical after resolving symlinks, `~` and `..` refuses
 (`HOOK_PATH_UNREADABLE`), because an alias that matches nothing would slide
@@ -149,22 +155,40 @@ a deny (`DECISION_UNLOGGABLE`): an action with no record is unauditable.
 Shipped default: `policies/guard-default.json` (`sakk-policy.v1`). A
 project policy at `.sakk/policy.json` replaces it. Either one is loaded
 with `loadPolicy()`, so vacuous, shadowed and malformed policies refuse at
-load, and the hook then denies with that code.
+load. A failure to read the rules is isolated, never a refusal of every call
+(RC-09 review, 2026-10-22):
 
-| Rule                       | Match                                                                                      | Verdict          |
-| -------------------------- | ------------------------------------------------------------------------------------------ | ---------------- |
-| `protect-secret-files`     | action `secret.read`                                                                       | deny             |
-| `shell-destructive`        | action `git.destructive`                                                                   | deny             |
-| `deny-prod-delete`         | action `prod.delete`                                                                       | deny             |
-| `deny-rm-outside-repo`     | action `file.delete`, scope `~outside/`                                                    | deny             |
-| `protect-ci-files`         | action `file.write`, scope `.github/workflows/`                                            | deny             |
-| `protect-migrations`       | action `file.delete`, scope `migrations/`, `db/migrations/`                                | deny             |
-| `protect-guard-state`      | action `file.write` or `file.delete`, scope `.sakk/`, `~sakk/` (two rules, one per action) | deny             |
-| `ask-agent-config`         | action `file.write`, scope `.claude/`, `.cursor/`, `.codex/`                               | require_approval |
-| `high-risk-deploy`         | action `deploy`                                                                            | require_approval |
-| `ask-constructed-commands` | action `shell.constructed`                                                                 | require_approval |
-| `allow-in-repo`            | `{}` — everything the rules above did not stop                                             | allow            |
-| default                    | —                                                                                          | deny             |
+- Each time a project policy loads, the hook keeps a copy under
+  `$SAKK_HOME/policy-good/` (Sakk's state, which agents cannot write). A
+  project policy that then fails to load gives way to that copy. Each
+  refusal says the project policy is not in effect and why, and
+  `alerts.jsonl` records `POLICY_FALLBACK`. A copy whose hash no longer
+  matches its record is not used.
+- With no copy to fall back to, or when the config or the ledger it names
+  cannot be read, the rules are unknown (`ruleId: rules-unknown`).
+  - Reading the project is still allowed, as during a halt.
+  - Every other call is denied with the code and what to fix.
+
+| Rule                         | Match                                                                                                                          | Verdict          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------- |
+| `protect-secret-files`       | action `secret.read`                                                                                                           | deny             |
+| `shell-destructive`          | action `git.destructive`                                                                                                       | deny             |
+| `deny-prod-delete`           | action `prod.delete`                                                                                                           | deny             |
+| `deny-delete-protected`      | action `file.delete`, scope `~protected/`                                                                                      | deny             |
+| `allow-temp-cleanup`         | action `file.delete`, scope `~outside/tmp/`, `~outside/private/tmp/`, `~outside/var/folders/`, `~outside/private/var/folders/` | allow            |
+| `deny-rm-outside-repo`       | action `file.delete`, scope `~outside/`, `~home/`                                                                              | deny             |
+| `protect-guard-state`        | action `file.write`, scope `.sakk/`, `~sakk/`                                                                                  | deny             |
+| `protect-guard-state-delete` | action `file.delete`, scope `.sakk/`, `~sakk/`                                                                                 | deny             |
+| `protect-ci-files`           | action `file.write`, scope `.github/workflows/`                                                                                | deny             |
+| `protect-migrations`         | action `file.delete`, scope `migrations/`, `db/migrations/`                                                                    | deny             |
+| `deny-agent-config`          | action `file.write`, scope `.claude/`, `.cursor/`, `.codex/`, `~home/.claude/`, `~home/.cursor/`, `~home/.codex/`              | deny             |
+| `deny-agent-config-delete`   | action `file.delete`, scope `.claude/`, `.cursor/`, `.codex/`, `~home/.claude/`, `~home/.cursor/`, `~home/.codex/`             | deny             |
+| `high-risk-deploy`           | action `deploy`                                                                                                                | require_approval |
+| `ask-constructed-commands`   | action `shell.constructed`                                                                                                     | require_approval |
+| `allow-temp-write`           | action `file.write`, scope `~outside/tmp/`, `~outside/private/tmp/`, `~outside/var/folders/`, `~outside/private/var/folders/`  | allow            |
+| `ask-write-outside`          | action `file.write`, scope `~outside/`, `~home/`                                                                               | require_approval |
+| `allow-in-repo`              | `{}` — everything the rules above did not stop                                                                                 | allow            |
+| default                      | —                                                                                                                              | deny             |
 
 The default only fires if someone removes `allow-in-repo`; it makes that
 failure safe. The v10 sample rules for model calls (`dev-model-calls`,
@@ -212,20 +236,20 @@ checks where the hook really loads, not only that it is configured:
 The adversary is the agent itself: it is blocked and wants to keep going.
 Prompt injection pushes it to do harm.
 
-| #   | Move                                                                                                              | Must-hold outcome                                                                                                                                         | Guard test                                                                           |
-| --- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| 1   | `git push --force` dressed up: `git push -f`, `+main`, `git -C . push --force-with-lease=…`                       | `git.destructive` → deny                                                                                                                                  | `test/guard.test.mjs::every destructive git form is denied`                          |
-| 2   | Wrap it: `sudo env FOO=1 command git push -f`, `/usr/bin/git push -f`, `bash -c 'git push -f'`                    | unwrapped → deny; `bash -c '<literal>'` is parsed, `bash -c "$X"` is constructed → ask                                                                    | `test/guard.test.mjs::wrappers are unwrapped before the command is named`            |
-| 3   | Hide it: `eval "$(echo Z2l0IHB1c2ggLWY= \| base64 -d)"`, `curl … \| sh`                                           | `shell.constructed` → ask (Codex: deny)                                                                                                                   | `test/guard.test.mjs::commands built at run time are asked, never allowed`           |
-| 4   | Delete outside the repo through an alias: `rm -rf ~/`, `rm -rf ../../`, a symlink in the repo pointing at `$HOME` | resolved to `~outside/…` → deny                                                                                                                           | `test/guard.test.mjs::deletes outside the repository are denied through every alias` |
-| 5   | Read a secret another way: `cat .env`, `cp .env x && cat x`, `grep . .env`, Read tool on `.env.local`, `printenv` | `secret.read` → deny (the copy is denied at `cp`, the source being secret)                                                                                | `test/guard.test.mjs::secret files are denied on every read route`                   |
-| 6   | Crash the hook: malformed payload, 2 MB command, missing fields, unknown tool                                     | deny with a code, never exit 1                                                                                                                            | `test/guard.test.mjs::every malformed payload is a deny with a code`                 |
-| 7   | Slow the hook past the agent's timeout                                                                            | own 2 s deadline → deny; the agent's timeout is ceiling 1                                                                                                 | `test/guard.test.mjs::the hook answers deny at its own deadline`                     |
-| 8   | Edit the policy to allow itself                                                                                   | `.sakk/` and the shipped policy are `protect`ed by default (`file.write` scope `.sakk/` → deny); a policy edited by hand loads with a new hash in the log | `test/guard.test.mjs::the agent cannot write the policy it is judged by`             |
-| 9   | Turn the guard off: edit `.claude/settings.json`, `git config core.hooksPath`                                     | `file.write` scope `.claude/` → ask; the doctor's fire test fails if the hook is gone                                                                     | `test/guard.test.mjs::writes to agent hook configs are asked`                        |
-| 10  | Skip the hook: @-mention a file (Claude Code reads it without PreToolUse), a second agent with no hook            | not stoppable at the hook: ceiling 2; secret files are still caught at commit (M3)                                                                        | —                                                                                    |
-| 11  | Fill the log so the console hides a decision                                                                      | the log is append-only through `appendNoFollow`; the console pages through it, never truncates (M4)                                                       | `test/guard.test.mjs::the decision log is appended, never rewritten`                 |
-| 12  | Race two calls on one halt                                                                                        | the halt is read per call from the ledger, with no cache                                                                                                  | `test/guard.test.mjs::a halt set between two calls stops the second`                 |
+| #   | Move                                                                                                              | Must-hold outcome                                                                                                                                         | Guard test                                                                                                |
+| --- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 1   | `git push --force` dressed up: `git push -f`, `+main`, `git -C . push --force-with-lease=…`                       | `git.destructive` → deny                                                                                                                                  | `test/guard.test.mjs::every destructive git form is denied`                                               |
+| 2   | Wrap it: `sudo env FOO=1 command git push -f`, `/usr/bin/git push -f`, `bash -c 'git push -f'`                    | unwrapped → deny; `bash -c '<literal>'` is parsed, `bash -c "$X"` is constructed → ask                                                                    | `test/guard.test.mjs::wrappers are unwrapped before the command is named`                                 |
+| 3   | Hide it: `eval "$(echo Z2l0IHB1c2ggLWY= \| base64 -d)"`, `curl … \| sh`                                           | `shell.constructed` → ask (Codex: deny)                                                                                                                   | `test/guard.test.mjs::commands built at run time are asked, never allowed`                                |
+| 4   | Delete outside the repo through an alias: `rm -rf ~/`, `rm -rf ../../`, a symlink in the repo pointing at `$HOME` | resolved to `~outside/…` → deny                                                                                                                           | `test/guard.test.mjs::deletes outside the repository are denied through every alias`                      |
+| 5   | Read a secret another way: `cat .env`, `cp .env x && cat x`, `grep . .env`, Read tool on `.env.local`, `printenv` | `secret.read` → deny (the copy is denied at `cp`, the source being secret)                                                                                | `test/guard.test.mjs::secret files are denied on every read route`                                        |
+| 6   | Crash the hook: malformed payload, 2 MB command, missing fields, unknown tool                                     | deny with a code, never exit 1                                                                                                                            | `test/guard.test.mjs::every malformed payload is a deny with a code`                                      |
+| 7   | Slow the hook past the agent's timeout                                                                            | own 2 s deadline → deny; the agent's timeout is ceiling 1                                                                                                 | `test/guard.test.mjs::the hook answers deny at its own deadline`                                          |
+| 8   | Edit the policy to allow itself                                                                                   | `.sakk/` and the shipped policy are `protect`ed by default (`file.write` scope `.sakk/` → deny); a policy edited by hand loads with a new hash in the log | `test/guard.test.mjs::the agent cannot write the policy it is judged by`                                  |
+| 9   | Turn the guard off: edit or delete `.claude/settings.json` (project or `~/.claude/`), `git config core.hooksPath` | `file.write` / `file.delete` scope `.claude/` or `~home/.claude/` → deny (REQ-G13, F-188); the doctor's fire test fails if the hook is gone               | `test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)` |
+| 10  | Skip the hook: @-mention a file (Claude Code reads it without PreToolUse), a second agent with no hook            | not stoppable at the hook: ceiling 2; secret files are still caught at commit (M3)                                                                        | —                                                                                                         |
+| 11  | Fill the log so the console hides a decision                                                                      | the log is append-only through `appendNoFollow`; the console pages through it, never truncates (M4)                                                       | `test/guard.test.mjs::the decision log is appended, never rewritten`                                      |
+| 12  | Race two calls on one halt                                                                                        | the halt is read per call from the ledger, with no cache                                                                                                  | `test/guard.test.mjs::a halt set between two calls stops the second`                                      |
 
 ## Input-space table
 
@@ -259,8 +283,11 @@ Prompt injection pushes it to do harm.
    that deletes `$HOME` is `shell.run`. The guard knows what a command
    _says_; isolation (a container) is the only answer to what a script
    _does_.
-4. **Cursor file edits** have no pre-edit hook. Only shell, read and MCP
-   calls are judged before they run.
+4. **Cursor's undocumented shapes.** Cursor's `preToolUse` judges file writes
+   and deletes before they run, but the `Write` input shape is not documented;
+   the hook accepts `file_path`, `path` or `target_file` and refuses anything
+   else. `ask` is enforced only before shell and MCP calls, so elsewhere a
+   `require_approval` is answered as a deny.
 
 ## History pitfalls (findings/classes.json)
 
@@ -285,3 +312,16 @@ Prompt injection pushes it to do harm.
 | A3  | Cursor hook names, payload fields, `permission` values and `failClosed`                             | Cursor hooks docs        |
 | A4  | Cursor runs `.claude/settings.json` hooks too                                                       | Cursor hooks docs        |
 | A5  | Codex PreToolUse-style hooks exist, and `ask` is not honoured                                       | Codex docs               |
+
+## Task 1 results (2026-10-22)
+
+| #   | Assumption                                    | Result                                                                                                                                                                                                                                                                                                                                                                      |
+| --- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | Claude Code payload and output                | **Confirmed by recording** a running Claude Code (desktop, 2.1.28x). Fields: `session_id`, `transcript_path`, `cwd`, `scratchpad_dir`, `prompt_id`, `permission_mode`, `effort`, `hook_event_name`, `tool_name`, `tool_input`, `tool_use_id`. Fixtures: `test/fixtures/hooks/claude-code/`.                                                                                 |
+| A2  | Exit codes; `onFailure: "block"` from 2.1.295 | Confirmed in the hooks docs. The desktop app bundles 2.1.275 and 2.1.284, so `install` writes `onFailure` only when `claude --version` reports 2.1.295 or later.                                                                                                                                                                                                            |
+| A3  | Cursor hook names, fields, `failClosed`       | **Corrected.** `preToolUse` (tool names `Shell`, `Read`, `Write`, `Grep`, `Delete`, `Task`, `MCP:<tool>`) judges file edits before they run. `install` uses `preToolUse` for Write/Delete, `beforeShellExecution`, `beforeReadFile` and `beforeMCPExecution`, all with `failClosed: true`. From the docs, not yet recorded.                                                 |
+| A4  | Cursor runs Claude Code hooks too             | Confirmed in the docs ("Include Third-Party … Configs", on by default). Cursor matches them against its own tool names, so a Claude matcher such as `Bash` does not fire there; the doctor reports the double run when both are installed.                                                                                                                                  |
+| A5  | Codex hooks; `ask` not honoured               | **Corrected.** Codex `PreToolUse` sees `Bash` and file edits through `apply_patch` (`tool_input.command` holds the patch; paths come from its `*** Add/Update/Delete File:` lines). Errors and timeouts let the call run and there is no fail-closed option. Shell commands arrive wrapped as `bash -lc '…'`, which the classifier parses. From the docs, not yet recorded. |
+
+Cursor and Codex are not installed on the development machine; recording
+their real payloads is left for the acceptance run.

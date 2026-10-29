@@ -1,10 +1,14 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import {
   verifyDrillFreshness,
   renderCertificate,
   parseSuiteSummary,
   CertError,
+  EXPECTED_MUTANTS,
 } from '../scripts/gate-certificate.mjs';
 
 /** The certificate engine's pure core. The orchestration (running the real
@@ -105,5 +109,49 @@ describe('render refuses any non-green dossier', () => {
       assert.equal(e.code, 'CERT_REFUSED');
       assert.equal(e.details.gate, 'drill');
     }
+  });
+});
+
+describe('witness ↔ drill: EXPECTED_MUTANTS cannot silently drift (F-167)', () => {
+  // The witness count was hardcoded at 26 while the drill grew to 38, and the
+  // freshness regex (MUT-[A-Z]) was blind to the 12 two-letter mutants — a
+  // drift that only surfaced in the rarely-run multi-minute certificate. These
+  // tests link the witness to the drill's real count at `npm test` time.
+  const drillPath = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    '../scripts/mutation-drill.sh',
+  );
+  const ids = [...readFileSync(drillPath, 'utf8').matchAll(/run_drill (MUT-[A-Za-z0-9]+)/g)].map(
+    (m) => m[1],
+  );
+  test('every mutant the drill defines is counted exactly once', () => {
+    assert.ok(ids.length > 0, 'no run_drill mutants found — drill path or format changed');
+    assert.equal(new Set(ids).size, ids.length, 'a MUT id appears on more than one run_drill line');
+  });
+  test('EXPECTED_MUTANTS equals the number the drill actually defines', () => {
+    assert.equal(
+      EXPECTED_MUTANTS,
+      ids.length,
+      `witness expects ${EXPECTED_MUTANTS} mutants; the drill defines ${ids.length} — bump EXPECTED_MUTANTS or restore the drill`,
+    );
+  });
+  test('the freshness parser can see every mutant id the drill emits (the MUT-AA regex gap)', () => {
+    // Drive the parser with the drill's real id set. A single-letter regex
+    // silently drops MUT-AA..MUT-AL, so `checked` would fall below the count.
+    const h = '0'.repeat(64);
+    const report = ids
+      .map(
+        (id) =>
+          `[${id}] MUTANT KILLED by 't' (exit=1)\n[${id}] file=src/${id}.mjs\n[${id}] sha256 before=${h} after=${h}\n`,
+      )
+      .join('');
+    const r = verifyDrillFreshness({ reportText: report, fileHashOf: () => h });
+    assert.equal(
+      r.checked,
+      ids.length,
+      'parser excluded some mutant ids — freshness regex too narrow',
+    );
+    assert.equal(r.kills, ids.length);
+    assert.equal(r.fresh, true);
   });
 });

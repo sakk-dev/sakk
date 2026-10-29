@@ -1,0 +1,93 @@
+{
+  "version": 2,
+  "branch": "oss/spend-cli",
+  "answers": {
+    "C-01.1": {
+      "answer": "Absence is declared, never read as success: sakk cap set with no amount refuses (CAP_USAGE); sakk spend with no cap set shows 'no cap' rather than $0-is-fine; a missing config.json means no cap (cap off is a declared no-op), and a missing log folder is zero spend because there is genuinely nothing to count, labelled as such.",
+      "guard": "test/spend-cli.test.mjs::sakk cap set refuses a bad amount or zone"
+    },
+    "C-01.2": {
+      "answer": "Delete the cap (sakk cap off) and run again: the hook's cap check reads config.capUsd, so with it gone the over-cap deny disappears — removing the cap is observable in the hook's behaviour, not a silent pass.",
+      "guard": "test/spend-cli.test.mjs::sakk cap off removes the cap and the hook stops enforcing",
+      "revisions": [
+        {
+          "finding": "F-171",
+          "answer": "Deleting the cap now needs a person at a terminal (sakk cap off asks for confirmation); once confirmed, the hook's cap check finds no config.capUsd and the over-cap deny disappears, so the removal is still observable in the hook's behaviour.",
+          "guard": "test/spend-cli.test.mjs::sakk cap off, confirmed at a terminal, removes the cap and the hook stops enforcing"
+        }
+      ]
+    },
+    "C-02.1": {
+      "answer": "cap set, sakk spend and the hook's cap check all read and write the SAME config.json keys (capUsd, timeZone, claudeLogDir) and price the same way through loadPrices/costOf — one schema applied everywhere, not a per-command list; nothing re-enumerates the fields.",
+      "guard": "test/spend-cli.test.mjs::sakk spend and the hook read the same cap and spend"
+    },
+    "C-02.2": {
+      "answer": "The cap lives in one config.json; setting it updates the single file the hook, the console and sakk spend all read, so every reader sees the new cap at once — the change covers all of them because there is only one place.",
+      "guard": "test/spend-cli.test.mjs::sakk cap set writes the cap the hook then enforces"
+    },
+    "C-03.1": {
+      "answer": "Each refusal has a negative test that goes red if its check is removed: a non-positive or non-numeric amount, and a non-IANA zone, each refuse with their own code; dropping the validation flips the test.",
+      "guard": "test/spend-cli.test.mjs::sakk cap set refuses a bad amount or zone"
+    },
+    "C-03.2": {
+      "answer": "The tests run the REAL sakk binary (execFileSync with an isolated SAKK_HOME) against real config and transcript files, observing the real exit code and output — not a stubbed handler.",
+      "guard": "test/spend-cli.test.mjs::sakk spend reports a day of spend from local logs"
+    },
+    "C-03.3": {
+      "answer": "The cap test fails when the cap is not actually in force, not merely when a file is missing: after sakk cap set, a real hook call that prices over the cap is denied, so the record resolves against the hook's behaviour.",
+      "guard": "test/spend-cli.test.mjs::sakk cap set writes the cap the hook then enforces"
+    },
+    "C-04.1": {
+      "answer": "sakk spend is bounded by M2's limits (a line over 1 MiB is refused, more than 50,000 log files is refused, reads are incremental from a stored offset); cap set writes a small config object. The bound is a refusal and a byte offset, never a clock.",
+      "guard": "test/spend-cli.test.mjs::sakk spend reports a day of spend from local logs"
+    },
+    "C-05.1": {
+      "answer": "Each command the docs add — sakk cap set/off, sakk spend, sakk prices — is a real subcommand (the F-161 release detector now sees them in bin) with a named test; the CHANGELOG describes what these commands actually do, read back against the handlers.",
+      "guard": "test/spend-cli.test.mjs::sakk prices shows the table and its source"
+    },
+    "C-05.2": {
+      "answer": "The figures work when acted on: sakk spend's total equals daySpend's over the same logs, the cap sakk cap set writes is the one the hook then enforces (SPEND_CAP_REACHED at that number), and sakk prices shows the very table loadPrices resolves.",
+      "guard": "test/spend-cli.test.mjs::sakk spend and the hook read the same cap and spend"
+    },
+    "C-07.1": {
+      "answer": "The amount, zone and day are operator input and are validated before use (a positive plain decimal, an IANA zone Intl accepts, a YYYY-MM-DD day); the transcript lines are agent-written and parsed defensively by M2 unchanged; config.json is written by the CLI, not read from the agent's environment.",
+      "guard": "test/spend-cli.test.mjs::sakk cap set refuses a bad amount or zone"
+    },
+    "C-07.2": {
+      "answer": "The party the cap constrains is the agent, and it cannot set it: the guard denies the agent writing ~/.sakk/config.json, and only a person runs sakk cap set, so the party held by the cap cannot raise it.",
+      "guard": "test/spend-cli.test.mjs::the agent cannot set its own cap (writing ~/.sakk is denied)"
+    },
+    "C-09.1": {
+      "answer": "cap set and spend assume ~/.sakk (created on a write, declared missing on a read) and the configured zone and log folder, not the agent's environment; spend is tested with a configured zone different from the system one so the day boundary follows config, not the host.",
+      "guard": "test/spend-cli.test.mjs::sakk spend uses the configured zone, not the system one"
+    },
+    "C-09.2": {
+      "answer": "The tests invoke the real installed binary with SAKK_HOME set, the way a person runs it on the command line, so the commands are shown firing where they really run, not only configured.",
+      "guard": "test/spend-cli.test.mjs::sakk spend reports a day of spend from local logs"
+    },
+    "C-10.1": {
+      "answer": "sakk cap set is the only writer of the cap, and a test asserts the hook then enforces exactly what it wrote — the set-then-enforced step is checked by a test, not a sentence in the docs.",
+      "guard": "test/spend-cli.test.mjs::sakk cap set writes the cap the hook then enforces"
+    },
+    "C-10.2": {
+      "answer": "The cap is one value in one config.json the hook reads fresh each call; the agent cannot write it (denied by the guard), so there is no second route to raise it and no stale copy to read — the hook always reads the current file.",
+      "guard": "test/spend-cli.test.mjs::the agent cannot set its own cap (writing ~/.sakk is denied)"
+    },
+    "C-11.1": {
+      "answer": "cap set writes capUsd and timeZone — a value that governs every future paid call — and only the CLI (a person) writes it; the agent is denied writing ~/.sakk, so the value's meaning never outruns who may set it.",
+      "guard": "test/spend-cli.test.mjs::the agent cannot set its own cap (writing ~/.sakk is denied)"
+    },
+    "C-15.1": {
+      "answer": "The tests run the real CLI against real transcript and config files and the real hook: sakk spend's number is daySpend's over real lines, and the cap is enforced by the real evaluate — no stand-in that writes its own evidence.",
+      "guard": "test/spend-cli.test.mjs::sakk spend and the hook read the same cap and spend"
+    },
+    "C-06.1": {
+      "answer": "The spend figures are labelled 'from local logs' everywhere they appear (sakk spend, the --json source field, the docs) and documented as an estimate, not the provider's invoice; sakk prices names the exact table file its numbers come from. No reader is shown a stronger source than the local estimate.",
+      "guard": "test/spend-cli.test.mjs::sakk prices shows the table and its source"
+    },
+    "C-08.1": {
+      "answer": "The cap is one value in one file — config.json under the canonical SAKK_HOME (symlink- and hard-link-free, like the ledger path) — read the same way by the CLI and the hook, so it cannot be reached under two names; prices likewise resolve to the single ~/.sakk/prices.json or the shipped snapshot, not two aliases.",
+      "guard": "test/spend-cli.test.mjs::sakk spend and the hook read the same cap and spend"
+    }
+  }
+}

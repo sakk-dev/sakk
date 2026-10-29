@@ -260,6 +260,99 @@ run_drill MUT-S src/secret-scan.mjs \
   "F-63: an exempt match never hides a real secret it swallowed" \
   "test"
 
+# ── The guard (open-source v1, M1; specs/guard/) ──
+
+# MUT-AA: switch off the halt check → the halt test must die red
+run_drill MUT-AA src/hook.mjs \
+  "    else if (halt && !readsProject(a))" \
+  "    else if (false)" \
+  "a halt set between two calls stops the second" \
+  "test"
+
+# MUT-AB: answer with the first action instead of the strictest → a chained
+# force push behind an allowed command must die red
+run_drill MUT-AB src/hook.mjs \
+  "(RANK[d.verdict] > RANK[w.verdict] ? d : w)" \
+  "(w.context ? w : d)" \
+  "every destructive git form is denied" \
+  "test"
+
+# MUT-AC: let an error answer allow → the malformed-payload test must die red
+run_drill MUT-AC src/hook.mjs \
+  "      'deny',
+      \`Sakk: refused" \
+  "      'allow',
+      \`Sakk: refused" \
+  "every malformed payload is a deny with a code" \
+  "test"
+
+# MUT-AD: stop resolving symlinks → a delete outside the repository through a
+# link inside it must die red
+run_drill MUT-AD src/classify.mjs \
+  "export function scopeOf(path, { repoRoot, sakkHome, homeDir, real = realOf }) {
+  const abs = real(path);" \
+  "export function scopeOf(path, { repoRoot, sakkHome, homeDir, real = realOf }) {
+  const abs = resolve(path);" \
+  "deletes outside the repository are denied through every alias" \
+  "test"
+
+# MUT-AE: rewrite the config on every install (convergence loses its
+# no-change exit) → the idempotence test must die red
+run_drill MUT-AE src/guard-install.mjs \
+  "  if (!changed) return { path, changed: false };" \
+  "  if (false) return { path, changed: false };" \
+  "install merges, repeats cleanly and uninstalls only itself" \
+  "test"
+
+# MUT-AF: trust a kept policy copy that changed → the tampered-copy test must die red
+run_drill MUT-AF src/hook.mjs \
+  "if (loaded.policyHash !== meta.policyHash) throw new Error('the kept copy changed');" \
+  "if (false) throw new Error('the kept copy changed');" \
+  "with no good policy to fall back to, only reading the project goes on" \
+  "test"
+
+# MUT-AG: stop checking the cold trail's hash-chain link → a broken link must die red
+run_drill MUT-AG src/archive.mjs \
+  "    if (seg.prev !== prev)" \
+  "    if (false)" \
+  "verify catches a flipped byte, a broken link and a wrong tip" \
+  "test"
+
+# MUT-AH: let spend at the cap through → the cap test must die red
+run_drill MUT-AH src/spend.mjs \
+  "  if (s.usd >= cap)" \
+  "  if (false)" \
+  "at the cap the next call is denied, below it nothing is" \
+  "test"
+
+# MUT-AI: stop switching to long-context rates → the long-context price case must die red
+run_drill MUT-AI src/prices.mjs \
+  "entry.longContext && prompt > entry.longContext.thresholdTokens ? entry.longContext : entry" \
+  "entry" \
+  "each price rule matches a hand-computed case" \
+  "test"
+
+# MUT-AJ: stop checking the index against the cold trail → the lost-index test must die red
+run_drill MUT-AJ src/archive.mjs \
+  "      if (have[callId] !== seq)" \
+  "      if (false)" \
+  "verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id" \
+  "test"
+
+# MUT-AK: skip the secret scan in the hook → a written or printed secret must die red
+run_drill MUT-AK src/hook.mjs \
+  "      secret = secretHit(ev);" \
+  "      secret = null;" \
+  "an Edit or Write whose content is a secret is denied" \
+  "test"
+
+# MUT-AL: drop the console's token gate → a request without the token must die red
+run_drill MUT-AL src/console.mjs \
+  "if (!tokenOk(fromQuery, tok) && !tokenOk(cookie, tok)) return forbid(res);" \
+  "if (false) return forbid(res);" \
+  "a request without the token gets nothing" \
+  "test"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"

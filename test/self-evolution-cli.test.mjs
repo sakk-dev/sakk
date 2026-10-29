@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,6 +23,11 @@ import { fileURLToPath } from 'node:url';
  */
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
+/** The gate's own files, listed once (F-144); the fallback only lets this file load on an older base. */
+const MANIFEST = join(REPO, 'scripts', 'gate-files.json');
+const GATE_FILES = existsSync(MANIFEST)
+  ? JSON.parse(readFileSync(MANIFEST, 'utf8')).files
+  : ['scripts/findings-check.mjs', 'scripts/findings-lib.mjs'];
 const ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
 const ANSWER = 'Absent input refuses with a named code and the test deletes it to prove so.';
 const NONE = 'none: this throwaway repository has no test suite to point at';
@@ -54,8 +60,10 @@ function repo({ ledger = LEDGER, classes = CLASSES } = {}) {
   const d = mkdtempSync(join(tmpdir(), 'selfevo-cli-'));
   const git = (...a) => execFileSync('git', a, { cwd: d, stdio: 'ignore', env: ENV });
   for (const sub of ['scripts', 'findings', 'src']) mkdirSync(join(d, sub), { recursive: true });
-  for (const f of ['findings-check.mjs', 'findings-lib.mjs'])
-    copyFileSync(join(REPO, 'scripts', f), join(d, 'scripts', f));
+  for (const f of GATE_FILES) {
+    mkdirSync(dirname(join(d, f)), { recursive: true });
+    copyFileSync(join(REPO, f), join(d, f));
+  }
   writeFileSync(join(d, 'findings', 'ledger.json'), JSON.stringify(ledger));
   writeFileSync(join(d, 'findings', 'classes.json'), JSON.stringify(classes));
   writeFileSync(join(d, 'src', 'x.mjs'), 'export const x = 1;\n');
@@ -292,6 +300,72 @@ describe('R7: a fix is proven red before and green after', () => {
     assert.equal(r.status, 1);
     assert.match(r.stderr, /cannot even load on base/);
   });
+
+  /**
+   * A bug that a commit in the range introduced and a later commit fixed, as a
+   * stack or an integration branch carries them: the base never had the bug.
+   */
+  function introducedInRange(guardBody) {
+    const { d, git } = repo();
+    copyFileSync(
+      join(REPO, 'scripts', 'findings-proof.mjs'),
+      join(d, 'scripts', 'findings-proof.mjs'),
+    );
+    git('add', '-A');
+    commit(git, 'the proof script');
+    git('branch', '-f', 'base');
+    writeFileSync(join(d, 'src', 'add.mjs'), 'export const add = (a, b) => a - b;\n');
+    git('add', '-A');
+    commit(git, 'add, with the bug');
+    const bug = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], {
+      cwd: d,
+      encoding: 'utf8',
+      env: ENV,
+    }).trim();
+    writeFileSync(join(d, 'src', 'add.mjs'), 'export const add = (a, b) => a + b;\n');
+    mkdirSync(join(d, 'test'), { recursive: true });
+    writeFileSync(join(d, 'test', 'add.test.mjs'), guardBody);
+    const ledger = JSON.parse(readFileSync(join(d, 'findings', 'ledger.json'), 'utf8'));
+    ledger.findings.push({
+      id: 'F-03',
+      class: 'C-01',
+      areas: ['src/add.mjs'],
+      title: 'add subtracts',
+      status: 'fixed',
+      introduced_in: bug,
+      guard: 'test/add.test.mjs::adds two numbers',
+    });
+    writeFileSync(join(d, 'findings', 'ledger.json'), JSON.stringify(ledger));
+    git('add', '-A');
+    commit(git, 'fix: add adds (F-03)');
+    const r = spawnSync(
+      process.execPath,
+      [join(d, 'scripts', 'findings-proof.mjs'), '--range', 'base'],
+      { cwd: d, encoding: 'utf8', env: ENV },
+    );
+    return { r, bug };
+  }
+  // reads the source, so it passes wherever add.mjs is absent — the base included
+  const READS_SOURCE = T(
+    "import { existsSync, readFileSync } from 'node:fs';\n" +
+      "const src = existsSync('src/add.mjs') ? readFileSync('src/add.mjs', 'utf8') : '';\n" +
+      "test('adds two numbers', () => assert.doesNotMatch(src, /a - b/));",
+  );
+  test('F-217: a bug introduced and fixed in the range is proven on the commit that introduced it', () => {
+    const { r, bug } = introducedInRange(READS_SOURCE);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(
+      r.stdout,
+      new RegExp(`F-03: the guard runs and fails before the fix \\(on ${bug},`),
+    );
+  });
+  test('F-217: a guard that passes where the bug was introduced is still refused', () => {
+    const { r, bug } = introducedInRange(
+      T("test('adds two numbers', () => assert.equal(1 + 1, 2));"),
+    );
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, new RegExp(`already passes on ${bug}, the commit in this range`));
+  });
 });
 
 describe('skipping the hooks is refused, and disputing the gate is the way out', () => {
@@ -325,5 +399,175 @@ describe('skipping the hooks is refused, and disputing the gate is the way out',
     const r = edit(d);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /--source dispute/);
+  });
+});
+
+describe('F-141: a broken checker can still be repaired, and nothing else passes', () => {
+  /** A repository whose checker library imports something that is not there. */
+  function broken() {
+    const { d } = repo();
+    const lib = join(d, 'scripts', 'findings-lib.mjs');
+    writeFileSync(lib, `import './does-not-exist.mjs';\n${readFileSync(lib, 'utf8')}`);
+    return d;
+  }
+  const editOf = (d, file) =>
+    check(
+      d,
+      ['--edit'],
+      JSON.stringify({ tool_name: 'Edit', cwd: d, tool_input: { file_path: join(d, file) } }),
+    );
+  test("F-141: the gate's own files can be edited while the checker cannot load", () => {
+    // the data the checker reads (findings/) stays open, and its code can be
+    // restored from git, so a broken checker never locks its own repair
+    const d = broken();
+    assert.equal(editOf(d, 'findings/ledger.json').status, 0, 'logging a problem is never blocked');
+    assert.equal(editOf(d, 'findings/acks/x.json').status, 0, 'answering is never blocked');
+    assert.equal(bash(d, 'git restore scripts/findings-lib.mjs').status, 0, 'restoring from git');
+  });
+  test('F-141: while the checker cannot load, its code is restored from git, never rewritten', () => {
+    const d = broken();
+    assert.equal(editOf(d, 'findings/ledger.json').status, 0, 'logging a problem is never blocked');
+    assert.equal(bash(d, 'git restore scripts/findings-lib.mjs').status, 0, 'restoring from git');
+    assert.equal(bash(d, 'git checkout -- src/classify.mjs').status, 0);
+    // the research behind the RC-09 review: a blanket exemption for the gate's own
+    // files lets the broken gate be rewritten unjudged
+    assert.equal(editOf(d, 'scripts/findings-lib.mjs').status, 2, 'no rewrite of the gate code');
+    assert.equal(editOf(d, 'src/classify.mjs').status, 2);
+    assert.equal(
+      bash(d, 'git restore --source=HEAD~1 scripts/findings-lib.mjs').status,
+      2,
+      'no other source',
+    );
+    assert.equal(
+      bash(d, 'git restore scripts/findings-lib.mjs', join(d, 'src')).status,
+      2,
+      'from the top folder only',
+    );
+  });
+  test('F-141: everything else is denied, with the way to repair, not a crash', () => {
+    const d = broken();
+    const r = editOf(d, 'src/x.mjs');
+    assert.equal(
+      r.status,
+      2,
+      'a deny, not a crash (exit 1), so no caller reads it as an error to ignore',
+    );
+    assert.match(r.stderr, /restored, not rewritten/);
+    assert.equal(
+      bash(d, 'git restore scripts/findings-lib.mjs && rm -rf src').status,
+      2,
+      'nothing chained onto the repair',
+    );
+  });
+  test('F-157: the window resolves a symlink leaf, survives a non-error, and ignores a stray key', () => {
+    // a symlink whose leaf points at product code is judged by its real target,
+    // not by its name under findings/ or scripts/
+    const d = broken();
+    symlinkSync(join(d, 'src', 'x.mjs'), join(d, 'findings', 'link.mjs'));
+    const viaLink = check(
+      d,
+      ['--edit'],
+      JSON.stringify({
+        tool_name: 'Write',
+        cwd: d,
+        tool_input: { file_path: join(d, 'findings', 'link.mjs') },
+      }),
+    );
+    assert.equal(viaLink.status, 2, 'a findings/ symlink to src is not an open findings/ file');
+    // a Bash payload carrying a stray file_path key is judged by its command
+    const strayKey = check(
+      d,
+      ['--edit'],
+      JSON.stringify({
+        tool_name: 'Bash',
+        cwd: d,
+        tool_input: { command: 'rm -rf src', file_path: join(d, 'findings', 'x') },
+      }),
+    );
+    assert.equal(strayKey.status, 2, 'the file_path key does not make a Bash write pass');
+    // a checker library that throws a non-error still denies, never crashes (exit 1)
+    const d2 = repo().d;
+    writeFileSync(join(d2, 'scripts', 'findings-lib.mjs'), 'throw null;\n');
+    const nonError = check(
+      d2,
+      ['--edit'],
+      JSON.stringify({
+        tool_name: 'Edit',
+        cwd: d2,
+        tool_input: { file_path: join(d2, 'src', 'x.mjs') },
+      }),
+    );
+    assert.equal(nonError.status, 2, 'a thrown null denies, it does not skip the window');
+    assert.equal(
+      editOf(d2, 'findings/ledger.json').status,
+      0,
+      'and the repair path still works when the throw was a non-error',
+    );
+  });
+});
+
+describe('the last known good gate: a copy outside the working tree judges (RC-09 review)', () => {
+  /** The gate's listed files, copied out of `from` into a fresh folder, as the dispatcher does. */
+  function copyOf(from) {
+    const c = mkdtempSync(join(tmpdir(), 'gate-copy-'));
+    for (const f of GATE_FILES) {
+      mkdirSync(dirname(join(c, f)), { recursive: true });
+      copyFileSync(join(from, f), join(c, f));
+    }
+    return c;
+  }
+  const run = (copy, payload, env) =>
+    spawnSync(process.execPath, [join(copy, 'scripts', 'findings-check.mjs'), '--edit'], {
+      cwd: payload.cwd,
+      input: JSON.stringify(payload),
+      encoding: 'utf8',
+      env: { ...ENV, ...env },
+      timeout: 60_000,
+    });
+  test('a gate run from a copy judges the repository it is given, and refuses a folder without a ledger', () => {
+    const { d } = repo();
+    const c = copyOf(d);
+    const bypass = {
+      tool_name: 'Bash',
+      cwd: d,
+      tool_input: { command: 'git commit --no-verify -m x' },
+    };
+    assert.equal(run(c, bypass, { SAKK_GATE_REPO: d }).status, 2, 'the named repository is judged');
+    const write = { tool_name: 'Bash', cwd: d, tool_input: { command: 'echo 2 > src/x.mjs' } };
+    assert.equal(run(c, write, { SAKK_GATE_REPO: d }).status, 2, 'a write that needs answers');
+    const empty = mkdtempSync(join(tmpdir(), 'no-ledger-'));
+    const r = run(c, bypass, { SAKK_GATE_REPO: empty });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /not a repository that keeps findings\/classes\.json/);
+    // not told which repository: a copy cannot place a shell write, so it refuses
+    assert.equal(run(c, write, {}).status, 2);
+  });
+  test('the committed gate passes its own self-test from a copy, as the dispatcher runs it', () => {
+    const list = JSON.parse(readFileSync(MANIFEST, 'utf8'));
+    assert.ok(list.hooks?.PreToolUse?.length > 0, 'the list names the hooks that judge a call');
+    assert.ok(list.selftest?.length >= 3, 'and cases that prove they judge');
+    const c = copyOf(REPO);
+    const matches = (m, tool) => m === undefined || m === '' || new RegExp(`^(?:${m})$`).test(tool);
+    for (const t of list.selftest) {
+      const ev = { hook_event_name: 'PreToolUse', session_id: 'selftest', cwd: REPO, ...t.event };
+      const outcomes = list.hooks.PreToolUse.filter((h) => matches(h.matcher, ev.tool_name)).map(
+        (h) => {
+          const r = spawnSync('/bin/sh', ['-c', h.command], {
+            cwd: REPO,
+            input: JSON.stringify(ev),
+            encoding: 'utf8',
+            env: { ...ENV, SAKK_GATE_DIR: c, SAKK_GATE_REPO: REPO, CLAUDE_PROJECT_DIR: REPO },
+            timeout: 60_000,
+          });
+          return r.status === 2 ? 'deny' : r.status === 0 ? 'pass' : 'crash';
+        },
+      );
+      const got = outcomes.includes('crash')
+        ? 'crash'
+        : outcomes.includes('deny')
+          ? 'deny'
+          : 'pass';
+      assert.equal(got, t.expect, t.name);
+    }
   });
 });

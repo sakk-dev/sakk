@@ -9,14 +9,34 @@ name: pr-adversarial-review
 #
 # Reviewer model: DeepSeek (OpenAI-compatible API, maintainer decision
 # 2026-10-15) — deepseek-reasoner for core-area diffs, deepseek-chat
-# otherwise. Requires the DEEPSEEK_API_KEY repo secret; without it the job
-# skips and the deterministic gates (ci.yml) remain the floor.
+# otherwise. Requires the DEEPSEEK_API_KEY repo secret. Without it the review
+# job does not run and shows as skipped, never as passed (F-142); the
+# deterministic gates (ci.yml) remain the floor. Once it runs, a review that
+# cannot be made or posted fails the check.
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
+  review-key:
+    # says only whether a key is configured; the review itself is the next job
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      present: ${{ steps.key.outputs.present }}
+    steps:
+      - id: key
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          if [ -n "$DEEPSEEK_API_KEY" ]; then echo "present=yes" >> "$GITHUB_OUTPUT"; else
+            echo "present=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::DEEPSEEK_API_KEY is not set: the adversarial review does not run and shows as skipped."
+          fi
   adversarial-review:
+    needs: review-key
+    if: needs.review-key.outputs.present == 'yes'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -35,8 +55,8 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: |
           if [ -z "$DEEPSEEK_API_KEY" ]; then
-            echo "::notice::DEEPSEEK_API_KEY not set — adversarial review skipped (deterministic gates still apply)."
-            exit 0
+            echo "::error::DEEPSEEK_API_KEY is empty although the key check found it"
+            exit 1
           fi
           # Depth defaults to DEEP; it only lightens when the diff provably avoids core areas.
           MODE="deep"; MODEL="deepseek-reasoner"
@@ -55,11 +75,11 @@ jobs:
                 ]}' > /tmp/req.json
           curl -sS --max-time 600 https://api.deepseek.com/chat/completions \
             -H "Authorization: Bearer $DEEPSEEK_API_KEY" -H "Content-Type: application/json" \
-            --data @/tmp/req.json > /tmp/resp.json || { echo "::warning::DeepSeek call failed — review skipped"; exit 0; }
+            --data @/tmp/req.json > /tmp/resp.json || { echo "::error::the DeepSeek call failed — no review was made"; exit 1; }
           jq -r '.choices[0].message.content // empty' /tmp/resp.json > /tmp/review.txt
           if [ ! -s /tmp/review.txt ]; then
-            echo "::warning::empty review response — $(jq -c '.error // {}' /tmp/resp.json)"
-            exit 0
+            echo "::error::empty review response — $(jq -c '.error // {}' /tmp/resp.json)"
+            exit 1
           fi
           {
             echo "## Adversarial review ($MODE, static, base-context — $MODEL)"
@@ -73,7 +93,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ ! -s /tmp/comment.md ]; then
-            echo "::notice::no review to post (skipped, failed or empty — see the step above)"
-            exit 0
+            echo "::error::the review step passed but left no review to post"
+            exit 1
           fi
-          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file /tmp/comment.md || echo "::warning::could not post the review comment"
+          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file /tmp/comment.md

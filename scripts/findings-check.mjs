@@ -26,7 +26,20 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
+// Loaded lazily (F-141): if the library itself cannot load, the edit hook can
+// still let the repair of the gate's own files through — and nothing else.
+let lib;
+let libError = null;
+let libLoaded = false;
+try {
+  lib = await import('./findings-lib.mjs');
+  libLoaded = true;
+} catch (e) {
+  // a thrown null/undefined/string is still a load failure (F-157): record it
+  // as something printable, never leave libLoaded true
+  libError = e ?? new Error('the checker library threw a non-error value');
+}
+const {
   EXEMPT,
   ackPath,
   ackRewrites,
@@ -47,10 +60,93 @@ import {
   slug,
   stopProblems,
   stoppedClasses,
-} from './findings-lib.mjs';
+} = lib ?? {};
 
 const args = process.argv.slice(2);
 const mode = args[0];
+
+/**
+ * The repository this gate guards: the one the dispatcher names when it runs
+ * a copy of the gate from outside the working tree (SAKK_GATE_REPO; the last
+ * known good gate, RC-09 review), else the one this file lives in. A named
+ * folder that keeps no ledger is refused, never read as "nothing to check".
+ */
+function gateRepo() {
+  const named = process.env.SAKK_GATE_REPO;
+  if (named === undefined || named === '')
+    return realpathSync(join(dirname(fileURLToPath(import.meta.url)), '..'));
+  try {
+    const r = realpathSync(named);
+    if (existsSync(join(r, 'findings', 'classes.json'))) return r;
+  } catch {
+    // refused below
+  }
+  console.error(
+    `self-evolution: SAKK_GATE_REPO (${named}) is not a repository that keeps findings/classes.json — refused`,
+  );
+  process.exit(2);
+}
+/** What stays open while the checker cannot load: the answers and findings, never the gate's code. */
+const OPEN_WHILE_BROKEN = /^findings\/.*$/;
+/** The gate's own code: restored from git while the checker cannot load, never rewritten (RC-09 review). */
+const GATE_CODE = '(?:scripts/findings-[\\w-]+\\.mjs|src/classify\\.mjs)';
+const FILE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+if (!libLoaded) {
+  const why = `self-evolution: the checker cannot load (${String(libError?.message ?? libError).split('\n')[0]})`;
+  if (mode !== '--edit') {
+    console.error(`${why} — fix scripts/findings-*.mjs or src/classify.mjs`);
+    process.exit(mode === undefined ? 2 : 1);
+  }
+  let hook = null;
+  try {
+    hook = JSON.parse(readFileSync(0, 'utf8'));
+  } catch {
+    process.exit(0); // not a hook payload: nothing to check
+  }
+  const repo = gateRepo();
+  const file = hook?.tool_input?.file_path ?? hook?.tool_input?.notebook_path;
+  // only an actual file tool edits a file; a Bash call with a stray file_path key
+  // is judged by its command below, not by that key (F-157)
+  if (FILE_TOOLS.has(hook?.tool_name) && typeof file === 'string' && file !== '') {
+    // resolve the real path, the leaf included: a symlink leaf must not be judged
+    // by its own name (F-157). Fall back to the nearest existing parent when the
+    // leaf does not exist yet (one spelling per place: /var and /private/var).
+    const start = resolve(typeof hook.cwd === 'string' ? hook.cwd : repo, file);
+    let abs = start;
+    for (let d = start, tail = []; ;) {
+      try {
+        abs = tail.length ? join(realpathSync(d), ...tail) : realpathSync(d);
+        break;
+      } catch {
+        if (dirname(d) === d) break;
+        tail.unshift(d.slice(dirname(d).length + 1));
+        d = dirname(d);
+      }
+    }
+    const rel = relative(repo, abs);
+    if (rel.startsWith('..') || isAbsolute(rel) || OPEN_WHILE_BROKEN.test(rel)) process.exit(0);
+  }
+  const cmd = hook?.tool_input?.command;
+  const here = (() => {
+    try {
+      return relative(repo, realpathSync(typeof hook?.cwd === 'string' ? hook.cwd : repo));
+    } catch {
+      return '..';
+    }
+  })();
+  // the one shell repair: restore the gate's own code to what is committed, from the
+  // repository's top folder, nothing chained and no other source
+  if (
+    typeof cmd === 'string' &&
+    here === '' &&
+    new RegExp(`^git (?:checkout|restore)(?: --)? ${GATE_CODE}(?: ${GATE_CODE})*$`).test(cmd.trim())
+  )
+    process.exit(0);
+  console.error(
+    `${why}. The gate's code is restored, not rewritten, while it cannot load: from the repository's top folder run git restore <the file> (scripts/findings-*.mjs, src/classify.mjs); findings/ stays editable.`,
+  );
+  process.exit(2);
+}
 const git = (root, ...a) =>
   execFileSync('git', a, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 const fail = (msg, code = 1) => {
@@ -139,8 +235,14 @@ if (mode === '--edit') {
   try {
     if (tool === 'Bash') {
       // R1: the repository this hook belongs to, wherever the session started
-      const root = findRoot(real(join(dirname(fileURLToPath(import.meta.url)), '..')));
-      if (!root) process.exit(0);
+      const root = findRoot(gateRepo());
+      // the gate always lives in the repository it guards; a copy that is not told
+      // which one (SAKK_GATE_REPO) cannot place a shell write, so it refuses
+      if (!root)
+        fail(
+          'self-evolution: this copy of the gate was not given SAKK_GATE_REPO, so it cannot tell what a shell command writes — refused',
+          2,
+        );
       const skip = hookBypass(hook?.tool_input?.command);
       if (skip)
         fail(
@@ -217,10 +319,10 @@ if (mode === '--edit') {
     if (problems.length) fail([...problems, DISPUTE].join('\n\n'), 2);
     process.exit(0);
   } catch (e) {
-    // fail closed — but leave the way to repair the checker itself open
-    if (rel !== null && /^scripts\/findings-[\w-]+\.mjs$/.test(rel)) process.exit(0);
+    // fail closed; findings/ was let through before any of this ran, so the data the
+    // check reads can always be fixed — the gate's own code is never rewritten unjudged
     fail(
-      `self-evolution: the check could not run (${e.message}). Fix the input it names; findings/ and scripts/findings-*.mjs stay editable with the Edit tool.`,
+      `self-evolution: the check could not run (${e.message}). Fix the input it names; findings/ stays editable.`,
       2,
     );
   }

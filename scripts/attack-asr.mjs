@@ -825,6 +825,9 @@ row(
           spawnSync(process.execPath, ['--test', failingSuite], {
             env: childEnv(),
             encoding: 'utf8',
+            // a hung suite must not hang the probe; --test-timeout cannot do it (F-143)
+            timeout: 120_000,
+            killSignal: 'SIGKILL',
           }).status === 0
         );
       } finally {

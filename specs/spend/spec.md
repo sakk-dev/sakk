@@ -11,11 +11,11 @@ Sakk reads what Claude Code already writes on the machine and prices it.
 The guard hook then stops the agent once today's spend reaches the cap:
 "ccusage tells you; Sakk stops you".
 
-| Command                                  | What it does                                                                                        |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `sakk spend [--day YYYY-MM-DD] [--json]` | Today's (or that day's) spend by model, session and project, with the count of unpriced calls       |
-| `sakk cap set <usd>` / `sakk cap off`    | Sets the daily cap in `$SAKK_HOME/config.json`                                                      |
-| `sakk prices` / `sakk prices update`     | Shows the price table in use; updating it fetches the current upstream list (the only network call) |
+| Command                                  | What it does                                                                                                   |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `sakk spend [--day YYYY-MM-DD] [--json]` | Today's (or that day's) spend by model, session and project, with the count of unpriced calls                  |
+| `sakk cap set <usd>` / `sakk cap off`    | Sets the daily cap in `$SAKK_HOME/config.json`                                                                 |
+| `sakk prices`                            | Shows the price table in use (a fetching updater was retracted — F-175; edit `$SAKK_HOME/prices.json` by hand) |
 
 ## Source: Claude Code's logs
 
@@ -54,8 +54,16 @@ kinds are:
 - input;
 - output;
 - cache write, 5-minute and 1-hour (`usage.cache_creation.ephemeral_5m/1h_input_tokens`;
-  without the breakdown, all cache writes count at the 5-minute price);
+  without the breakdown, all cache writes count at the 5-minute price). The
+  breakdown refines the price of the aggregate `cache_creation_input_tokens`,
+  never lowers it: the 1-hour part is billed at its price and the larger of
+  the 5-minute part and the aggregate minus the 1-hour part at the 5-minute
+  price, and those tokens are what count toward long context (F-168, F-179);
 - cache read.
+
+Request-priced server tools (`usage.server_tool_use`, e.g. web search) are
+not priced in v1 and the cap does not count them; docs/SPEND.md says so
+(F-180, open).
 
 | Rule                                                                                                                             | Source                                                    |
 | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
@@ -73,15 +81,18 @@ trimmed to the providers coding agents use. It records:
 - the licence notice.
 
 It stays under 256 KiB, the plugin-directory file limit.
-`sakk prices update` writes `$SAKK_HOME/prices.json`. It validates the
-schema, shows the diff and never edits the package. Owner decision 4,
-2026-10-21: a bundled snapshot plus a manual update, never a silent fetch.
+A newer table is applied by hand: copy `prices/snapshot.json` to
+`$SAKK_HOME/prices.json` and edit it; that file, when present, is used
+instead of the package snapshot, which is never edited. Owner decision 4,
+2026-10-21: a bundled snapshot plus a manual override, never a silent
+fetch. (A fetching updater subcommand was advertised but never built, and
+was retracted — F-175, D11 2026-10-29.)
 
 **Unknown model** (not in the table): the call is counted as **unpriced**.
 With a cap set, any unpriced call today makes the cap check **deny**
 (`PRICE_UNKNOWN <model>`), because spend that cannot be priced cannot be
-shown to be under the cap. The reason names the two ways out:
-`sakk prices update`, or a `sakk prices add` row. This matches v10:
+shown to be under the cap. The reason names the way out: add the model to
+`$SAKK_HOME/prices.json` by hand. This matches v10:
 "calls to an unlisted model are refused, not guessed".
 
 ## Cap
@@ -131,15 +142,15 @@ spending.
 
 ## Input-space table
 
-| Input       | Classes covered                                                                                                                                                |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Log folder  | Absent (spend 0, stated "no logs found at <path>"); empty; unreadable file; symlinks (not followed out of the folder); subagent folders; 10,000 files          |
-| Log line    | Assistant with usage; without usage; user/system/summary lines; partial last line (not read until complete); over 1 MiB; non-JSON; missing ids; unknown fields |
-| Usage       | All kinds present; cache breakdown absent; zeros; negative / NaN / strings (→ unreadable); huge but finite                                                     |
-| Model       | Priced; unpriced; an alias (resolved through LiteLLM's names only, never guessed); a date-suffixed id                                                          |
-| Price table | Shipped snapshot; user override; malformed override (→ refuse, never fall back silently); override missing a model                                             |
-| Time        | Day boundaries in UTC, Dubai and a DST zone; a line timestamp in the future (counted today, flagged); a clock change mid-day                                   |
-| Cap         | Unset (no check, and the console says so); 0; fractional; the exact boundary (at the cap = reached)                                                            |
+| Input       | Classes covered                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Log folder  | Absent (spend 0, stated "no logs found at <path>"); empty; unreadable file; unlistable directory (typed `SPEND_LOGS_UNLISTABLE`, the cap fails closed — F-204); an unreachable, link-dangling or file-shaped log ROOT (the same typed deny, never an honest-looking $0; only a truly absent root is $0 — F-208); symlinks (not followed out of the folder); subagent folders; 10,000 files |
+| Log line    | Assistant with usage; without usage; user/system/summary lines; partial last line (not read until complete); over 1 MiB; non-JSON; missing ids; unknown fields                                                                                                                                                                                                                             |
+| Usage       | All kinds present; cache breakdown absent, empty, partial or larger than the aggregate; zeros; in every count and both breakdown fields, negative / fractional / Infinity / strings / booleans / objects (→ unreadable), null (→ absent); a breakdown that is not an object (→ unreadable); huge but finite — enumerated by `test/spend.test.mjs::the usage input space`                   |
+| Model       | Priced; unpriced; an alias (resolved through LiteLLM's names only, never guessed); a date-suffixed id                                                                                                                                                                                                                                                                                      |
+| Price table | Shipped snapshot; user override; malformed override (→ refuse, never fall back silently); override missing a model                                                                                                                                                                                                                                                                         |
+| Time        | Day boundaries in UTC, Dubai and a DST zone; a line timestamp in the future (counted today, flagged); a line timestamp in the past (books to its claimed day — whether a line first SEEN today but claiming an old day should instead count on the observation day is an open owner ruling, F-210, docs/DECISIONS.md); a clock change mid-day                                              |
+| Cap         | Unset (no check, and the console says so); 0; fractional; the exact boundary (at the cap = reached)                                                                                                                                                                                                                                                                                        |
 
 ## Evidence-source declaration
 

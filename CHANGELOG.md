@@ -7,6 +7,475 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-29
+
+### Changed — the release describes one artifact (F-111)
+
+- Version 0.1.0 is cut: package.json, the plugin manifest and this
+  changelog's newest released section now name the same version, and a
+  release test pins them together with the `v0.1.0` tag-name format the
+  links below use. Publishing (the tag and npm) remains the owner's step.
+
+### Fixed — a spend check that cannot see the log root fails closed (F-208)
+
+- The daily-cap reader treated a missing log ROOT as "no spend yet", so an
+  unreadable parent directory, a dangling symlink or a symlink loop at the
+  root reported an honest-looking $0 and the cap allowed. The root is now
+  read like any subdirectory: only true absence is $0; every other failure
+  denies with `SPEND_LOGS_UNLISTABLE`.
+
+### Fixed — a resume no-op never reaches the write path (F-209)
+
+- `sakk resume` with nothing halted now answers and exits before the
+  in-lock write path is reachable (same message, same exit code), so a halt
+  landing between the check and the lock can no longer be lifted without a
+  person's confirmation — matching `sakk reconcile` and `sakk unlock`.
+
+### Fixed — the console refuses a cross-site Origin on every route (F-195)
+
+- `sakk ui` now refuses a request whose Origin header is not the console's
+  own loopback origin on every route — the page, every `/api/*` read and
+  the halt write — in one gate ahead of dispatch, so a route added later is
+  covered too. A request without an Origin header (a typed URL, curl) still
+  works, and the halt write still requires the Origin to be present.
+- Every console response now carries `Cache-Control: no-store`, and a
+  non-HTML response's CSP no longer carries an empty-nonce script or style
+  allowance.
+
+### Removed — the advertised prices updater (F-175)
+
+- The update subcommand of `sakk prices` named in earlier notes was never
+  built and is retracted (owner decision D11, 2026-10-29): the hints in
+  `sakk ui` and in the PRICE_UNKNOWN refusal no longer point to it, and the
+  spend spec and docs name the one real route — copy `prices/snapshot.json`
+  to `~/.sakk/prices.json` and edit it by hand.
+- The release check now validates every multi-word `sakk` phrase in the
+  README, this changelog, docs, specs and the runtime's user-facing strings
+  against the CLI's real subcommands, so an advertised-but-unbuilt command
+  cannot recur.
+
+### Changed — agent edits of guard config are denied, not asked (F-188)
+
+- The `ask-agent-config` policy is renamed and tightened to
+  `deny-agent-config`: from the agent, `sakk guard install|uninstall` is now
+  denied instead of asked. Mentions of the old name further down this file
+  describe the behavior as it was when those notes were written.
+
+### Added — a NOTICE file for the MIT-derived material (F-199)
+
+- A NOTICE file now states the MIT-licensed material this AGPL-3.0-only
+  package derives from — the secret-scanning rules ported from gitleaks and
+  the price snapshot derived from LiteLLM's model list — with their
+  attributions, and ships in the npm package.
+
+### Added — spend failures and oddities get public names
+
+- New public error code `SPEND_LOGS_UNLISTABLE`: a spend-log directory that
+  cannot be listed now fails closed under its own name.
+- New public error code `LEDGER_PATH_LEGACY`: the legacy `./sakk-ledger.json`
+  default path is refused by name instead of being silently read.
+- `sakk spend --json` adds a `future` field: a log line stamped in the
+  future counts toward the day it is observed, and is flagged there.
+
+### Changed — unattended runs stop at the human gate
+
+- `sakk resume`, `sakk reconcile` and `sakk unlock` without a real terminal
+  now exit 2 with `HUMAN_CONFIRMATION_REQUIRED` instead of succeeding, since
+  each needs a person's confirmation.
+- The default ledger path moves to `~/.sakk/sakk-ledger.json`.
+
+### Changed — v1 close-out: known limits stated, the rest moved to v2
+
+- The 2026-10-28 acceptance run checked all 151 P0 cases by their expected
+  result. The owner closed v1 as it stands (docs/DECISIONS.md D10): no code
+  changes, and every case that did not pass is a finding (F-182…F-201) with
+  its fix in [docs/V2-BACKLOG.md](docs/V2-BACKLOG.md).
+- The gaps an operator should know before relying on v1 are now stated in
+  the README "Limits", docs/GUARD.md "Known open in v1" and docs/SPEND.md:
+  names compared in one spelling, symlinks judged by their own name, search
+  tools outside the hook's matcher, a project-local install in the agent's
+  reach, the console's Stop button, and the spend figure's reliance on the
+  agent's environment.
+- Corrected in the docs: the README plugin line (`claude --plugin-dir`, one
+  session; a persistent install needs a marketplace file, planned for v2),
+  the secret-rule counts (195 upstream, 192 enabled), which roadmap items
+  ship in the npm package, and the fetching prices updater, which was
+  advertised but never built (retracted in this release — F-175).
+
+### Changed — the agent cannot re-point the ledger a halt is read from (F-181)
+
+- From the agent, `sakk init` is now denied (`protect-guard-state`), as
+  `sakk cap` is. Run by an agent, it could record a ledger the agent writes in
+  `~/.sakk/config.json`; the hook reads that ledger first, so a halt held on
+  the ledger `SAKK_LEDGER_PATH` names stopped applying. A person runs `init`
+  at the terminal as before. Agents or scripts that ran `sakk init` through a
+  guarded agent must now run it themselves.
+
+### Fixed — a cache-write breakdown can no longer lower the bill (F-179)
+
+- A `cache_creation` breakdown that names only part of the cache writes now
+  bills the rest at the 5-minute price, as a log line with no breakdown does;
+  before, the breakdown replaced the total and the daily cap counted less than
+  was spent. Breakdown tokens beyond the total are billed and count toward
+  long context.
+- A breakdown field that is not a whole-token count (a string, a fraction, a
+  boolean, a negative number), or a `cache_creation` that is not an object,
+  now makes the line unreadable — the cap denies with `SPEND_UNREADABLE` —
+  instead of being read as 0.
+- docs/SPEND.md now states that the cap counts tokens only: server-side tools
+  billed per request, such as web search, are not included (F-180).
+
+### Changed — the agent cannot lift its own cap or remove its own guard (F-171)
+
+- `sakk cap off`, raising the cap, moving its day with `--zone`, and
+  `sakk guard uninstall` (when it would remove something) now ask a person at
+  the terminal to retype a word. With no terminal on stdin and stderr, or a
+  wrong answer, they exit 2 with the new code `HUMAN_CONFIRMATION_REQUIRED`
+  and change nothing. Setting a first cap, lowering it, `guard install` and
+  `init` never ask. Scripts that ran `cap off` or `guard uninstall` unattended
+  must now run them at a terminal.
+- The guard judges Sakk's own commands by the write they make: from the agent,
+  `sakk cap …` is denied (`protect-guard-state`), `sakk guard install|uninstall`
+  asks (`ask-agent-config`; renamed and tightened to `deny-agent-config` in
+  this release — F-188), and `script`, `expect` and `unbuffer` ask
+  (`ask-constructed-commands`), because they can type into a prompt.
+- Limits, stated in the README and docs/GUARD.md: the confirmation checks for a
+  terminal, not a person; Sakk is known by the name `sakk` only.
+- Known gap, not yet fixed (F-177): `resume`, `reconcile` and `unlock` from a
+  guarded agent are allowed, and the default ledger is a project file the
+  agent may write, so one agent can lift a halt on another.
+
+### Changed — the README states the guard's limits (REQ-P04, F-173)
+
+- The README's limits section now leads with the five the requirements name: a
+  command built at run time is only asked or denied; `@` references skip the
+  hook; the cap stops the next call; the agent can reach the local logs; older
+  Claude Code fails open. The first states where the secret guard stops: a
+  name the shell or a program picks at run time (glob, brace, variable,
+  `grep -r`, `find -exec`, `xargs`) is judged as written, so such a read of
+  `.env` is allowed. The behaviour is unchanged; a test pins both sides.
+- Known gap, not yet fixed (F-176): a delete, write or flag held in a shell
+  variable is allowed wherever it points, including `~/.sakk` and
+  `git push --force`. The README, docs/GUARD.md and docs/SPEND.md say so.
+
+### Fixed — `sakk halt` now stops the guarded agent (F-172)
+
+- No command wrote `ledgerPath` into `~/.sakk/config.json`, so the hook never
+  saw a ledger: `sakk halt` recorded a halt the installed guard could not read
+  and the agent kept running. `sakk init` now records the ledger's absolute path
+  there, and the CLI, the hook and the console's stop button resolve the ledger
+  by one shared rule (`--ledger` > the recorded path > `SAKK_LEDGER_PATH` > the
+  CLI's `./sakk-ledger.json`), so a halt lands where the hook reads. Re-running
+  `init` wires an existing ledger without touching it and never replaces a
+  different recorded path.
+
+### Fixed — the shipped price snapshot (F-169)
+
+- The shipped `prices/snapshot.json` priced none of the current Claude models,
+  so out of the box every metered run was refused as `PRICE_UNKNOWN`. It is now
+  regenerated from the LiteLLM table (170 models) by `scripts/prices-trim.mjs`,
+  which also writes the third-party credit (`LiteLLM (MIT, (c) Berri AI)`) into
+  the snapshot's provenance block. An unknown model still fails closed.
+
+### Fixed — the guard says when it would fail open (F-174)
+
+- On Claude Code older than 2.1.295 the hook cannot be installed with
+  `onFailure: "block"`, so a hook that times out lets the call run. `sakk guard
+install` now says so, and `sakk doctor` warns on any installed Claude Code
+  hook that lacks the field.
+
+### Fixed — spend accounting correctness (F-168, F-170)
+
+- An empty `cache_creation:{}` object (which a trimmed or replayed log can emit)
+  was read as an authoritative all-zero breakdown, so cache-write tokens were
+  priced at `$0`. `costOf` now honours the split only when it enumerates tokens
+  and otherwise falls back to the `cache_creation_input_tokens` aggregate, so
+  those tokens are billed the same as with no split key (F-168).
+- A fractional token count (e.g. `input_tokens: 1.5`) passed the spend parser's
+  validation and then threw deep in pricing, crashing `sakk spend`. Token counts
+  are now screened as whole numbers at the parse boundary — a non-integer line is
+  marked unreadable — and `daySpend` isolates any pricing throw as one unreadable
+  line, so the cap fails closed via `SPEND_UNREADABLE` instead of aborting
+  (F-170).
+
+### Fixed — the release certificate's mutant-freshness parser (F-167)
+
+- The certificate's drill-freshness parser read mutant ids with a `MUT-[A-Z]`
+  regex that was blind to the twelve two-letter mutants (`MUT-AA`…`MUT-AL`):
+  their tampered-file hash blocks were never in the verified set, so the
+  `freshness: N hashes verified` line a reader relies on could never be issued.
+  The parser now reads `MUT-[A-Z]+`, so every mutant the drill emits is in
+  reach, and `EXPECTED_MUTANTS` is pinned to the count the drill defines; a test
+  fails `npm test` if either drifts from `scripts/mutation-drill.sh`.
+
+### Added — the gitleaks rule port in the secret guard (open-source v1, M3)
+
+- The secret guard now runs **192 of gitleaks' 195 rules** (v8.21.2, MIT)
+  alongside the eight hand-written ones, in the hook and the commit scan.
+  `scripts/gitleaks-port.mjs` reads the pinned `config/gitleaks.toml` and
+  generates `src/secret-rules.generated.mjs`, translating RE2 to JS (a leading
+  `(?i)` to the `i` flag, a mid `(?i)`, `(?i:…)` and `(?-i:…)` by case-folding,
+  `(?P<>)` to `(?<>)`, `\z` to `$`) into syntax Node 20 runs; it refuses any
+  construct it does not know (1 rule, in `REFUSED`), never guessing.
+- Rules are keyword-gated and filtered by gitleaks' global allowlist and
+  per-rule entropy; one secret matched by two rules is reported once. The port
+  is deterministic (a re-run reproduces the file byte-for-byte) and every
+  enabled rule is **linear on hostile input** — the `(?:.|\s){0,N}` span idiom,
+  which backtracks catastrophically in JS, is rewritten to `[\s\S]`.
+- Two rules ship disabled as reviewed exclusions: `generic-api-key` (too broad
+  — it flags ordinary code, and in a fail-closed guard a false positive denies
+  a legitimate write) and `curl-auth-user` (a RE2 pattern that is not linear in
+  JS). The repository scans clean with the rest enabled.
+- The full per-rule recall corpus is the remaining C-13 stopline
+  (`specs/secret-guard`, due 2026-10-28): gitleaks' own samples are generated
+  by Go helpers, not literal strings.
+
+### Added — the spend and cap CLI (F-161 follow-up)
+
+- `sakk cap set <usd> [--zone <IANA>]` / `sakk cap off`: set or lift the daily
+  cap the hook enforces at the next call. A person runs it; the agent is denied
+  writing `~/.sakk` directly by the guard (rule `protect-guard-state`), and a
+  one-command symlink/hard-link chain that would reach it is not silently
+  allowed (it is treated as constructed and needs a person's approval, F-163),
+  so the agent cannot raise its own cap by a command that names the file (a
+  path held in a shell variable is not caught yet, F-176). The amount must be a positive
+  plain decimal (`CAP_USAGE`) and the zone a real IANA name (`CAP_ZONE_INVALID`).
+- `sakk spend [--day <YYYY-MM-DD>] [--json]`: a day's spend by model and what
+  could not be priced, read from Claude Code's local logs and labelled an
+  estimate, not the invoice; the day boundary follows the configured zone. A
+  malformed `--day` is `SPEND_USAGE`.
+- `sakk prices [--json]`: the price table in use and its source file.
+- These complete M2's documented surface (the library and the hook's
+  enforcement already shipped; see F-161). A fetching prices updater — the
+  one network call — was then still planned; it was never built and is
+  retracted (F-175).
+
+### Added — release packaging (open-source v1, M5)
+
+- Ships as a **Claude Code plugin**: `.claude-plugin/plugin.json` wires a
+  `PreToolUse` hook that runs `node ${CLAUDE_PLUGIN_ROOT}/bin/sakk.mjs hook
+--agent claude-code` on every tool call, `onFailure: block` (fail-closed).
+  Installable with `claude plugin install --plugin-dir <path>`; the manifest is
+  the only file a local/npm install needs (no marketplace file).
+- The npm package `files` list now ships `.claude-plugin` alongside `src`,
+  `bin`, `policies` and `prices`; `test/release.test.mjs` runs the real
+  `npm pack` and asserts the tarball excludes `test`, `specs`, `findings`,
+  `eval` and `scripts`, so dev-only files never leak into the package.
+- A detector closes a gate blind spot (F-161): every `sakk <command>` named in
+  the README or the CHANGELOG must be a real CLI subcommand, so the docs can no
+  longer promise a command the binary does not implement. The package version
+  is checked to be one source of truth across the binary and the plugin.
+- Publishing itself (npm publish, making the repository public, a marketplace
+  listing) stays a person's action.
+
+### Added — the local console `sakk ui` (open-source v1, M4)
+
+- `sakk ui [--port N] [--allow-halt] [--ledger <path>]` starts a read-only web
+  console on `127.0.0.1` (never `0.0.0.0`) and prints one address carrying a
+  fresh 128-bit token. It shows only what M1–M3 recorded, through the same
+  functions the CLI uses: today's spend and cap, recent guard decisions, the
+  policy in use with a try box, secret blocks, `sakk doctor`'s checks, and the
+  model prices — plus an "Enterprise · coming soon" panel.
+- Security: the server binds loopback only; every request carries the token
+  (first in the query, then a `SameSite=Strict; HttpOnly` cookie) and is
+  checked against the `Host`; a write (stopping an agent, behind
+  `--allow-halt`) also needs the `Origin` and a token header; the token
+  compare is constant-time and refusals are counted and shown. Responses carry
+  a strict CSP (`default-src 'none'`), `nosniff` and `no-referrer`, and never a
+  CORS header. The page is one HTML file with inline, nonce'd script and style,
+  no external origin, and renders every value with `textContent` so a log
+  string is never HTML. The decision log is read in a bounded tail, so a 5 GB
+  log is never loaded whole.
+- Read-only by default. The one write stops an agent via the ledger's `halt()`,
+  recorded with the OS user name and labelled self-declared; resume stays on
+  the command line. New refusal codes: `UI_PORT_INVALID`, `UI_PORT_PRIVILEGED`,
+  `UI_PORT_IN_USE`, `CONSOLE_NO_LEDGER`, `CONSOLE_BAD_BODY`, `CONSOLE_BAD_AGENT`,
+  `CONSOLE_TRY_EMPTY`. Export is CSV and JSONL; FOCUS and evidence bundles are
+  the enterprise edition.
+
+### Fixed — M4 console, from the independent review (F-162)
+
+- `GET /api/agents` is now read-only and subprocess-free: it reports each hook's
+  installed state via `doctor({probe:false})` instead of firing the hook
+  (`spawnSync`) and creating Sakk's home, so a read-only request can no longer
+  run subprocesses or block the event loop. It also passes the OS home to
+  `doctor`, fixing a path bug. `GET /api/overview` no longer updates the spend
+  index — a GET writes nothing. The halt record is labelled "self-declared (the
+  OS account name)", the CSV export neutralises spreadsheet formula injection
+  (leading `= + - @`), and the spec no longer claims a port-scoped cookie.
+
+### Added — the secret guard in the hook (open-source v1, M3)
+
+- A write whose content is a secret, and a shell command (or `apply_patch`
+  body) whose text contains a literal secret, are now denied inside the hook
+  (`evaluate` step 3), scanned once per call through the existing eight-rule
+  `scanText`. This runs for every agent (claude-code, cursor, codex) and over
+  every write surface (Write `content`, Edit/MultiEdit new text, NotebookEdit,
+  `apply_patch`). Reading a secret file was already denied by the `secret.read`
+  rule and is unchanged.
+- The deny names the matched rule and a keyed fingerprint, never the secret
+  value; the decision-log line drops the reason text and the content, so the
+  value reaches neither the agent nor `~/.sakk/decisions.jsonl`. A scan that
+  cannot run fails closed as `HOOK_SECRET_SCAN_FAILED` (a deny, via the
+  guard's rules-unknown path). New refusal code: `HOOK_SECRET_SCAN_FAILED`.
+- Deferred: the gitleaks 222-rule port (`specs/secret-guard/`, "Status") needs
+  the upstream rule file fetched at a pinned commit (a network download) and
+  waits on approval; the hook ships the eight rules until then.
+
+### Added — spend and the daily cap (open-source v1, M2)
+
+- A daily spend cap the guard enforces at the next tool call. Spend is read
+  from Claude Code's local transcripts (`~/.claude/projects/**/*.jsonl`) and
+  priced: each call counted once at its largest recorded usage (dedup by
+  `message.id`+`requestId`, max-merge); cache writes priced per duration
+  (5m/1h); the whole request billed at the long-context rate past a model's
+  threshold. The cap, zone and log folder live in `~/.sakk/config.json`, read
+  by a person's configuration — not from the agent's environment — and writing
+  `~/.sakk/` is denied by the guard (directly, or via a chained link that needs
+  approval, F-163), so an agent cannot silently raise its own cap.
+  Fail-closed: a model with no price (`PRICE_UNKNOWN`) or an unreadable log
+  line (`SPEND_UNREADABLE`) is a deny while a cap is set.
+- A small, approximate starter price snapshot ships in `prices/` (schema
+  `sakk-prices.v1`); unlisted models fail closed until a newer table is placed
+  at `~/.sakk/prices.json`. Today's spend and the cap are viewable in the
+  console (`sakk ui`, M4). The spend index (`~/.sakk/spend/`) is incremental
+  and only grows — a deleted or rewritten log keeps what was counted. The
+  figures are an estimate from local logs, not the provider's invoice.
+- New refusal codes: `PRICES_INVALID`, `PRICES_UNREADABLE`, `PRICE_UNKNOWN`,
+  `USAGE_INVALID`, `SPEND_UNREADABLE`, `SPEND_CAP_REACHED`,
+  `SPEND_TOO_MANY_LOGS`.
+- M2 itself shipped the library and the hook's enforcement, not the CLI; the
+  `sakk cap set/off`, `sakk spend` and `sakk prices` commands followed (see the
+  F-161 section above). A fetching prices updater — the one network call —
+  was then still planned; it was never built and is retracted (F-175).
+
+### Fixed — F-105 archive, from the independent review (F-159)
+
+- `sakk ledger verify` now checks the call-id index as well as the segment
+  chain, so a lost or wrong index (which silently re-admitted a sealed
+  call-id — a double-spend) is caught; `reserve` refuses when the whole index
+  is gone but segments are sealed, and `sakk ledger reindex` rebuilds it from
+  cold.
+- verify sums the sealed total per segment exactly as it is stored, so an
+  intact chain never false-fails on float order.
+- `sakk ledger export --out` reports a typed `LEDGER_EXPORT_FAILED` instead of
+  a raw stack. The spec now states verify detects accidental corruption and
+  loss, not tampering by a writer who can recompute the unkeyed hashes.
+
+### Added — the ledger's hot/cold split (F-105, schema v3)
+
+- Settled entries are sealed into an append-only, hash-chained cold trail
+  (`<ledger>.cold/`), with a call-id index (`<ledger>.idx/`), so the live
+  `ledger.json` stays small and `reserve`/`settle`/`status` cost the same
+  whatever the history — 2万 entries used to cost 96 ms a call, 10万 539 ms;
+  now a call is flat. No entry is dropped and nothing is capped.
+- The gate reads only the hot file; its total is `archive.settledUsd` plus the
+  hot entries. Cold integrity is on demand: `sakk ledger verify` walks the
+  hash chain (exit 1 if a segment is lost or altered), `sakk ledger export`
+  rebuilds one flat ledger from cold + hot.
+- Schema `sakk-ledger.v3` (adds the `archive` summary; a ledger becomes v3 the
+  first time it seals and an older binary refuses it by schema name). v1/v2
+  ledgers read and migrate on first seal.
+- In-flight cap (public API): at most 10,000 reservations may be outstanding
+  at once (`LEDGER_FULL`); settling what is open always works. New refusal
+  code `LEDGER_ARCHIVE_BROKEN`. `SEAL_AT` (settled kept hot before sealing) is
+  a tuning knob via `SAKK_SEAL_AT`, default 1000.
+- The ledger's durable write now uses one shared hardened writer
+  (`writeFileAtomic` in `append.mjs`), used for the hot file and the cold
+  segments and index shards.
+
+### Added — the agent guard (open-source v1, M1)
+
+- `sakk hook --agent claude-code|cursor|codex`: one hook for all three
+  agents. Each tool call is classified into actions (`file.read`,
+  `file.write`, `file.delete`, `secret.read`, `git.destructive`,
+  `prod.delete`, `deploy`, `package.install`, `net.download`,
+  `shell.constructed`, `shell.run`, `mcp.<server>.<tool>`) and judged by the
+  policy kernel. Any error is a deny with a code.
+- `sakk guard install|uninstall <agent> [--user]`, `sakk try "<command>"`,
+  `sakk doctor` (checks the hook really fires).
+- `policies/guard-default.json`: the shipped policy (docs/GUARD.md).
+- Writing outside the project (your home folder and elsewhere, temporary
+  folders excepted) now asks first (`ask-write-outside`): the home folder is
+  where a manipulated agent would otherwise leave a shell profile or an SSH
+  key to persist, so an outbound write is a confirmation, not a silent allow.
+- Scopes (public API): repo-relative, `~sakk/…`, `~home/…`,
+  `~outside/<absolute>`, and `~protected/repo|home|sakk` for a delete that
+  would take the repository, the home folder or Sakk's state with it
+  (F-146).
+- A broken rule file is isolated, never a refusal of every call (RC-09):
+  - A project policy that fails to load gives way to the last one that
+    loaded, kept in `$SAKK_HOME/policy-good/`. Refusals say so, and
+    `alerts.jsonl` records `POLICY_FALLBACK`.
+  - With nothing to fall back to, or an unreadable config or ledger, only
+    reading the project goes on (`ruleId: rules-unknown`).
+- New refusal codes in hook answers (public API): `HOOK_PAYLOAD_INVALID`,
+  `HOOK_INPUT_TOO_LARGE`, `HOOK_POLICY_UNREADABLE`, `HOOK_LEDGER_UNREADABLE`,
+  `HOOK_CONFIG_UNREADABLE`, `HOOK_CONTEXT_INVALID`, `HOOK_DEADLINE`,
+  `HOOK_PATH_UNREADABLE`, `HOOK_USAGE`.
+
+### Added — bounds on what the books store (F-105, first part; C-04)
+
+- New refusal codes (public API):
+  - `INPUT_TOO_LONG`: a call id, run id, task id or agent id over 256
+    characters, a name over 256, or a halt reason over 1024.
+  - `POLICY_TOO_LARGE`: the policy file is over 4 MiB.
+- `ESTIMATE_INVALID` now also refuses estimates below $0.000001.
+- `test/cost-bounds.test.mjs` lists every exported function with the
+  refusal that bounds it; a new export without an entry fails the suite.
+
+### Fixed — found while building M1 (F-141 to F-149)
+
+- F-141: a checker that could not load locked the repository it guards. It
+  now loads its library lazily, and while it cannot load only the gate's own
+  files can be repaired.
+- F-142: the adversarial review showed as passed when no key was set. It
+  is now skipped at the job (shown as skipped), and a review that cannot be
+  made or posted fails.
+- F-143: a hung synchronous child could hold a test run with no bound.
+  `test/bounded-spawn.mjs` now bounds every one.
+- F-144: the gate's files are listed once, in `scripts/gate-files.json`.
+- F-145: a wrapper's flag value (`sudo -u root`) is no longer read as the
+  command.
+- F-146: a temp-folder allow no longer covers the home folder, and a delete
+  of the repository itself is named and denied.
+- F-147: drill ids of any length are recognised.
+- F-148: the guard spec's rule table is compared with the shipped policy.
+- F-149: every mutation-drill anchor is checked by `npm test`, not only by
+  the hour-long drill.
+- F-150: the F-105 input bounds no longer lock settled money — a reservation
+  made before ids were bounded still settles — and a non-string `runId`,
+  `taskId` or `tokens` is now refused (`INPUT_INVALID`) instead of stored
+  whole; reconciliation reasons are truncated so a long id cannot jam the
+  books.
+- F-151: the cost-bounds detector now accepts only a real test as a guard,
+  never a circular self-reference, and covers the non-string inputs.
+- F-152: `max_reservable_usd` is computed once in the ledger and reports 0
+  when the headroom is below the estimate floor, so the figure `status`
+  shows is one `reserve` actually accepts.
+- F-153: commands that move or destroy files but were not in the classifier's
+  set — `dd`, `tar --remove-files`, `rsync --delete`, in-place `perl`/`ruby` —
+  are now modelled as the writes and deletes they perform instead of being
+  waved through as `shell.run`.
+- F-154: `find -exec`/`-ok` and `xargs` are judged by the command they run
+  (a remover deletes, a reader reads), not by the runner's name.
+- F-155: reading a secret file through a command outside the reader list
+  (`base64`, `openssl`, `dd if=`) is still a `secret.read`.
+- F-156: a git value-option (e.g. `--namespace x`) can no longer shift the
+  subcommand so a `push --force` reads as ordinary work.
+- F-157: while the checker cannot load it now resolves a path's symlink leaf
+  (not just its parents), judges a Bash call by its command rather than a
+  stray `file_path` key, and denies instead of crashing when the library
+  throws a non-error; the loop's shell classifier treats `node --test` as
+  read-only only when it injects no module.
+  The same review's own detectors are strengthened too: the bounded-spawn
+  preload now bounds an explicit null/undefined options slot and the scripts
+  that spawn `node --test`, and the ci-honesty detector catches more
+  skip/failure-to-green shapes.
+- F-158: the CI base checker runs in its own job with a fresh checkout, so the
+  pull request's own checker can no longer move HEAD or write the environment
+  to leave the base checker an empty range.
+
 ### Changed (release preparation)
 
 - Halt, resume, reconcile and unlock records are now described as named:
@@ -505,9 +974,7 @@ against the running code:
 - CI toolchain pinned (prettier exact version, actions by commit SHA);
   platform support declared (macOS/Linux).
 
-## [0.1.0] - 2026-10-13
-
-### Added
+### Added — the ledger, the first cut (2026-10-13)
 
 - Fail-closed spend ledger (`src/ledger.mjs`): `initLedger`, `reserve`,
   `settle`, `markReconciliationRequired`, `clearReconciliation`, `readLedger`,

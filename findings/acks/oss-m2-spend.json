@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "branch": "oss/m2-spend",
+  "answers": {
+    "C-08.1": {
+      "answer": "The spend index and the ledger's cold/idx directories all derive from an already-canonical path (SAKK_HOME or the canonical ledger path, symlink- and hard-link-free), so each has exactly one name; the log folder is the one frozen in config.json, not a second alias read from the agent.",
+      "guard": "test/spend.test.mjs::the log folder is fixed at cap set, not read from the agent"
+    },
+    "C-02.1": {
+      "answer": "The usage fields and price kinds are each stated once (USAGE_FIELDS, KINDS) and applied everywhere they are parsed, merged and priced; the models are a data table, not a code list, and a model is priced only if the table names it or lists it as an alias — nothing is hardcoded or guessed.",
+      "guard": "test/spend.test.mjs::each price rule matches a hand-computed case"
+    },
+    "C-02.2": {
+      "answer": "The same max-merge rule runs over every usage field and the cache split, and the same fail-closed-on-unknown applies to every model, so a second observation of a call never lowers it and a new model is never silently zero; the price validation refuses the whole table if any one entry is not a price.",
+      "guard": "test/spend.test.mjs::streamed and duplicated lines count once, at their maximum"
+    },
+    "C-03.1": {
+      "answer": "Each price rule has a hand-computed case that goes red if the rate or the long-context/threshold logic is wrong, and each refusal code (PRICES_INVALID, PRICE_UNKNOWN, SPEND_UNREADABLE, SPEND_CAP_REACHED) has a negative test that fails if the check is removed.",
+      "guard": "test/spend.test.mjs::each price rule matches a hand-computed case"
+    },
+    "C-03.2": {
+      "answer": "The tests observe what they name against real files: the duplicate test writes the same call twice and asserts one count at the maximum, the parallel test writes two session files and sums them, and the hook test drives the real evaluate with spend over the cap.",
+      "guard": "test/spend.test.mjs::parallel sessions are summed"
+    },
+    "C-03.3": {
+      "answer": "The cap deny is tied to real computed spend from real log lines, not to a flag: the over-cap test writes usage lines that price above the cap and asserts the deny, and below it asserts no deny — the check fails only when spend is actually over.",
+      "guard": "test/spend.test.mjs::at the cap the next call is denied, below it nothing is"
+    },
+    "C-04.1": {
+      "answer": "A line over 1 MiB (MAX_LINE) is refused unreadable, more than 50,000 log files (MAX_FILES) refuses, each file is read incrementally from a stored offset so unchanged bytes are never re-scanned, and only the first 4 KiB is hashed to detect a rewrite — bounds asserted by a refusal and by the byte offset, never a stopwatch.",
+      "guard": "test/spend.test.mjs::hostile lines are bounded and fail closed"
+    },
+    "C-06.1": {
+      "answer": "Spend is labelled 'from local logs' wherever it is shown and documented as an estimate, never the provider's invoice; the shipped price snapshot names its source and fetch date and is marked approximate (run sakk prices update), so no reader mistakes the local estimate for billed truth.",
+      "guard": "test/spend.test.mjs::spend is labelled by its source"
+    },
+    "C-07.1": {
+      "answer": "The transcript lines are agent-written, so they are parsed defensively — bounded, typed per field, never executed, a bad line counted as unreadable (a deny under a cap) rather than trusted. The user prices.json is hand-editable, so it is validated whole or refused. The agent's environment is not trusted for the log folder or time zone: those are frozen in config.json.",
+      "guard": "test/spend.test.mjs::hostile lines are bounded and fail closed"
+    },
+    "C-07.2": {
+      "answer": "The agent cannot clear the cap it is held by: writing ~/.sakk/config.json and ~/.sakk/prices.json is denied by the shipped guard policy, and only a person runs sakk cap set/off, so the party the cap constrains cannot raise it.",
+      "guard": "test/spend.test.mjs::the log folder is fixed at cap set, not read from the agent"
+    },
+    "C-09.1": {
+      "answer": "The states a real run reaches are each tried: a missing log folder (zero, not an error), a rewritten or truncated log, a partial last line that waits for its end, parallel session files, and a day boundary in a configured time zone different from the system one.",
+      "guard": "test/spend.test.mjs::the day boundary follows the configured zone"
+    },
+    "C-09.2": {
+      "answer": "The cap fires on the path a real call takes — inside the hook's evaluate (step 2), not only in a direct capCheck call — shown by a hook test that sets a cap and drives the hook to a deny; sakk spend reads the configured log folder, not a stub.",
+      "guard": "test/spend.test.mjs::the cap denies inside the hook's evaluate, not only in capCheck"
+    },
+    "C-11.1": {
+      "answer": "The spend index only grows (max-merge per field; a shrunk or rewritten log keeps what was counted), and the cap, zone and log folder in config.json are written only by sakk cap set — a person — never by the agent or the hook, so no value's meaning outruns who may set it.",
+      "guard": "test/spend.test.mjs::a deleted or truncated log never lowers spend"
+    },
+    "C-15.1": {
+      "answer": "The tests write real .jsonl transcripts and run the real updateIndex, daySpend and capCheck, and the hook test runs the real evaluate — no stand-in that writes its own spend; the price cases compute against the real costOf.",
+      "guard": "test/spend.test.mjs::the cap denies inside the hook's evaluate, not only in capCheck"
+    },
+    "C-01.1": {
+      "answer": "Absence never reads as free spend: no cap set means no cap check (null); a model with no price in the table is PRICE_UNKNOWN and, with a cap set, a deny (never priced at zero); a log line that cannot be read is SPEND_UNREADABLE and a deny; a missing user prices file falls to the shipped snapshot, but a malformed one is refused, not silently replaced; a missing log folder is zero spend, not an error, because there is genuinely nothing to count.",
+      "guard": "test/spend.test.mjs::an unpriced call with a cap set is a deny"
+    },
+    "C-01.2": {
+      "answer": "The tests remove each input and check the outcome is not a quiet pass: an unpriced model with a cap set denies, a hostile/unreadable line denies, a malformed user prices file throws rather than falling back to the snapshot, and a deleted or truncated log keeps the spend already counted.",
+      "guard": "test/spend.test.mjs::a deleted or truncated log never lowers spend"
+    },
+    "C-05.1": {
+      "answer": "Every claim in docs/SPEND.md is held by a test: each call counted once at its maximum, cache writes priced per duration, the whole request at long-context rates past the threshold, the cap applying at the next call, and spend never going down — each is a named test in test/spend.test.mjs.",
+      "guard": "test/spend.test.mjs::each price rule matches a hand-computed case"
+    },
+    "C-05.2": {
+      "answer": "The figures the tool prints work when acted on: sakk spend's total equals the priced calls (a hand-computed case checks the arithmetic), the SPEND_CAP_REACHED reason shows the real spend and cap, and sakk cap set/off change the cap the hook then enforces at the next call.",
+      "guard": "test/spend.test.mjs::at the cap the next call is denied, below it nothing is"
+    },
+    "C-10.1": {
+      "answer": "The cap check is a step inside the hook's evaluate (step 2, before the policy rules), not a line in a doc: a test drives the real hook with spend over the cap and sees a deny, so the step cannot be quietly dropped; a cap that cannot be checked (unpriced or unreadable) is itself a deny.",
+      "guard": "test/spend.test.mjs::at the cap the next call is denied, below it nothing is"
+    },
+    "C-10.2": {
+      "answer": "The cap, time zone and log folder are frozen in config.json when a person runs sakk cap set — not read from the agent's environment — so an agent cannot point the check at an empty folder or a different zone, and writing config.json or prices.json is denied by the shipped guard policy (the agent cannot raise its own cap).",
+      "guard": "test/spend.test.mjs::the log folder is fixed at cap set, not read from the agent"
+    }
+  }
+}

@@ -6,10 +6,46 @@ secret, blocked"). It extends the existing scanner
 (`specs/secret-scan/spec.md`, eight rules, keyed fingerprints, staged
 scan). Everything that spec guarantees stays guaranteed.
 
+## Status (open-source v1)
+
+This spec is the full design. Two parts ship now; one is deferred.
+
+**Shipped — hook enforcement on the eight existing rules.** A write whose
+content is a secret, and a shell command (or patch) whose text contains a
+literal secret, are denied inside the hook (`evaluate` step 3), scanned once
+per call through the existing `scanText`. The deny names the rule and the
+keyed fingerprint, never the value, and the decision log carries the same.
+Reading a secret file was already denied by the `secret.read` rule
+(`specs/guard/`) and stays so. Guard tests: the rows below whose guard
+column names `test/secret-guard.test.mjs` or `test/guard.test.mjs`.
+
+**Shipped — the gitleaks rule port.** `scripts/gitleaks-port.mjs` reads the
+pinned `config/gitleaks.toml` (gitleaks v8.21.2, MIT) and writes
+`src/secret-rules.generated.mjs`: of 195 upstream rules, **192 are enabled**,
+2 are disabled (`generic-api-key` for precision, `curl-auth-user` for a RE2
+construct that backtracks in JS), and 1 is refused by the translator
+(`curl-auth-header`, whose second mid-pattern `(?i)` the case-folder does not
+place — recorded in `REFUSED`, never half-translated). The generated regexes use
+only syntax Node 20 has: a `(?-i:…)` scope inside a `(?i)` pattern is translated
+by dropping the `i` flag and case-folding everything outside the scope, since
+inline modifiers compile only on Node 23+ (F-164). The
+hook and the commit scan run these alongside the eight hand-written rules,
+keyword-gated with gitleaks' global allowlist and per-rule entropy. The port
+is deterministic (a re-run must reproduce the file byte-for-byte) and every
+enabled rule is linear on hostile input (the `(?:.|\s){0,N}` idiom is rewritten
+to `[\s\S]`, since RE2 is linear but JS backtracks). Precision is measured for
+every enabled rule (the repository scans clean; a rule that flags the benign
+corpus is disabled); recall is auto-verified by a regex sampler for the
+derivable majority. **Moved to v2 (docs/DECISIONS.md D10, 2026-10-28):** the
+full per-rule recall corpus — gitleaks' own true/false samples are generated
+by Go helpers, not literal, so they need reimplementing or hand-curating. On
+2026-10-28, 67 of the 192 enabled rules had sampler-verified recall; the
+other 125 have precision only (docs/V2-BACKLOG.md, C-13 corpus).
+
 ## What changes
 
 1. **Rules.** The scanner gains gitleaks' rule set (`config/gitleaks.toml`,
-   MIT, 222 rules on 2026-10-21), translated to JavaScript regular
+   gitleaks v8.21.2, MIT, 195 rules), translated to JavaScript regular
    expressions that run on Node 20 and later. The eight existing rules
    stay; where both sets name the same secret, one finding is reported
    (F-122).
@@ -62,17 +98,17 @@ disabled by default and listed as such, never shipped noisy.
 
 ## Adversary table
 
-| #   | Move                                                                                                                           | Must-hold outcome                                                                                                                                       | Guard test                                                                           |
-| --- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| 1   | Read `.env` through another route: Read tool, `cat`, `head`, `less`, `grep`, `awk`, `cp .env x && cat x`, `source .env && env` | `secret.read` → deny on every route; the copy is denied at the source                                                                                   | `test/secret-guard.test.mjs::every read route to a secret file is denied`            |
-| 2   | Secret file under an odd name: `.env.production.local`, `config/.env`, `../other/.env`, symlink `notes.txt → .env`             | names matched after symlink resolution; the list is the gitleaks/dotenv set plus `*.pem`, `id_*`, `*.p12`, `credentials`, `.npmrc`, `.netrc`, `.pgpass` | `test/secret-guard.test.mjs::secret files are recognised through aliases`            |
-| 3   | Write a key into source: Edit adding `AWS_SECRET_ACCESS_KEY="…"`                                                               | the Edit's new content is scanned → deny with the rule and fingerprint                                                                                  | `test/secret-guard.test.mjs::an edit that writes a secret is denied`                 |
-| 4   | Paste a secret into a command: `curl -H "Authorization: Bearer <token>"`                                                       | the command text is scanned → deny                                                                                                                      | `test/secret-guard.test.mjs::a command carrying a literal secret is denied`          |
-| 5   | Dump the environment: `printenv`, `env`, `set`, `export -p`, `cat /proc/self/environ`                                          | `secret.read` → deny                                                                                                                                    | `test/secret-guard.test.mjs::environment dumps are denied`                           |
-| 6   | Split the secret: `"sk-" + "abc…"`, base64 it                                                                                  | not caught by patterns. This is ceiling 1; the commit scan catches it if it is ever committed whole                                                     | —                                                                                    |
-| 7   | A secret in the decision log or console                                                                                        | only fingerprints and rule names are written; a test plants a secret and greps every output                                                             | `test/secret-guard.test.mjs::no secret value reaches the log, the console or stderr` |
-| 8   | Catastrophic backtracking on a hostile line                                                                                    | every translated rule runs over 200 KB adversarial lines within a step counter                                                                          | `test/secret-guard.test.mjs::every translated rule is linear on hostile input`       |
-| 9   | One secret matched by two rules is reported twice (F-122)                                                                      | overlapping spans merge to one finding naming both rules                                                                                                | `test/secret-guard.test.mjs::one secret matched by two rules is one finding`         |
+| #   | Move                                                                                                                           | Must-hold outcome                                                                                                                                                             | Guard test                                                                                                 |
+| --- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 1   | Read `.env` through another route: Read tool, `cat`, `head`, `less`, `grep`, `awk`, `cp .env x && cat x`, `source .env && env` | `secret.read` → deny on every route; the copy is denied at the source                                                                                                         | `test/guard.test.mjs::secret files are denied on every read route`                                         |
+| 2   | Secret file under an odd name: `.env.production.local`, `config/.env`, `../other/.env`; a read command not in the reader list  | names matched after path resolution; a read by a command the list does not name is still a `secret.read` (F-155)                                                              | `test/guard.test.mjs::a secret read by a command not in the reader list is still a secret read (F-155)`    |
+| 3   | Write a key into source: Edit adding `AWS_SECRET_ACCESS_KEY="…"`                                                               | the Edit's new content is scanned → deny with the rule and fingerprint                                                                                                        | `test/secret-guard.test.mjs::an Edit or Write whose content is a secret is denied`                         |
+| 4   | Paste a secret into a command: `curl -H "Authorization: Bearer <token>"`                                                       | the command text is scanned → deny                                                                                                                                            | `test/secret-guard.test.mjs::a shell command that prints a literal secret is denied`                       |
+| 5   | Dump the environment: `printenv`, `env`, `cat /proc/self/environ`                                                              | `secret.read` → deny                                                                                                                                                          | `test/guard.test.mjs::secret files are denied on every read route`                                         |
+| 6   | Split the secret: `"sk-" + "abc…"`, base64 it                                                                                  | not caught by patterns. This is ceiling 1; the commit scan catches it if it is ever committed whole                                                                           | —                                                                                                          |
+| 7   | A secret in the decision log or console                                                                                        | the deny reason carries only the rule and fingerprint; the log line drops `why` and the content, so neither holds the value                                                   | `test/secret-guard.test.mjs::no secret value reaches the decision log, only the rule`                      |
+| 8   | Catastrophic backtracking on a hostile line                                                                                    | every rule runs over 200 KB adversarial lines within a step counter (the eight shipped rules now; the ported rules carry the same test) _(port deferred for the added rules)_ | `test/secret-scan.test.mjs::200KB adversarial lines for every rule scan without catastrophic backtracking` |
+| 9   | One secret matched by two rules is reported twice (F-122)                                                                      | overlapping spans merge to one finding naming both rules _(deferred: only the ported rules overlap the eight; added with the port)_                                           | —                                                                                                          |
 
 ## Input-space table
 
@@ -92,7 +128,12 @@ disabled by default and listed as such, never shipped noisy.
 
 ## Ceilings
 
-1. **Split, encoded and computed secrets** are not caught by patterns.
+1. **Split, encoded and computed secrets** are not caught by patterns. This
+   includes a secret split across the seams this increment scans at: a
+   MultiEdit whose pieces join across two edits, or an Edit whose old and new
+   strings each hold a benign half. Each surface is scanned on its own new
+   text; the whole-file result is not reconstructed. The commit scan catches
+   such a secret if it is ever committed whole.
 2. **Secrets in tool output.** A secret that reaches the agent through a
    tool's output is already in its context; PreToolUse cannot unsee it.
    Reads are blocked before they happen, which is why the read routes

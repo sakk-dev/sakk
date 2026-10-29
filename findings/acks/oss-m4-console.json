@@ -1,0 +1,98 @@
+{
+  "version": 2,
+  "branch": "oss/m4-console",
+  "answers": {
+    "C-01.1": {
+      "answer": "An absent token is a 403, never a default-allow; an absent or unreadable Host is a 403. Absent data is declared, not an error: with no decisions.jsonl, no config and no prices the pages render 'Nothing yet.' and the overview shows $0 with no cap, because there is genuinely nothing to show. SAKK_HOME unreadable fails at start, not silently empty.",
+      "guard": "test/console.test.mjs::with no data the pages say nothing yet, not an error"
+    },
+    "C-01.2": {
+      "answer": "Delete the token check and the no-token request returns 200 with data instead of 403 — the test flips red; delete the Host check and a foreign-Host request stops being refused. Neither check is optional: each is the only thing standing between a browser page and the local data.",
+      "guard": "test/console.test.mjs::a request without the token gets nothing"
+    },
+    "C-02.1": {
+      "answer": "The security checks are not a per-route list: Host, token and (for writes) Origin are applied once in the single request handler before any route runs, so every current and future /api path inherits them. The page list PAGES is the one source the nav and the router share.",
+      "guard": "test/console.test.mjs::a request without the token gets nothing"
+    },
+    "C-02.2": {
+      "answer": "Because the gate sits in the one handler, fixing or adding a check covers every route at once; the write path adds Origin and a token header on top. A test drives several routes (GET api/* and POST api/halt) to prove the same gate holds for all of them.",
+      "guard": "test/console.test.mjs::writes need the flag, the origin and the token"
+    },
+    "C-03.1": {
+      "answer": "Each adversary test carries the attack it names: a wrong token, a foreign Host, a cross-site POST, a planted <script> log line. Removing the matching check turns that one test red and not the others, so each fails for the reason it names.",
+      "guard": "test/console.test.mjs::token compare is constant-time and failures are counted"
+    },
+    "C-03.2": {
+      "answer": "The tests start the real http server on a real loopback port and make real requests with and without the token/Host/Origin — not a stubbed handler — so the attack reaches a live target and the refusal is the server's own.",
+      "guard": "test/console.test.mjs::the server listens on loopback only"
+    },
+    "C-03.3": {
+      "answer": "The numbers test fails when the page would show a figure the CLI does not: it runs the real daySpend/evaluate and asserts the API equals the CLI's own output, so a page that drifts from the ledger/log is caught, not just a missing label.",
+      "guard": "test/console.test.mjs::the console and the CLI report the same numbers"
+    },
+    "C-04.1": {
+      "answer": "tailDecisions reads at most TAIL_BYTES from the end and returns scannedBytes, so a 5 GB log is bounded by a counter the test asserts (scannedBytes <= TAIL_BYTES), not a clock; the request line is capped at MAX_QUERY and the POST body at 4096 bytes, each a refusal.",
+      "guard": "test/console.test.mjs::a huge decision log is paged, never loaded whole"
+    },
+    "C-05.1": {
+      "answer": "Every claim the spec makes has a named test: loopback-only binding, the token gate, the Host and Origin checks, source labels, and no external origin in the page. The page is a constant template, so a label is only 'there' if the test reading the response finds it.",
+      "guard": "test/console.test.mjs::evidence is labelled by its source"
+    },
+    "C-05.2": {
+      "answer": "The figures act correctly when used: the overview spend equals daySpend's, the try verdict equals evaluate's, the policy hash equals the hook's resolution — the same functions the CLI calls — and the numbers test compares them so a wrong figure fails.",
+      "guard": "test/console.test.mjs::the console and the CLI report the same numbers"
+    },
+    "C-07.1": {
+      "answer": "The browser request is untrusted: Host, Origin, token and cookie are validated, never trusted. Log strings are untrusted too: the server serves a constant HTML template and returns data only as JSON; the page renders every value with textContent, so a <script> in a tool name or path is shown as text, never HTML.",
+      "guard": "test/console.test.mjs::log text is escaped everywhere it is shown"
+    },
+    "C-07.2": {
+      "answer": "The party the console constrains is the browser page and the agent: neither can clear the gate. The token is minted by the server at start, not read from the request's control; a halt needs --allow-halt plus the Origin and a token header, and resume is not in the UI at all — a person runs it on the command line.",
+      "guard": "test/console.test.mjs::writes need the flag, the origin and the token"
+    },
+    "C-09.1": {
+      "answer": "Headless is assumed-and-handled: start prints the address, no browser is launched. SAKK_HOME unreadable refuses; a --port already in use refuses rather than silently picking another; the default is a random free port. The no-data environment is tested too.",
+      "guard": "test/console.test.mjs::a port already in use is refused, never silently changed"
+    },
+    "C-09.2": {
+      "answer": "The tests run the server where it really runs — a real listening socket on 127.0.0.1 at the bound port — and assert server.address() is loopback, then make real requests to that port, so the behaviour is shown firing, not only configured.",
+      "guard": "test/console.test.mjs::the server listens on loopback only"
+    },
+    "C-10.1": {
+      "answer": "The auth gate is code that runs before every route, not a rule in the doc: a test requests each route without the token and requires 403, so if a route ever skipped the gate the test would fail.",
+      "guard": "test/console.test.mjs::a request without the token gets nothing"
+    },
+    "C-10.2": {
+      "answer": "There is no second route around the gate: GET and POST both pass the one handler; the write route cannot be reached cross-site because it also needs the Origin and the token header, not just the cookie, and the token is fixed for the server's life so it cannot be changed after the gate passed.",
+      "guard": "test/console.test.mjs::writes need the flag, the origin and the token"
+    },
+    "C-11.1": {
+      "answer": "The only value the console writes beyond its own process is a halt, and it is scoped: behind --allow-halt, requiring the Origin and the token header, recorded with by set to the OS user name and labelled 'self-declared' (F-126) so it is never mistaken for a verified identity; resume stays on the command line with one person.",
+      "guard": "test/console.test.mjs::writes need the flag, the origin and the token"
+    },
+    "C-15.1": {
+      "answer": "The tests exercise the real path end to end: the real http server, the real decision log and spend index on disk, the real evaluate for the try box, compared against the real CLI output — no stand-in that writes its own evidence.",
+      "guard": "test/console.test.mjs::the console and the CLI report the same numbers"
+    },
+    "C-06.1": {
+      "answer": "The drill budget check reads the real workflow file and the real drill script; its one non-derived figure, the per-mutant budget, is labelled in the test as a measurement from the CI run on PR #24 (2705 s for 38 mutants), so a reader sees it is measured, not a guarantee.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-08.1": {
+      "answer": "The limit is read from the one drill job in ci.yml by its job key, and the mutant count from the one script that job runs (npm run drill is sh scripts/mutation-drill.sh); there is no second copy of either for the check to read instead.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-13.1": {
+      "answer": "Measured on both sides: the check is red at the old 45-minute limit (needs 64 for 38 mutants) and green at 75, and it refuses a mutant count under 30 so a broken count cannot pass by finding nothing.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-14.1": {
+      "answer": "The budget check is its own node:test case: when it fails it names the drill limit and the minutes needed, and the other claims checks in the file keep running and report on their own.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-16.1": {
+      "answer": "The finding was judged by CI, not by the writer: GitHub cancelled the drill at its limit and the step timings came from the runner. The pull request is still judged by the base branch copy of the checker as well as its own.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    }
+  }
+}

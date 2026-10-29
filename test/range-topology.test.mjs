@@ -1,7 +1,15 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +23,11 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..');
+/** The gate's own files, listed once (F-144, F-216); the fallback only lets this file load on a base without the list. */
+const MANIFEST = join(REPO, 'scripts', 'gate-files.json');
+const GATE_FILES = existsSync(MANIFEST)
+  ? JSON.parse(readFileSync(MANIFEST, 'utf8')).files
+  : ['scripts/findings-check.mjs', 'scripts/findings-lib.mjs'];
 
 // The three classes with the most findings are asked of every change (the watch list). Three
 // busier classes without questions hold it here, so C-01.1 is asked only of a change to
@@ -103,9 +116,10 @@ function repo() {
       env: { ...ENV, ...env },
       timeout: 30_000,
     });
-  mkdirSync(join(d, 'scripts'));
-  for (const f of ['findings-check.mjs', 'findings-lib.mjs'])
-    copyFileSync(join(REPO, 'scripts', f), join(d, 'scripts', f));
+  for (const f of GATE_FILES) {
+    mkdirSync(dirname(join(d, f)), { recursive: true });
+    copyFileSync(join(REPO, f), join(d, f));
+  }
   write('findings/ledger.json', JSON.stringify(LEDGER));
   write('findings/classes.json', JSON.stringify(CLASSES));
   write('src/x.mjs', 'export const x = 1;\n');

@@ -40,29 +40,52 @@ jobs:
           base="${BASE_REF:?the range check needs the pull request base}"
           git fetch -q origin "$base"
           SAKK_BRANCH="$HEAD_REF" node scripts/findings-check.mjs --range "origin/$base"
-      - name: the base branch's checker judges this pull request too
-        # A pull request cannot loosen the check that judges it: the base's own
-        # checker scripts, read with git show, run over this branch as well.
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          HEAD_REF: ${{ github.head_ref || github.ref_name }}
-        run: |
-          base="${BASE_REF:?the range check needs the pull request base}"
-          if ! git cat-file -e "origin/$base:scripts/findings-check.mjs" 2>/dev/null; then
-            echo "self-evolution: the base has no checker yet; only this branch's checker ran"
-            exit 0
-          fi
-          mkdir -p "$RUNNER_TEMP/base-checker/scripts"
-          for f in $(git ls-tree --name-only "origin/$base" scripts/ | grep -E '^scripts/findings-[a-z-]+\.mjs$'); do
-            git show "origin/$base:$f" > "$RUNNER_TEMP/base-checker/$f"
-          done
-          SAKK_BRANCH="$HEAD_REF" node "$RUNNER_TEMP/base-checker/scripts/findings-check.mjs" --range "origin/$base"
       - name: every fix in this branch is proven red before and green after
         # FAIL_TO_PASS (R7): a finding fixed here names a guard test that fails
         # on the base with the new test copied in, and passes on this branch.
         env:
           BASE_REF: ${{ github.base_ref }}
         run: node scripts/findings-proof.mjs --range "origin/${BASE_REF:?the proof needs the pull request base}"
+  base-checker:
+    # A pull request cannot loosen the check that judges it: the base's own
+    # checker scripts, read with git show, run over this branch as well. This
+    # is a SEPARATE job (F-158): run in the self-evolution job after the PR's
+    # own checker, the PR's checker could move HEAD or write $GITHUB_ENV first
+    # and leave the base checker an empty range to pass. A fresh runner has no
+    # PR code run in it, so its checkout and HEAD are untampered.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: the base branch's checker judges this pull request too
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          base="${BASE_REF:?the range check needs the pull request base}"
+          git fetch -q origin "$base"
+          if ! git cat-file -e "origin/$base:scripts/findings-check.mjs" 2>/dev/null; then
+            echo "::error::self-evolution: the base has no checker, so nothing older judges this branch"
+            exit 1
+          fi
+          # the gate's files as the base lists them (scripts/gate-files.json, F-144);
+          # a base from before the list has only its scripts/findings-*.mjs
+          if git cat-file -e "origin/$base:scripts/gate-files.json" 2>/dev/null; then
+            files=$(git show "origin/$base:scripts/gate-files.json" | node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0, "utf8")).files.join("\n"))')
+          else
+            files=$(git ls-tree --name-only "origin/$base" scripts/ | grep -E '^scripts/findings-[a-z-]+\.mjs$')
+          fi
+          for f in $files; do
+            mkdir -p "$RUNNER_TEMP/base-checker/$(dirname "$f")"
+            git show "origin/$base:$f" > "$RUNNER_TEMP/base-checker/$f"
+          done
+          SAKK_BRANCH="$HEAD_REF" node "$RUNNER_TEMP/base-checker/scripts/findings-check.mjs" --range "origin/$base"
   format:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -75,7 +98,7 @@ jobs:
       - run: npm run lint
   drill:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     strategy:
       matrix:
         node: [20, 22]

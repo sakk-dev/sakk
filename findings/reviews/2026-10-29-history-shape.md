@@ -5,7 +5,7 @@ commit in it had passed its own pull request? Measured answer: the check
 read the branch as one straight line of commits with one answers file.
 PR #27 is a stack (#19 … #26) with four lines developed in parallel and
 merged. This is the fourth escape of the same assumption, so the class is
-reviewed as a whole. Findings F-212, F-213.
+reviewed as a whole. Findings F-212, F-213, F-214, F-217.
 
 ## The four escapes
 
@@ -67,6 +67,25 @@ suite that records its `GIT_` variables and runs a fixture's git; a meta-test
 refuses a `node --test` launch without the preload. Both were checked by
 undoing each fix: the worktree test fails without the hook's filter, and the
 preload probe fails without the preload.
+
+## The proof's "before" (F-217)
+
+Integrating the v2 fixes into main showed the same assumption one level
+down: the proof ran every guard on the base, as if every bug lived there.
+For a bug introduced and fixed inside the range the base is a tree where the
+bug never existed, so its guard could only fail to load, and that was
+accepted as weak. Fourteen in-range findings had `introduced_in: unknown`
+for the same reason: nothing asked which commit to run on. The proof now
+runs each guard on the commit `introduced_in` names when that commit is in
+the range, and on the base otherwise, and names the tree in its output. The
+fourteen now name their commit, each with a correction.
+
+Run on the right tree, two guards turned out to be the fixed test itself
+(F-165, F-215): they pass on the commit that introduced the bug. Each now
+has a guard that runs the tree's own suite or detector in the condition that
+broke it, a clock 400 days ahead for the spend suite and a launch with
+another `--import` first for the bounded-spawn detector, and each was
+checked red on the introducing commit and green at the tip.
 
 ## What is not covered
 

@@ -83,14 +83,14 @@ without forking. The "Enterprise plug-in" column below is therefore
 forward-looking by design: the seams are named and kept honest now so that
 closed capability plugs in later instead of patching the core:
 
-| Seam            | Mechanism                                                   | Open default                        | Enterprise plug-in                          |
-| --------------- | ----------------------------------------------------------- | ----------------------------------- | ------------------------------------------- |
-| Approval gate   | `GOLD_GATE_MODULE` (module path, injected per run)          | `eval/examples/approval-gate.mjs`   | four-eyes approval service, RBAC/SSO-backed |
-| Org ledger      | `SAKK_BUDGET_LEDGER_PATH` (env)                             | any sakk ledger file                | hash-chained, externally anchored ledger    |
-| Ledger location | `SAKK_LEDGER_PATH` / explicit `ledgerPath` — never implicit | local file                          | VPC-mounted, access-controlled store        |
-| Scoring policy  | `gold/<case>/scoring.json` overlays on case defaults        | shipped cases                       | regulated-scenario policy packs             |
-| Executor        | `CLAUDE_BIN` (binary path)                                  | any CLI with `--output-format json` | pinned, audited executor builds             |
-| Evidence        | runner-owned out-dir (traces, logs, results, metrics)       | evidence bundle (.tgz) + verifier   | report generator, auditor portal            |
+| Seam            | Mechanism                                                                                                                    | Open default                        | Enterprise plug-in                          |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------- |
+| Approval gate   | `GOLD_GATE_MODULE` (module path, injected per run)                                                                           | `eval/examples/approval-gate.mjs`   | four-eyes approval service, RBAC/SSO-backed |
+| Org ledger      | `SAKK_BUDGET_LEDGER_PATH` (env)                                                                                              | any sakk ledger file                | hash-chained, externally anchored ledger    |
+| Ledger location | `--ledger` > `ledgerPath` that `sakk init` records in `~/.sakk/config.json` > `SAKK_LEDGER_PATH` — one rule for CLI and hook | local file                          | VPC-mounted, access-controlled store        |
+| Scoring policy  | `gold/<case>/scoring.json` overlays on case defaults                                                                         | shipped cases                       | regulated-scenario policy packs             |
+| Executor        | `CLAUDE_BIN` (binary path)                                                                                                   | any CLI with `--output-format json` | pinned, audited executor builds             |
+| Evidence        | runner-owned out-dir (traces, logs, results, metrics)                                                                        | evidence bundle (.tgz) + verifier   | report generator, auditor portal            |
 
 Rules for keeping the seams honest:
 

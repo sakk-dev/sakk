@@ -26,6 +26,7 @@ export class PolicyError extends Error {
 }
 
 export const POLICY_SCHEMA = 'sakk-policy.v1';
+export const MAX_POLICY_BYTES = 4 * 1024 * 1024; // above the work-budget attacks (25k rules ≈ 1.6 MB), which refuse by budget
 const VERDICTS = ['allow', 'deny', 'require_approval'];
 const RULE_KEYS = ['id', 'match', 'verdict', 'approvers_min'];
 const MATCH_KEYS = ['agent', 'action', 'scope', 'max_estimated_usd'];
@@ -238,7 +239,7 @@ function scanDuplicateKeys(text, policyPath) {
  * Load, validate and hash a policy file. The hash is SHA-256 over the RAW
  * file bytes — what the auditor hashes is what decided; duplicate-key
  * documents (whose meaning depends on the parser) refuse outright.
- * Throws: POLICY_UNREADABLE | POLICY_SCHEMA_INVALID | POLICY_VACUOUS_ALLOW |
+ * Throws: POLICY_UNREADABLE | POLICY_TOO_LARGE | POLICY_SCHEMA_INVALID | POLICY_VACUOUS_ALLOW |
  *         POLICY_RULE_SHADOWED | POLICY_TOO_COMPLEX
  */
 export function loadPolicy({ policyPath }) {
@@ -247,10 +248,21 @@ export function loadPolicy({ policyPath }) {
   let raw;
   try {
     // a fifo or device would block the read forever (review N1): files only
-    if (!statSync(policyPath).isFile())
+    const st = statSync(policyPath);
+    if (!st.isFile())
       bad('POLICY_UNREADABLE', `the policy path is not a regular file (${policyPath})`, {
         policyPath,
       });
+    // C-04: a policy is read whole on every hook call, so its size is bounded
+    if (st.size > MAX_POLICY_BYTES)
+      bad(
+        'POLICY_TOO_LARGE',
+        `the policy file is larger than ${MAX_POLICY_BYTES} bytes (${policyPath})`,
+        {
+          policyPath,
+          bytes: st.size,
+        },
+      );
     raw = readFileSync(policyPath);
   } catch (e) {
     if (e instanceof PolicyError) throw e;

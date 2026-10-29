@@ -56,6 +56,16 @@ const EMIT =
 const DEFENSIVE = {
   SCAN_FAILED: 'git produced output the scanner cannot parse, or an unexpected I/O error',
   VERIFIER_ERROR: 'a bug inside the verifier itself (it must still fail closed)',
+  HOOK_SECRET_SCAN_FAILED:
+    'scanText threw on a string the hook already bounded — only reachable if the scanner dependency is broken; caught so the hook fails closed (a deny via the rules-unknown branch, which other triggers do exercise) instead of crashing. The throw itself cannot be provoked by hook input, so there is no unit for this specific trigger.',
+  CONSOLE_HALT_FAILED:
+    "the console's halt catch-all for a non-LedgerError — halt() raises a typed LedgerError on every reachable path, so this only fires if the ledger dependency throws something else; it still answers a typed 409, never a crash",
+  CONSOLE_TRY_FAILED:
+    'the console try-box catch-all for a non-ConsoleError from evaluate — evaluate answers rather than throws on reachable input, so this only fires on an unexpected internal error; it still answers a typed 400',
+  UI_FAILED:
+    'the sakk ui catch-all for a startConsole rejection other than EADDRINUSE — no reachable input produces one, but the CLI still exits with a typed message instead of a bare stack',
+  SPEND_TOO_MANY_LOGS:
+    'more than 50,000 transcript files under the log dir — a readdir counter, not reproducible as a cheap unit test (would need 50k files)',
 };
 
 describe('claims are checked', () => {
@@ -268,6 +278,23 @@ describe('nothing hangs instead of failing (findings F-15)', () => {
       }
     }
     assert.ok(jobs >= 4, `only ${jobs} jobs found`);
+  });
+  test('the drill job has time for every mutant it runs (F-166)', () => {
+    // The drill reruns a whole suite per mutant, so its cost grows with the
+    // mutant count; CI cancels it at timeout-minutes and the check reads red.
+    // Budget per mutant, measured on CI (PR #24, Node 22): 2705 s for 38
+    // mutants, about 71 s; 100 s leaves room for runner variance and the
+    // fuzz and campaign steps. Adding mutants without raising the limit fails here.
+    const PER_MUTANT_S = 100;
+    const mutants = (read('scripts/mutation-drill.sh').match(/^run_drill MUT-/gm) ?? []).length;
+    assert.ok(mutants >= 30, `found only ${mutants} mutants — the count is broken`);
+    const ci = read(join('.github', 'workflows', 'ci.yml'));
+    const drill = ci.slice(ci.indexOf('\n  drill:\n') + 1).split(/\n {2}[a-z][\w-]*:\n/)[0];
+    const limit = Number(drill.match(/timeout-minutes:\s*(\d+)/)?.[1]);
+    assert.ok(
+      limit * 60 >= mutants * PER_MUTANT_S,
+      `drill: ${limit} min for ${mutants} mutants needs ${Math.ceil((mutants * PER_MUTANT_S) / 60)}`,
+    );
   });
 });
 

@@ -4,8 +4,8 @@
 # same rules over the whole branch, so --no-verify does not get past them.
 set -e
 node scripts/findings-check.mjs --staged
-node --import ./test/clean-git-env.mjs --test --test-timeout=120000 test/findings-ledger.test.mjs >/dev/null 2>&1 || {
-  echo 'self-evolution: the findings ledger gate is red — run: node --import ./test/clean-git-env.mjs --test test/findings-ledger.test.mjs' >&2
+node --import ./test/clean-git-env.mjs --test --import ./test/bounded-spawn.mjs --test-timeout=120000 test/findings-ledger.test.mjs >/dev/null 2>&1 || {
+  echo 'self-evolution: the findings ledger gate is red — run: node --import ./test/clean-git-env.mjs --test --import ./test/bounded-spawn.mjs test/findings-ledger.test.mjs' >&2
   exit 1
 }
 # the secret scan keeps working: core.hooksPath replaces .git/hooks

@@ -35,17 +35,82 @@ Two concurrent agents cannot jointly overspend: read-modify-write runs under an 
 npm install sakk        # or call the CLI without installing: npx sakk …
 ```
 
+## Guard a coding agent
+
+```bash
+sakk guard install claude-code   # or: cursor, codex
+sakk doctor                      # checks the hook really fires
+sakk try 'git push --force origin main'   # what the guard would answer
+```
+
+Every Edit, Write and shell call of the agent is judged before it runs:
+force pushes, deletes outside the project, reading secrets and deploys are
+refused or asked by a policy you can read and change. A write whose content is
+a secret, or a command that prints one, is denied too. The guard judges a
+command by what it spells out — see the limits at the end of this page and
+[docs/GUARD.md](docs/GUARD.md).
+
+Or load Sakk into Claude Code as a **plugin** — it bundles the same hook,
+fail-closed (`onFailure: block`). In v1 this loads it for one session; a
+persistent `/plugin install` needs a marketplace file, planned for v2:
+
+```bash
+npm install -g sakk
+claude --plugin-dir "$(npm root -g)/sakk"
+```
+
+See what the guard did in a local, read-only console — today's spend and cap,
+recent decisions, the policy with a try box, and secret blocks:
+
+```bash
+sakk ui        # prints http://127.0.0.1:<port>/?t=… — read-only; Ctrl+C to stop
+```
+
+Cap the day's spend (read from Claude Code's local logs — an estimate, not the invoice). A person sets it. The guard denies the agent a `sakk cap` command and a write to `~/.sakk`, and a one-command symlink chain that would reach it needs a person's approval. At the terminal, lifting the cap, raising it or moving its day asks you to retype a word; with no terminal it refuses with `HUMAN_CONFIRMATION_REQUIRED` and changes nothing. A path held in a shell variable is not caught yet — see the limits at the end of this page:
+
+```bash
+sakk cap set 5 --zone Asia/Dubai   # deny paid calls once today's spend reaches $5
+sakk spend                         # today's spend by model
+sakk cap off                       # lift it (asks you to confirm)
+sakk prices                        # the price table in use, and where it came from
+```
+
+The per-token rates ship in `prices/snapshot.json`, regenerated from the
+public [LiteLLM price table](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)
+(MIT) — the file's `source` block records the exact commit and SHA-256 it was
+built from, and `sakk prices` prints that provenance. They are community
+figures, an estimate and not any provider's invoice. A model the table does
+not list is **not guessed**: it prices to nothing, and the cap then fails
+closed for the day (`PRICE_UNKNOWN`) rather than undercount your spend. To
+override a rate or add a model, drop a `sakk-prices.v1` table at
+`~/.sakk/prices.json` (a user table wins over the shipped one, and a malformed
+one is refused, never silently ignored); maintainers refresh the shipped
+snapshot by re-running `scripts/prices-trim.mjs` against the LiteLLM table.
+
 ## Quickstart
 
 ```bash
-npx sakk init --cap 25          # create ./sakk-ledger.json (refuses to overwrite)
+npx sakk init --cap 25          # create ~/.sakk/sakk-ledger.json (refuses to overwrite) and wire it to the guard
 npx sakk status                 # totals, entries, reconciliation state (--json for machines)
 npx sakk reconcile --by alice   # clear a reconciliation halt — takes a name
+npx sakk ledger verify          # check the sealed history's hash chain (exit 1 if broken)
 ```
 
 The ledger commands (`init`, `status`, `reconcile`, `halt`, `resume`,
-`unlock`, `mcp`) accept `--ledger <path>` (default: `./sakk-ledger.json`, or
-`SAKK_LEDGER_PATH`; set-but-empty refuses).
+`unlock`, `mcp`, `ledger verify|export`) accept `--ledger <path>`. Without
+it they use the absolute path `sakk init` recorded in `~/.sakk/config.json`
+(the guard hook reads the same entry), then `SAKK_LEDGER_PATH`
+(set-but-empty refuses), then `~/.sakk/sakk-ledger.json` — out of the
+project tree the agent writes. A leftover `./sakk-ledger.json` in the
+current directory refuses with `LEDGER_PATH_LEGACY` until you pass
+`--ledger` or move it, so a halt never lands in a file nothing reads.
+`mcp` still needs the flag or the variable.
+
+Settled entries are sealed into an append-only, hash-chained cold trail
+(`<ledger>.cold/`) so the live file stays small and a call costs the same
+whatever the history; nothing is capped and no entry is dropped.
+`sakk ledger verify` walks the chain, `sakk ledger export` rebuilds one flat
+ledger. At most 10,000 reservations may be outstanding at once.
 
 `sakk status` exits 3 while a person must act before spending resumes —
 reconciliation required (flag or entry), or a stale ledger — and 4 while
@@ -176,6 +241,14 @@ npx sakk halt --by alice --agent bot-7              # stop one agent only
 npx sakk resume --by alice                          # lift it (named)
 ```
 
+`sakk init` records the ledger's absolute path in `~/.sakk/config.json`,
+so a halt also stops an agent behind the installed guard: every tool call
+except reading the repository is denied until `sakk resume`. Running `init`
+again wires an existing ledger without touching it, and never replaces a
+different recorded path — it says which ledger the hook still reads.
+Because it decides where the hook reads halts from, the guard denies the
+agent `sakk init`, as it denies `sakk cap`; a person runs it.
+
 While halted, `reserve()` refuses `LEDGER_HALTED` (or `AGENT_HALTED`),
 every reservation the halt refuses is logged to `sakk-alerts.jsonl`
 (attempts refused earlier for another reason — an invalid agent id, a stale
@@ -290,24 +363,76 @@ count reservations from the books, not allows from the decision log.
 ## Roadmap — honest edition
 
 - [x] CLI (`sakk init / status / reconcile / unlock / halt / resume / scan / mcp`)
-- [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — ships in [`eval/`](eval/)
+- [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — in the repository's [`eval/`](eval/), not in the npm package
 - [x] Policy kernel (`sakk/policy`): declarative `sakk-policy.v1`, pure `decide()`, hash-pinned decision log
 - [x] MCP server enforcer (`sakk mcp`): reserve/settle/status as tools, policy-gated
 - [x] Kill switch (`sakk halt / resume`): named (self-declared `--by`), global or per agent; stop state provable from the books
-- [x] Secret scanning (`sakk scan`, pre-commit hook): eight recognized formats, fingerprints only
-- [x] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts
+- [x] Secret scanning (`sakk scan`, pre-commit hook): eight hand-written formats plus 192 of gitleaks' 195 rules (194 ported, 192 enabled), fingerprints only
+- [x] Secret guard in the hook: a write whose content is a secret, or a command that prints one, is denied (open-source v1 M3; the same rules as `sakk scan`)
+- [x] Daily spend cap enforced by the hook from local transcripts, an estimate not the invoice (open-source v1 M2); set with `sakk cap set`
+- [x] Local, read-only console `sakk ui`: spend, decisions, policy, secret blocks (open-source v1 M4)
+- [x] Ships as a Claude Code plugin (`.claude-plugin/`) (open-source v1 M5)
+- [x] `sakk cap set/off`, `sakk spend`, `sakk prices` — set the cap, see the day's spend, show the price table (F-161)
+- [x] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts — repository only, not in the npm package
 - [ ] `sakk settle` CLI command (late settlement without writing code)
-- [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6)
+- [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6); built from the repository, not in the npm package
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
 - [ ] Named-approver identity, SSO — enterprise
-- [ ] Web console: approvals, roles, audit export — enterprise
+- [ ] Team console: approvals, roles, audit export, outbound metering — enterprise (the local read-only `sakk ui` above is the open-source edition)
+- [ ] README demo: a one-line install at the top and a screenshot or GIF of a deny — not in this release (v2)
+- [ ] Sourced figures: each accuracy number in this README backed by a linked measurement — not in this release (v2)
+- [ ] Packaging sweep at pack time: a stray-file check plus a secret scan over the packed files — not in this release (v2)
+- [ ] A clear startup refusal on Node older than 20, instead of a raw syntax error — not in this release (v2)
 
 Not planned: orchestration frameworks, model-level safety (prompt-injection detection). Sakk is the change-control and evidence layer, not another agent platform.
 
 Know these limits of the open core before relying on it:
 
+The guard and the cap:
+
+- **It reads a command as written.** A command built at run time — `eval`,
+  backticks, `bash -c "$X"`, `python -c`, `source` — can only be asked or
+  denied, never judged by what it does. A variable or brace expansion anywhere
+  in a command counts: a read, write, delete or flag held in one —
+  `cat .e{nv,x}`, `f=.env; cat $f`, `f=~/.sakk/config.json; rm $f`,
+  `o=--force; git push $o` — is asked, never allowed. A file the shell or a
+  program picks at run time from literal text is still judged by the name
+  written in the command, so a read of `.env` spelled as a glob (`cat .e*`),
+  `grep -r`, `find … -exec cat` or `xargs` is allowed. A script the agent runs
+  is one `shell.run` call.
+  Only isolation (a container) answers what a command does.
+- **`@` references skip the hook.** Files you @-mention in Claude Code are read
+  without a tool call, so the guard never sees them.
+- **The cap stops the next call, not the one that crosses it.** A response
+  already in progress completes, so a running agent can go over by one
+  response.
+- **The logs are local files the agent can reach.** The cap reads Claude Code's
+  transcripts; a direct write to them needs a person's approval and a write to
+  `~/.sakk` is denied, but a script the agent runs is not inspected and can
+  rewrite them. Spend already counted never goes down; spend not yet counted
+  can be erased. A tamper-evident ledger is enterprise. The cap also finds the
+  logs through the agent's own environment (`CLAUDE_CONFIG_DIR`, `HOME`), so
+  an agent run with either pointed at an empty folder reads $0 spend.
+- **Older Claude Code fails open.** Before 2.1.295 a hook that times out or is
+  killed lets the call run. `sakk guard install` says so and `sakk doctor`
+  warns.
+- **The confirmation checks for a terminal, not a person.** An agent whose
+  shell runs in a pseudo-terminal, or a script it writes that opens one, can
+  type the word. The guard asks before `script`, `expect` and `unbuffer`, and
+  knows Sakk only by the name `sakk`: `npx sakk cap off` meets the
+  confirmation but not the guard's deny. Named approvals are enterprise.
+
+The ledger and the library:
+
 - **Names are self-declared.** `--by` on halt, resume, reconcile and unlock
   records the name the operator typed; nothing authenticates it.
+- **The ledger's summary is trusted.** The guard denies a guarded agent
+  `resume`, `reconcile` and `unlock` — each asks a person at a terminal —
+  and the default ledger (`~/.sakk/sakk-ledger.json`) sits outside the
+  project tree, but a process that is not the guarded agent can still edit
+  the file directly. The reservation cap trusts the ledger's summary:
+  lowering the settled total there gives cap room back, and only
+  `sakk ledger verify` reports the change.
 - **Costs are what the caller reports.** `reserve()` and `settle()` book the
   amounts they are given; nothing reads the provider's usage yet.
 - **Approval-required means refused.** A policy that asks for approval
@@ -315,9 +440,37 @@ Know these limits of the open core before relying on it:
 - **Gating is voluntary.** An agent that never calls the MCP tools or the
   library is not gated.
 
+Also open in v1, found by the 2026-10-28 acceptance run and deferred to v2:
+
+The guard compares names in one spelling. On a case-insensitive disk (the
+macOS default) a command or a protected folder written in another case is
+allowed, and so are the spellings of git's force flag other than its two
+common ones. A symlink is judged by its own name, so a link with an ordinary
+name that points at a secret file can be read. `sakk guard install` does not
+route Claude Code's search tools (Grep, Glob) to the hook and adds no
+deny-read rules, so a search can read a secret file; the plugin's hook sees
+every tool. A Write whose content is not text is not scanned. A write to the
+agent's own settings asks a person instead of being denied. Installed into
+the project's `node_modules`, the hook's code and default policy are project
+files the agent may change, so install globally. `sakk init` prints "hook
+wired" but installs no guard: run `sakk guard install` after it.
+
+The console (`sakk ui`) masks a secret only in command text, not in a
+decision's path or scope, on screen or in an export. Its try box refreshes
+the spend cache on disk. Its Stop button does not work in v1, because the
+page cannot read its own session token: use `sakk halt` at the terminal.
+(Since this release every response is sent `Cache-Control: no-store` and a
+cross-site Origin is refused on every route, not only Stop — F-195.)
+
+[docs/GUARD.md](docs/GUARD.md), "Known open in v1", has the detail, and
+[docs/V2-BACKLOG.md](docs/V2-BACKLOG.md) lists every known gap with the fix
+planned for it.
+
 ## License
 
-AGPL-3.0-only. Commercial licenses (closed-source embedding, enterprise features) are available — open an issue or contact the author. Contributions require a CLA (see CONTRIBUTING.md).
+AGPL-3.0-only. Shipped third-party notices are in [NOTICE](NOTICE). Commercial licenses (closed-source embedding, enterprise features) are available — open an issue or contact the author. Contributions require a CLA (see CONTRIBUTING.md).
+
+Enterprise edition — team console, SSO, named approvers, hash-chained ledger: coming soon (the unchecked roadmap items above).
 
 ---
 

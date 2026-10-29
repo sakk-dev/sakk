@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Proof that a fix's guard test guards the bug (R7, docs/SELF_EVOLUTION.md).
-// For every finding this range fixed, its guard test must FAIL on the base
-// (the code before the fix, with the new test file copied in) and PASS at
-// HEAD — the FAIL_TO_PASS rule SWE-bench uses to validate a fix. A guard
-// that already passes before the fix proves nothing about it.
+// For every finding this range fixed, its guard test must FAIL on the code
+// before the fix (with the new test file copied in) and PASS at HEAD — the
+// FAIL_TO_PASS rule SWE-bench uses to validate a fix. A guard that already
+// passes before the fix proves nothing about it.
+//
+// "Before the fix" is the commit that introduced the bug when that commit is
+// in this range (a stack or an integration branch brings the bug and its fix
+// together, so the base never had the bug), and the base otherwise (F-217).
 //
 //   node scripts/findings-proof.mjs --range <base-ref>
 //
@@ -55,10 +59,18 @@ const CLOSED = ['fixed', 'verified', 'class_closed'];
 const revs = new Set(git('rev-list', `${base}..HEAD`).split('\n').filter(Boolean));
 // a bug introduced in this range lives in new code, whose test may need that code
 // to load; a bug in code that existed before needs its guard to fail by assertion
-const inRange = (f) =>
-  f.introduced_in === 'worktree' ||
-  (/^[0-9a-f]{7,40}$/.test(f.introduced_in ?? '') &&
-    [...revs].some((r) => r.startsWith(f.introduced_in)));
+const introducedAt = (f) =>
+  /^[0-9a-f]{7,40}$/.test(f.introduced_in ?? '')
+    ? ([...revs].find((r) => r.startsWith(f.introduced_in)) ?? null)
+    : null;
+const inRange = (f) => f.introduced_in === 'worktree' || introducedAt(f) !== null;
+/** The tree that had the bug: where it was introduced, if in this range; else the base. */
+const priorOf = (f) => {
+  const at = introducedAt(f);
+  return at
+    ? { rev: at, label: `${f.introduced_in}, the commit in this range that introduced it` }
+    : { rev: base, label: base };
+};
 // fixed in this range: new and closed, or open at the base and closed now
 const fixed = now.filter(
   (f) => CLOSED.includes(f.status) && (!before.has(f.id) || before.get(f.id).status === 'open'),
@@ -76,7 +88,15 @@ function runTest(cwd, file, name) {
       '--test-timeout=120000',
       file,
     ],
-    { cwd, encoding: 'utf8', env: { ...ENV, CI: 'true' }, maxBuffer: 64 * 1024 * 1024 },
+    {
+      cwd,
+      encoding: 'utf8',
+      env: { ...ENV, CI: 'true' },
+      maxBuffer: 64 * 1024 * 1024,
+      // a hung child blocks this script; --test-timeout cannot interrupt it (F-143)
+      timeout: 300_000,
+      killSignal: 'SIGKILL',
+    },
   );
   const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
   const pass = Number(/^# pass (\d+)/m.exec(out)?.[1] ?? 0);
@@ -120,29 +140,31 @@ try {
       problems.push(`${f.id}: its guard fails at HEAD — the fix is not in`);
       continue;
     }
+    const { rev, label } = priorOf(f);
     if (tree === null) {
       tree = mkdtempSync(join(tmpdir(), 'findings-proof-'));
-      git('worktree', 'add', '--detach', '-f', tree, base);
-    }
+      git('worktree', 'add', '--detach', '-f', tree, rev);
+    } else git('-C', tree, 'checkout', '-q', '-f', '--detach', rev);
+    git('-C', tree, 'clean', '-fdq'); // no test file left from the finding before
     mkdirSync(join(tree, dirname(file)), { recursive: true });
     copyFileSync(join(root, file), join(tree, file)); // the new test against the old code
     const prior = runTest(tree, file, name);
-    git('-C', tree, 'checkout', '-q', '--', '.'); // the next finding starts from the clean base
+    git('-C', tree, 'checkout', '-q', '-f', '--', '.');
     if (prior.code === 0 && prior.fail === 0)
       problems.push(
-        `${f.id}: its guard "${name}" already passes on ${base}, before the fix — it does not guard this bug. Name a test that fails without the fix.`,
+        `${f.id}: its guard "${name}" already passes on ${label}, before the fix — it does not guard this bug. Name a test that fails without the fix.`,
       );
     else if (prior.failedItself)
-      proven.push(`${f.id}: the guard runs and fails before the fix, passes after`);
+      proven.push(`${f.id}: the guard runs and fails before the fix (on ${label}), passes after`);
     else {
       // the test needs code the fix added: red before, but not by its own assertion
       if (!inRange(f))
         problems.push(
-          `${f.id}: its guard cannot even load on ${base} (it imports code the fix added), so it shows nothing about the old code. The bug predates this range (introduced_in ${f.introduced_in}): name a guard that runs on the old code and fails by its own assertion — e.g. drive the command, not the new function.`,
+          `${f.id}: its guard cannot even load on ${label} (it imports code the fix added), so it shows nothing about the old code. The bug predates this range (introduced_in ${f.introduced_in}): name a guard that runs on the old code and fails by its own assertion — e.g. drive the command, not the new function.`,
         );
       else
         proven.push(
-          `${f.id}: the guard cannot load before the fix (it needs new code, introduced in this range), passes after`,
+          `${f.id}: the guard cannot load before the fix on ${label} (it needs new code, introduced in this range), passes after`,
         );
       weak.push(f.id);
     }

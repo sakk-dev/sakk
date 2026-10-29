@@ -23,7 +23,7 @@ The pages and their data, as in v10:
 | Guard rules              | the policy in use, its hash and the try box (calls the same code as `sakk try`)                                         |
 | Secret guard             | commit-scan hook status and the "agent touched a secret" card (M3 log lines)                                            |
 | Agents                   | connections per agent (from `sakk doctor`'s checks) and per-agent stop (`sakk halt --agent`) when `--allow-halt` is set |
-| Records & export         | decision log, spend index, evidence bundles; export as CSV, FOCUS, JSONL                                                |
+| Records & export         | decision log and spend index; export as CSV and JSONL (FOCUS and evidence bundles are the enterprise edition)           |
 | Model prices             | the table in use, its source and hash                                                                                   |
 | Enterprise · coming soon | static                                                                                                                  |
 
@@ -40,14 +40,18 @@ The prior art is Playwright's `show-report` and UK AISI's Inspect view.
 2. **Token.**
    - Every start makes a fresh 128-bit token.
    - Each request must carry it: the first page load in the query string,
-     after that in a `SameSite=Strict`, `HttpOnly` cookie scoped to that
-     port.
+     after that in a `SameSite=Strict`, `HttpOnly` cookie. HTTP cookies are
+     not isolated by port, so the token itself — a fresh 128-bit secret per
+     start — and the `Host` check are the protection, not the cookie's scope;
+     the cookie only spares the token from the address bar after the first load.
    - A request without it gets 403 and no data.
 3. **Host check.** `Host` must be `127.0.0.1:<port>` or
    `localhost:<port>`, which blocks DNS rebinding.
-4. **Origin check.** Any non-GET request must carry
-   `Origin: http://127.0.0.1:<port>` (or the `localhost` form) and the
-   token header.
+4. **Origin check.** On every route, GET included, a request that carries an
+   `Origin` header other than `http://127.0.0.1:<port>` (or the `localhost`
+   form) gets 403 before dispatch (F-195). A request without an Origin header
+   (a typed URL, curl, a same-origin GET) passes this gate. Any non-GET
+   request must additionally carry the local `Origin` and the token header.
 5. **Read-only by default.** The only write is stopping an agent, behind
    `--allow-halt`.
    - It calls the ledger's `halt()` with `by` set to the OS user name and
@@ -60,12 +64,17 @@ The prior art is Playwright's `show-report` and UK AISI's Inspect view.
 img-src 'self' data:; frame-ancestors 'none'`
    - `X-Content-Type-Options: nosniff`
    - `Referrer-Policy: no-referrer`
+   - `Cache-Control: no-store` on every response (F-195), and a non-HTML
+     response — which carries no nonce — allows no script or style at all.
 7. **Output.** Every string from the logs is escaped before it reaches the
    page, and no log text is ever used as HTML. Commands and file contents
    are not in the logs in the first place (M1).
-8. **Bounded reads.** The decision log is read in pages of 500 lines from
-   the end, and the spend index through M2's functions. A 5 GB log never
-   loads whole.
+8. **Bounded reads, and no writes.** The decision log is read in pages of 500
+   lines from the end, and the spend index M2's hook maintains is read, not
+   updated — a GET writes nothing and spawns nothing. The Agents page reports
+   the installed state of each hook without firing it (`doctor({probe:false})`),
+   so a read-only request never runs a subprocess or blocks on one. A 5 GB log
+   never loads whole.
 
 ## Adversary table
 
@@ -81,7 +90,7 @@ process, or a prompt-injected agent that wants the console to lie or to act.
 | 5   | A log line carrying `<script>` (a tool name, a path, an MCP server name) | escaped and shown as text                                                  | `test/console.test.mjs::log text is escaped everywhere it is shown`              |
 | 6   | Guessing the token                                                       | 128 bits; constant-time compare; 403s are counted and shown                | `test/console.test.mjs::token compare is constant-time and failures are counted` |
 | 7   | A huge log to hang the server                                            | paged reads; a request finishes in bounded work                            | `test/console.test.mjs::a huge decision log is paged, never loaded whole`        |
-| 8   | The console shows spend as billed, or a self-declared stop as signed     | labels "from local logs" and "name typed by the user" (F-126)              | `test/console.test.mjs::evidence is labelled by its source`                      |
+| 8   | The console shows spend as billed, or a self-declared stop as signed     | labels "from local logs" and "self-declared (the OS account name)" (F-126) | `test/console.test.mjs::evidence is labelled by its source`                      |
 | 9   | The page loads anything from the network (a CDN font)                    | CSP `default-src 'none'`; a test lists every URL in the HTML               | `test/console.test.mjs::the page makes no request to another origin`             |
 
 ## Input-space table

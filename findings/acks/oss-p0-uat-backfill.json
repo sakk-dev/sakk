@@ -1,0 +1,110 @@
+{
+  "version": 2,
+  "branch": "oss/p0-uat-backfill",
+  "answers": {
+    "C-01.1": {
+      "answer": "This change is itself an absence fix. The certificate's drill-freshness parser used a single-letter regex (MUT-[A-Z]) that was blind to the 12 two-letter mutants (MUT-AA..MUT-AL): their hash blocks were never in the verified set at all, so an absent block could not even be seen. Widening it to MUT-[A-Z]+ puts every mutant in reach, and the existing checked===kills completeness guard then refuses when any kill lacks a verified hash block. The P0 UAT backfill tests are all negative assertions: remove the guarded refusal and the test goes red.",
+      "guard": "test/certificate.test.mjs::the freshness parser can see every mutant id the drill emits (the MUT-AA regex gap)"
+    },
+    "C-01.2": {
+      "answer": "Revert the regex to MUT-[A-Z] and the new parser-reach test goes red: checked drops to 26 against 38 real ids, proving the parser silently narrowed its set. Revert EXPECTED_MUTANTS to 26 and the count-link test goes red. Neither drift can pass a green npm test any more; before this it only surfaced in the rarely-run multi-minute certificate run, where it read as an unissuable witness rather than a caught bug.",
+      "guard": "test/certificate.test.mjs::EXPECTED_MUTANTS equals the number the drill actually defines"
+    },
+    "C-04.1": {
+      "answer": "The new test's work is bounded by the mutant count read from the committed drill file (38 today), not by a clock: it builds exactly one synthetic hash block per id and asserts checked equals that count. The regex widening adds no backtracking risk because [A-Z]+ is terminated by the literal ']' that follows every id, so it cannot run away on the bracketed tokens. The drill's own time bound is untouched by this change.",
+      "guard": "test/certificate.test.mjs::every mutant the drill defines is counted exactly once"
+    },
+    "C-05.1": {
+      "answer": "The CHANGELOG entry for F-167 describes the witness fix and the three new certificate tests fail without that fix, so the sentence is backed. The certificate's own prose ('N/N mutants killed, each by its pre-named guardian; N hashes verified') is rendered from drill.checked / drill.kills, never typed, so it cannot overstate coverage independently of the numbers the gate acted on.",
+      "guard": "test/certificate.test.mjs::EXPECTED_MUTANTS equals the number the drill actually defines"
+    },
+    "C-05.2": {
+      "answer": "The figures the certificate reports (checked, kills) are exactly the ones the refusal logic acts on. The fix makes checked reflect all 38 mutants, so the 'freshness: 38 tampered-file hashes verified' line a reader relies on is now true rather than permanently unissuable. Exit codes are unchanged and still actionable: 0 only on a real certificate, 2 on every refusal path.",
+      "guard": "test/certificate.test.mjs::F8 machine-enforced: drill evidence freshness"
+    },
+    "C-10.1": {
+      "answer": "Keeping EXPECTED_MUTANTS and the freshness regex in sync with the drill was enforced by nobody: only a full certificate run (minutes, rarely invoked) would notice, the exact F-149 shape where the drill's anchors were checked only by the drill itself. The new witness-drill test reads scripts/mutation-drill.sh, counts its run_drill ids, and fails npm test if EXPECTED_MUTANTS or the parser no longer covers them. The required sync is now a test, not rule text.",
+      "guard": "test/certificate.test.mjs::EXPECTED_MUTANTS equals the number the drill actually defines"
+    },
+    "C-10.2": {
+      "answer": "The drill count can drift from two routes: editing mutation-drill.sh (adding run_drill lines) or editing gate-certificate.mjs (EXPECTED_MUTANTS or the regex). The new test reads the drill file directly at test time, so either route is caught by the same npm test / gate / CI run and there is no cached count to go stale. The freshness parser still freezes what it read by hashing CURRENT bytes (F8), which this change does not weaken.",
+      "guard": "test/certificate.test.mjs::the freshness parser can see every mutant id the drill emits (the MUT-AA regex gap)"
+    },
+    "C-09.1": {
+      "answer": "The spend backfill cases (S-FN-012, S-FN-017, S-FN-020, S-SEC-004) compute money through costOf/priceOf/parseLine with an explicitly built price table and explicit token rows, never through daySpend against the real clock, so they do not inherit F-165's dated-fixture-on-today trap; where a day bucket is needed it comes from dayOf(fixedIso), not a wall clock. The gitleaks count reconciliation (K-ACC-068) resolves config/gitleaks.toml and the generated module from the repo root via fileURLToPath(import.meta.url), not a cwd-relative path, so the same counts hold from any directory and on any Node that imports the module (the F-164 crash surface).",
+      "guard": "test/spend.test.mjs::S-FN-017 Haiku-5.5 at prompt 100001 prices the whole call at the long-context tier"
+    },
+    "C-09.2": {
+      "answer": "Secret-guard, guard-install and kill-switch cases drive the SHIPPED hook surface (normalize+evaluate from src/hook.mjs, guard-install.mjs) inside a mkdtemp HOME/SAKK_HOME sandbox, the same entry the installed PreToolUse hook calls, so a green means the real agent path decides as asserted rather than a hand-rolled matcher. Panel cases (U-SEC-*) start the real console HTTP server on an ephemeral port and issue real fetch() requests with the real token, exercising the server as a browser would. Packaging cases (P-INS/P-ACC) assert against the real `npm pack` file list / installed tgz, not the working tree.",
+      "guard": "test/console.test.mjs::U-SEC-003 malformed, uppercased and Bearer-wrapped tokens are all rejected 403"
+    },
+    "C-11.1": {
+      "answer": "J-UAT-016 and J-UAT-030 are exactly a value whose meaning outlives its scope: a cap, a halt and the installed hook are the spend ceiling and kill switch, which must hold against the agent, yet the agent can move them through ordinary CLI subcommands the hook never classifies (cap off / cap set / guard uninstall) or a halt that never reaches the hook because no command writes config.ledgerPath. This backfill adds no new writer; it adds adversarial tests that assert which caller each control actually trusts, and where a control currently trusts the agent the real verdict is pinned with a gap label and filed as a finding, never papered over with a green that pretends the writer is safe.",
+      "guard": "test/kill-switch.test.mjs::GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed",
+      "revisions": [
+        {
+          "finding": "F-172",
+          "answer": "J-UAT-030 is closed: `sakk init`, a person's setup step, records the ledger's absolute path in ~/.sakk/config.json once and never replaces a different recorded path, and that file sits in the guard state the hook denies the agent writing; the CLI, hook and console resolve the ledger through the one function, so a halt from any directory lands where the hook looks. J-UAT-016 still trusts the agent (cap off / cap set / guard uninstall) and stays pinned with its gap label until F-171.",
+          "guard": "test/kill-switch.test.mjs::J-UAT-030 sakk init wires the ledger into the hook, so a halt from any directory stops the guarded agent"
+        },
+        {
+          "finding": "F-171",
+          "answer": "J-UAT-016 is closed: the hook now judges `sakk cap` as the write to ~sakk/config.json it makes (denied) and `sakk guard` as the agent-config write it makes (asked), and the CLI lifts or raises the cap, moves its day, or removes the guard only after a person at a terminal retypes the word; tightening never asks. The halt family is the one control the sweep found still reachable by the agent, pinned with a gap label as F-177 rather than passed.",
+          "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
+        }
+      ]
+    },
+    "C-07.1": {
+      "answer": "The F-174 fix reacts to exactly two externally-sourced inputs and trusts neither blindly: the installed Claude Code version string, parsed only through claudeSupportsOnFailure which returns false on any missing binary, unparseable output or thrown error (so an untrusted or spoofed version degrades to fail-open-and-warn, never to a false fail-closed claim); and the agent's own settings file, read via readJson which rejects anything that is not a plain object. The operator warning text is a fixed string literal with no interpolation of any external value, so no attacker-controlled bytes reach the console line.",
+      "guard": "test/guard.test.mjs::doctor fails when the hook would not fire"
+    },
+    "C-07.2": {
+      "answer": "The gate this touches is the guard's fail-closed guarantee and the party it constrains is the agent whose tool calls the hook adjudicates. The fix gives the agent no new power to clear anything: it cannot set onFailure, cannot suppress the install-time warning, and cannot clear the doctor flag. Only a human upgrading the local Claude Code binary to 2.1.295+ and reinstalling removes the warning, so the step that clears the degraded state is reserved to a person at the machine, not to the constrained agent.",
+      "guard": "test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself"
+    },
+    "C-15.1": {
+      "answer": "The rewritten G-INS-006 drives the real paths, not stand-ins: it spawns the actual bin/sakk.mjs via spawnSync for `guard install claude-code` with the real binary probe forced old, and it calls the real doctor() against a real mkdtemp sandbox config, then asserts the exact stdout bytes the operator sees and the exact doctor check array. There is no hand-rolled matcher writing its own evidence; the control arm installs on a probe forced new and asserts the warning is absent and onFailure:block present, so both the degraded and the healthy real paths are exercised.",
+      "guard": "test/guard.test.mjs::doctor fails when the hook would not fire"
+    },
+    "C-03.1": {
+      "answer": "Each assertion in the rewritten test is pinned to one cause. Revert the bin/sakk.mjs install-warning branch and only the old-Claude-Code install arm goes red; revert the doctor() fail-open warn check and only the doctor arm goes red; the new-CC control arm (which asserts NO warning and onFailure:block present) goes red if the warning ever fires on the fail-closed path. So the check fails for the fail-open-is-silent defect it names and not for an unrelated reason, proven by putting each half of the bug back independently.",
+      "guard": "test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself"
+    },
+    "C-03.2": {
+      "answer": "The test observes the two surfaces an operator actually reads — the real spawnSync stdout of the install command and the real array returned by doctor() — rather than a proxy for them, so it can see the warning the operator would see at exactly the moment they would see it. The new-CC control proves the no-warning case is reachable and distinct from the old-CC case, so a green means the warning appears on the degraded path and stays absent on the healthy one, which is precisely what the test name claims.",
+      "guard": "test/guard.test.mjs::doctor fails when the hook would not fire"
+    },
+    "C-03.3": {
+      "answer": "The doctor fail-open check is tied to the real installed config bytes, not to a ledger note or a comment: it inspects whether the installed claude-code hook object actually carries onFailure:'block'. Remove that key from the installed hook and the warn surfaces; add it and the warn disappears. Because the check resolves against the real settings file the install wrote, it fails on the real degraded runtime state (a guard that would proceed unguarded if the hook failed to start), not merely when some paperwork is missing.",
+      "guard": "test/guard.test.mjs::doctor fails when the hook would not fire"
+    },
+    "C-02.1": {
+      "answer": "The fail-open condition is derived from the installed config, not from a hand-written list of hook locations: doctor() enumerates the sakk claude-code hooks it finds through the same installedCommands/config traversal install writes through, and warns on any that lacks onFailure:'block'. So a degraded hook is caught wherever it was installed rather than only at a hard-coded path, and adding a new install location does not silently fall outside the check because the check reads the config the installer produced.",
+      "guard": "test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself"
+    },
+    "C-02.2": {
+      "answer": "The onFailure degrade is claude-code-specific today: cursor and codex hooks are written with their own unconditional failClosed shape, so there is no sibling surface where the same silently-dropped guarantee hides. The fix scopes the warning to agent==='claude-code' deliberately, and the sweep confirmed the other two agents always write their fail-closed field, so fixing this one instance does not leave an equivalent fail-open-without-warning on cursor or codex unaddressed.",
+      "guard": "test/guard.test.mjs::install merges, repeats cleanly and uninstalls only itself"
+    },
+    "C-08.1": {
+      "answer": "The fix adds no new path resolution and so introduces no new alias: doctor reads the same config locations install writes through (project configPath via repoRootOf, the user path via homedir, the managed path), each resolved once, and BIN is realpathSync'd before it is embedded, so a single hook is not reachable under two spellings in a way that could hide a fail-open copy from the doctor sweep. The existing alias-denial guard still covers the delete-through-every-name surface this change does not alter.",
+      "guard": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)"
+    },
+    "C-06.1": {
+      "answer": "The regenerated snapshot's numbers are community figures from BerriAI/litellm under MIT, not Anthropic's own rate card, and the file records that honestly instead of dressing it up as first-party pricing. scripts/prices-trim.mjs writes the provenance block itself, never by hand: source.sha256 is computed from the exact fetched bytes, source.url is the LiteLLM raw JSON it was fetched from, source.commit is the upstream main sha the maintainer passes with --commit, fetchedAt is the run date, and source.license is the fixed credit 'LiteLLM (MIT, (c) Berri AI)' — the same shape as the gitleaks credit, and pinned by test/release.test.mjs P-ACC-008 so the third-party credit cannot silently drop out of a regenerated snapshot. loadPrices hands that same source block to every reader so `sakk prices` shows operators exactly where the numbers came from, and the README refresh note points them at the `~/.sakk/prices.json` override (and, for maintainers, scripts/prices-trim.mjs re-run against the LiteLLM table) instead of hand-editing the shipped snapshot, so nobody sees a provenance the data does not have.",
+      "guard": "test/spend.test.mjs::the price snapshot is small, sourced and never edited in place"
+    },
+    "C-13.1": {
+      "answer": "The guard-resolution rule was measured only on the side it must catch (a guard naming a test that does not exist); closing the J-UAT-016 gap was the first real input from the other side, a guard a revision legitimately superseded, and the rule refused it (F-178). The change is measured on both sides in one test: a renamed gap test still fails while no finding records the rename, fails when the correction sits on a finding the revision does not name, and fails when the current guard itself is missing; it passes only when the superseding revision's finding carries a correction whose from is exactly the old guard with a 20-character why — the same correction the ledger already demands when a mechanism_upgrade changes.",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    },
+    "C-14.1": {
+      "answer": "The retirement lookup reads the ledger, which the change does not otherwise trust: a missing ledger, a revision naming an unknown finding, or a corrections field that is not an array retires nothing and throws nothing, so one malformed finding falls back to the strict rule for that guard alone and every other answer is still checked and reported. The checker never stops on this input; the worst a bad entry can do is leave a stale guard reported as not resolving, which is the pre-change behaviour.",
+      "guard": "test/self-evolution.test.mjs::a malformed corrections field retires nothing and the other guards are still checked (F-178)"
+    },
+    "C-16.1": {
+      "answer": "No, not inside this branch: the writer of R-23, R-24 and the R-10/R-12/R-17/R-22 extensions (and of the F-178 checker change) is the same model that wrote the fixes they cite. The independent judge comes at the pull request: the CI review runs on a different model (MiniMax) from a fresh checkout, and the base branch's checker judges this branch's ledger and answers with the code already merged, so the checker this branch edits cannot pass itself. Until that review lands the rule changes are drafts on a branch, not merged doctrine.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    }
+  }
+}

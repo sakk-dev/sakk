@@ -1,0 +1,13 @@
+{
+  "session_id": "00000000-0000-4000-8000-0000000000d1",
+  "transcript_path": null,
+  "cwd": "/work/repo",
+  "hook_event_name": "PreToolUse",
+  "model": "gpt-5.5-codex",
+  "permission_mode": "default",
+  "turn_id": "turn-1",
+  "tool_name": "Bash",
+  "tool_use_id": "call_fixture_bash",
+  "tool_input": { "command": "bash -lc 'git push --force origin main'" },
+  "expect": "deny"
+}

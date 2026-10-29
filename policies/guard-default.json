@@ -1,0 +1,161 @@
+{
+  "schema": "sakk-policy.v1",
+  "default_verdict": "deny",
+  "rules": [
+    {
+      "id": "protect-secret-files",
+      "match": {
+        "action": "secret.read"
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "shell-destructive",
+      "match": {
+        "action": "git.destructive"
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "deny-prod-delete",
+      "match": {
+        "action": "prod.delete"
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "deny-delete-protected",
+      "match": {
+        "action": "file.delete",
+        "scope": ["~protected/"]
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "allow-temp-cleanup",
+      "match": {
+        "action": "file.delete",
+        "scope": [
+          "~outside/tmp/",
+          "~outside/private/tmp/",
+          "~outside/var/folders/",
+          "~outside/private/var/folders/"
+        ]
+      },
+      "verdict": "allow"
+    },
+    {
+      "id": "deny-rm-outside-repo",
+      "match": {
+        "action": "file.delete",
+        "scope": ["~outside/", "~home/"]
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "protect-guard-state",
+      "match": {
+        "action": "file.write",
+        "scope": [".sakk/", "~sakk/"]
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "protect-guard-state-delete",
+      "match": {
+        "action": "file.delete",
+        "scope": [".sakk/", "~sakk/"]
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "protect-ci-files",
+      "match": {
+        "action": "file.write",
+        "scope": [".github/workflows/"]
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "protect-migrations",
+      "match": {
+        "action": "file.delete",
+        "scope": ["migrations/", "db/migrations/"]
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "deny-agent-config",
+      "match": {
+        "action": "file.write",
+        "scope": [
+          ".claude/",
+          ".cursor/",
+          ".codex/",
+          "~home/.claude/",
+          "~home/.cursor/",
+          "~home/.codex/"
+        ]
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "deny-agent-config-delete",
+      "match": {
+        "action": "file.delete",
+        "scope": [
+          ".claude/",
+          ".cursor/",
+          ".codex/",
+          "~home/.claude/",
+          "~home/.cursor/",
+          "~home/.codex/"
+        ]
+      },
+      "verdict": "deny"
+    },
+    {
+      "id": "high-risk-deploy",
+      "match": {
+        "action": "deploy"
+      },
+      "verdict": "require_approval",
+      "approvers_min": 1
+    },
+    {
+      "id": "ask-constructed-commands",
+      "match": {
+        "action": "shell.constructed"
+      },
+      "verdict": "require_approval",
+      "approvers_min": 1
+    },
+    {
+      "id": "allow-temp-write",
+      "match": {
+        "action": "file.write",
+        "scope": [
+          "~outside/tmp/",
+          "~outside/private/tmp/",
+          "~outside/var/folders/",
+          "~outside/private/var/folders/"
+        ]
+      },
+      "verdict": "allow"
+    },
+    {
+      "id": "ask-write-outside",
+      "match": {
+        "action": "file.write",
+        "scope": ["~outside/", "~home/"]
+      },
+      "verdict": "require_approval",
+      "approvers_min": 1
+    },
+    {
+      "id": "allow-in-repo",
+      "match": {},
+      "verdict": "allow"
+    }
+  ]
+}
