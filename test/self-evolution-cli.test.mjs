@@ -300,6 +300,72 @@ describe('R7: a fix is proven red before and green after', () => {
     assert.equal(r.status, 1);
     assert.match(r.stderr, /cannot even load on base/);
   });
+
+  /**
+   * A bug that a commit in the range introduced and a later commit fixed, as a
+   * stack or an integration branch carries them: the base never had the bug.
+   */
+  function introducedInRange(guardBody) {
+    const { d, git } = repo();
+    copyFileSync(
+      join(REPO, 'scripts', 'findings-proof.mjs'),
+      join(d, 'scripts', 'findings-proof.mjs'),
+    );
+    git('add', '-A');
+    commit(git, 'the proof script');
+    git('branch', '-f', 'base');
+    writeFileSync(join(d, 'src', 'add.mjs'), 'export const add = (a, b) => a - b;\n');
+    git('add', '-A');
+    commit(git, 'add, with the bug');
+    const bug = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], {
+      cwd: d,
+      encoding: 'utf8',
+      env: ENV,
+    }).trim();
+    writeFileSync(join(d, 'src', 'add.mjs'), 'export const add = (a, b) => a + b;\n');
+    mkdirSync(join(d, 'test'), { recursive: true });
+    writeFileSync(join(d, 'test', 'add.test.mjs'), guardBody);
+    const ledger = JSON.parse(readFileSync(join(d, 'findings', 'ledger.json'), 'utf8'));
+    ledger.findings.push({
+      id: 'F-03',
+      class: 'C-01',
+      areas: ['src/add.mjs'],
+      title: 'add subtracts',
+      status: 'fixed',
+      introduced_in: bug,
+      guard: 'test/add.test.mjs::adds two numbers',
+    });
+    writeFileSync(join(d, 'findings', 'ledger.json'), JSON.stringify(ledger));
+    git('add', '-A');
+    commit(git, 'fix: add adds (F-03)');
+    const r = spawnSync(
+      process.execPath,
+      [join(d, 'scripts', 'findings-proof.mjs'), '--range', 'base'],
+      { cwd: d, encoding: 'utf8', env: ENV },
+    );
+    return { r, bug };
+  }
+  // reads the source, so it passes wherever add.mjs is absent — the base included
+  const READS_SOURCE = T(
+    "import { existsSync, readFileSync } from 'node:fs';\n" +
+      "const src = existsSync('src/add.mjs') ? readFileSync('src/add.mjs', 'utf8') : '';\n" +
+      "test('adds two numbers', () => assert.doesNotMatch(src, /a - b/));",
+  );
+  test('F-217: a bug introduced and fixed in the range is proven on the commit that introduced it', () => {
+    const { r, bug } = introducedInRange(READS_SOURCE);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(
+      r.stdout,
+      new RegExp(`F-03: the guard runs and fails before the fix \\(on ${bug},`),
+    );
+  });
+  test('F-217: a guard that passes where the bug was introduced is still refused', () => {
+    const { r, bug } = introducedInRange(
+      T("test('adds two numbers', () => assert.equal(1 + 1, 2));"),
+    );
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, new RegExp(`already passes on ${bug}, the commit in this range`));
+  });
 });
 
 describe('skipping the hooks is refused, and disputing the gate is the way out', () => {

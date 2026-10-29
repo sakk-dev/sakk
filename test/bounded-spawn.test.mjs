@@ -35,7 +35,7 @@ const hang = (call) =>
   );
 
 describe('C-04: every synchronous child a test starts is bounded (F-143)', () => {
-  test('every node --test run loads the bound', () => {
+  test('every node --test run loads the bound, whatever flags come first (F-215)', () => {
     const { scripts } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
     const places = [
       ...Object.entries(scripts).map(([name, cmd]) => [`npm run ${name}`, cmd]),
@@ -46,12 +46,16 @@ describe('C-04: every synchronous child a test starts is bounded (F-143)', () =>
         ]),
       ),
     ];
-    const missing = places.flatMap(([where, text]) =>
-      text
-        .split(/&&|\n/)
-        .filter((part) => /\bnode --test\b/.test(part) && !part.includes(`--import ${PRELOAD}`))
-        .map((part) => `${where}: ${part.trim()}`),
+    // a launch is any `node … --test …` up to the next shell separator, whatever flags
+    // come before --test: matching the literal `node --test` found nothing once a
+    // launch put another --import first, and the check then passed on zero launches (F-215)
+    const launches = places.flatMap(([where, text]) =>
+      (text.match(/\bnode\b[^\n&|;'"]*?\s--test\b[^\n&|;'"]*/g) ?? []).map((l) => [where, l]),
     );
+    assert.ok(launches.length >= 3, `only ${launches.length} node --test launches found`);
+    const missing = launches
+      .filter(([, l]) => !l.includes(`--import ${PRELOAD}`))
+      .map(([where, l]) => `${where}: ${l.trim()}`);
     assert.deepEqual(missing, [], `add --import ${PRELOAD} to each`);
   });
   test('every non-test script that spawns node --test bounds it with a timeout (F-157)', () => {

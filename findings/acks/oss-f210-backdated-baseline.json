@@ -78,6 +78,10 @@
       "answer": "超出本次运行仍有含义的值清点写者：backdated 标志经 mergeCall 与 future 同规则只增不减、随桶持久化，写者仅 updateIndex；baseline.json 的时刻写一次读每轮，写者仅 updateIndex 的封存分支且原子落盘，不可列目录存在时不写以免把半次扫描当完整基线固化。",
       "guard": "test/spend.test.mjs::a forged line reusing an old call id with inflated usage cannot add money to the old day"
     },
+    "C-13.1": {
+      "answer": "本分支合入 v2-fixes 带来的检测规则改动，每条都两边量过：F-215 的 bounded-spawn 检测器在临时仓库里同时跑「另一个 --import 在前、缺 bound」的真实漏网写法（必须红，fail=1）和「同样写法带 bound」的对照（必须绿，pass=1 fail=0）；F-217 的证明换 before 树，一条用例证明区间内引入又修掉的问题在引入它的那个提交上被证明，另一条证明在引入处就通过的守卫照样被拒。本分支自己的 spend 改动不新增检测规则。",
+      "guard": "test/bounded-spawn-detector.test.mjs::the bounded-spawn detector sees a launch with another --import first (F-215)"
+    },
     "C-14.1": {
       "answer": "单元失败不拖垮整体但也不被吞掉：covered 核对要读的声称日桶若损坏，readJson 抛 SPEND_INDEX_UNREADABLE，capCheck 不捕获、钩子按失败关闭 deny——一个坏桶是一次有名字的拒绝；days 与 files 索引只在整轮处理完后落盘，半途抛出不留半写状态。",
       "guard": "test/spend.test.mjs::a corrupt spend index is a refusal, not a silent zero (SPEND_INDEX_UNREADABLE)"

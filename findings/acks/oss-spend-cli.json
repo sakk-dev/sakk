@@ -8,7 +8,14 @@
     },
     "C-01.2": {
       "answer": "Delete the cap (sakk cap off) and run again: the hook's cap check reads config.capUsd, so with it gone the over-cap deny disappears — removing the cap is observable in the hook's behaviour, not a silent pass.",
-      "guard": "test/spend-cli.test.mjs::sakk cap off removes the cap and the hook stops enforcing"
+      "guard": "test/spend-cli.test.mjs::sakk cap off removes the cap and the hook stops enforcing",
+      "revisions": [
+        {
+          "finding": "F-171",
+          "answer": "Deleting the cap now needs a person at a terminal (sakk cap off asks for confirmation); once confirmed, the hook's cap check finds no config.capUsd and the over-cap deny disappears, so the removal is still observable in the hook's behaviour.",
+          "guard": "test/spend-cli.test.mjs::sakk cap off, confirmed at a terminal, removes the cap and the hook stops enforcing"
+        }
+      ]
     },
     "C-02.1": {
       "answer": "cap set, sakk spend and the hook's cap check all read and write the SAME config.json keys (capUsd, timeZone, claudeLogDir) and price the same way through loadPrices/costOf — one schema applied everywhere, not a per-command list; nothing re-enumerates the fields.",

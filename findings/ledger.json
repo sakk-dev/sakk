@@ -5092,7 +5092,7 @@
     {
       "id": "F-163",
       "date": "2026-10-22",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-08",
       "title": "A one-command symlink/hard-link chain let an agent reach ~/.sakk, defeating the static path guard",
@@ -5128,7 +5128,14 @@
         "F-183": "F-183 is a protected name in another case; F-163 was a link chain built in one command to reach guard state (fixed).",
         "F-184": "F-184 is a git force flag in an unlisted spelling; F-163 was a link chain built in one command to reach guard state (fixed).",
         "F-186": "F-186 is a READ through a symlink that already exists, judged by the link's name; F-163 was a command that CREATES a link chain to reach guard state, fixed by refusing link creation toward protected targets."
-      }
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/classify.mjs was added in 294f391 (M1) resolving a path through its nearest existing parent, so a link made earlier in the same command was judged by a safe scope; main has no src/classify.mjs, so the bug was introduced in this range, not before it."
+        }
+      ]
     },
     {
       "id": "F-164",
@@ -5194,17 +5201,24 @@
         "why": "C-09.2's guard is the very test that broke: it drove the cap through evaluate(), the real path, but left evaluate's clock real while its logs were dated, so it was true only on 2026-10-22 and no run on another day had tried it."
       },
       "instance_fix": "this commit: both evaluate() calls in test/spend.test.mjs pass now: () => NOW, the log's mtime is set to NOW, and the test also asserts the same logs allow on the next day — the hook's clock, not the run date, decides 'today'. Product code was right: evaluate passes now() to the cap check.",
-      "guard": "test/spend.test.mjs::the cap denies inside the hook's evaluate, not only in capCheck",
+      "guard": "test/spend-clock.test.mjs::the spend suite passes with the clock 400 days past its fixtures (F-165)",
       "class_fix": null,
       "sweep": "Every evaluate() and capCheck() call in test/spend.test.mjs is read by the new detector (all now carry now). The other suites that call evaluate() configure no cap, so the run date does not reach a decision; the full gate on 2026-10-23 had this as its only failure.",
       "sweep_status": "done",
       "status": "fixed",
-      "areas": ["test/spend.test.mjs"],
+      "areas": ["test/spend.test.mjs", "test/spend-clock.test.mjs"],
       "mechanism_gap": "No check tied dated fixtures to a fixed clock; the suite was green on the day it was written and so could not show the dependency.",
       "mechanism_upgrade": "test/spend.test.mjs::every hook or cap call in the spend tests sets its own clock (F-165)",
       "distinct_from": {
         "F-62": "F-62 is a stopwatch deciding pass/fail under load (C-04, a duration); F-165 is a calendar date assumed equal to the run date (C-09), which fails deterministically from the next day."
-      }
+      },
+      "corrections": [
+        {
+          "field": "guard",
+          "from": "test/spend.test.mjs::the cap denies inside the hook's evaluate, not only in capCheck",
+          "why": "The old guard is the test the fix rewrote, so on 0dd328d, where the bug was introduced, the fixed copy already passes and proves nothing. The new guard runs the tree's own spend suite with the clock 400 days ahead: on 0dd328d exactly the F-165 test goes red, at HEAD all pass."
+        }
+      ]
     },
     {
       "id": "F-166",
@@ -5249,7 +5263,7 @@
     {
       "id": "F-167",
       "date": "2026-10-27",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "T0",
       "class": "C-10",
       "title": "The certificate witness drifted from the drill: EXPECTED_MUTANTS stayed 26 and the freshness regex matched only single-letter ids, so a genuinely all-green drill of 38 mutants could not be certified",
@@ -5282,12 +5296,19 @@
       "distinct_from": {
         "F-149": "F-149 made the drill's per-file anchors checkable without running the drill; F-167 makes the drill's mutant count and the witness's id-parsing reach checkable without running the certificate. Same mechanism (a drill property checked only by the drill/cert), different property and different reader.",
         "F-166": "F-166 is the drill's CI time budget not scaling with the mutant count (C-04, a clock); F-167 is the certificate witness's expected count and id regex not tracking the mutant set (C-10, an untested coupling). Both stem from the 26->38 growth but on different readers."
-      }
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "The drill grew past 26 mutants (MUT-AA onward) in 294f391 (M1) while scripts/gate-certificate.mjs kept EXPECTED_MUTANTS = 26 and the one-letter MUT-[A-Z] regex; the drill on main has exactly 26, so the drift began in this range, not before it."
+        }
+      ]
     },
     {
       "id": "F-168",
       "date": "2026-10-27",
-      "introduced_in": "unknown",
+      "introduced_in": "0dd328d",
       "found_by": "review",
       "class": "C-01",
       "title": "costOf reads an empty cache_creation:{} split as an authoritative zero, charging nothing for cache-write tokens the same usage would be billed for without the split key",
@@ -5321,13 +5342,22 @@
           "field": "mechanism_upgrade",
           "from": "test/spend.test.mjs::GAP F-168 S-FN-012 empty cache_creation:{} zeroes the cache-write charge (undercount)",
           "why": "The fix commit rewrote the GAP test to assert the corrected behavior and renamed it (GAP marker dropped), so the detector-upgrade anchor now names the rewritten standing test — the standard GAP-to-fix workflow."
+        },
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/prices.mjs was added in 0dd328d (M2) with costOf trusting any cache_creation object as the full split; main has no src/prices.mjs, so the bug was introduced in this range, not before it."
         }
-      ]
+      ],
+      "answer_failed": {
+        "qid": "C-01.1",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M2: C-01.1 asks what happens when a field is absent, and an empty split object is a field present with nothing in it, which costOf read as an authoritative zero."
+      }
     },
     {
       "id": "F-169",
       "date": "2026-10-27",
-      "introduced_in": "unknown",
+      "introduced_in": "0dd328d",
       "found_by": "review",
       "class": "C-09",
       "title": "The shipped price snapshot carries only a handful of older models, so out of the box sakk cannot price a single current Claude model — every real call fails closed as PRICE_UNKNOWN",
@@ -5362,13 +5392,22 @@
           "field": "evidence",
           "from": "probe: loadPrices({home:<nonexistent>}).path === SHIPPED_PRICES; priceOf(table,'claude-sonnet-4-5-20250929') === null (and for opus-4-5, haiku-5-5, sonnet-5-5); Object.keys(table.models).length <= 6. Pinned by test/spend.test.mjs 'GAP F-169 S-FN-020 ...'. The pricing CODE is correct (null, no guess, fail-closed); the shipped DATA is the gap.",
           "why": "The probe text is unchanged; only the tense and the pin moved. The gap is fixed in this commit, so the evidence now records the as-found count as past and names the rewritten standing test that replaced the GAP test, instead of a test name that no longer exists."
+        },
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "prices/snapshot.json was added in 0dd328d (M2), trimmed to a few older models; main has no prices/snapshot.json, so the bug was introduced in this range, not before it."
         }
-      ]
+      ],
+      "answer_failed": {
+        "qid": "C-09.1",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M2: C-09.1 asks which state a real run reaches, and a real run reaches current models; the snapshot was only ever tried with the old ids the tests used."
+      }
     },
     {
       "id": "F-170",
       "date": "2026-10-27",
-      "introduced_in": "unknown",
+      "introduced_in": "0dd328d",
       "found_by": "review",
       "class": "C-01",
       "title": "A fractional token count passes parseLine finiteNonNeg validation, then throws USAGE_INVALID deep in costOf, and daySpend does not isolate the throw — so `sakk spend` crashes instead of failing closed cleanly",
@@ -5402,13 +5441,22 @@
           "field": "mechanism_upgrade",
           "from": "test/spend.test.mjs::GAP F-170 S-SEC-004 fractional tokens pass parseLine then crash pricing (not isolated)",
           "why": "The fix commit rewrote the GAP test to assert the corrected behavior and renamed it (GAP marker dropped), so the detector-upgrade anchor now names the rewritten standing test — the standard GAP-to-fix workflow."
+        },
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/spend.mjs was added in 0dd328d (M2) with parseLine screening tokens by finiteNonNeg only and daySpend calling costOf unguarded; main has no src/spend.mjs, so the bug was introduced in this range, not before it."
         }
-      ]
+      ],
+      "answer_failed": {
+        "qid": "C-01.2",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M2: C-01.2 asks for a red-first check, and no test fed parseLine a value that passes its screen but breaks costOf, so the gap between the two validators stayed green."
+      }
     },
     {
       "id": "F-171",
       "date": "2026-10-27",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-11",
       "title": "An agent that may run the `sakk` binary can lift its own daily cap (cap off / cap set) and remove its own kill switch (guard uninstall) with no named-human gate — the very controls meant to bind it",
@@ -5442,13 +5490,27 @@
           "field": "mechanism_upgrade",
           "from": "test/kill-switch.test.mjs::GAP J-UAT-016 agent-issued cap off / cap set / guard uninstall are currently allowed",
           "why": "The fix commit rewrote the GAP test to assert that the loosening forms refuse without a person at a terminal and renamed it (GAP marker dropped), so the detector-upgrade anchor now names the rewritten standing test — the standard GAP-to-fix workflow."
+        },
+        {
+          "field": "guard",
+          "from": "test/spend-cli.test.mjs::sakk cap off removes the cap and the hook stops enforcing",
+          "why": "The F-171 fix (fe936ca) made sakk cap off need a person at a terminal and renamed the M2 test to say so; the answer in findings/acks/oss-spend-cli.json C-01.2 that cited the old name gains a revision naming the new one."
+        },
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "guard uninstall came in 294f391 (M1) with no person's confirmation, and the new src/classify.mjs judged a sakk invocation as a plain run; cap set and cap off joined the same ungated path in b5030a6. Main has neither the hook nor guard uninstall, so the bug was introduced in this range, not before it."
         }
-      ]
+      ],
+      "answer_failed": {
+        "qid": "C-11.1",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M1 and M2: C-11.1 asks who can cause each write, and the cap and guard admin commands were never classified by who calls them, so the agent could make the write through the sakk binary."
+      }
     },
     {
       "id": "F-172",
       "date": "2026-10-27",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-08",
       "title": "A halt never reaches the installed hook in a default install: `sakk halt` writes the ledger to a cwd-relative path while the hook reads halt only from config.ledgerPath ?? SAKK_LEDGER_PATH, and no command writes config.ledgerPath — so the kill switch is silently inert",
@@ -5483,18 +5545,27 @@
           "field": "mechanism_upgrade",
           "from": "test/kill-switch.test.mjs::GAP J-UAT-030 sakk halt is silently inert unless the ledger path is wired into the hook",
           "why": "The fix rewrote the GAP test to assert the corrected behavior (init wires the ledger; a halt from any directory stops the hook) and dropped the GAP marker, so the detector-upgrade anchor now names the standing test."
+        },
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/hook.mjs was added in 294f391 (M1) reading a halt only from config.ledgerPath ?? SAKK_LEDGER_PATH, while sakk halt kept the cwd-relative default; main has no hook, so the two rules first failed to meet in this range, not before it."
         }
       ],
       "distinct_from": {
         "F-173": "F-172 is the kill-switch: `sakk halt` writes a cwd-relative ledger while the hook reads halt only from config.ledgerPath ?? SAKK_LEDGER_PATH, so the two never meet and halt is inert. F-173 is the secret-read guard matching the literal argv token while the shell expands a glob/brace/variable to the protected file. Same class (two rules for one target) and same file (src/hook.mjs), but the halt-path divergence and the secret-read expansion blind spot are independent; neither fix touches the other.",
         "F-176": "F-172 is the halt ledger path resolved two ways by the CLI and the hook; F-176 is the shell classifier judging an unresolved `$name` instead of the target the shell substitutes. Both touch src/hook.mjs, but fixing the ledger-path rule does nothing for variables, and vice versa.",
         "F-186": "F-186 is a read through a symlink to a secret file; F-172 was the halt written to one ledger path and read from another (fixed)."
+      },
+      "answer_failed": {
+        "qid": "C-08.1",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M1: C-08.1 asks for one name per thing, and the ledger had two (the CLI's cwd-relative default and the hook's config path) that the answer never compared."
       }
     },
     {
       "id": "F-173",
       "date": "2026-10-27",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-08",
       "title": "The secret guard matches the literal argv token against the secret-name regex, so a shell expansion that resolves to the secret at run time — a glob (cat .e*), a brace (cat .e{nv,xample}) or a variable (f=.env; cat $f) — is classified as a read of a harmless name and allowed, while the same file read by its spelled-out name is denied",
@@ -5529,6 +5600,11 @@
           "field": "sweep",
           "from": "Not swept — the fix (whether the classifier should expand globs/braces/variables against the real cwd before matching, or conservatively treat any word containing glob/brace/variable/command-substitution metacharacters near a secret-shaped stem as a secret read and deny, or refuse to classify a command it cannot fully resolve) is a pending product decision. Once decided, sweep every reader the guard classifies (cat, grep, cp, head, tail, less, dd, and any unlisted reader per F-155) for the same expansion blind spot, and sweep the write/exec classifications for the symmetric case (a glob/variable that expands to a protected write target or an exec of an expanded path).",
           "why": "The sweep the old text deferred to a product decision ran once D5 was decided; the new text records what it found, including F-176."
+        },
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/classify.mjs was added in 294f391 (M1) matching each command word as written against isSecretPath, with no stated limit for words the shell expands; main has no src/classify.mjs, so the bug was introduced in this range, not before it."
         }
       ],
       "distinct_from": {
@@ -5538,12 +5614,16 @@
         "F-183": "F-183 is a name written out in another case; F-173 is a name the shell computes (glob, brace, variable) — kept as a documented limit by D5.",
         "F-184": "F-184 is a git force flag spelled in an unlisted form; F-173 is a secret read whose file name the shell computes (D5 limit).",
         "F-186": "F-186 is a file system link whose name hides the secret; F-173 is a shell expansion that computes the secret's name (D5 limit)."
+      },
+      "answer_failed": {
+        "qid": "C-08.1",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M1: C-08.1 asks whether a thing can be reached by two names, and a glob, brace or variable is a second name for a secret file; the answer covered links and case aliases only."
       }
     },
     {
       "id": "F-174",
       "date": "2026-10-27",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-01",
       "title": "On a Claude Code too old to honor onFailure, `sakk guard install claude-code` writes a hook that fails OPEN and tells the operator nothing: the install prints success, the onFailure line is simply omitted, and neither the CLI output nor `sakk doctor` warns that a hook which fails to run will let the call through",
@@ -5573,8 +5653,17 @@
           "field": "mechanism_upgrade",
           "from": "test/guard.test.mjs::GAP G-INS-006 install on an old Claude Code falls open with no warning to the operator",
           "why": "The fix commit rewrote the GAP test to assert the corrected warn-the-operator behavior and renamed it (GAP marker dropped), so the detector-upgrade anchor now names the rewritten standing test — the standard GAP-to-fix workflow."
+        },
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/guard-install.mjs was added in 294f391 (M1) with withGuard leaving onFailure off on an old Claude Code and the CLI saying nothing; main has no src/guard-install.mjs, so the bug was introduced in this range, not before it."
         }
-      ]
+      ],
+      "answer_failed": {
+        "qid": "C-01.1",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M1: C-01.1 asks that absence refuse or be declared, and the fail-open install was encoded as an omitted onFailure line with no declaration at all."
+      }
     },
     {
       "id": "F-175",
@@ -5622,7 +5711,7 @@
     {
       "id": "F-176",
       "date": "2026-10-28",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-08",
       "title": "A delete, write or flag held in a shell variable is judged by the bare `$name`, so `f=~/.sakk/config.json; rm $f`, `d=~; rm -rf $d` and `o=--force; git push $o` are allowed while the same command written out is denied — the agent can remove its own cap and the guard state the D4 confirmation rests on",
@@ -5662,13 +5751,22 @@
           "field": "mechanism_upgrade",
           "from": "test/guard.test.mjs::GAP G-STATE-001 a guard-state, outside-repo or destructive-git target held in a shell variable is allowed",
           "why": "the GAP test that pinned the allow was rewritten into the detector that enforces ask-never-allow when D11 was implemented; same file and world, the name changed with the flipped assertions."
+        },
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/classify.mjs was added in 294f391 (M1) with shellActions taking a $name argument or redirect target as a literal path or flag; main has no src/classify.mjs, so the bug was introduced in this range, not before it."
         }
-      ]
+      ],
+      "answer_failed": {
+        "qid": "C-08.1",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M1: C-08.1 asks for one name per thing, and a shell variable is a second name for a path or flag; the A-line answer closed it with the F-176 fix itself, after the bug had shipped."
+      }
     },
     {
       "id": "F-177",
       "date": "2026-10-28",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-11",
       "title": "An agent the guard binds can lift another agent's halt, clear the books or break the ledger lock (`sakk resume|reconcile|unlock --by <any name>`), and can write the default in-repo ledger directly — the hook judges neither as the ledger write it is",
@@ -5705,8 +5803,17 @@
           "field": "mechanism_upgrade",
           "from": "test/kill-switch.test.mjs::GAP F-177 the hook lets an agent run the commands that lift a halt or clear the books",
           "why": "The GAP test documented the hole and was replaced by the deny test of the same five command forms when D11 closed it, so the upgrade now names the check that actually runs in the suite."
+        },
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/classify.mjs was added in 294f391 (M1) letting sakk resume, reconcile and unlock fall through to shell.run, with no guard-state scope naming the ledger; main has no src/classify.mjs, so the bug was introduced in this range, not before it."
         }
-      ]
+      ],
+      "answer_failed": {
+        "qid": "C-11.1",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M1: C-11.1 asks who can cause each write, and resume, reconcile and unlock were left unclassified because the answer reviewed only the cap and guard commands F-171 named."
+      }
     },
     {
       "id": "F-178",
@@ -5740,7 +5847,7 @@
     {
       "id": "F-179",
       "date": "2026-10-28",
-      "introduced_in": "unknown",
+      "introduced_in": "0dd328d",
       "found_by": "review",
       "class": "C-02",
       "title": "The cache_creation split can still lower the bill: parseLine reads a malformed split field as 0, and costOf honours a split that names only part of the cache writes",
@@ -5768,6 +5875,17 @@
       "distinct_from": {
         "F-168": "F-168 was the empty split priced at zero; F-179 is the rule that fix did not state: a split naming some but not all writes still undercounted, and a malformed split field read as 0.",
         "F-170": "F-170 was a fractional top-level count crashing pricing unisolated; F-179 is the nested split fields that screen never reached, which were coerced to 0 rather than crashing."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/prices.mjs and src/spend.mjs were added in 0dd328d (M2) with costOf honouring any split and parseLine reading a bad split field as 0; the F-168 fix narrowed the trust but kept partial splits. Main has neither file, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-02.2",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M2: C-02.2 asks where else the same rule applies, and the F-168 and F-170 fixes each closed one face of the split rule without asking about the other split fields and partial splits."
       }
     },
     {
@@ -5833,6 +5951,10 @@
         "F-171": "F-171 was the agent lifting its own cap or removing its own guard through sakk cap and guard; F-181 is a third subcommand, init, re-pointing the ledger so another agent's halt stops applying, which the F-171 list did not reach.",
         "F-177": "F-177 is resume, reconcile and unlock trusting a self-declared --by and the in-repo default ledger, which needs a decision on where the ledger lives; F-181 is init re-pointing the hook's ledger, fixed here by judging it as the config write it makes.",
         "F-185": "F-185 is the Sakk CLI started through a launcher, so the gate never sees the sakk name; F-181 was init missing from the subcommands the gate judged (fixed)."
+      },
+      "answer_failed": {
+        "qid": "C-02.1",
+        "why": "C-02.1 covered the payload fields the hook scans; the ledger path the hook reads halts from was configuration, not a scanned field, so sakk init could re-point it and the coverage test never saw that input."
       }
     },
     {
@@ -6012,7 +6134,7 @@
     {
       "id": "F-188",
       "date": "2026-10-28",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-05",
       "title": "The requirement says the agent may not rewrite its own hook configuration; the shipped rules only ask",
@@ -6036,7 +6158,23 @@
       "mechanism_upgrade": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)",
       "distinct_from": {},
       "instance_fix": "this commit",
-      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
+      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)",
+      "corrections": [
+        {
+          "field": "guard",
+          "from": "test/guard.test.mjs::writes to agent hook configs are asked",
+          "why": "The F-188 fix (ddc7df9) turned the agent-config ask into a deny and renamed the M1 test to say so; the answer in findings/acks/oss-m1-guard.json C-10.2 that cited the old name gains a revision naming the new one."
+        },
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "policies/guard-default.json shipped the ask rule for agent hook configs in 294f391 (M1). The spec on main already wrote ask (row 9), but main shipped no policy and no hook, so the behaviour the requirement forbids first shipped in this range."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-05.1",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M1: C-05.1 asks that every statement be read back against the code, and the requirement's deny was never read against the shipped policy, which only asks."
+      }
     },
     {
       "id": "F-189",
@@ -6207,7 +6345,7 @@
     {
       "id": "F-195",
       "date": "2026-10-28",
-      "introduced_in": "unknown",
+      "introduced_in": "b821cf9",
       "found_by": "review",
       "class": "C-05",
       "title": "The 'read-only' console writes the spend index on a GET, sends no Cache-Control, and checks Origin only on the halt route",
@@ -6233,6 +6371,17 @@
       "mechanism_upgrade": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write",
       "distinct_from": {
         "F-175": "F-175 is a prices command the docs and hints name but nobody built; F-195 is the console's read-only claim and its response headers, which the console does not keep."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/console.mjs was added in b821cf9 (M4) with the try route refreshing the spend index, no Cache-Control, and Origin checked only off GET; main has no src/console.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-05.1",
+        "why": "The answer was written for the integration after this code had landed and looked only at the new changes, not back at M4: C-05.1 asks that every statement be read back against the code, and the console's 'read-only' claim was never read against a GET that writes the index."
       }
     },
     {
@@ -6413,7 +6562,7 @@
     {
       "id": "F-202",
       "date": "2026-10-29",
-      "introduced_in": "unknown",
+      "introduced_in": "7d0ea44",
       "found_by": "review",
       "class": "C-02",
       "title": "The secret scan reads a hand-picked field list, so an MCP argument, an unknown tool, a path or a pattern carries a secret through unscanned",
@@ -6439,12 +6588,23 @@
       "mechanism_upgrade": "test/hook-scan-coverage.test.mjs::the checklist covers every tool the installed matchers deliver (enumerated from the source)",
       "distinct_from": {
         "F-194": "F-194 is the outbound face: a decision record already written is redacted in one field only when logged, shown and exported. F-202 is the inbound face: payload fields are never scanned at all, so the deny never happens. Different seam and different fix; closing one does not close the other."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/hook.mjs gained its secret scan, reading the content, command and patch fields only, in 7d0ea44 (M3); main has no src/hook.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-02.2",
+        "why": "The M3 answer (oss-m3-secret-guard.json, carried into this branch's file) named the three surfaces it knew — a write's content, a command's text, an apply_patch body — and its guard tested those three, so the answer was itself the hand list; no question asked what else a payload can carry."
       }
     },
     {
       "id": "F-203",
       "date": "2026-10-29",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-02",
       "title": "The classifier recognises a secret read only as a reader command taking the literal filename as a plain operand; every equivalent reading falls through to allow",
@@ -6471,12 +6631,23 @@
       "distinct_from": {
         "F-185": "F-185 is the guard recognising Sakk's own CLI only by the name sakk, so a launcher bypasses the control-loosening deny; F-203 is the secret-read recognition keying on one command grammar. Different rule, different bypass surface.",
         "F-194": "F-194 is redaction of secrets in the decision records after a verdict exists (log, console, exports); F-203 is the classifier failing to produce the secret.read verdict at all. One is output hygiene, the other is detection."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/classify.mjs was added with the two narrow secret.read sites in 294f391 (M1); main has no src/classify.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-02.1",
+        "why": "The M1 answer stated the rule as 'a named action only when its form is recognised', and its guard measured destructive forms only; secret.read was left to the recognised reader forms, and no test spelt a secret read any other way."
       }
     },
     {
       "id": "F-204",
       "date": "2026-10-29",
-      "introduced_in": "unknown",
+      "introduced_in": "0dd328d",
       "found_by": "review",
       "class": "C-01",
       "title": "A spend-log directory that cannot be listed is silently skipped, so the daily cap reads $0 and fails open",
@@ -6502,12 +6673,23 @@
       "mechanism_upgrade": "test/spend.test.mjs::chmod 000 on a log subdirectory is a typed deny, not $0",
       "distinct_from": {
         "F-180": "F-180 is a pricing omission: server-tool charges are not in the price model, so even a perfect walk undercounts. F-204 is the walk itself failing silently — a directory the counter cannot list read as zero spend. Different layer: price coverage vs the log walk's error channel."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/spend.mjs was added with the silent catch in listLogs in 0dd328d (M2); main has no src/spend.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-01.2",
+        "why": "The M2 answer said each input is removed and the outcome checked, but its tests removed lines and files, never the right to list a directory, so the silent catch in listLogs that turned an unlistable directory into an empty day was never run."
       }
     },
     {
       "id": "F-205",
       "date": "2026-10-29",
-      "introduced_in": "unknown",
+      "introduced_in": "0dd328d",
       "found_by": "review",
       "class": "C-07",
       "title": "A future-dated log line is booked to its own future day, moving spend out of today's cap window",
@@ -6534,12 +6716,23 @@
       "distinct_from": {
         "F-191": "F-191 is where the logs are found: the pipeline resolves the log root from the agent's own environment, so a moved folder reads $0. F-205 is when a line counts: a timestamp inside the line chose the cap window. Different trusted input — the directory path from env vs the time field the line carries.",
         "F-210": "F-205 fixed the FUTURE direction: ts > now books to the observation day, flagged. F-210 is the PAST direction this entry’s sweep ruled no-follow-up-needed; the 2026-10-29 adversarial review contested that ruling (the already-counted-day justification fails on a fresh install or past the index horizon), so the past direction is now its own open finding awaiting the owner’s booking ruling."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/spend.mjs was added with updateIndex booking each call to its own claimed day in 0dd328d (M2); main has no src/spend.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-07.1",
+        "why": "The M2 answer treated the agent-written log lines as untrusted and typed each field, but a well-typed timestamp was still trusted to choose the day it is booked to; the answer bounded the shape of the input, not what its value is allowed to decide."
       }
     },
     {
       "id": "F-206",
       "date": "2026-10-29",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-01",
       "title": "After the host tool is upgraded or reinstalled, the guard hook entry can sit stale, degraded or in another spelling — and `sakk guard install` reads it as already protected, so the repair path is a no-op and the fail-open state persists",
@@ -6565,6 +6758,17 @@
       "mechanism_upgrade": "test/guard.test.mjs::R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)",
       "distinct_from": {
         "F-174": "F-174 is the missing WARNING on a degraded fresh install: old Claude Code forces a fail-open hook and nobody is told. F-206 is the REPAIR path: once the host is new enough, reinstalling must actually fix the entry — before this fix, install read the degraded entry as already protected and changed nothing, so even an operator who followed the F-174 warning and reinstalled stayed fail-open. Different seam (warn vs converge); the F-174 fix left this one open."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/guard-install.mjs was added with withGuard and the one-spelling ours() in 294f391 (M1); main has no src/guard-install.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-01.1",
+        "why": "The M1 answer covered every absent input of the hook at run time; install's reading of an existing entry was not treated as an input at all, so 'an entry of ours is present' was taken to mean protected, whether the entry was stale, degraded or spelt another way."
       }
     },
     {
@@ -6596,6 +6800,10 @@
       "mechanism_upgrade": "test/spend.test.mjs::chmod 000 on the log root PARENT is a typed deny, not \"no logs\"",
       "distinct_from": {
         "F-191": "F-191 is WHERE the root path comes from: the agent's own environment chooses it, so a moved folder legitimately resolves elsewhere (C-07, open). F-208 is HOW a failed read of whatever root was chosen is reported: as $0 instead of a deny. Fixing F-208 does not decide F-191's trust question."
+      },
+      "answer_failed": {
+        "qid": "C-01.1",
+        "why": "C-01.1 made an unreadable subdirectory inside the log root fail closed, but stopped at the walk: an unreachable root itself still took the no-logs-yet branch, and no red-first case removed the root."
       }
     },
     {
@@ -6627,6 +6835,10 @@
       "mechanism_upgrade": "test/kill-switch.test.mjs::resume with nothing halted never enters the write path (F-209)",
       "distinct_from": {
         "F-49": "F-49 is unlock erasing a live halt through the manual override path — a lost update past the mutual exclusion. F-209 is resume's confirmation gate keyed to a read taken OUTSIDE the lock: nothing is lost or overwritten; the wrong thing is that the write path (which itself locks correctly) was reachable with no person in the loop. Fixing F-209 does not touch F-49's override semantics."
+      },
+      "answer_failed": {
+        "qid": "C-11.1",
+        "why": "C-11.1 settled who may lift a halt (a person at a terminal), not when the decision is taken: the read that decided nothing was halted ran outside the lock, so a halt landing in between was lifted."
       }
     },
     {
@@ -6660,7 +6872,11 @@
         "F-205": "F-205 pinned the FUTURE direction (ts > now books to the observation day, flagged). F-210 contests F-205's sweep ruling for the PAST direction, which F-205 explicitly left as 'no follow-up needed' — this entry is that follow-up, filed because the justification fails on a fresh install or past the index horizon."
       },
       "instance_fix": "this commit (owner ruling 2026-10-29: b+baseline): updateIndex seals a baseline (SAKK_HOME/spend/baseline.json) on its first whole scan — everything already on disk keeps its claimed day (amnesty); after sealing, a line claiming a day before today that the claimed day's bucket does not already cover books to the observation day with backdated: true (sticky through mergeCall, like future). covers() requires the old bucket's usage to meet every field, so a rewrite re-read stays on its claimed day while a key-collision with inflated usage cannot add money to the past. daySpend counts backdated; sakk spend and the SPEND_CAP_REACHED reason report it.",
-      "guard": "test/spend.test.mjs::a forged old-dated line appearing after the baseline lands in today, flagged, and hits the cap"
+      "guard": "test/spend.test.mjs::a forged old-dated line appearing after the baseline lands in today, flagged, and hits the cap",
+      "answer_failed": {
+        "qid": "C-07.1",
+        "why": "C-07.1 bounded agent-written future timestamps but treated a past date as honest history, so a line stamped into an already-closed day booked outside every cap window still open."
+      }
     },
     {
       "id": "F-211",
@@ -6692,6 +6908,212 @@
       "distinct_from": {
         "F-210": "F-210 is a field inside a line choosing WHICH day's window the money lands in once read. F-211 is metadata around the file choosing WHETHER the guard reads it at all — it defeats any booking rule, including F-210's fix, by starving it of input.",
         "F-191": "F-191 is the agent's environment choosing where the log ROOT is. F-211 is a file inside an honest root hiding from the scan via its own mtime. Fixing either leaves the other."
+      }
+    },
+    {
+      "id": "F-212",
+      "date": "2026-10-29",
+      "introduced_in": "efc4050",
+      "found_by": "human",
+      "class": "C-09",
+      "title": "The range check read a stacked or merged branch as one straight line with one answers file",
+      "symptom": "PR #27 (the open-source v2 fixes, a stack of #19 to #26 with four lines developed in parallel and merged) failed findings-check --range with 301 problems although each part had passed its own pull request: every parent's own answers file was charged as a rename of this branch's file, and parallel lines were compared with whichever commit rev-list printed before them.",
+      "evidence": "CI on PR #27; reproduced locally on 97d00e9 and on the merge commit CI checks out; the history-aware checker leaves 2 problems there, both guards that no longer resolve after test renames",
+      "direct_cause": "The R2 walk compared each commit with the commit printed before it, and every answers file added in the range was treated as this branch's file under an earlier name.",
+      "why": [
+        "Each earlier fix (F-72, F-128, F-134) covered the one history shape that had failed, not the history the check is given.",
+        "The rename rule (F-134) had no way to tell another live branch's file from this branch's old one, so a stack read as renames."
+      ],
+      "root_cause": "The check assumed a straight history with one answers file, a state real branches do not keep.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: files are those that differ from the base at the tip and since the fork point; every commit is compared with every parent; an answers file whose branch still exists is inherited (kept intact, guards resolve at the tip), one whose branch is gone is a rename; base answers files are append-only; every diff runs without rename detection",
+      "class_fix": "findings/reviews/2026-10-29-history-shape.md",
+      "guard": "test/range-topology.test.mjs::a stack merged into main as one pull request: the parents' answers files are inherited, not carried forward",
+      "sweep": "The same diffs in --staged and in findings-brief also ran with rename detection, so a moved file was never asked about its old path; they now run without it (test: moving a file asks about its old path too). The CI merge commit, a parent kept only on the remote, a parent squash- or rebase-merged first, and a parent whose branch is gone are each a test in test/range-topology.test.mjs.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/findings-check.mjs", "scripts/findings-brief.mjs"],
+      "mechanism_gap": "The C-09 detectors try the shipped hook and a relative output path; nothing built the history shapes the range check meets.",
+      "mechanism_upgrade": "test/range-topology.test.mjs::a stack merged into main as one pull request: the parents' answers files are inherited, not carried forward",
+      "distinct_from": {
+        "F-128": "F-128 is which base CI compares a stacked branch with; F-212 is how the commits between that base and the tip are walked once the base is right.",
+        "F-134": "F-134 is a branch renamed under one author; F-212 is other branches' answers files arriving through a merge, which the F-134 rule misread as renames."
+      }
+    },
+    {
+      "id": "F-213",
+      "date": "2026-10-29",
+      "introduced_in": "unknown",
+      "found_by": "human",
+      "class": "C-10",
+      "title": "A branch could be pushed with only the targeted tests run; the full suite and the range check before a push were rule text",
+      "symptom": "On 2026-10-29 a commit was pushed after running only the tests it touched; CI then found what the full suite and the range check would have found locally, and the stacked PR #27 reached review before its range check had ever run.",
+      "evidence": "session record 2026-10-29; the rule 'full suite once per commit' lived only in working notes",
+      "direct_cause": "No hook ran anything before git push.",
+      "why": [
+        "Targeted regression during a fix is the working rule, and the step back to the full suite before pushing depended on memory.",
+        "The range check needs the pull request's base, which pre-commit cannot see, so it only ever ran in CI."
+      ],
+      "root_cause": "A required step existed only as rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: scripts/hooks/pre-push refuses a push of anything but a clean HEAD, runs the range check against the pull request's base (SAKK_PR_BASE, then gh, then main, named in its output) and the full suite once per tree; it has no switch to skip either",
+      "class_fix": "findings/reviews/2026-10-29-history-shape.md",
+      "guard": "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails",
+      "sweep": "install.mjs makes the new hook executable with the others; --no-verify on push is already refused by the edit hook (F-140) and CI still runs the range check.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/hooks/"],
+      "mechanism_gap": "The C-10 detectors check that the commit gate passes exit codes through and that audit steps are wired; no hook ran before a push.",
+      "mechanism_upgrade": "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails"
+    },
+    {
+      "id": "F-214",
+      "date": "2026-10-29",
+      "introduced_in": "9fcf205",
+      "found_by": "human",
+      "class": "C-09",
+      "title": "The pre-push hook ran the full suite with the GIT_ variables git exports to a hook, so test fixtures wrote into the real repository",
+      "symptom": "On 2026-10-29 a push from a linked worktree ran npm test from the new pre-push hook; afterwards the shared repository had core.bare=true, a test hooksPath, a test user, diff.relative and a replace ref, the branch had two extra \"base\" commits, and a second push that no longer ran any hook sent one of them to the remote. The user restored the repository by hand.",
+      "evidence": "session record 2026-10-29 16:31; probe: git exports GIT_DIR, GIT_EXEC_PATH and GIT_PREFIX to pre-push from a linked worktree, only GIT_EXEC_PATH and GIT_PREFIX from the main checkout",
+      "direct_cause": "spawnSync(\"npm\", [\"test\"]) in scripts/hooks/pre-push.mjs passed the hook environment on; the secret-scan and evidence-bundle fixtures run git in throwaway repositories without removing GIT_DIR, so their git acted on the repository being pushed.",
+      "why": [
+        "The hook tests replaced the suite with a stub that never looked at its environment, and pushed only from the main checkout, where git does not export GIT_DIR.",
+        "Removing GIT_ variables before a fixture runs git was a per-file habit (findings-proof did it, the fixture helpers did not), not something every test run got."
+      ],
+      "root_cause": "An environment was assumed, never tried: the suite was only ever run from a hook with a stand-in, and only from the main checkout.",
+      "dt": ["DT-STATE", "DT-TOOL"],
+      "rc": ["RC-01", "RC-06"],
+      "es": ["ES-03"],
+      "answer_failed": {
+        "qid": "C-09.2",
+        "why": "The answer said the real hook was exercised, but its tests ran a stub suite and pushed only from the main checkout; from a linked worktree, where it really ran, git exports GIT_DIR and the real suite wrote into the repository."
+      },
+      "instance_fix": "this commit: scripts/hooks/pre-push.mjs starts the range check and npm test with every GIT_ variable removed (CHILD_ENV)",
+      "class_fix": "test/clean-git-env.mjs is loaded with --import by every node --test launch in package.json and the git hooks, and deletes every GIT_ variable before the runner starts a test file; a meta-test refuses a launch without it",
+      "guard": "test/pre-push.test.mjs::a push from a linked worktree: the suite gets no GIT_ variables, so a fixture cannot write into the repository (F-214)",
+      "sweep": "Every node --test launch was listed: package.json test and test:eval, pre-commit, commit-msg and pre-push now load the preload; scripts/findings-proof.mjs already strips GIT_ itself; scripts/gate-certificate.mjs and scripts/audit.mjs are started from a person's or CI's shell, not from a hook, so they inherit no GIT_DIR.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/hooks/", "test/", "package.json"],
+      "mechanism_gap": "The C-09 detectors covered a stranger's --out path, the hook as shipped and history shapes; none ran a hook from a linked worktree or checked what environment a hook hands the suite.",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::every node --test launch in package.json and the hooks loads test/clean-git-env.mjs first",
+      "distinct_from": {
+        "F-114": "F-114 is leftover ledger and release nits (lock errors, temp files, tool integrity, CI running twice); F-214 is the environment a git hook hands the test suite, which none of those touch.",
+        "F-123": "F-123 is which Sakk files a copied hook expects to exist; F-214 is which environment a hook hands the checks it starts. The pre-commit preload adds test/clean-git-env.mjs to the files F-123 lists, and F-123 stays open for that."
+      }
+    },
+    {
+      "id": "F-215",
+      "date": "2026-10-29",
+      "introduced_in": "294f391",
+      "found_by": "T0",
+      "class": "C-03",
+      "title": "The bounded-spawn detector matched only the literal `node --test`, so a launch with another --import first went unchecked and the test passed on zero launches",
+      "symptom": "Merging the history-aware range work (PR #29) into the v2 fixes put `--import ./test/clean-git-env.mjs` before `--test` in every launch. The C-04 detector 'every node --test run loads the bound' then matched no launch at all and stayed green, so a launch without the timeout preload would have passed.",
+      "evidence": "trial merge of origin/evolve/history-aware-range into oss/v2-fixes, 2026-10-29: with the old pattern the detector collected 0 launches across package.json, scripts/hooks and .github/workflows and passed; deleting --import ./test/bounded-spawn.mjs from npm test left it green.",
+      "direct_cause": "test/bounded-spawn.test.mjs split each script on && and newlines and kept only parts matching /\\bnode --test\\b/, the one form present when it was written; it had no floor on how many launches it found.",
+      "why": [
+        "The pattern was written from the launch form that existed in M1, not from what a launch is.",
+        "An empty list of launches gave an empty list of missing preloads, which the test reads as a pass."
+      ],
+      "root_cause": "A check that cannot fail for the reason it names: with no floor, a detector that finds nothing to check passes.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-03.1",
+        "why": "The answer for oss/v2-fixes said every new check must go red for its named reason; this detector, carried in the same range, could not go red once the launch form changed, because it found no launches and had no floor."
+      },
+      "instance_fix": "this commit (the merge of PR #29): a launch is any `node … --test …` up to the next shell separator, whatever flags come first, and the test refuses when it finds fewer than three launches",
+      "class_fix": "test/claims-are-checked.test.mjs collects launches the same way and also asserts a floor; the C-03 detectors list gains the bounded-spawn test",
+      "guard": "test/bounded-spawn-detector.test.mjs::the bounded-spawn detector sees a launch with another --import first (F-215)",
+      "sweep": "Every detector that scans package.json, the hooks or the workflows for node --test was listed: bounded-spawn (fixed here) and claims-are-checked testLaunches (already a launch matcher with a floor of 3). No other detector matches a literal command form.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["test/bounded-spawn.test.mjs", "test/bounded-spawn-detector.test.mjs"],
+      "mechanism_gap": "The C-03 detectors plant a bug and expect red for codes, drill anchors and scorer rules; none required a scan-based detector to find something before it may pass.",
+      "mechanism_upgrade": "test/bounded-spawn.test.mjs::every node --test run loads the bound, whatever flags come first (F-215)",
+      "distinct_from": {
+        "F-200": "F-200 is the emittable-code pattern in claims-are-checked missing source forms of refusal codes, deferred to V2; F-215 is the bounded-spawn launch pattern missing a command form, fixed here with a floor. Same shape, different detector and file."
+      },
+      "corrections": [
+        {
+          "field": "guard",
+          "from": "test/bounded-spawn.test.mjs::every node --test run loads the bound, whatever flags come first (F-215)",
+          "why": "The old guard is the detector the fix rewrote, so on 294f391 the fixed copy already passes and proves nothing. The new guard runs the tree's own detector on a package.json whose launches put another --import first and lack the bound: on 294f391 it finds no launch and stays green (red guard), at HEAD it refuses."
+        }
+      ]
+    },
+    {
+      "id": "F-216",
+      "date": "2026-10-29",
+      "introduced_in": "9fcf205",
+      "found_by": "T0",
+      "class": "C-02",
+      "title": "The range-topology test copied the gate's files from its own two-file list, so on a branch whose checker loads src/classify.mjs it could not start the checker",
+      "symptom": "After PR #29 was merged into oss/v2-fixes, every case in test/range-topology.test.mjs failed with \"Cannot find module …/src/classify.mjs\": the fixture copied only scripts/findings-check.mjs and scripts/findings-lib.mjs, and the checker on this line imports src/classify.mjs too.",
+      "evidence": "test/range-topology.test.mjs, merge of origin/evolve/history-aware-range into oss/v2-fixes, 2026-10-29: every case red with ERR_MODULE_NOT_FOUND for src/classify.mjs",
+      "direct_cause": "The new test's fixture wrote the gate's files out by hand instead of reading scripts/gate-files.json.",
+      "why": [
+        "PR #29 was built on a base without scripts/gate-files.json, so the test had no list to read and wrote its own.",
+        "The F-144 detector only checked that CI reads the list; it never looked for a hand-written copy in test or script files, so the merge brought one in unseen."
+      ],
+      "root_cause": "A list written in one place stood in for the rule 'the files the gate runs from' again, and the detector for that rule watched one file instead of every place that copies the gate.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
+      "answer_failed": {
+        "qid": "C-02.1",
+        "why": "The C-02.1 answers on both lines covered history shapes and payload fields; neither asked where else the gate's own files are listed, so the fixture's two-file list passed both."
+      },
+      "instance_fix": "this commit: test/range-topology.test.mjs copies the files scripts/gate-files.json lists (falling back to the two files only on a base without the list)",
+      "class_fix": null,
+      "guard": "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)",
+      "sweep": "Searched test/, scripts/ and eval/__tests__ for any array naming both findings-check.mjs and findings-lib.mjs: only test/range-topology.test.mjs had one; test/self-evolution.test.mjs and the CI base-checker step already read gate-files.json.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["test/range-topology.test.mjs", "test/self-evolution.test.mjs"],
+      "mechanism_gap": "The F-144 detector asserted only that ci.yml reads the list; a hand-written copy of the gate's files in any test or script was not looked for.",
+      "mechanism_upgrade": "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)",
+      "distinct_from": {
+        "F-144": "F-144 is the first hand-written gate list and added the shared list; F-216 is a copy that arrived later by a merge from a line without that list, and the detector now scans every test and script file for one."
+      }
+    },
+    {
+      "id": "F-217",
+      "date": "2026-10-29",
+      "introduced_in": "d056cb9",
+      "found_by": "T0",
+      "class": "C-09",
+      "title": "The proof ran every guard on the pull request's base, so a bug introduced and fixed in the same range was never shown red where it existed",
+      "symptom": "Integrating the v2 fixes into main, every finding introduced inside the range had its guard run on origin/main, where the code under test did not exist yet. The proof could only say \"cannot load before\" and accepted that as weak, so two guards that are the fixed test itself (F-165, F-215) went through although they pass on the commit that introduced the bug.",
+      "evidence": "node scripts/findings-proof.mjs --range origin/main on oss/v2-fixes, 2026-10-29: run on the commit named in introduced_in, the F-165 and F-215 guards already pass before the fix; run on origin/main they only failed to load and were accepted.",
+      "direct_cause": "scripts/findings-proof.mjs built its \"before\" tree from the base for every finding, whatever introduced_in said.",
+      "why": [
+        "The proof was written when every finding fixed a bug that already existed on main, so the base was the only \"before\" there was.",
+        "A stacked or integration range carries its own bugs and fixes; for those the base is a state where the bug never existed, and nothing tried that other state.",
+        "\"Cannot load before\" was accepted for in-range findings as the best the base could show, which hid that the commit that introduced the bug was available to run on."
+      ],
+      "root_cause": "The proof assumed the base is where every bug lived; for a bug born inside the range the state that matters, the introducing commit, was never tried.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: findings-proof runs each guard on the commit introduced_in names when that commit is in the range, and on the base otherwise, and says which in its output; the 14 in-range findings that said unknown now name their commit, and the F-165 and F-215 guards were replaced by tests that fail there",
+      "class_fix": "findings/reviews/2026-10-29-history-shape.md",
+      "guard": "test/self-evolution-cli.test.mjs::F-217: a bug introduced and fixed in the range is proven on the commit that introduced it",
+      "sweep": "Every place that picks a \"before\" state for a finding was listed: findings-proof (fixed here), and findings-check --range, which compares ledgers and answers, not code, so the base is the right before for it. CI's base-checker step runs only findings-check. The pre-push hook calls the same two scripts.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/findings-proof.mjs", "test/self-evolution-cli.test.mjs"],
+      "mechanism_gap": "The C-09 detectors try other environments for hooks, paths and drills; none tried a range whose bug was introduced inside it.",
+      "mechanism_upgrade": "test/self-evolution-cli.test.mjs::F-217: a guard that passes where the bug was introduced is still refused",
+      "distinct_from": {
+        "F-139": "F-139 added the proof that a guard fails before and passes after; F-217 is which tree \"before\" means when the bug was born inside the range.",
+        "F-212": "F-212 is the range check reading answers across a stack; F-217 is the proof choosing the tree to run a guard on."
       }
     }
   ]

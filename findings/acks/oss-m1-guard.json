@@ -118,7 +118,14 @@
     },
     "C-10.2": {
       "answer": "Routes are listed in the spec's adversary table: other agents get their own installed hook, a session started elsewhere is caught by the doctor's start-folder check, and @-mentions and agents without hooks are stated ceilings; the hook's own config files are asked before any write.",
-      "guard": "test/guard.test.mjs::writes to agent hook configs are asked"
+      "guard": "test/guard.test.mjs::writes to agent hook configs are asked",
+      "revisions": [
+        {
+          "finding": "F-188",
+          "answer": "The hook's own config files, project or user level, are now denied rather than asked: an agent write or delete to them is refused outright, and the other routes in the spec's adversary table are unchanged.",
+          "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
+        }
+      ]
     },
     "C-11.1": {
       "answer": "An allow from the hook is never written as allow to the agent (it stays silent), so a Sakk allow cannot widen Claude Code's own permissions; each decision line says which check produced it (halt, cap, rule id), so no line means more than the check that wrote it.",

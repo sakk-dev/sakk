@@ -85,6 +85,18 @@
     "C-10.2": {
       "answer": "绕路问题逐条封：保护区判定对所有写入工具生效（Write、Edit、Bash、MCP 任何携带内容的调用都过同一判定），不是只拦某个工具名；未解析变量展开一律 ask（F-176）在规范化之后判，换一种拼法也落到同一条路径；console 的 Origin 在 GET 和 Stop 两条路由都查，不留只查一条的侧门。",
       "guard": "none: 工具乘字段清单用例与双路由 Origin 用例随 F-202/F-195 修复红先行落地，建成前没有既有测试枚举全部路由"
+    },
+    "C-13.1": {
+      "answer": "The guard-resolution rule was measured only on the side it must catch (a guard naming a test that does not exist); closing the J-UAT-016 gap was the first real input from the other side, a guard a revision legitimately superseded, and the rule refused it (F-178). The change is measured on both sides in one test: a renamed gap test still fails while no finding records the rename, fails when the correction sits on a finding the revision does not name, and fails when the current guard itself is missing; it passes only when the superseding revision's finding carries a correction whose from is exactly the old guard with a 20-character why — the same correction the ledger already demands when a mechanism_upgrade changes.",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    },
+    "C-16.1": {
+      "answer": "No, not inside this branch: the writer of R-23, R-24 and the R-10/R-12/R-17/R-22 extensions (and of the F-178 checker change) is the same model that wrote the fixes they cite. The independent judge comes at the pull request: the CI review runs on a different model (MiniMax) from a fresh checkout, and the base branch's checker judges this branch's ledger and answers with the code already merged, so the checker this branch edits cannot pass itself. Until that review lands the rule changes are drafts on a branch, not merged doctrine.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    },
+    "C-12.1": {
+      "answer": "A match is judged in context, not on the captured text alone: the ported rules keep gitleaks' keyword pre-filter and the global allowlist (placeholders, ${VAR}, {{...}}) and the scanner's existing exemption handling (a declared fiction token beside a match does not exempt a real secret), so a placeholder or allowlisted value is not flagged and a swallowed fiction token hides nothing.",
+      "guard": "test/gitleaks-port.test.mjs::a placeholder or allowlisted value is not flagged, a real one is"
     }
   }
 }
