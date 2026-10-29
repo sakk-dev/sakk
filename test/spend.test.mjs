@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import {
   appendFileSync,
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
+  rmSync,
   statSync,
   symlinkSync,
   truncateSync,
@@ -85,7 +87,7 @@ const line = ({
   `${JSON.stringify({ type: 'assistant', timestamp: ts, requestId: req, message: { id, model, usage } })}\n`;
 const NOW = Date.parse('2026-10-22T12:00:00Z');
 const spendOf = (w, day = '2026-10-22') => {
-  updateIndex({ home: w.home, logDir: w.config.claudeLogDir, zone: w.config.timeZone });
+  updateIndex({ home: w.home, logDir: w.config.claudeLogDir, zone: w.config.timeZone, now: NOW });
   return daySpend({ home: w.home, day, table: TABLE });
 };
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-12, `${a} ≠ ${b}`);
@@ -180,7 +182,7 @@ describe('reading the logs', () => {
     writeFileSync(w.file, line({ usage: { input_tokens: 100_000, output_tokens: 1000 } }));
     const first = spendOf(w).usd;
     writeFileSync(w.file, line({ usage: { input_tokens: 1, output_tokens: 1 } })); // same size or not, the head changed
-    const r = updateIndex({ home: w.home, logDir: w.config.claudeLogDir, zone: 'UTC' });
+    const r = updateIndex({ home: w.home, logDir: w.config.claudeLogDir, zone: 'UTC', now: NOW });
     assert.ok(r.rewritten.length >= 0);
     close(daySpend({ home: w.home, day: '2026-10-22', table: TABLE }).usd, first);
   });
@@ -262,18 +264,26 @@ describe('reading the logs', () => {
       'first second of the next',
     );
   });
-  test('a hook check reads only what changed today', () => {
+  test('a hook check after the baseline reads only what changed today', () => {
     const w = world();
-    writeFileSync(w.file, line());
     const old = join(w.logs, 'old.jsonl');
     writeFileSync(old, line({ id: 'msg_old', req: 'req_old', ts: '2026-09-01T00:00:00Z' }));
     const longAgo = Date.parse('2026-09-01T00:00:00Z') / 1000;
     utimesSync(old, longAgo, longAgo);
+    // the first check is the sealing scan and reads everything (F-210); the
+    // `since` bound governs every check after it
+    capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+    const sealing = JSON.parse(readFileSync(join(w.home, 'spend', 'files.json'), 'utf8'));
+    assert.ok(sealing[old], 'the sealing scan reads even an old untouched log');
+    writeFileSync(w.file, line());
     utimesSync(w.file, NOW / 1000, NOW / 1000);
+    utimesSync(old, longAgo, longAgo); // reading bumped atime only; pin both to be sure
+    const before = statSync(old);
     capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
     const files = JSON.parse(readFileSync(join(w.home, 'spend', 'files.json'), 'utf8'));
     assert.ok(files[w.file], "today's log was read");
-    assert.equal(files[old], undefined, 'a log untouched for weeks was not opened');
+    assert.deepEqual(files[old], sealing[old], 'a log untouched for weeks was not re-read');
+    assert.equal(statSync(old).mtimeMs, before.mtimeMs);
   });
 });
 
@@ -876,4 +886,130 @@ describe('F-205 — a future-dated log line is counted on the day observed (UAT 
     assert.equal(r?.deny, true, 'the future-dated spend cannot escape the cap window');
     assert.match(r.reason, /SPEND_CAP_REACHED/);
   });
+});
+
+describe('F-210 — a line first seen after the baseline claiming an old day is counted today', () => {
+  const asRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+  const seal = (w) =>
+    updateIndex({ home: w.home, logDir: w.config.claudeLogDir, zone: 'UTC', now: NOW });
+
+  test('a forged old-dated line appearing after the baseline lands in today, flagged, and hits the cap', () => {
+    const w = world({ cap: 0.001 });
+    seal(w); // first run on an empty log dir writes the baseline
+    assert.ok(existsSync(join(w.home, 'spend', 'baseline.json')), 'the baseline is sealed');
+    writeFileSync(w.file, line({ ts: '2026-10-15T10:00:00Z' })); // claims a week ago
+    utimesSync(w.file, NOW / 1000, NOW / 1000);
+    seal(w);
+    const today = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+    assert.equal(today.calls, 1, 'the call counts today');
+    assert.ok(today.usd > 0, 'with its money');
+    assert.equal(today.backdated, 1, 'and is flagged as backdated');
+    const claimed = daySpend({ home: w.home, day: '2026-10-15', table: TABLE });
+    assert.equal(claimed.calls, 0, 'nothing is booked to the claimed day');
+    const r = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+    assert.equal(r?.deny, true, 'the backdated spend cannot escape the cap window');
+    assert.match(r.reason, /SPEND_CAP_REACHED/);
+    assert.match(r.reason, /claiming an earlier day/, 'the deny explains the backdated count');
+  });
+
+  test('history already on disk at install keeps its claimed day, and the cap stays open', () => {
+    const w = world({ cap: 0.001 });
+    writeFileSync(w.file, line({ ts: '2026-10-15T10:00:00Z' }));
+    utimesSync(w.file, NOW / 1000, NOW / 1000);
+    seal(w); // first run: everything already present is pre-sakk history
+    const claimed = daySpend({ home: w.home, day: '2026-10-15', table: TABLE });
+    assert.equal(claimed.calls, 1, 'pre-install history books its claimed day');
+    assert.equal(claimed.backdated, 0, 'unflagged');
+    assert.equal(daySpend({ home: w.home, day: '2026-10-22', table: TABLE }).calls, 0);
+    const r = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+    assert.equal(r, null, 'old history never trips the cap for today');
+  });
+
+  test('an upgrade with an existing index seals without moving what was already booked', () => {
+    const w = world();
+    writeFileSync(w.file, line({ ts: '2026-10-15T10:00:00Z' }));
+    const baseline = join(w.home, 'spend', 'baseline.json');
+    seal(w);
+    assert.ok(existsSync(baseline), 'first run seals');
+    rmSync(baseline); // an upgrade from a pre-baseline version: index exists, baseline does not
+    seal(w);
+    assert.ok(existsSync(baseline), 're-seals');
+    assert.equal(daySpend({ home: w.home, day: '2026-10-15', table: TABLE }).calls, 1);
+    assert.equal(daySpend({ home: w.home, day: '2026-10-22', table: TABLE }).calls, 0);
+  });
+
+  test('a rewritten log re-read after sealing keeps a covered call on its claimed day, not doubled', () => {
+    const w = world();
+    writeFileSync(w.file, line({ ts: '2026-10-15T10:00:00Z' }));
+    seal(w);
+    // same call rewritten with no more usage: the head changes, the file is re-read from 0
+    writeFileSync(
+      w.file,
+      line({ ts: '2026-10-15T10:00:00Z', usage: { input_tokens: 500, output_tokens: 50 } }),
+    );
+    seal(w);
+    const claimed = daySpend({ home: w.home, day: '2026-10-15', table: TABLE });
+    assert.equal(claimed.calls, 1, 'still one call on the claimed day');
+    close(claimed.usd, 0.0045);
+    const today = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+    assert.equal(today.calls, 0, 'nothing is doubled into today');
+    assert.equal(today.backdated, 0);
+  });
+
+  test('a forged line reusing an old call id with inflated usage cannot add money to the old day', () => {
+    const w = world({ cap: 0.001 });
+    writeFileSync(w.file, line({ ts: '2026-10-15T10:00:00Z' }));
+    seal(w); // books $0.0045 on 10-15
+    writeFileSync(
+      join(w.logs, 'forged.jsonl'),
+      line({ ts: '2026-10-15T10:00:00Z', usage: { input_tokens: 1_000_000, output_tokens: 0 } }),
+    );
+    seal(w);
+    const claimed = daySpend({ home: w.home, day: '2026-10-15', table: TABLE });
+    close(claimed.usd, 0.0045, 'the old day keeps its counted spend, not the inflated claim');
+    const today = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+    assert.equal(today.backdated, 1, 'the inflated claim books today, flagged');
+    assert.ok(today.usd > 1, 'with its own money');
+    const r = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+    assert.equal(r?.deny, true, 'and cannot escape the cap');
+  });
+
+  test('a file planted with a faked old mtime is still read — mtime is not a trust boundary', () => {
+    const w = world({ cap: 0.001 });
+    seal(w);
+    const planted = join(w.logs, 'planted.jsonl');
+    writeFileSync(planted, line({ ts: '2026-10-15T10:00:00Z' }));
+    const longAgo = Date.parse('2026-09-01T00:00:00Z') / 1000;
+    utimesSync(planted, longAgo, longAgo);
+    // capCheck scans with since = start of today: an old mtime must not hide a new file
+    const r = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+    assert.equal(r?.deny, true, 'the planted spend still meets the cap');
+    const today = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+    assert.equal(today.backdated, 1, 'booked today, flagged');
+  });
+
+  test(
+    'a half scan is never sealed as the baseline',
+    { skip: asRoot && 'root ignores file modes' },
+    () => {
+      const w = world();
+      writeFileSync(w.file, line({ ts: '2026-10-15T10:00:00Z' }));
+      chmodSync(w.logs, 0o000);
+      const baseline = join(w.home, 'spend', 'baseline.json');
+      try {
+        const idx = seal(w);
+        assert.equal(idx.unlistable.length, 1);
+        assert.ok(!existsSync(baseline), 'no baseline while a directory cannot be listed');
+      } finally {
+        chmodSync(w.logs, 0o700);
+      }
+      seal(w);
+      assert.ok(existsSync(baseline), 'sealed once the scan is whole');
+      assert.equal(
+        daySpend({ home: w.home, day: '2026-10-15', table: TABLE }).calls,
+        1,
+        'the history unseen during the half scan still gets amnesty',
+      );
+    },
+  );
 });

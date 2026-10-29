@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "branch": "oss/f210-backdated-baseline",
+  "answers": {
+    "C-01.1": {
+      "answer": "本改动新增的「缺席」是 spend/baseline.json 不存在：缺席被声明为一个明确状态——首次建账模式（全量扫描并把当时已存在的行按声称日封存），绝不是读作成功或读作零。封存只在没有任何不可列目录时落盘，否则下次重试。另一处缺席是 covered 核对时声称日桶里没有该键：读作「不是重读」，这笔钱记观察日并打标，缺席永远落在收紧的一侧。",
+      "guard": "test/spend.test.mjs::a half scan is never sealed as the baseline"
+    },
+    "C-01.2": {
+      "answer": "删掉 baseline.json 再跑：行为必须肉眼可辨地改变——回到首次建账全量封存，而不是照样 PASS。测试显式断言两个分支都真的被走到：有基线时倒填行记今天，无基线时同一输入按声称日封存。倒填测试先在未修复代码上确认变绿（即旧代码放行、钱落旧桶），作为红基线，修复后同一输入必须计入今天并能触顶。",
+      "guard": "test/spend.test.mjs::an upgrade with an existing index seals without moving what was already booked"
+    },
+    "C-02.1": {
+      "answer": "不再用「未来」「过去」两个方向的清单各修各的：规则改成只说一次——agent 自报的时间戳不能把钱挪出它被观察到那天的封顶窗口，未来方向夹到今天（F-205 原有），过去方向也夹到今天（本修复），声称日等于今天的自然重合。测试同时驱动两个对抗方向加诚实方向，三种输入对着同一条规则断言。",
+      "guard": "test/spend.test.mjs::a forged old-dated line appearing after the baseline lands in today, flagged, and hits the cap"
+    },
+    "C-02.2": {
+      "answer": "同一条「agent 自报字段不可信」的规则还落在哪里：模型名（报错价→PRICE_UNKNOWN 失败关闭，已有）、用量数字（按最大合并只会往上，已有）、日志目录位置（F-191，agent 环境变量选根，v2 的代理+钥匙托管架构项一并解决，本次不动并在 backlog 归类说明）。本修复把时间戳这个字段的两个方向一次收口，不留半边。",
+      "guard": "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap"
+    },
+    "C-03.1": {
+      "answer": "新测试必须因名字里的原因失败：把「倒填记今天」那行逻辑退回按声称日记账，倒填用例必须变红；把封存写盘去掉，首扫不触顶用例必须变红（历史会灌进今天）；把 covered 核对去掉，重写重读用例必须变红（跨桶重复计数）。红先行顺序：先跑未修复树确认红的原因正确，再落修复。",
+      "guard": "test/spend.test.mjs::a rewritten log re-read after sealing keeps a covered call on its claimed day, not doubled"
+    },
+    "C-03.2": {
+      "answer": "用例打活目标：在沙箱 HOME 里写真实 jsonl 转录文件（真日期、真 usage 结构），跑真的 updateIndex 和 capCheck（经钩子同一入口），断言 deny 原因字符串与桶文件落盘内容，不是单测一个纯函数的返回值。伪造键碰撞用例真的复用旧桶里已存在的 message.id 并抬高 usage，验证钱进不了旧桶。",
+      "guard": "test/spend.test.mjs::a forged line reusing an old call id with inflated usage cannot add money to the old day"
+    },
+    "C-03.3": {
+      "answer": "C-07 类的 stopline/检测器引用在 classes.json 里钉成 路径::测试名 的可解析引用，findings-lib 的 resolveRef 找得到才算数；F-210 台账条目的 mechanism_upgrade 同样写成双冒号引用而不是一句描述文字，提交门禁会核对引用可解析。",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    },
+    "C-04.1": {
+      "answer": "首扫封存的工作量由既有计数器约束：MAX_FILES 超限即抛 SPEND_TOO_MANY_LOGS 拒绝、单行超 MAX_LINE 记不可读，都是计数与拒绝，不是秒表。covered 核对每轮最多加载本轮出现过的声称日桶（day() 缓存按运行去重），敌意输入能造成的额外加载以本轮行数为界。不新增任何基于耗时的断言。",
+      "guard": "test/spend.test.mjs::hostile lines are bounded and fail closed"
+    },
+    "C-05.1": {
+      "answer": "SPEND.md 新段、CHANGELOG 条目、spec 新行的每句话都对着测试读回：「装机时已有的历史按声称日封存」有首扫用例背书；「之后新见的倒填行记观察日并打标」有倒填用例背书；「sakk spend 报 backdated 数」有 CLI 输出断言背书。写完后逐句对代码核读，不写意图句。",
+      "guard": "test/spend.test.mjs::history already on disk at install keeps its claimed day, and the cap stays open"
+    },
+    "C-05.2": {
+      "answer": "报出的数字要经得起照做：sakk spend 新增 backdated 计数（人读与 --json 同步），操作员看到今天异常偏高时能据此定位是倒填行被夹进今天；触顶 deny 文案在 backdated>0 时附一句说明含多少条声称早先日期的行，照做（提额或等午夜）能解除。退出码不变。",
+      "guard": "none: sakk spend 的 backdated 计数输出断言是本修复自己的交付物，红先行新建，落地前仓库里没有这条输出的任何测试可引用"
+    },
+    "C-06.1": {
+      "answer": "文档里每句声明的证据来源都是读者自己能复现的那一个：SPEND.md 的「封存基线/倒填记今天/backdated 计数」每句都对应 test/spend.test.mjs 里以该行为命名的用例，不引用更强的内部来源；spec 的 Time 行与 Hook budget 行改写后逐句对照代码读回，不写代码没有的承诺（旧 Hook budget 行正是把优化写成了承诺，F-211 已修正该行）。",
+      "guard": "test/spend.test.mjs::a file planted with a faked old mtime is still read — mtime is not a trust boundary"
+    },
+    "C-07.1": {
+      "answer": "跨信任边界的输入逐个点名：时间戳（agent 写）——两个方向都夹到观察日；键 message.id|requestId（agent 写）——covered 核对要求旧桶里既有 usage 覆盖本行才认重读，键碰撞加钱进不了旧桶；usage 数字（agent 写）——仅按最大合并只会抬高今天读数；文件 mtime（agent 可用 utimes 伪造）——修复中发现它曾被当信任边界（F-211）：现在只有索引已知且 size 未变的文件才可跳过，伪造旧 mtime 的新文件照读。",
+      "guard": "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap"
+    },
+    "C-07.2": {
+      "answer": "被约束方清不掉这道闸：baseline.json 住在 SAKK_HOME/spend/ 下，守门规则本就拒绝 agent 任何点名 ~/.sakk 路径的命令，删基线触发重封存只有人做得到；agent 能做的只有往自己日志里写行，而写什么日期都只会把钱夹进今天的窗口，即自己触发自己的封顶。",
+      "guard": "test/guard.test.mjs::a delete that takes the repository, the home folder or Sakk state with it is denied before any allow (F-146)"
+    },
+    "C-08.1": {
+      "answer": "一个东西两个名字的风险点核过：日桶键统一经 dayOf 单一格式器产出 YYYY-MM-DD，字符串比较即日序比较，不存在第二种写法；日志文件以绝对路径进 files.json，重写别名由既有 head 哈希识别；baseline 只有一个路径一个写者（updateIndex 原子写），不提供环境变量别名去指它。",
+      "guard": "test/spend.test.mjs::usage rewritten in place keeps the counted maximum"
+    },
+    "C-09.1": {
+      "answer": "假定的环境逐个试另一边：时区取 config.timeZone 否则系统时区——测试显式钉死时区传入，不依赖跑测机器的本地时区（F-165 的教训）；全新 HOME（无索引无基线）与升级场景（files.json 已有、baseline 缺）两种状态都各有用例，升级场景断言已记桶不动、未扫旧文件被封存。",
+      "guard": "test/spend.test.mjs::every hook or cap call in the spend tests sets its own clock (F-165)"
+    },
+    "C-09.2": {
+      "answer": "真实运行位置是钩子里的 capCheck（since=今天起点、每次工具调用触发）：用例直接驱动 capCheck 而非只打 updateIndex，断言首次 capCheck 即完成封存（强制该轮全量扫描）、随后一轮倒填行经 capCheck 路径触顶。sakk spend 的 CLI 路径另有输出断言，两个入口都走同一 updateIndex。",
+      "guard": "test/spend.test.mjs::a forged old-dated line appearing after the baseline lands in today, flagged, and hits the cap"
+    },
+    "C-10.1": {
+      "answer": "规则不停留在文字：检测器与修复同一提交落地（spec 行+测试+代码一体），audit 的 T0 清单会跑它；classes.json 的 C-07 检测器引用更新为双方向用例的 路径::测试名，提交门禁核对可解析，缺了就拒绝提交。",
+      "guard": "none: 引用更新随本提交，门禁为既有 check 脚本"
+    },
+    "C-10.2": {
+      "answer": "绕道清点：两个入口（钩子 capCheck、CLI sakk spend）共用同一 updateIndex，不存在第二个记账器；把伪造行塞进旧文件会改 size 从而进入扫描（mtime 被钉旧也一样，F-211 把 since 降级为纯优化）且只从已记偏移续读新行；把伪造行塞进新文件必然是「新见」走倒填规则，伪造旧 mtime 也藏不住（F-211 用例背书）；改环境变量把日志根指走属于 F-191（v2 代理项），本次在文档如实声明边界。",
+      "guard": "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap"
+    },
+    "C-11.1": {
+      "answer": "超出本次运行仍有含义的值清点写者：backdated 标志经 mergeCall 与 future 同规则只增不减、随桶持久化，写者仅 updateIndex；baseline.json 的时刻写一次读每轮，写者仅 updateIndex 的封存分支且原子落盘，不可列目录存在时不写以免把半次扫描当完整基线固化。",
+      "guard": "test/spend.test.mjs::a forged line reusing an old call id with inflated usage cannot add money to the old day"
+    },
+    "C-14.1": {
+      "answer": "单元失败不拖垮整体但也不被吞掉：covered 核对要读的声称日桶若损坏，readJson 抛 SPEND_INDEX_UNREADABLE，capCheck 不捕获、钩子按失败关闭 deny——一个坏桶是一次有名字的拒绝；days 与 files 索引只在整轮处理完后落盘，半途抛出不留半写状态。",
+      "guard": "test/spend.test.mjs::a corrupt spend index is a refusal, not a silent zero (SPEND_INDEX_UNREADABLE)"
+    },
+    "C-15.1": {
+      "answer": "跑的是真路径：真文件、真索引落盘、真 capCheck 判定，无自写证据的替身；本修复触碰失败关闭路径（capCheck 的记账方向），变异演练照规矩补跑——把倒填方向的夹取变异掉，点名的测试必须抓到，结果记进 mutation-drill 报告。",
+      "guard": "none: 演练在本地门禁阶段执行并在 PR 说明里报告结果"
+    }
+  }
+}

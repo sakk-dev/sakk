@@ -353,6 +353,20 @@ run_drill MUT-AL src/console.mjs \
   "a request without the token gets nothing" \
   "test"
 
+# MUT-AM: book backdated lines to their claimed day again → the F-210 forged-line test must die red
+run_drill MUT-AM src/spend.mjs \
+  "        bookDay = today;" \
+  "        bookDay = bookDay;" \
+  "a forged old-dated line appearing after the baseline lands in today, flagged, and hits the cap" \
+  "test"
+
+# MUT-AN: trust mtime as the scan boundary again → the F-211 planted-file test must die red
+run_drill MUT-AN src/spend.mjs \
+  "if (st.mtimeMs < since && prev && prev.size === st.size) continue;" \
+  "if (st.mtimeMs < since) continue;" \
+  "a file planted with a faked old mtime is still read — mtime is not a trust boundary" \
+  "test"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"
