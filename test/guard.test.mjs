@@ -428,19 +428,28 @@ describe('the hook as an agent runs it', () => {
     // ask is the floor, not the ceiling: a deny beside an expansion still wins
     assert.equal(run(w, 'x=1; rm -rf ~/.sakk').v, 'deny');
   });
-  test('writes to agent hook configs are asked', () => {
+  test('writes and deletes to agent hook configs are denied, project or user level (F-188)', () => {
     const w = world();
     const p = tool(w, 'Edit', {
       file_path: join(w.repo, '.claude', 'settings.json'),
       old_string: 'a',
       new_string: 'b',
     });
-    assert.equal(verdict('claude-code', hook(w, 'claude-code', p).stdout), 'ask');
-    assert.equal(
-      verdict('codex', hook(w, 'codex', p).stdout),
-      'deny',
-      'Codex runs the call on ask: a deny there',
-    );
+    assert.equal(verdict('claude-code', hook(w, 'claude-code', p).stdout), 'deny');
+    assert.equal(verdict('codex', hook(w, 'codex', p).stdout), 'deny');
+    // the user-level config is the same protected zone (G-SEC-011): every agent's
+    // folder, by the Write tool and by a shell redirect
+    for (const dir of ['.claude', '.cursor', '.codex']) {
+      const write = tool(w, 'Write', {
+        file_path: join(w.home, dir, 'settings.json'),
+        content: '{}',
+      });
+      assert.equal(verdict('claude-code', hook(w, 'claude-code', write).stdout), 'deny', dir);
+    }
+    assert.equal(run(w, `echo x > ${join(w.home, '.claude', 'settings.json')}`).v, 'deny');
+    // removing the config is rewriting it: the delete face is the same zone
+    assert.equal(run(w, 'rm .claude/settings.json').v, 'deny');
+    assert.equal(run(w, `rm ${join(w.home, '.claude', 'settings.json')}`).v, 'deny');
   });
   test('every malformed payload is a deny with a code', () => {
     const w = world();
@@ -762,6 +771,145 @@ describe('install and doctor', () => {
       withGuard('claude-code', {}, { command: 'c', onFailure: true }).hooks.PreToolUse[0].hooks[0]
         .onFailure,
       'block',
+    );
+  });
+  test('R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)', () => {
+    // After the host tool is upgraded or reinstalled the guard's entry can be
+    // left degraded (no onFailure), stale (an old path) or in another spelling
+    // (a bare `sakk`). Before the fix, install's presence check read all of
+    // these as "already protected" and reported nothing to change, so the
+    // fail-open state persisted even after following the doctor's own advice.
+
+    // 1 — upgrade path: installed fail-open on an old CC, then CC is upgraded.
+    //     The reinstall must repair the entry, not report nothing to change.
+    const w = world();
+    const first = install('claude-code', { cwd: w.repo, home: w.home, supportsOnFailure: false });
+    assert.doesNotMatch(readFileSync(first.path, 'utf8'), /onFailure/, 'starts degraded');
+    const again = install('claude-code', { cwd: w.repo, home: w.home, supportsOnFailure: true });
+    assert.equal(
+      again.changed,
+      true,
+      'F-206: a reinstall after a host upgrade repairs the entry instead of reporting nothing to change',
+    );
+    const entries = JSON.parse(readFileSync(again.path, 'utf8')).hooks.PreToolUse.flatMap(
+      (g) => g.hooks ?? [],
+    );
+    assert.equal(entries.length, 1, 'repaired in place, not duplicated');
+    assert.equal(entries[0].onFailure, 'block', 'the upgrade adds the fail-closed guarantee');
+    const healed = doctor({
+      cwd: w.repo,
+      home: w.home,
+      env: w.env,
+      managed: join(w.base, 'none.json'),
+    });
+    assert.equal(
+      healed.some((c) => c.name === 'claude-code fail-open'),
+      false,
+      'after the repair the doctor stops warning fail-open',
+    );
+
+    // 2 — a stale path from a previous install location is replaced, not kept
+    //     beside the new entry and not read as already protected.
+    const w2 = world();
+    mkdirSync(join(w2.repo, '.claude'));
+    writeFileSync(
+      join(w2.repo, '.claude', 'settings.json'),
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Bash',
+              hooks: [
+                {
+                  type: 'command',
+                  command: `"${process.execPath}" "/old/location/bin/sakk.mjs" hook --agent claude-code`,
+                  timeout: 10,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const r2 = install('claude-code', { cwd: w2.repo, home: w2.home, supportsOnFailure: true });
+    assert.equal(r2.changed, true, 'F-206: a stale entry is a repair, not nothing to change');
+    const cmds2 = JSON.parse(readFileSync(r2.path, 'utf8')).hooks.PreToolUse.flatMap((g) =>
+      (g.hooks ?? []).map((h) => h.command),
+    );
+    assert.deepEqual(cmds2, [hookCommand('claude-code')], 'replaced, not joined by a second entry');
+
+    // 3 — the bare `sakk` spelling (a PATH install) is recognised as ours:
+    //     install converges it and uninstall removes it, so it can neither
+    //     stack a duplicate nor survive an uninstall invisibly.
+    const w3 = world();
+    mkdirSync(join(w3.repo, '.claude'));
+    const w3cfg = join(w3.repo, '.claude', 'settings.json');
+    writeFileSync(
+      w3cfg,
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Bash',
+              hooks: [{ type: 'command', command: 'sakk hook --agent claude-code' }],
+            },
+          ],
+        },
+      }),
+    );
+    install('claude-code', { cwd: w3.repo, home: w3.home, supportsOnFailure: true });
+    const cmds3 = JSON.parse(readFileSync(w3cfg, 'utf8')).hooks.PreToolUse.flatMap((g) =>
+      (g.hooks ?? []).map((h) => h.command),
+    );
+    assert.deepEqual(
+      cmds3,
+      [hookCommand('claude-code')],
+      'the bare spelling converges, it does not stack',
+    );
+    uninstall('claude-code', { cwd: w3.repo, home: w3.home });
+    const after3 = JSON.parse(readFileSync(w3cfg, 'utf8'));
+    assert.equal(
+      (after3.hooks?.PreToolUse ?? []).flatMap((g) => g.hooks ?? []).length,
+      0,
+      'uninstall removes the bare spelling too',
+    );
+
+    // 4 — a neighbour that merely contains the letters is NOT ours: never
+    //     removed, never counted as protection.
+    const foreignCfg = {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: 'Bash',
+            hooks: [
+              { type: 'command', command: 'mysakk hook --agent claude-code' },
+              { type: 'command', command: '/opt/sakk/bin/other.js hook --agent claude-code' },
+            ],
+          },
+        ],
+      },
+    };
+    const converged = withGuard('claude-code', foreignCfg, { command: hookCommand('claude-code') });
+    const kept = converged.hooks.PreToolUse.flatMap((g) => (g.hooks ?? []).map((h) => h.command));
+    assert.ok(kept.includes('mysakk hook --agent claude-code'), 'a foreign command is never ours');
+    assert.ok(
+      kept.includes('/opt/sakk/bin/other.js hook --agent claude-code'),
+      'a directory named sakk does not make a command ours',
+    );
+    assert.ok(kept.includes(hookCommand('claude-code')), 'ours is added beside them');
+
+    // 5 — absence is never read as protected: with no entry at all the doctor
+    //     reports a failure, not silence.
+    const w5 = world();
+    const absent = doctor({
+      cwd: w5.repo,
+      home: w5.home,
+      env: w5.env,
+      managed: join(w5.base, 'none.json'),
+    });
+    assert.ok(
+      absent.some((c) => !c.ok && c.name === 'installed'),
+      'an absent hook is a failure, never read as protected',
     );
   });
   test('G-INS-006 install on an old Claude Code warns the operator it is fail-open, and doctor flags it', () => {

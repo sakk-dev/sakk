@@ -675,8 +675,9 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
   // `sakk guard uninstall` are ordinary subcommands that write that config, so
   // two layers keep them a person's: the hook judges `sakk cap …` as the write to
   // ~/.sakk it makes (denied) and `sakk guard …` as the agent-config write it
-  // makes (asked), and the CLI itself refuses a loosening change unless a person
-  // retypes a word at a terminal. Tightening (a first cap, a lower one) never asks.
+  // makes (denied too, F-188), and the CLI itself refuses a loosening change unless
+  // a person retypes a word at a terminal. Tightening (a first cap, a lower one)
+  // never asks.
   const world = () => {
     const base = realpathSync(mkdtempSync(join(tmpdir(), 'juat016-')));
     const home = join(base, 'sakkhome'); // SAKK_HOME: holds config.json (the cap)
@@ -734,7 +735,7 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
     );
   });
 
-  test('J-UAT-016 the hook refuses `sakk cap` and asks before `sakk guard` or a pseudo-terminal', () => {
+  test('J-UAT-016 the hook refuses `sakk cap` and `sakk guard`, and asks before a pseudo-terminal', () => {
     const w = world();
     const judge = (command) =>
       evaluate(
@@ -761,9 +762,18 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
         command,
       );
     }
+    // the agent's own hook config is a protected zone (F-188): uninstall, project
+    // or user level, is the agent-config write it makes — denied, never asked
+    for (const command of ['sakk guard uninstall claude-code', 'sakk guard uninstall codex --user']) {
+      const r = judge(command);
+      assert.equal(r.verdict, 'deny', command);
+      assert.ok(
+        r.decisions.some((d) => d.ruleId === 'deny-agent-config'),
+        command,
+      );
+    }
+    // a pseudo-terminal that could type the confirmation is still asked, never allowed
     for (const command of [
-      'sakk guard uninstall claude-code',
-      'sakk guard uninstall codex --user',
       'echo claude-code | script -q /dev/null sakk guard uninstall claude-code',
       'unbuffer sakk cap off',
       'expect -c "spawn sakk cap off; send off\\r"',
@@ -883,8 +893,8 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
     guard: {
       effect: 'loosens',
       judged: [
-        ['sakk guard install claude-code', 'require_approval'],
-        ['sakk guard uninstall claude-code', 'require_approval'],
+        ['sakk guard install claude-code', 'deny'],
+        ['sakk guard uninstall claude-code', 'deny'],
       ],
     },
     doctor: { effect: 'none', judged: [['sakk doctor', 'allow']] },

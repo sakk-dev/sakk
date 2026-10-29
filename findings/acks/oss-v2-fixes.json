@@ -38,6 +38,38 @@
    "answer": "这次的三条「规则」全部落为机器强制：agent 不得解除停机、清账、解锁（F-177）写进 policy 的硬编码拒绝路径而不是文档；agent 改自己钩子配置直接 deny（F-188）由 hook 的保护区判定执行；版本与 CHANGELOG 一致（F-111）由发布测试在 CI 里强制。每条都配缺了就红的测试。",
    "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
   },
+  "C-02.1": {
+   "answer": "集成侧对账：B 线把钩子入站扫描从手写字段清单改成结构化收集器（任意深度所有字符串都过同一扫描），并配了从已装 matcher 源码枚举工具面的清单测试；A 线把密读识别从程序名单改成按参数片段拆分的类级规则。合并时 classes.json 的 C-02 检测器取两线并集，不丢任何一侧。",
+   "guard": "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan"
+  },
+  "C-02.2": {
+   "answer": "合并本身就是这个问题的现场：两条线各自修了同一规则的一个面（入站扫描、出站识别），冲突解析时我把两侧检测器全部保留并集化、stopline 取更高的 F-203，不以先合入的一侧覆盖另一侧；F-202 与 F-203 条目各自带 distinct_from 说明两面都要关。",
+   "guard": "test/hook-scan-coverage.test.mjs::the checklist covers every tool the installed matchers deliver (enumerated from the source)"
+  },
+  "C-08.1": {
+   "answer": "同物多名在本批由 A 线收口：未解析的变量与花括号展开一律 ask、绝不降级 deny（F-176），符号链接读密文件按解析后的真名判（F-186 的规则由同一检测器覆盖）。集成侧不新增别名路径，合并冲突只发生在 findings JSON，源码两侧自动合并后由全量门禁再验一次。",
+   "guard": "none: F-176 的检测器随 A 线合入，确切测试名以 A 线提交为准，集成侧以全量 npm run gate 复验而非引用单条"
+  },
+  "C-09.1": {
+   "answer": "本批不改安装布局，钩子与 policy 仍在仓库约定位置；集成操作全部在仓库顶层用显式 cd 执行，不依赖会话残留的 cwd；全量门禁在集成分支本机跑一遍，再推 CI 在干净环境复验，两个环境都要绿才合。",
+   "guard": "none: 环境假设由 CI 干净环境复跑同一门禁来验证，本批没有新增针对安装布局的测试"
+  },
+  "C-09.2": {
+   "answer": "真实运行处的验证：合并后在集成分支本机跑 npm run gate 与 test:all（钩子、pre-commit、commit-msg 都在真实仓库里真实触发，而不是只看配置在）；D 线的 console Origin 用例起真实 http 实例发请求。worktree 各线的结果不作数，以集成分支复跑为准。",
+   "guard": "none: 以集成分支全量门禁的真实执行为验证手段，无单独新增配置生效性测试"
+  },
+  "C-11.1": {
+   "answer": "写操作的越权语义由 C 线收口：resume/reconcile/unlock 被分类为对账本状态文件的写入、走 protect-guard-state 直接拒，CLI 侧解除动作要求终端真人确认，无终端则退出码 2；默认账本挪到 ~/.sakk 让仓库内写不到它。集成侧合并 C 线时不弱化任何一条拒绝路径。",
+   "guard": "none: C 线分支尚未合入集成分支，其 confirmByPerson 用例合入后由全量门禁执行，当前引用不解析"
+  },
+  "C-04.1": {
+   "answer": "敌意输入的界由计数器而非秒表断言：B 线的 payload 收集器带 1MB 上限、超限按拒绝处理；C 线把 48 小时写成常量毫秒数避免 F-62 那类秒表假设。集成侧不新增无界遍历，合并后 fuzz 与 drill 各跑一次确认 fail-closed 路径未被合并弱化。",
+   "guard": "none: 上限断言在 B 线的 hook 扫描用例内与 C 线账本用例内，集成侧以 npm run fuzz 与 npm run drill 复验"
+  },
+  "C-14.1": {
+   "answer": "单元失败的隔离由 C 线落地：spend 遍历遇到不可列目录不再静默跳过，收集成命名错误 SPEND_LOGS_UNLISTABLE 并让上限判定失败关闭、退出码非零点名目录；其余目录照常读。集成合并时保留该行为，不把「一个目录坏」重新变回「整体读出偏小数字」。",
+   "guard": "none: C 线分支尚未合入集成分支，SPEND_LOGS_UNLISTABLE 用例合入后随全量门禁执行，当前引用不解析"
+  },
   "C-10.2": {
    "answer": "绕路问题逐条封：保护区判定对所有写入工具生效（Write、Edit、Bash、MCP 任何携带内容的调用都过同一判定），不是只拦某个工具名；未解析变量展开一律 ask（F-176）在规范化之后判，换一种拼法也落到同一条路径；console 的 Origin 在 GET 和 Stop 两条路由都查，不留只查一条的侧门。",
    "guard": "none: 工具乘字段清单用例与双路由 Origin 用例随 F-202/F-195 修复红先行落地，建成前没有既有测试枚举全部路由"

@@ -36,7 +36,7 @@ The shipped policy (`policies/guard-default.json`):
 | `protect-guard-state`      | writing Sakk's own policy and state                                                       | deny    |
 | `protect-ci-files`         | writing `.github/workflows/`                                                              | deny    |
 | `protect-migrations`       | deleting database migrations                                                              | deny    |
-| `ask-agent-config`         | writing `.claude/`, `.cursor/`, `.codex/`                                                 | ask you |
+| `deny-agent-config`        | writing or deleting `.claude/`, `.cursor/`, `.codex/`, project or user level (F-188)      | deny    |
 | `high-risk-deploy`         | deploys and publishing                                                                    | ask you |
 | `ask-constructed-commands` | commands built at run time (`eval`, `curl … \| sh`, `bash -c "$X"`)                       | ask you |
 | `ask-write-outside`        | writing outside the project — your home folder and elsewhere (temporary folders excepted) | ask you |
@@ -46,7 +46,7 @@ Codex runs a call when a hook asks, so for Codex "ask you" is a deny.
 
 Sakk's own commands are judged by the write they make. From the agent,
 `sakk cap …` writes Sakk's state, so it is denied; `sakk guard install` or
-`uninstall` writes the agent's config, so it asks you; and `script`, `expect`
+`uninstall` writes the agent's config, so it is denied too; and `script`, `expect`
 or `unbuffer`, which run a command at a pseudo-terminal and can type into it,
 ask you. At the terminal, lifting or raising the cap, moving its day and
 removing the guard ask you to retype a word; with no terminal they refuse with

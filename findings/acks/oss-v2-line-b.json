@@ -1,0 +1,134 @@
+{
+  "version": 2,
+  "branch": "oss/v2-line-b",
+  "answers": {
+    "C-05.1": {
+      "answer": "本线新增的 docs/ledger 叙述（F-202 扫描覆盖面、F-188 deny、F-206 fail-closed）每句都对应一条红先行测试：清单式工具×字段覆盖检测器、保护区 deny 回归、钩子缺席检测器。先在未修复代码上确认红，再改绿，叙述不超出测试证明的范围。",
+      "guard": "none: 三个检测器本次提交才落地，落地后 guard 分别指向 test/hook-coverage.test.mjs 与 guard.test.mjs 的新用例",
+      "revisions": [
+        {
+          "finding": "F-202",
+          "answer": "F-202 清单式检测器已落地并进 npm test 常跑：工具×字段覆盖由安装 matcher 源头枚举，漏一个工具即红，guard 从 none 改指该用例。",
+          "guard": "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan"
+        }
+      ]
+    },
+    "C-05.2": {
+      "answer": "F-206 修复后 doctor/install 给出的建议必须真的有效：测试会按建议实际执行（重装/重跑 doctor），断言 onFailure:block 真被补上、旧拼写条目真被替换，而不是只断言输出文字；退出码沿用现有约定不改。",
+      "guard": "none: 升级路径检测器尚未写，落地后指向 guard.test.mjs 升级/重装用例，断言重装后配置真实变化",
+      "revisions": [
+        {
+          "finding": "F-206",
+          "answer": "升级/重装路径检测器已落地：按 doctor 建议重装后断言配置真实变化（onFailure:block 真被补上、旧拼写条目真被替换不重复），guard 改指该用例。",
+          "guard": "test/guard.test.mjs::R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)"
+        }
+      ]
+    },
+    "C-10.1": {
+      "answer": "F-202 的覆盖面不靠规则文本：清单式检测器枚举 normalize 可能收到的每种工具×携带内容字段，断言每个字段都进 secretHit 扫描，漏一个字段测试即红；它进 npm test 常跑，不是口头要求。F-188 的 deny 也由策略测试锁死。",
+      "guard": "none: 清单式检测器是本次 F-202 的交付物，落地前无既有测试可指，落地后 mechanism_upgrade 指向它",
+      "revisions": [
+        {
+          "finding": "F-202",
+          "answer": "F-202 覆盖检测器已落地并进 npm test 常跑：按安装 matcher 源头枚举工具清单逐面断言，guard 从 none 改指落地用例。",
+          "guard": "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan"
+        }
+      ]
+    },
+    "C-10.2": {
+      "answer": "绕过路由正是本线要修的：工具改名/新工具字段绕过扫描（F-202 按字段清单兜底而非工具白名单）、agent 用另一工具写自己钩子配置（F-188 在判定层 deny，不分路由）、升级宿主后钩子整体缺席（F-206 让缺席被看见而非静默放行）。",
+      "guard": "none: 三条路由各配新检测器，本提交落地后分别可解析，当前尚未存在故不指",
+      "revisions": [
+        {
+          "finding": "F-206",
+          "answer": "三条绕过路由的检测器均已落地；本修订把「升级宿主后钩子整体缺席/滞留」那条的 guard 指向落地的 F-206 收敛检测器。",
+          "guard": "test/guard.test.mjs::R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)"
+        }
+      ]
+    },
+    "C-01.1": {
+      "answer": "缺席语义是 F-206 的核心：钩子条目在宿主配置里缺席、或旧拼写不被识别时，现状读作「没事」即 fail-open；修复后缺席必须被 doctor 以失败报出或被 install 修复，绝不读作受保护。扫描侧字段缺席按既有 writeContent 约定扫空但路径仍判。",
+      "guard": "none: 「钩子缺席时结果不再读作受保护」的检测器随 F-206 落地，当前代码上先确认它是红的",
+      "revisions": [
+        {
+          "finding": "F-206",
+          "answer": "F-206 检测器已落地：缺席、滞留、降级或另一拼写的钩子条目不再被读作已保护，重装收敛修复，缺席由 doctor 报失败，该测试钉死全部四种形态。",
+          "guard": "test/guard.test.mjs::R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)"
+        }
+      ]
+    },
+    "C-04.1": {
+      "answer": "新扫描面的工作量由 MAX_PAYLOAD（1MB）封顶：收集 payload 字符串用显式工作表迭代而非递归（敌意深嵌套不会爆栈），所有字符串拼成一个文本只跑一遍 scanText，模式全部长度有界；测试断言的是判定结果与覆盖计数，不用秒表。",
+      "guard": "none: 覆盖检测器落地后指向 test/hook-scan-coverage.test.mjs 的深嵌套用例，断言是结果不是时钟",
+      "revisions": [
+        {
+          "finding": "F-202",
+          "answer": "深嵌套、未知字段、数组与对象键的有界扫描用例已落地（显式工作表迭代、MAX_PAYLOAD 封顶、断言判定结果而非时钟），guard 改指该用例。",
+          "guard": "test/hook-scan-coverage.test.mjs::a secret anywhere in the payload is found: unknown fields, deep nesting, arrays, object keys"
+        }
+      ]
+    },
+    "C-01.2": {
+      "answer": "每个新检测器都先在未修复代码上跑出红（删掉覆盖/删掉钩子条目/保留 ask 判定时必须 FAIL），把红基线一行写进提交说明再改绿；删除修复代码重跑必须回红，保证检测器不是可有可无的摆设。",
+      "guard": "none: 红基线将记录在三个修复提交说明里，检测器解析路径落地后补进 ledger guard 字段",
+      "revisions": [
+        {
+          "finding": "F-206",
+          "answer": "红基线已按约记录在 F-206 修复提交说明里（重装在未修复代码上报 nothing to change 的断言失败），guard 从 none 改指落地的收敛检测器。",
+          "guard": "test/guard.test.mjs::R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)"
+        }
+      ]
+    },
+    "C-11.1": {
+      "answer": "本改动不新增任何有权力语义的写者：scanText 只扩大 deny 面（多扫字符串），不授权任何事；F-188 把 agent 配置写从 ask 收紧为 deny，调用方无论走哪个工具路由（Write/Edit/shell/MCP）都只会更严，不会出现某条路由被读作放行。",
+      "guard": "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan"
+    },
+    "C-08.1": {
+      "answer": "三处都按「一物一名」收口：F-202 按结构收集 payload 全部字符串，字段别名/新名不构成第二个名字；F-188 作用域经 scopeOf 规范化，仓库相对路径与 ~home/.claude 等家目录拼法都落到同一规则；F-206 的 ours() 按结构识别同一钩子条目的旧路径/裸拼写，不再让别名逃出卸载与重装。",
+      "guard": "none: F-206 别名识别检测器随本线 guard.test.mjs 新用例落地，落地前先在未修复代码上确认红",
+      "revisions": [
+        {
+          "finding": "F-206",
+          "answer": "F-206 别名识别已落地：ours() 按词界识别 canonical 引号路径、旧路径与裸拼写，mysakk 与仅目录名含 sakk 的命令不误伤，由收敛测试钉死。",
+          "guard": "test/guard.test.mjs::R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)"
+        }
+      ]
+    },
+    "C-14.1": {
+      "answer": "扫描按调用隔离：某一次调用的 payload 扫描出错只让该次调用以 HookError fail-closed 拒绝并带错误码，不影响其他调用；检测器对每个 agent×工具×字段单独断言并在失败消息里点名是哪个面，一个面红不会把其余面的结果淹没。",
+      "guard": "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan"
+    },
+    "C-02.1": {
+      "answer": "F-202 的根因正是手写字段清单冒充「全部」：修复把规则改为结构式——钩子收到的 payload 里每个字符串（键与值、任意深度）都进同一次扫描，不再按工具名/字段名挑；检测器反向用安装 matcher 源头枚举工具清单，漏一个即红。",
+      "guard": "test/hook-scan-coverage.test.mjs::the checklist covers every tool the installed matchers deliver (enumerated from the source)"
+    },
+    "C-06.1": {
+      "answer": "docs/GUARD.md 的规则表只是政策文件的弱复述，不是证据源；真正的证据源是 policies/guard-default.json 与钉死它的 spec 表测试（F-148）和新的 F-188 deny 回归；docs 行改成与政策逐字一致，不声称测试之外的任何行为。",
+      "guard": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)"
+    },
+    "C-03.1": {
+      "answer": "F-188 回归先在未修复政策上跑红（ask≠deny 的断言失败原因正是规则判定，不是环境），再改政策变绿；用户级/删除面各有独立断言，把 deny 规则撤回任何一个作用域该测试都会因那一行红回去。",
+      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
+    },
+    "C-03.2": {
+      "answer": "测试经由真实钩子子进程（stdin payload→stdout 判定）打到真策略，不是函数桩；每个作用域（项目级三目录、用户级三目录、shell 重定向、rm 删除）各自有能单独翻红的断言，且对照组（写普通仓库文件 allow）在相邻用例里保持。",
+      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
+    },
+    "C-03.3": {
+      "answer": "该检查不依赖文书：它断言的是钩子对真实 payload 的判定结果，政策文件若被改回 ask 或删掉作用域，测试立即红；spec 表测试（F-148）再把 spec.md 的表与政策文件逐字钉死，防止只改文档不改行为。",
+      "guard": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)"
+    },
+    "C-09.1": {
+      "answer": "测试在 mkdtemp 的临时 HOME/SAKK_HOME 里跑，用户级路径按 ~home/ 规范化规则匹配而非写死本机家目录；项目级与用户级两个环境都各有断言，不假设会话只从仓库根发起。",
+      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
+    },
+    "C-09.2": {
+      "answer": "F-188 回归按 agent 真实运行方式起钩子子进程（bin/sakk.mjs hook --agent …，payload 走 stdin），不是只查配置文件存在；claude-code 与 codex 两个 agent 都各自跑到 deny 判定。",
+      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
+    },
+    "C-02.2": {
+      "answer": "同一条规则适用处已排查：writeContent 的字段清单只决定写盘内容归属（分类用），扫描不再依赖它；cursor/codex/claude-code 三个 agent 的 normalize 分支都走同一个 payload 收集器；F-188 的保护区同时覆盖 file.write 与 file.delete 两个动作面、仓库级与用户级两个路径面。",
+      "guard": "test/hook-scan-coverage.test.mjs::a secret anywhere in the payload is found: unknown fields, deep nesting, arrays, object keys"
+    }
+  }
+}

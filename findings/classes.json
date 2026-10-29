@@ -66,7 +66,9 @@
         "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has",
         "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)",
         "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)",
-        "test/secret-guard.test.mjs::K-SEC-049/K-SEC-050 a secret filename inside an upload reference, git path, copy or mount is denied"
+        "test/secret-guard.test.mjs::K-SEC-049/K-SEC-050 a secret filename inside an upload reference, git path, copy or mount is denied",
+        "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan",
+        "test/hook-scan-coverage.test.mjs::the checklist covers every tool the installed matchers deliver (enumerated from the source)"
       ],
       "stopline": {
         "after": "F-203",
