@@ -622,8 +622,8 @@ export function shellActions(
     // Sakk's own commands that change its controls are the writes they make, so
     // the agent is judged as if it wrote the file: the cap, and the ledger the
     // hook reads halts from, are guard state (denied); the hook config is agent
-    // config (asked). A person runs them (F-171, F-181). Every subcommand is
-    // declared by its effect in test/kill-switch.test.mjs (R-24).
+    // config (denied, F-188). A person runs them (F-171, F-181). Every subcommand
+    // is declared by its effect in test/kill-switch.test.mjs (R-24).
     else if (name === 'sakk' && (verb === 'cap' || verb === 'init') && sakkHome)
       add('file.write', join(sakkHome, 'config.json'));
     // resume, reconcile and unlock lift a halt, clear the books or break the

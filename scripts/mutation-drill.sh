@@ -296,10 +296,11 @@ run_drill MUT-AD src/classify.mjs \
   "deletes outside the repository are denied through every alias" \
   "test"
 
-# MUT-AE: add the hook on every install → the idempotence test must die red
+# MUT-AE: rewrite the config on every install (convergence loses its
+# no-change exit) → the idempotence test must die red
 run_drill MUT-AE src/guard-install.mjs \
-  "    if (!present) {" \
-  "    if (true) {" \
+  "  if (!changed) return { path, changed: false };" \
+  "  if (false) return { path, changed: false };" \
   "install merges, repeats cleanly and uninstalls only itself" \
   "test"
 

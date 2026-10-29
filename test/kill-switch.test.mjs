@@ -764,7 +764,10 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
     }
     // the agent's own hook config is a protected zone (F-188): uninstall, project
     // or user level, is the agent-config write it makes — denied, never asked
-    for (const command of ['sakk guard uninstall claude-code', 'sakk guard uninstall codex --user']) {
+    for (const command of [
+      'sakk guard uninstall claude-code',
+      'sakk guard uninstall codex --user',
+    ]) {
       const r = judge(command);
       assert.equal(r.verdict, 'deny', command);
       assert.ok(

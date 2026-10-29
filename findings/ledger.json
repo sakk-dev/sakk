@@ -6439,25 +6439,15 @@
         "No test enumerated the readings from the secret's side — every way a command can spell or reach the name — only from the command's side."
       ],
       "root_cause": "The recognition is a list of command shapes standing in for the rule: a spelled-out secret name is reached whatever grammar position it occupies, and some commands read credentials with no filename at all, so each reading outside the list escapes until listed.",
-      "dt": [
-        "DT-FN"
-      ],
-      "rc": [
-        "RC-04"
-      ],
-      "es": [
-        "ES-04"
-      ],
+      "dt": ["DT-FN"],
+      "rc": ["RC-04"],
+      "es": ["ES-04"],
       "sweep": "Swept the sibling paths in the same commit: plain operands of modeled chain commands (now scanned even when a branch matched), git arguments (a pre-scan before gitActions plus the credential subcommands), mv sources (read before the delete), piece-wise names inside arguments joined by '=', '@' or ':' (upload, mount, remote-copy and version-path specs), and the process-environment file in isSecretPath, so every file.read upgrade in toDecisions (readers, dd, cp, tar, rsync, the Read tool) inherits it. Accepted conservative denials, all fail-closed: git rm --cached or checkout -- on a secret name, a sed script or commit message spelling a secret name next to ':' or '=', and a remote-copy or mount spec whose secret name is only on the remote side.",
       "sweep_status": "done",
       "status": "fixed",
       "instance_fix": "this commit",
       "guard": "test/secret-guard.test.mjs::K-SEC-049/K-SEC-050 a secret filename inside an upload reference, git path, copy or mount is denied",
-      "areas": [
-        "src/classify.mjs",
-        "test/secret-guard.test.mjs",
-        "docs/GUARD.md"
-      ],
+      "areas": ["src/classify.mjs", "test/secret-guard.test.mjs", "docs/GUARD.md"],
       "mechanism_gap": "The C-02/RC-04 detectors (F-153 movers, F-154 find/xargs, F-155 unmodeled readers) each pin one command list; none enumerates readings from the secret's side, so a reading outside every list — an upload reference, a credential printer, the process environment — escaped all of them.",
       "mechanism_upgrade": "test/secret-guard.test.mjs::K-SEC-049 / K-SEC-050 / K-SEC-051: a secret reached by any spelled-out reading is denied (F-203)",
       "distinct_from": {

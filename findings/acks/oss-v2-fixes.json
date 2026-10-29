@@ -1,90 +1,90 @@
 {
- "version": 2,
- "branch": "oss/v2-fixes",
- "answers": {
-  "C-01.1": {
-   "answer": "这批改动里「缺东西」的典型是花费账本读不到（目录没权限、文件被挪走）和钩子配置缺字段。两处都按缺席即拒绝处理：spend 的目录遍历遇到打不开的子目录不再跳过，而是把该次读数标为不完整并让上限判定失败关闭；钩子读不到自己的配置或保护名单时输出 deny 而不是放行。新检测器先验证删掉输入后结果必须变红。",
-   "guard": "none: 检测器随本批 F-204/F-207 的修复红先行落地（spend 不可读目录、hook 配置缺失两条用例），落地前没有既有测试覆盖缺席路径"
-  },
-  "C-01.2": {
-   "answer": "每个新检测器都按红先行写：先在未修复的代码上跑、确认它因为我声称的原因变红，再改代码让它变绿。对账本一类，专门加「把被测目录权限清零再跑」的用例，删除输入后旧代码读出零花费照样 PASS 的行为就是红基线；修复后同一输入必须拒绝。",
-   "guard": "none: 红基线记录写进每个修复提交的说明里，检测器本身即是落地后的守卫，落地前无可指"
-  },
-  "C-03.1": {
-   "answer": "新加的每条测试都要能因为它名字里说的那个原因失败：MCP 参数扫描的清单测试，把扫描函数短路掉必须变红；变体表测试，把分类器退回程序名单版必须变红；Origin 校验测试，去掉校验头必须变红。不允许只验证「函数被调用过」这种副作用。",
-   "guard": "none: 这些检测器在本批各线（A/B/D）内红先行新建，建成前没有既有测试名可引用"
-  },
-  "C-03.2": {
-   "answer": "攻击类用例必须打到活目标：Origin 检查用真实起一个 console 实例发带伪 Origin 的 GET/Stop 请求，不是单测一个纯函数；账本的未来时间戳用例真写一条未来时间的记录再让 cap 判定读它。凡是测不到活路径的，降级标注为单元层并另配一条端到端用例。",
-   "guard": "none: console 起真实 http 服务与真实账本文件的用例随 F-195/F-205 修复落地，当前仓库无此两条"
-  },
-  "C-03.3": {
-   "answer": "stopline 记录这次全部钉到能解析的东西上：每个被重新触发的类，classes.json 里 stopline 的 detector 写成 路径::测试名，findings-lib 的 resolveRef 必须真能找到那条测试才算解除停线；不允许再用一句描述文字顶替。F-202 之后各条的 mechanism_upgrade 也只在落地后改成双冒号引用。",
-   "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
-  },
-  "C-05.1": {
-   "answer": "docs 这条线（撤回 prices update、README 五项标未发布、CHANGELOG 切 0.1.0）每句新文案都配可失败的测试：发布测试断言 CHANGELOG 最新节等于 package.json 版本；README 里每个声称已有的能力必须有对应测试在清单里，标了未发布的必须不出现在 CLI help 里。",
-   "guard": "none: release-consistency 测试是本批 F-111 的交付物，红先行新建，建成前仓库里没有版本一致性测试"
-  },
-  "C-05.2": {
-   "answer": "工具报出的数字和退出码要经得起照做：spend 在数据不完整时不再报一个看起来可信的偏小数字，而是非零退出并写明哪个目录没读到；console 的 Stop 返回码区分「真停了」与「没权限」。按报错照做能到达修复，这是 UAT 里 S-REL-002 的直接教训。",
-   "guard": "none: 不完整读数非零退出的断言随 F-204 修复红先行落地，现有 spend 测试未覆盖该路径"
-  },
-  "C-06.1": {
-   "answer": "这批证据的来源都如实标注：七条新 finding 的 evidence 写明来自 2026-10-28 黑盒 UAT 的沙箱运行和具体 case 编号，绕过命令只留在本地测试记录、台账里只写类别描述；检测器的红基线来自旧代码真实运行，不用口头声称顶替。D11 决策记录写明七项是 the maintainer 2026-10-29 拍板，不冒充更早的授权。",
-   "guard": "none: 台账条目与决策记录是文字证据，来源标注写在 evidence 字段和 D11 本身里，没有可执行测试能核对拍板时间"
-  },
-  "C-10.1": {
-   "answer": "这次的三条「规则」全部落为机器强制：agent 不得解除停机、清账、解锁（F-177）写进 policy 的硬编码拒绝路径而不是文档；agent 改自己钩子配置直接 deny（F-188）由 hook 的保护区判定执行；版本与 CHANGELOG 一致（F-111）由发布测试在 CI 里强制。每条都配缺了就红的测试。",
-   "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
-  },
-  "C-02.1": {
-   "answer": "集成侧对账：B 线把钩子入站扫描从手写字段清单改成结构化收集器（任意深度所有字符串都过同一扫描），并配了从已装 matcher 源码枚举工具面的清单测试；A 线把密读识别从程序名单改成按参数片段拆分的类级规则。合并时 classes.json 的 C-02 检测器取两线并集，不丢任何一侧。",
-   "guard": "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan"
-  },
-  "C-02.2": {
-   "answer": "合并本身就是这个问题的现场：两条线各自修了同一规则的一个面（入站扫描、出站识别），冲突解析时我把两侧检测器全部保留并集化、stopline 取更高的 F-203，不以先合入的一侧覆盖另一侧；F-202 与 F-203 条目各自带 distinct_from 说明两面都要关。",
-   "guard": "test/hook-scan-coverage.test.mjs::the checklist covers every tool the installed matchers deliver (enumerated from the source)"
-  },
-  "C-08.1": {
-   "answer": "同物多名在本批由 A 线收口：未解析的变量与花括号展开一律 ask、绝不降级 deny（F-176），符号链接读密文件按解析后的真名判（F-186 的规则由同一检测器覆盖）。集成侧不新增别名路径，合并冲突只发生在 findings JSON，源码两侧自动合并后由全量门禁再验一次。",
-   "guard": "none: F-176 的检测器随 A 线合入，确切测试名以 A 线提交为准，集成侧以全量 npm run gate 复验而非引用单条"
-  },
-  "C-09.1": {
-   "answer": "本批不改安装布局，钩子与 policy 仍在仓库约定位置；集成操作全部在仓库顶层用显式 cd 执行，不依赖会话残留的 cwd；全量门禁在集成分支本机跑一遍，再推 CI 在干净环境复验，两个环境都要绿才合。",
-   "guard": "none: 环境假设由 CI 干净环境复跑同一门禁来验证，本批没有新增针对安装布局的测试"
-  },
-  "C-09.2": {
-   "answer": "真实运行处的验证：合并后在集成分支本机跑 npm run gate 与 test:all（钩子、pre-commit、commit-msg 都在真实仓库里真实触发，而不是只看配置在）；D 线的 console Origin 用例起真实 http 实例发请求。worktree 各线的结果不作数，以集成分支复跑为准。",
-   "guard": "none: 以集成分支全量门禁的真实执行为验证手段，无单独新增配置生效性测试"
-  },
-  "C-11.1": {
-   "answer": "写操作的越权语义由 C 线收口：resume/reconcile/unlock 被分类为对账本状态文件的写入、走 protect-guard-state 直接拒，CLI 侧解除动作要求终端真人确认，无终端则退出码 2；默认账本挪到 ~/.sakk 让仓库内写不到它。集成侧合并 C 线时不弱化任何一条拒绝路径。",
-   "guard": "none: C 线分支尚未合入集成分支，其 confirmByPerson 用例合入后由全量门禁执行，当前引用不解析"
-  },
-  "C-04.1": {
-   "answer": "敌意输入的界由计数器而非秒表断言：B 线的 payload 收集器带 1MB 上限、超限按拒绝处理；C 线把 48 小时写成常量毫秒数避免 F-62 那类秒表假设。集成侧不新增无界遍历，合并后 fuzz 与 drill 各跑一次确认 fail-closed 路径未被合并弱化。",
-   "guard": "none: 上限断言在 B 线的 hook 扫描用例内与 C 线账本用例内，集成侧以 npm run fuzz 与 npm run drill 复验"
-  },
-  "C-14.1": {
-   "answer": "单元失败的隔离由 C 线落地：spend 遍历遇到不可列目录不再静默跳过，收集成命名错误 SPEND_LOGS_UNLISTABLE 并让上限判定失败关闭、退出码非零点名目录；其余目录照常读。集成合并时保留该行为，不把「一个目录坏」重新变回「整体读出偏小数字」。",
-   "guard": "none: C 线分支尚未合入集成分支，SPEND_LOGS_UNLISTABLE 用例合入后随全量门禁执行，当前引用不解析"
-  },
-  "C-07.1": {
-   "answer": "C 线把「对方可作者的输入」逐一过界审查：日志行的时间戳由被管的 agent 写，F-205 改为声称未来的行按观察日入账并打 future 标记，不再让它选择 cap 窗口；日志目录不可列（F-204）按类型化失败关闭而非读成 $0。集成侧合并时保留这两条拒绝路径与 spec 对应行。",
-   "guard": "none: F-205/F-204 的检测器在 C 线 test/spend.test.mjs 内随本次合并入集成分支，由合并后全量门禁执行验证"
-  },
-  "C-07.2": {
-   "answer": "解除闸门的那一步必须由人完成：F-177 把 resume/reconcile/unlock 分类为对账本状态的写入直接拒，CLI 解除要求终端真人确认（无终端退出码 2，HUMAN_CONFIRMATION_REQUIRED），被约束的 agent 自己清不掉自己的停机。合并时我核对该拒绝路径未被其它线的 classify 改动冲掉。",
-   "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
-  },
-  "C-15.1": {
-   "answer": "真路径执行：C 线的 spend 用例对真实临时目录 chmod 000 再跑真实 updateIndex/capCheck，不是打桩；D 线 console 用例起真实 http 实例发伪 Origin 请求；集成分支本机全量跑 npm run gate 与 test:all，再由 CI 在干净机复跑，两层都是真实执行器。",
-   "guard": "none: 真路径验证以集成分支与 CI 的全量门禁执行为准，本批没有再新增独立的 real-path 元测试"
-  },
-  "C-10.2": {
-   "answer": "绕路问题逐条封：保护区判定对所有写入工具生效（Write、Edit、Bash、MCP 任何携带内容的调用都过同一判定），不是只拦某个工具名；未解析变量展开一律 ask（F-176）在规范化之后判，换一种拼法也落到同一条路径；console 的 Origin 在 GET 和 Stop 两条路由都查，不留只查一条的侧门。",
-   "guard": "none: 工具乘字段清单用例与双路由 Origin 用例随 F-202/F-195 修复红先行落地，建成前没有既有测试枚举全部路由"
+  "version": 2,
+  "branch": "oss/v2-fixes",
+  "answers": {
+    "C-01.1": {
+      "answer": "这批改动里「缺东西」的典型是花费账本读不到（目录没权限、文件被挪走）和钩子配置缺字段。两处都按缺席即拒绝处理：spend 的目录遍历遇到打不开的子目录不再跳过，而是把该次读数标为不完整并让上限判定失败关闭；钩子读不到自己的配置或保护名单时输出 deny 而不是放行。新检测器先验证删掉输入后结果必须变红。",
+      "guard": "none: 检测器随本批 F-204/F-207 的修复红先行落地（spend 不可读目录、hook 配置缺失两条用例），落地前没有既有测试覆盖缺席路径"
+    },
+    "C-01.2": {
+      "answer": "每个新检测器都按红先行写：先在未修复的代码上跑、确认它因为我声称的原因变红，再改代码让它变绿。对账本一类，专门加「把被测目录权限清零再跑」的用例，删除输入后旧代码读出零花费照样 PASS 的行为就是红基线；修复后同一输入必须拒绝。",
+      "guard": "none: 红基线记录写进每个修复提交的说明里，检测器本身即是落地后的守卫，落地前无可指"
+    },
+    "C-03.1": {
+      "answer": "新加的每条测试都要能因为它名字里说的那个原因失败：MCP 参数扫描的清单测试，把扫描函数短路掉必须变红；变体表测试，把分类器退回程序名单版必须变红；Origin 校验测试，去掉校验头必须变红。不允许只验证「函数被调用过」这种副作用。",
+      "guard": "none: 这些检测器在本批各线（A/B/D）内红先行新建，建成前没有既有测试名可引用"
+    },
+    "C-03.2": {
+      "answer": "攻击类用例必须打到活目标：Origin 检查用真实起一个 console 实例发带伪 Origin 的 GET/Stop 请求，不是单测一个纯函数；账本的未来时间戳用例真写一条未来时间的记录再让 cap 判定读它。凡是测不到活路径的，降级标注为单元层并另配一条端到端用例。",
+      "guard": "none: console 起真实 http 服务与真实账本文件的用例随 F-195/F-205 修复落地，当前仓库无此两条"
+    },
+    "C-03.3": {
+      "answer": "stopline 记录这次全部钉到能解析的东西上：每个被重新触发的类，classes.json 里 stopline 的 detector 写成 路径::测试名，findings-lib 的 resolveRef 必须真能找到那条测试才算解除停线；不允许再用一句描述文字顶替。F-202 之后各条的 mechanism_upgrade 也只在落地后改成双冒号引用。",
+      "guard": "test/self-evolution.test.mjs::a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)"
+    },
+    "C-05.1": {
+      "answer": "docs 这条线（撤回 prices update、README 五项标未发布、CHANGELOG 切 0.1.0）每句新文案都配可失败的测试：发布测试断言 CHANGELOG 最新节等于 package.json 版本；README 里每个声称已有的能力必须有对应测试在清单里，标了未发布的必须不出现在 CLI help 里。",
+      "guard": "none: release-consistency 测试是本批 F-111 的交付物，红先行新建，建成前仓库里没有版本一致性测试"
+    },
+    "C-05.2": {
+      "answer": "工具报出的数字和退出码要经得起照做：spend 在数据不完整时不再报一个看起来可信的偏小数字，而是非零退出并写明哪个目录没读到；console 的 Stop 返回码区分「真停了」与「没权限」。按报错照做能到达修复，这是 UAT 里 S-REL-002 的直接教训。",
+      "guard": "none: 不完整读数非零退出的断言随 F-204 修复红先行落地，现有 spend 测试未覆盖该路径"
+    },
+    "C-06.1": {
+      "answer": "这批证据的来源都如实标注：七条新 finding 的 evidence 写明来自 2026-10-28 黑盒 UAT 的沙箱运行和具体 case 编号，绕过命令只留在本地测试记录、台账里只写类别描述；检测器的红基线来自旧代码真实运行，不用口头声称顶替。D11 决策记录写明七项是 the maintainer 2026-10-29 拍板，不冒充更早的授权。",
+      "guard": "none: 台账条目与决策记录是文字证据，来源标注写在 evidence 字段和 D11 本身里，没有可执行测试能核对拍板时间"
+    },
+    "C-10.1": {
+      "answer": "这次的三条「规则」全部落为机器强制：agent 不得解除停机、清账、解锁（F-177）写进 policy 的硬编码拒绝路径而不是文档；agent 改自己钩子配置直接 deny（F-188）由 hook 的保护区判定执行；版本与 CHANGELOG 一致（F-111）由发布测试在 CI 里强制。每条都配缺了就红的测试。",
+      "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
+    },
+    "C-02.1": {
+      "answer": "集成侧对账：B 线把钩子入站扫描从手写字段清单改成结构化收集器（任意深度所有字符串都过同一扫描），并配了从已装 matcher 源码枚举工具面的清单测试；A 线把密读识别从程序名单改成按参数片段拆分的类级规则。合并时 classes.json 的 C-02 检测器取两线并集，不丢任何一侧。",
+      "guard": "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan"
+    },
+    "C-02.2": {
+      "answer": "合并本身就是这个问题的现场：两条线各自修了同一规则的一个面（入站扫描、出站识别），冲突解析时我把两侧检测器全部保留并集化、stopline 取更高的 F-203，不以先合入的一侧覆盖另一侧；F-202 与 F-203 条目各自带 distinct_from 说明两面都要关。",
+      "guard": "test/hook-scan-coverage.test.mjs::the checklist covers every tool the installed matchers deliver (enumerated from the source)"
+    },
+    "C-08.1": {
+      "answer": "同物多名在本批由 A 线收口：未解析的变量与花括号展开一律 ask、绝不降级 deny（F-176），符号链接读密文件按解析后的真名判（F-186 的规则由同一检测器覆盖）。集成侧不新增别名路径，合并冲突只发生在 findings JSON，源码两侧自动合并后由全量门禁再验一次。",
+      "guard": "none: F-176 的检测器随 A 线合入，确切测试名以 A 线提交为准，集成侧以全量 npm run gate 复验而非引用单条"
+    },
+    "C-09.1": {
+      "answer": "本批不改安装布局，钩子与 policy 仍在仓库约定位置；集成操作全部在仓库顶层用显式 cd 执行，不依赖会话残留的 cwd；全量门禁在集成分支本机跑一遍，再推 CI 在干净环境复验，两个环境都要绿才合。",
+      "guard": "none: 环境假设由 CI 干净环境复跑同一门禁来验证，本批没有新增针对安装布局的测试"
+    },
+    "C-09.2": {
+      "answer": "真实运行处的验证：合并后在集成分支本机跑 npm run gate 与 test:all（钩子、pre-commit、commit-msg 都在真实仓库里真实触发，而不是只看配置在）；D 线的 console Origin 用例起真实 http 实例发请求。worktree 各线的结果不作数，以集成分支复跑为准。",
+      "guard": "none: 以集成分支全量门禁的真实执行为验证手段，无单独新增配置生效性测试"
+    },
+    "C-11.1": {
+      "answer": "写操作的越权语义由 C 线收口：resume/reconcile/unlock 被分类为对账本状态文件的写入、走 protect-guard-state 直接拒，CLI 侧解除动作要求终端真人确认，无终端则退出码 2；默认账本挪到 ~/.sakk 让仓库内写不到它。集成侧合并 C 线时不弱化任何一条拒绝路径。",
+      "guard": "none: C 线分支尚未合入集成分支，其 confirmByPerson 用例合入后由全量门禁执行，当前引用不解析"
+    },
+    "C-04.1": {
+      "answer": "敌意输入的界由计数器而非秒表断言：B 线的 payload 收集器带 1MB 上限、超限按拒绝处理；C 线把 48 小时写成常量毫秒数避免 F-62 那类秒表假设。集成侧不新增无界遍历，合并后 fuzz 与 drill 各跑一次确认 fail-closed 路径未被合并弱化。",
+      "guard": "none: 上限断言在 B 线的 hook 扫描用例内与 C 线账本用例内，集成侧以 npm run fuzz 与 npm run drill 复验"
+    },
+    "C-14.1": {
+      "answer": "单元失败的隔离由 C 线落地：spend 遍历遇到不可列目录不再静默跳过，收集成命名错误 SPEND_LOGS_UNLISTABLE 并让上限判定失败关闭、退出码非零点名目录；其余目录照常读。集成合并时保留该行为，不把「一个目录坏」重新变回「整体读出偏小数字」。",
+      "guard": "none: C 线分支尚未合入集成分支，SPEND_LOGS_UNLISTABLE 用例合入后随全量门禁执行，当前引用不解析"
+    },
+    "C-07.1": {
+      "answer": "C 线把「对方可作者的输入」逐一过界审查：日志行的时间戳由被管的 agent 写，F-205 改为声称未来的行按观察日入账并打 future 标记，不再让它选择 cap 窗口；日志目录不可列（F-204）按类型化失败关闭而非读成 $0。集成侧合并时保留这两条拒绝路径与 spec 对应行。",
+      "guard": "none: F-205/F-204 的检测器在 C 线 test/spend.test.mjs 内随本次合并入集成分支，由合并后全量门禁执行验证"
+    },
+    "C-07.2": {
+      "answer": "解除闸门的那一步必须由人完成：F-177 把 resume/reconcile/unlock 分类为对账本状态的写入直接拒，CLI 解除要求终端真人确认（无终端退出码 2，HUMAN_CONFIRMATION_REQUIRED），被约束的 agent 自己清不掉自己的停机。合并时我核对该拒绝路径未被其它线的 classify 改动冲掉。",
+      "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
+    },
+    "C-15.1": {
+      "answer": "真路径执行：C 线的 spend 用例对真实临时目录 chmod 000 再跑真实 updateIndex/capCheck，不是打桩；D 线 console 用例起真实 http 实例发伪 Origin 请求；集成分支本机全量跑 npm run gate 与 test:all，再由 CI 在干净机复跑，两层都是真实执行器。",
+      "guard": "none: 真路径验证以集成分支与 CI 的全量门禁执行为准，本批没有再新增独立的 real-path 元测试"
+    },
+    "C-10.2": {
+      "answer": "绕路问题逐条封：保护区判定对所有写入工具生效（Write、Edit、Bash、MCP 任何携带内容的调用都过同一判定），不是只拦某个工具名；未解析变量展开一律 ask（F-176）在规范化之后判，换一种拼法也落到同一条路径；console 的 Origin 在 GET 和 Stop 两条路由都查，不留只查一条的侧门。",
+      "guard": "none: 工具乘字段清单用例与双路由 Origin 用例随 F-202/F-195 修复红先行落地，建成前没有既有测试枚举全部路由"
+    }
   }
- }
 }

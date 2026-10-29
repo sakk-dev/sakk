@@ -45,15 +45,15 @@ decisions. Work lands on `oss/v2-fixes`, detector-first: each class that
 re-triggers its stop line gets its detector (red first, then green) before
 the fix.
 
-| Question | Decision | Lands in |
-| --- | --- | --- |
-| F-176 — unresolved expansion in a command | Always "ask": an expansion the guard cannot resolve is never judged safe | line A (canonicalization) |
-| F-177 — what the agent may never do | The agent never lifts a halt, reconciles, or unlocks; the default ledger moves under `~/.sakk` | line C (spend/ledger) |
-| F-188 — agent edits its own hook config | Deny outright, not ask | line B (hook entry + protected zone) |
-| F-195 — console checks Origin | On GET as well as Stop | line D (console) |
-| F-175 — `sakk prices update` | Retract the command and remove it from docs | line D (docs) |
-| F-111 — version and CHANGELOG | Version is 0.1.0; cut CHANGELOG from [Unreleased]; a release test ties version, CHANGELOG and tag together | line D (release) |
-| README features not built (P-ACC-001/002/004/012, P-INS-004) | Build what fits the window; mark the rest 未发布 in the README | line D (docs) |
+| Question                                                     | Decision                                                                                                   | Lands in                             |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| F-176 — unresolved expansion in a command                    | Always "ask": an expansion the guard cannot resolve is never judged safe                                   | line A (canonicalization)            |
+| F-177 — what the agent may never do                          | The agent never lifts a halt, reconciles, or unlocks; the default ledger moves under `~/.sakk`             | line C (spend/ledger)                |
+| F-188 — agent edits its own hook config                      | Deny outright, not ask                                                                                     | line B (hook entry + protected zone) |
+| F-195 — console checks Origin                                | On GET as well as Stop                                                                                     | line D (console)                     |
+| F-175 — `sakk prices update`                                 | Retract the command and remove it from docs                                                                | line D (docs)                        |
+| F-111 — version and CHANGELOG                                | Version is 0.1.0; cut CHANGELOG from [Unreleased]; a release test ties version, CHANGELOG and tag together | line D (release)                     |
+| README features not built (P-ACC-001/002/004/012, P-INS-004) | Build what fits the window; mark the rest 未发布 in the README                                             | line D (docs)                        |
 
 The seven unfiled UAT escapes (K-INS-026, K-SEC-049/050/051, S-REL-005,
 S-REL-002 follow-on, R-REL-015) are filed as F-202… under this decision.
