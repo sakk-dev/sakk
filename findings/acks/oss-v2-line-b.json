@@ -46,6 +46,30 @@
       "answer": "F-202 的根因正是手写字段清单冒充「全部」：修复把规则改为结构式——钩子收到的 payload 里每个字符串（键与值、任意深度）都进同一次扫描，不再按工具名/字段名挑；检测器反向用安装 matcher 源头枚举工具清单，漏一个即红。",
       "guard": "test/hook-scan-coverage.test.mjs::the checklist covers every tool the installed matchers deliver (enumerated from the source)"
     },
+    "C-06.1": {
+      "answer": "docs/GUARD.md 的规则表只是政策文件的弱复述，不是证据源；真正的证据源是 policies/guard-default.json 与钉死它的 spec 表测试（F-148）和新的 F-188 deny 回归；docs 行改成与政策逐字一致，不声称测试之外的任何行为。",
+      "guard": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)"
+    },
+    "C-03.1": {
+      "answer": "F-188 回归先在未修复政策上跑红（ask≠deny 的断言失败原因正是规则判定，不是环境），再改政策变绿；用户级/删除面各有独立断言，把 deny 规则撤回任何一个作用域该测试都会因那一行红回去。",
+      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
+    },
+    "C-03.2": {
+      "answer": "测试经由真实钩子子进程（stdin payload→stdout 判定）打到真策略，不是函数桩；每个作用域（项目级三目录、用户级三目录、shell 重定向、rm 删除）各自有能单独翻红的断言，且对照组（写普通仓库文件 allow）在相邻用例里保持。",
+      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
+    },
+    "C-03.3": {
+      "answer": "该检查不依赖文书：它断言的是钩子对真实 payload 的判定结果，政策文件若被改回 ask 或删掉作用域，测试立即红；spec 表测试（F-148）再把 spec.md 的表与政策文件逐字钉死，防止只改文档不改行为。",
+      "guard": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)"
+    },
+    "C-09.1": {
+      "answer": "测试在 mkdtemp 的临时 HOME/SAKK_HOME 里跑，用户级路径按 ~home/ 规范化规则匹配而非写死本机家目录；项目级与用户级两个环境都各有断言，不假设会话只从仓库根发起。",
+      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
+    },
+    "C-09.2": {
+      "answer": "F-188 回归按 agent 真实运行方式起钩子子进程（bin/sakk.mjs hook --agent …，payload 走 stdin），不是只查配置文件存在；claude-code 与 codex 两个 agent 都各自跑到 deny 判定。",
+      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
+    },
     "C-02.2": {
       "answer": "同一条规则适用处已排查：writeContent 的字段清单只决定写盘内容归属（分类用），扫描不再依赖它；cursor/codex/claude-code 三个 agent 的 normalize 分支都走同一个 payload 收集器；F-188 的保护区同时覆盖 file.write 与 file.delete 两个动作面、仓库级与用户级两个路径面。",
       "guard": "test/hook-scan-coverage.test.mjs::a secret anywhere in the payload is found: unknown fields, deep nesting, arrays, object keys"

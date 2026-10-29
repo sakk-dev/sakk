@@ -5973,13 +5973,15 @@
       "dt": ["DT-SPEC"],
       "rc": ["RC-10"],
       "es": ["ES-01"],
-      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: the owner decides deny or ask for the agent's own hook config; then add the user-level agent config to the rule and map each REQ-G line to the rule and test that keep it.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept the protected zone one rule wide (D11: deny outright, not ask): deny-agent-config and deny-agent-config-delete cover file.write and file.delete, the project-level and user-level config folders of all three agents, and the `sakk guard install|uninstall` commands the classifier maps to that write (J-UAT-016). The full REQ-G-line-to-rule mapping detector stays V2 work (docs/V2-BACKLOG.md); no follow-up needed: that remaining mapping work is already tracked there.",
+      "sweep_status": "partial",
+      "status": "fixed",
       "areas": ["policies/guard-default.json", "specs/guard/spec.md"],
       "mechanism_gap": "The statement detectors (claims-are-checked codes and file names, guard.test 'the spec lists the shipped rules in their order') tie the spec to the code; none ties the original requirement's verdicts to the spec, so a weakened verdict passes both.",
-      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
-      "distinct_from": {}
+      "mechanism_upgrade": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)",
+      "distinct_from": {},
+      "instance_fix": "this commit",
+      "guard": "test/guard.test.mjs::writes and deletes to agent hook configs are denied, project or user level (F-188)"
     },
     {
       "id": "F-189",

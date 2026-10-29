@@ -397,19 +397,28 @@ describe('the hook as an agent runs it', () => {
     ])
       assert.equal(run(w, cmd).v, 'allow', `GAP F-176: ${cmd} is currently allowed`);
   });
-  test('writes to agent hook configs are asked', () => {
+  test('writes and deletes to agent hook configs are denied, project or user level (F-188)', () => {
     const w = world();
     const p = tool(w, 'Edit', {
       file_path: join(w.repo, '.claude', 'settings.json'),
       old_string: 'a',
       new_string: 'b',
     });
-    assert.equal(verdict('claude-code', hook(w, 'claude-code', p).stdout), 'ask');
-    assert.equal(
-      verdict('codex', hook(w, 'codex', p).stdout),
-      'deny',
-      'Codex runs the call on ask: a deny there',
-    );
+    assert.equal(verdict('claude-code', hook(w, 'claude-code', p).stdout), 'deny');
+    assert.equal(verdict('codex', hook(w, 'codex', p).stdout), 'deny');
+    // the user-level config is the same protected zone (G-SEC-011): every agent's
+    // folder, by the Write tool and by a shell redirect
+    for (const dir of ['.claude', '.cursor', '.codex']) {
+      const write = tool(w, 'Write', {
+        file_path: join(w.home, dir, 'settings.json'),
+        content: '{}',
+      });
+      assert.equal(verdict('claude-code', hook(w, 'claude-code', write).stdout), 'deny', dir);
+    }
+    assert.equal(run(w, `echo x > ${join(w.home, '.claude', 'settings.json')}`).v, 'deny');
+    // removing the config is rewriting it: the delete face is the same zone
+    assert.equal(run(w, 'rm .claude/settings.json').v, 'deny');
+    assert.equal(run(w, `rm ${join(w.home, '.claude', 'settings.json')}`).v, 'deny');
   });
   test('every malformed payload is a deny with a code', () => {
     const w = world();

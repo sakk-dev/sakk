@@ -85,13 +85,34 @@
       "verdict": "deny"
     },
     {
-      "id": "ask-agent-config",
+      "id": "deny-agent-config",
       "match": {
         "action": "file.write",
-        "scope": [".claude/", ".cursor/", ".codex/"]
+        "scope": [
+          ".claude/",
+          ".cursor/",
+          ".codex/",
+          "~home/.claude/",
+          "~home/.cursor/",
+          "~home/.codex/"
+        ]
       },
-      "verdict": "require_approval",
-      "approvers_min": 1
+      "verdict": "deny"
+    },
+    {
+      "id": "deny-agent-config-delete",
+      "match": {
+        "action": "file.delete",
+        "scope": [
+          ".claude/",
+          ".cursor/",
+          ".codex/",
+          "~home/.claude/",
+          "~home/.cursor/",
+          "~home/.codex/"
+        ]
+      },
+      "verdict": "deny"
     },
     {
       "id": "high-risk-deploy",
