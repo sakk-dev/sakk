@@ -40,6 +40,9 @@ user-facing changes get a line in `CHANGELOG.md` under `[Unreleased]`.
 ## Pull requests
 
 - One logical change per PR; link the issue it addresses.
+- At most three pull requests are open at once, drafts included. Merge or
+  close one before opening a fourth: CI's cap step (`scripts/wip-limit.mjs`,
+  the base branch's copy) fails every pull request after the three oldest.
 - New or changed behavior → tests in the same PR. A weakened guard without a
   red drill is grounds for rejection on its own.
 - Changes to money semantics (reserve/settle/reconciliation, caps, refusal

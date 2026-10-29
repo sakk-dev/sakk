@@ -199,7 +199,10 @@ The record carries exactly one of:
 - `detector`: listed in the class's `detectors`, and it must resolve.
 - `waiver: {by, on, record}`: the owner accepts the risk.
 - `debt: {plan, until}`: the detector is planned by that date. On the next
-  day the class is stopped again.
+  day the class is stopped again. From seven days before that date, and on
+  every day after it, the commit check and the CI range check print a
+  warning naming the class, the date and the plan (an annotation in GitHub
+  Actions). The warning never changes the result.
 
 A new escape that upgrades a check also releases the class, because its
 last two escapes are then no longer both "none".

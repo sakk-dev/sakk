@@ -65,6 +65,9 @@ jobs:
     # and leave the base checker an empty range to pass. A fresh runner has no
     # PR code run in it, so its checkout and HEAD are untampered.
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -97,6 +100,27 @@ jobs:
             git show "origin/$base:$f" > "$RUNNER_TEMP/base-checker/$f"
           done
           SAKK_BRANCH="$HEAD_REF" node "$RUNNER_TEMP/base-checker/scripts/findings-check.mjs" --range "origin/$base"
+      # merge as you go (owner's rule, 2026-10-29): the three oldest open pull
+      # requests pass, a fourth fails until one is merged or closed. The base's
+      # copy of the cap judges, so a branch cannot raise its own limit.
+      - name: at most three pull requests in flight (the base's cap judges)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          base="${BASE_REF:?the cap needs the pull request base}"
+          git fetch -q origin "$base"
+          cap="$RUNNER_TEMP/wip-limit.mjs"
+          if git cat-file -e "origin/$base:scripts/wip-limit.mjs" 2>/dev/null; then
+            git show "origin/$base:scripts/wip-limit.mjs" > "$cap"
+          else
+            echo "::notice::the base predates the open pull request cap; this branch's own scripts/wip-limit.mjs judges"
+            cp scripts/wip-limit.mjs "$cap"
+          fi
+          node "$cap" --pr "${PR_NUMBER:?}"
   format:
     runs-on: ubuntu-latest
     timeout-minutes: 10

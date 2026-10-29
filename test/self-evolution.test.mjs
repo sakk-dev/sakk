@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 import {
   classifyShell,
   dataRegressions,
+  debtsDueSoon,
+  debtWarning,
   FROZEN,
   guardResolution,
   messageProblem,
@@ -1149,5 +1151,131 @@ describe('R6: the data the gate reads only moves forward', () => {
     );
     assert.equal(r.status, 1, "the base's checker still refuses");
     assert.match(r.stderr, /C-01\.1/);
+  });
+});
+
+describe('a stop-line debt warns before it locks (R5)', () => {
+  const shift = (day, n) =>
+    new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+  const PLAN = 'a counter-based bound for every matcher, scoped in the review';
+  const withDebt = (id, until) => ({
+    id,
+    questions: [{ id: `${id}.1`, ask: 'What happens when the input is absent here?' }],
+    stopline: { after: 'F-09', debt: { plan: PLAN, until } },
+  });
+  test('a stop-line debt due within seven days is warned about, an overdue one too, a later one not', () => {
+    const today = '2026-10-29';
+    const reg = {
+      classes: [
+        withDebt('C-00', today),
+        withDebt('C-07', shift(today, 7)),
+        withDebt('C-08', shift(today, 8)),
+        withDebt('C-99', shift(today, -1)),
+        { id: 'C-50', questions: [] },
+        { id: 'C-51', stopline: { after: 'F-09', debt: { plan: PLAN, until: 'soon' } } },
+        { id: 'C-52', stopline: { after: 'F-09', waiver: { by: 'owner' } } },
+      ],
+    };
+    assert.deepEqual(
+      debtsDueSoon(reg, today).map(({ id, left }) => [id, left]),
+      [
+        ['C-00', 0],
+        ['C-07', 7],
+        ['C-99', -1],
+      ],
+      'due today, in seven days and overdue warn; eight days, no debt and a malformed date do not',
+    );
+    assert.deepEqual(debtsDueSoon({}, today), [], 'no classes, no warning');
+    assert.throws(() => debtsDueSoon(reg, 'today'), /YYYY-MM-DD/);
+    assert.match(debtWarning(debtsDueSoon(reg, today)[0]), /falls due 2026-10-29 \(today\)/);
+    assert.match(debtWarning(debtsDueSoon(reg, today)[1]), /\(in 7 days\)/);
+    assert.match(debtWarning({ id: 'C-01', until: today, left: 1, plan: PLAN }), /\(in 1 day\)/);
+    assert.match(debtWarning(debtsDueSoon(reg, today)[2]), /was due 2026-10-28 \(1 day ago\)/);
+    // control on the real registry: every debt more than seven days out stays quiet
+    const real = JSON.parse(readFileSync(join(REPO, 'findings', 'classes.json'), 'utf8'));
+    const warned = debtsDueSoon(real, today);
+    for (const c of real.classes) {
+      const until = c.stopline?.debt?.until;
+      if (!until) continue;
+      const left = Math.round(
+        (Date.parse(`${until}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000,
+      );
+      assert.equal(
+        warned.some((w) => w.id === c.id),
+        left <= 7,
+        `${c.id} due ${until}`,
+      );
+    }
+  });
+  test('the commit check prints the debt warning and still passes; in GitHub Actions it is an annotation', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const classes = {
+      classes: [...CLASSES.classes.map((c) => ({ ...c })), withDebt('C-03', shift(today, 2))],
+    };
+    const { d, git } = repo({ classes });
+    writeFileSync(join(d, 'src', 'x.mjs'), 'export const x = 2;\n');
+    ack(d, ANSWERS());
+    git('add', '-A');
+    const plain = { ...ENV };
+    delete plain.GITHUB_ACTIONS;
+    const run = (args, env) =>
+      spawnSync(process.execPath, [join(d, 'scripts', 'findings-check.mjs'), ...args], {
+        cwd: d,
+        encoding: 'utf8',
+        env,
+        timeout: 60_000,
+        killSignal: 'SIGKILL',
+      });
+    let r = run(['--staged'], plain);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(
+      r.stdout,
+      /^self-evolution: warning: stop-line debt on C-03 falls due \d{4}-\d{2}-\d{2} \(in [12] days?\)/m,
+    );
+    assert.doesNotMatch(r.stdout, /::warning/);
+    r = run(['--staged'], { ...plain, GITHUB_ACTIONS: 'true' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(
+      r.stdout,
+      /^::warning title=stop-line debt::self-evolution: stop-line debt on C-03 falls due/m,
+    );
+    commit(git, 'feat: x is two');
+    r = run(['--range', 'main'], { ...plain, GITHUB_ACTIONS: 'true' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(
+      r.stdout,
+      /^::warning title=stop-line debt::self-evolution: stop-line debt on C-03/m,
+    );
+    assert.match(r.stdout, /changed file\(s\) answered/, 'the range verdict still prints');
+    // a warning never turns a refusal into a pass: unanswered, the same commit check still fails
+    mkdirSync(join(d, 'docs'), { recursive: true });
+    writeFileSync(join(d, 'docs', 'a.md'), 'x\n');
+    ack(d, { 'C-01.1': { answer: ANSWER } });
+    git('add', '-A');
+    r = run(['--staged'], plain);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /stop-line debt on C-03/);
+  });
+  test('a debt plan cannot inject a workflow command: the warning stays one escaped line', () => {
+    const plan = `${'a'.repeat(150)} 100% %0A\n::error::forged\r\u2028${'Z'.repeat(60)}END`;
+    const w = debtWarning(
+      { id: 'C-15\n::error::id', until: '2026-11-30', left: 3, plan },
+      { actions: true },
+    );
+    assert.equal(w.split(/[\r\n\u2028\u2029]/).length, 1, 'one line, Unicode separators included');
+    assert.ok(w.startsWith('::warning title=stop-line debt::'));
+    assert.doesNotMatch(w, /%(?!25|0D|0A)/, 'every percent is encoded');
+    assert.match(
+      w,
+      /100%25 %250A ::error::forged /,
+      'a literal %0A stays text; the forged command is mid-line text',
+    );
+    assert.match(w, /on C-15 ::error::id falls due/, 'the class id is flattened too');
+    assert.doesNotMatch(w, /END/, 'the plan is cut');
+    assert.match(w, /…/);
+    assert.ok(w.length < 700, `bounded: ${w.length}`);
+    const p = debtWarning({ id: 'C-15', until: '2026-11-30', left: 3, plan });
+    assert.equal(p.split(/[\r\n]/).length, 1, 'the plain line is one line too');
+    assert.doesNotMatch(p, /^::/m);
   });
 });
