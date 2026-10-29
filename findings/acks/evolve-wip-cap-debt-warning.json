@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "branch": "evolve/wip-cap-debt-warning",
+  "answers": {
+    "C-01.1": {
+      "answer": "The cap refuses every absence: no --pr exits 2, a pull request missing from GitHub's open list exits 1, gh that cannot start or fails exits 1, and an entry without an integer number or a parseable createdAt refuses the whole list. The debt warning is advisory only: a class with no debt prints nothing, and a malformed debt stays the stop-line's job (stoplineGap refuses it).",
+      "guard": "test/wip-limit.test.mjs::an absent pull request, a malformed entry or a non-list refuses"
+    },
+    "C-01.2": {
+      "answer": "Deleting the cap step from ci.yml turns the wiring test red, because it reads the base-checker job and asserts the step, its token scope and the base's copy of the script; deleting the warning print from findings-check turns the commit-check test red, because it asserts the warning line on stdout.",
+      "guard": "test/wip-limit.test.mjs::CI runs the base branch's cap on every pull request, with read access to pull requests"
+    },
+    "C-02.1": {
+      "answer": "No hand list: the cap counts every pull request gh reports open, drafts included, not a chosen subset; the debt scan walks every class in classes.json instead of naming C-15, so the next debt is covered without an edit.",
+      "guard": "test/wip-limit.test.mjs::drafts count, and a tie in creation time is broken by number"
+    },
+    "C-02.2": {
+      "answer": "The in-flight rule binds every pull request on every base, so the step sits in the base-checker job, which runs for every pull_request event. The debt warning appears where a commit is judged: the commit check (--staged, the git hook) and the range check (--range, CI). The edit hook is left out on purpose: it runs before every single edit and would repeat the line hundreds of times.",
+      "guard": "test/self-evolution.test.mjs::the commit check prints the debt warning and still passes; in GitHub Actions it is an annotation"
+    },
+    "C-03.1": {
+      "answer": "The cap test asserts both sides of the boundary, the third pull request passes and the fourth is refused, so an off-by-one turns it red; I put that bug back locally (place < limit became place <= limit) and the test went red. The window test asserts day 7 warns and day 8 does not, and the same planted off-by-one (left <= days became left < days) turned it red.",
+      "guard": "test/wip-limit.test.mjs::inside the oldest three passes; the fourth is refused and told which to merge"
+    },
+    "C-03.2": {
+      "answer": "The CLI tests run the real script as a child process: once with a fake gh first on PATH that records its arguments and prints a fixture list, once with PATH emptied so gh truly cannot start. The commit-check test runs the real checker in a throwaway repository with GITHUB_ACTIONS set and unset, so each test observes the path its name claims.",
+      "guard": "test/wip-limit.test.mjs::the CLI exits 1 over the cap, 0 inside it, and 1 when gh cannot run"
+    },
+    "C-03.3": {
+      "answer": "Neither check reads a record that someone writes to say the work is done. The cap reads GitHub's live open-PR list at run time with the job token. The warning reads the same until date that the stop-line itself enforces in classes.json, so the warning and the lock cannot disagree about the deadline.",
+      "guard": "test/self-evolution.test.mjs::a stop-line debt due within seven days is warned about, an overdue one too, a later one not"
+    },
+    "C-04.1": {
+      "answer": "The cap asks gh for at most 200 open pull requests (--limit 200, asserted through the fake gh's recorded arguments) and sorts that bounded list once; the debt scan is one pass over the classes; each warning cuts the plan to 200 characters, asserted by length. There is no wall-clock assertion anywhere.",
+      "guard": "test/wip-limit.test.mjs::the CLI exits 1 over the cap, 0 inside it, and 1 when gh cannot run"
+    },
+    "C-05.1": {
+      "answer": "Every new doc sentence maps to a test. In CONTRIBUTING, 'at most three open, drafts included, CI fails a fourth' maps to the boundary and drafts tests. In SELF_EVOLUTION, 'seven days ahead and after, never changes the result' maps to the window and commit-check tests. No CHANGELOG line: both changes live in scripts/ and CI, which the npm package does not ship, so the release log and version stay as they are.",
+      "guard": "test/self-evolution.test.mjs::the commit check prints the debt warning and still passes; in GitHub Actions it is an annotation"
+    },
+    "C-05.2": {
+      "answer": "Exit 1 names the queue position and the three older pull requests to merge or close, then says to re-run the check, which is a step someone can take. Exit 2 carries a USAGE_ code. The warning gives the due date and the days left, and the day count is asserted at 0, 7 and 8 days and when overdue.",
+      "guard": "test/wip-limit.test.mjs::the CLI refuses an unknown flag, a repeated flag and a missing --pr with exit 2"
+    },
+    "C-06.1": {
+      "answer": "The cap's verdict comes from GitHub's own open pull request list, read with the job token when the check runs, not from any file the branch can edit. In CI the base branch's copy of the script judges, so the branch's own copy is never the source of the verdict about itself.",
+      "guard": "test/wip-limit.test.mjs::CI runs the base branch's cap on every pull request, with read access to pull requests"
+    },
+    "C-07.1": {
+      "answer": "Untrusted inputs: gh's JSON (each entry shape-checked), the --pr argument (a positive integer only), the PR number from the event (passed through env, never interpolated into the script), and the class id and plan text in the hand-edited classes.json. For those two, every run of control characters (CR and LF included) and Unicode line separators becomes one space, so the warning stays one line and no workflow command can start mid-message; then percent is encoded; the id is cut to 20 characters and the plan to 200 plus an ellipsis.",
+      "guard": "test/self-evolution.test.mjs::a debt plan cannot inject a workflow command: the warning stays one escaped line"
+    },
+    "C-07.2": {
+      "answer": "The cap clears only when a pull request is merged or closed. That is the behaviour the rule wants, so it is not a loophole. The limit is a constant in the base's copy of the script: a branch that raises it does not change the copy that judges it, and raising it for real means a pull request to main first.",
+      "guard": "test/wip-limit.test.mjs::CI runs the base branch's cap on every pull request, with read access to pull requests"
+    },
+    "C-09.1": {
+      "answer": "Assumptions: gh is present on the GitHub runner (ubuntu-latest ships it) with GH_TOKEN scoped to pull-requests: read, and the base already has the script. Each is tried the other way. gh absent exits 1. A base from before the cap falls back to the branch's own copy and prints a notice that says so. The warning is tested with GITHUB_ACTIONS set and unset.",
+      "guard": "test/wip-limit.test.mjs::the CLI exits 1 over the cap, 0 inside it, and 1 when gh cannot run"
+    },
+    "C-09.2": {
+      "answer": "It really runs in the base-checker job on GitHub's runner, against the pull request this change opens; that run is the first live firing, and I read its log to confirm the cap step ran and counted this PR before merging. Locally the warning fires through the real pre-commit hook, which runs the commit check.",
+      "guard": "test/wip-limit.test.mjs::CI runs the base branch's cap on every pull request, with read access to pull requests"
+    },
+    "C-10.1": {
+      "answer": "The three-in-flight rule was rule text in memory only; now a CI step enforces it, and the wiring test fails if the step leaves ci.yml. A red check still does not block a merge until the owner turns on branch protection (F-116, open, owner's decision); the PR names that gap.",
+      "guard": "test/wip-limit.test.mjs::CI runs the base branch's cap on every pull request, with read access to pull requests"
+    },
+    "C-10.2": {
+      "answer": "A branch that edits wip-limit.mjs still meets the base's copy. Pushing straight to main opens no pull request, so the cap has nothing to count; that is the branch-protection gap (F-116, the owner's decision), not a new route. The cap step runs whether or not the base-checker step before it failed (if: !cancelled()), so a red first step does not hide the count.",
+      "guard": "test/wip-limit.test.mjs::CI runs the base branch's cap on every pull request, with read access to pull requests"
+    },
+    "C-13.1": {
+      "answer": "Measured on both sides. The cap passes the first three pull requests and refuses the fourth and later. The warning fires from 7 days before the due date and on every overdue day; it stays silent at 8 days or more, and when there is no debt. Against real data, today's classes.json has C-15 due 2026-11-30, 32 days out, and correctly prints no warning.",
+      "guard": "test/self-evolution.test.mjs::a stop-line debt due within seven days is warned about, an overdue one too, a later one not"
+    },
+    "C-14.1": {
+      "answer": "Each warning is isolated. A malformed debt in one class skips that class and still warns about the others. A warning never changes the exit code of the commit or range check. The cap is its own CI step with its own named failure, and it runs even after the base-checker step fails.",
+      "guard": "test/self-evolution.test.mjs::the commit check prints the debt warning and still passes; in GitHub Actions it is an annotation"
+    },
+    "C-16.1": {
+      "answer": "Each pull request is judged by the base branch's copy of the cap, not by the branch's own copy. This change itself was written and self-checked by the same model, and no independent reviewer has run on it yet; the PR says so instead of claiming a review.",
+      "guard": "test/wip-limit.test.mjs::CI runs the base branch's cap on every pull request, with read access to pull requests"
+    }
+  }
+}

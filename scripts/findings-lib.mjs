@@ -362,6 +362,53 @@ export function stoplineGap(cls, after, { read, today }) {
   return 'stopline needs one of detector, waiver or debt';
 }
 
+export const DEBT_WARN_DAYS = 7;
+const MS_DAY = 86400000;
+/**
+ * Stop-line debts that fall due within `days` days, or are overdue: warn before
+ * the gate locks. Advisory only; a malformed debt is skipped here because
+ * stoplineGap already refuses it.
+ */
+export function debtsDueSoon(registry, today, days = DEBT_WARN_DAYS) {
+  if (!DAY.test(String(today)))
+    throw new Error(`debtsDueSoon: today must be YYYY-MM-DD, got ${today}`);
+  const t = Date.parse(`${today}T00:00:00Z`);
+  const out = [];
+  for (const c of registry?.classes ?? []) {
+    const until = c?.stopline?.debt?.until;
+    if (!DAY.test(String(until))) continue;
+    const at = Date.parse(`${until}T00:00:00Z`);
+    if (Number.isNaN(at)) continue;
+    const left = Math.round((at - t) / MS_DAY);
+    if (left <= days)
+      out.push({ id: String(c.id), until, left, plan: String(c.stopline.debt.plan ?? '') });
+  }
+  return out;
+}
+
+const PLAN_MAX = 200;
+// C0, DEL, C1 and the Unicode line separators, as in src/secret-scan.mjs display()
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\x00-\x1f\x7f-\x9f\u2028\u2029]+/g;
+const plural = (n) => `${n} day${n === 1 ? '' : 's'}`;
+/**
+ * One warning line for a due debt. With `actions`, a GitHub workflow command:
+ * the text is encoded so a hand-edited plan cannot start a command of its own.
+ */
+export function debtWarning({ id, until, left, plan }, { actions = false } = {}) {
+  const flat = (s) => String(s).replace(CONTROL, ' ').trim();
+  const cid = flat(id).slice(0, 20);
+  let p = flat(plan);
+  if (p.length > PLAN_MAX) p = `${p.slice(0, PLAN_MAX)}…`;
+  const text =
+    left >= 0
+      ? `stop-line debt on ${cid} falls due ${until} (${left === 0 ? 'today' : `in ${plural(left)}`}): after that day, changes that must answer ${cid} are refused until its plan lands or the owner decides. Plan: ${p}`
+      : `stop-line debt on ${cid} was due ${until} (${plural(-left)} ago): changes that must answer ${cid} are refused until its plan lands or the owner decides. Plan: ${p}`;
+  if (!actions) return `self-evolution: warning: ${text}`;
+  const data = text.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  return `::warning title=stop-line debt::self-evolution: ${data}`;
+}
+
 /** Refusal text for the stopped classes a change must answer. */
 export function stopProblems(req, stopped) {
   const hit = [...new Set([...req.values()].map((q) => q.classId))].filter((c) => stopped.has(c));
