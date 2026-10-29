@@ -25,6 +25,12 @@ const ZERO = /^0+$/;
 const BRANCH_NAME = /^(?!-)(?!.*\.\.)[A-Za-z0-9._/-]+$/;
 
 const say = (m) => process.stderr.write(`pre-push: ${m}\n`);
+// git exports GIT_DIR (from a linked worktree), GIT_PREFIX and friends to a hook. The checks
+// it starts get none of them: a test fixture's git would otherwise act on this repository,
+// not on its own throwaway one (F-214).
+const CHILD_ENV = Object.fromEntries(
+  Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')),
+);
 const run = (cmd, args, opts = {}) =>
   spawnSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 const top = run('git', ['rev-parse', '--show-toplevel']);
@@ -117,7 +123,7 @@ function checkRef(localRef, sha) {
     {
       cwd: ROOT,
       stdio: ['ignore', 'inherit', 'inherit'],
-      env: { ...process.env, ...(branch ? { SAKK_BRANCH: branch } : {}) },
+      env: { ...CHILD_ENV, ...(branch ? { SAKK_BRANCH: branch } : {}) },
     },
   );
   if (range.status !== 0) {
@@ -142,7 +148,11 @@ function checkRef(localRef, sha) {
     return true;
   }
   say(`running the full suite (npm test) on tree ${tree.slice(0, 12)}`);
-  const t = spawnSync('npm', ['test'], { cwd: ROOT, stdio: ['ignore', 'inherit', 'inherit'] });
+  const t = spawnSync('npm', ['test'], {
+    cwd: ROOT,
+    env: CHILD_ENV,
+    stdio: ['ignore', 'inherit', 'inherit'],
+  });
   if (t.status !== 0) {
     const how = t.error ? t.error.code : t.signal ? `signal ${t.signal}` : `exit ${t.status}`;
     say(

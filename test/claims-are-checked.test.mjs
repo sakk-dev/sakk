@@ -1,6 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -174,11 +176,70 @@ describe('a security word is backed by a mechanism (F-126, C-05 detector upgrade
   });
 });
 
+// one `node … --test …` launch per match, up to the next shell separator
+const testLaunches = (text) => text.match(/\bnode\b[^\n&|;'"]*?\s--test\b[^\n&|;'"]*/g) ?? [];
+
+describe('a suite never acts on the repository that started it (findings F-214)', () => {
+  test('every node --test launch in package.json and the hooks loads test/clean-git-env.mjs first', () => {
+    const where = [
+      ['package.json', Object.values(JSON.parse(read('package.json')).scripts).join('\n')],
+      ['scripts/hooks/pre-commit', read('scripts/hooks/pre-commit')],
+      ['scripts/hooks/commit-msg', read('scripts/hooks/commit-msg')],
+      ['scripts/hooks/pre-push.mjs', read('scripts/hooks/pre-push.mjs')],
+    ];
+    let seen = 0;
+    for (const [f, text] of where)
+      for (const launch of testLaunches(text)) {
+        seen++;
+        assert.match(launch, /--import \.\/test\/clean-git-env\.mjs --test\b/, `${f}: ${launch}`);
+      }
+    assert.ok(seen >= 3, `only ${seen} node --test launches found`);
+  });
+  test('test/clean-git-env.mjs removes every GIT_ variable before the runner starts a test file', () => {
+    const d = mkdtempSync(join(tmpdir(), 'clean-git-env-'));
+    try {
+      const probe = join(d, 'probe.test.mjs');
+      writeFileSync(
+        probe,
+        `import { test } from 'node:test';\nimport assert from 'node:assert/strict';\n` +
+          `test('probe', () => assert.deepEqual(Object.keys(process.env).filter((k) => k.startsWith('GIT_')), []));\n`,
+      );
+      const r = spawnSync(
+        process.execPath,
+        ['--import', join(ROOT, 'test', 'clean-git-env.mjs'), '--test', probe],
+        {
+          cwd: d,
+          encoding: 'utf8',
+          env: {
+            ...Object.fromEntries(
+              Object.entries(process.env).filter(
+                ([k]) => k !== 'NODE_TEST_CONTEXT' && k !== 'NODE_OPTIONS',
+              ),
+            ),
+            GIT_DIR: join(d, 'not-a-repo'),
+            GIT_INDEX_FILE: join(d, 'index'),
+            GIT_PREFIX: 'x/',
+          },
+        },
+      );
+      assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+      assert.match(`${r.stdout}`, /pass 1/);
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('nothing hangs instead of failing (findings F-15)', () => {
   test('every node --test script carries --test-timeout', () => {
     const scripts = JSON.parse(read('package.json')).scripts;
+    let seen = 0;
     for (const [name, cmd] of Object.entries(scripts))
-      if (cmd.includes('node --test')) assert.match(cmd, /--test-timeout=\d+/, name);
+      for (const launch of testLaunches(cmd)) {
+        seen++;
+        assert.match(launch, /--test-timeout=\d+/, name);
+      }
+    assert.ok(seen >= 2, `only ${seen} node --test launches found in package.json`);
   });
   test('the commit gate passes exit codes straight through', () => {
     const gate = read('scripts/gate.sh');

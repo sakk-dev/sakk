@@ -4244,6 +4244,42 @@
       "areas": ["scripts/hooks/"],
       "mechanism_gap": "The C-10 detectors check that the commit gate passes exit codes through and that audit steps are wired; no hook ran before a push.",
       "mechanism_upgrade": "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails"
+    },
+    {
+      "id": "F-214",
+      "date": "2026-10-29",
+      "introduced_in": "9fcf205",
+      "found_by": "human",
+      "class": "C-09",
+      "title": "The pre-push hook ran the full suite with the GIT_ variables git exports to a hook, so test fixtures wrote into the real repository",
+      "symptom": "On 2026-10-29 a push from a linked worktree ran npm test from the new pre-push hook; afterwards the shared repository had core.bare=true, a test hooksPath, a test user, diff.relative and a replace ref, the branch had two extra \"base\" commits, and a second push that no longer ran any hook sent one of them to the remote. The user restored the repository by hand.",
+      "evidence": "session record 2026-10-29 16:31; probe: git exports GIT_DIR, GIT_EXEC_PATH and GIT_PREFIX to pre-push from a linked worktree, only GIT_EXEC_PATH and GIT_PREFIX from the main checkout",
+      "direct_cause": "spawnSync(\"npm\", [\"test\"]) in scripts/hooks/pre-push.mjs passed the hook environment on; the secret-scan and evidence-bundle fixtures run git in throwaway repositories without removing GIT_DIR, so their git acted on the repository being pushed.",
+      "why": [
+        "The hook tests replaced the suite with a stub that never looked at its environment, and pushed only from the main checkout, where git does not export GIT_DIR.",
+        "Removing GIT_ variables before a fixture runs git was a per-file habit (findings-proof did it, the fixture helpers did not), not something every test run got."
+      ],
+      "root_cause": "An environment was assumed, never tried: the suite was only ever run from a hook with a stand-in, and only from the main checkout.",
+      "dt": ["DT-STATE", "DT-TOOL"],
+      "rc": ["RC-01", "RC-06"],
+      "es": ["ES-03"],
+      "answer_failed": {
+        "qid": "C-09.2",
+        "why": "The answer said the real hook was exercised, but its tests ran a stub suite and pushed only from the main checkout; from a linked worktree, where it really ran, git exports GIT_DIR and the real suite wrote into the repository."
+      },
+      "instance_fix": "this commit: scripts/hooks/pre-push.mjs starts the range check and npm test with every GIT_ variable removed (CHILD_ENV)",
+      "class_fix": "test/clean-git-env.mjs is loaded with --import by every node --test launch in package.json and the git hooks, and deletes every GIT_ variable before the runner starts a test file; a meta-test refuses a launch without it",
+      "guard": "test/pre-push.test.mjs::a push from a linked worktree: the suite gets no GIT_ variables, so a fixture cannot write into the repository (F-214)",
+      "sweep": "Every node --test launch was listed: package.json test and test:eval, pre-commit, commit-msg and pre-push now load the preload; scripts/findings-proof.mjs already strips GIT_ itself; scripts/gate-certificate.mjs and scripts/audit.mjs are started from a person's or CI's shell, not from a hook, so they inherit no GIT_DIR.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/hooks/", "test/", "package.json"],
+      "mechanism_gap": "The C-09 detectors covered a stranger's --out path, the hook as shipped and history shapes; none ran a hook from a linked worktree or checked what environment a hook hands the suite.",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::every node --test launch in package.json and the hooks loads test/clean-git-env.mjs first",
+      "distinct_from": {
+        "F-114": "F-114 is leftover ledger and release nits (lock errors, temp files, tool integrity, CI running twice); F-214 is the environment a git hook hands the test suite, which none of those touch.",
+        "F-123": "F-123 is which Sakk files a copied hook expects to exist; F-214 is which environment a hook hands the checks it starts. The pre-commit preload adds test/clean-git-env.mjs to the files F-123 lists, and F-123 stays open for that."
+      }
     }
   ]
 }

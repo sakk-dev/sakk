@@ -95,6 +95,12 @@ the pull request's base, and the full suite once per tree, before anything
 leaves the machine (F-212). `SAKK_PR_BASE` names the base; without it the
 hook asks `gh`, then falls back to `main` and says so.
 
+Both checks start with every `GIT_` variable removed. git exports `GIT_DIR`
+to a hook run from a linked worktree, and a test fixture's git would then act
+on the repository being pushed instead of its own throwaway one (F-214). Every
+`node --test` launch in `package.json` and the hooks also loads
+`test/clean-git-env.mjs` first, which removes them before any test file runs.
+
 ## Shell commands
 
 The PreToolUse hook also sees `Bash`. A command passes without answers only

@@ -45,6 +45,29 @@ full suite before pushing" was text. `scripts/hooks/pre-push` now runs the
 range check against the pull request's base and the full suite once per
 tree; it has no switch to skip either.
 
+## The hook's own environment (F-214)
+
+The first real push through the new hook, from a linked worktree, ran the
+full suite with the `GIT_DIR` git exports to a hook there. Fixtures in
+`test/secret-scan.test.mjs` and the evidence-bundle tests run git in a
+throwaway repository; with `GIT_DIR` set, their git acted on the real one: it
+set the shared repository to bare, rewrote its hooks path, user and diff
+settings, added a replace ref and two commits, and a second push, with no hook
+left to run, sent one of them to the remote. The user restored the repository
+by hand.
+
+The hook's tests had replaced the suite with a stub and pushed only from the
+main checkout, where git does not export `GIT_DIR`; the environment the real
+suite would get was never tried. The fix is in two layers: the hook removes
+every `GIT_` variable before it starts the range check or the suite, and every
+`node --test` launch loads `test/clean-git-env.mjs`, which removes them before
+any test file runs, so a hook-started run of any present or future test cannot
+reach the repository. The hook test now pushes from a linked worktree with a
+suite that records its `GIT_` variables and runs a fixture's git; a meta-test
+refuses a `node --test` launch without the preload. Both were checked by
+undoing each fix: the worktree test fails without the hook's filter, and the
+preload probe fails without the preload.
+
 ## What is not covered
 
 - `--no-verify` skips the pre-push hook as it skips the others; the edit

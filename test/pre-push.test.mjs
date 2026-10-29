@@ -48,10 +48,29 @@ const ENV = Object.fromEntries(
   ),
 );
 
-// npm runs this in the repository root; the control files sit next to it
-const SUITE =
-  `node -e "const f=require('fs');f.appendFileSync('../ctl/suite.log','ran'+require('os').EOL);` +
-  `process.exit(Number(f.readFileSync('../ctl/suite.code','utf8')))"`;
+// npm runs this in the repository root (a worktree sits beside it); the control files sit next to it
+const SUITE = 'node ../ctl/suite.mjs';
+// the fake suite does what a test fixture does: a throwaway repository, made with the
+// environment the suite was given, and it records which GIT_ variables it saw
+const suite = (ctl) => `import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+const ctl = ${JSON.stringify(ctl)};
+appendFileSync(join(ctl, 'suite.log'), 'ran\\n');
+appendFileSync(
+  join(ctl, 'suite.env'),
+  Object.keys(process.env).filter((k) => k.startsWith('GIT_')).sort().join(' ') + '\\n',
+);
+const d = mkdtempSync(join(tmpdir(), 'fixture-'));
+try {
+  execFileSync(${JSON.stringify(GIT)}, ['init', '-q', d], { stdio: 'ignore' });
+  execFileSync(${JSON.stringify(GIT)}, ['-C', d, 'config', 'fixture.wrote', 'here'], { stdio: 'ignore' });
+} finally {
+  rmSync(d, { recursive: true, force: true });
+}
+process.exit(Number(readFileSync(join(ctl, 'suite.code'), 'utf8')));
+`;
 const checker = (ctl) => `import { appendFileSync, readFileSync } from 'node:fs';
 appendFileSync(
   ${JSON.stringify(join(ctl, 'range.log'))},
@@ -88,6 +107,7 @@ function setup(t) {
     copyFileSync(join(REPO, 'scripts', 'hooks', h), join(work, 'scripts', 'hooks', h));
   chmodSync(join(work, 'scripts', 'hooks', 'pre-push'), 0o755);
   writeFileSync(join(work, 'scripts', 'findings-check.mjs'), checker(ctl));
+  writeFileSync(join(ctl, 'suite.mjs'), suite(ctl));
   writeFileSync(
     join(work, 'package.json'),
     JSON.stringify({ name: 'throwaway', private: true, scripts: { test: SUITE } }, null, 2),
@@ -107,19 +127,21 @@ function setup(t) {
   git('checkout', '-qb', 'feat/y');
 
   return {
+    root,
     work,
     origin,
     env,
     git,
     code,
-    change(text) {
-      writeFileSync(join(work, 'x.txt'), `${text}\n`);
-      git('commit', '-qam', `x = ${text}`);
+    change(text, cwd = work) {
+      writeFileSync(join(cwd, 'x.txt'), `${text}\n`);
+      execFileSync(GIT, ['commit', '-qam', `x = ${text}`], { cwd, env, stdio: 'ignore' });
     },
-    push(args, pushEnv = env) {
-      const r = spawnSync(GIT, ['push', ...args], { cwd: work, env: pushEnv, encoding: 'utf8' });
+    push(args, pushEnv = env, cwd = work) {
+      const r = spawnSync(GIT, ['push', ...args], { cwd, env: pushEnv, encoding: 'utf8' });
       return { status: r.status, out: `${r.stdout}${r.stderr}` };
     },
+    suiteEnvs: () => lines('suite.env'),
     head: () => git('rev-parse', 'HEAD'),
     remoteHead(branch) {
       const r = spawnSync(GIT, ['--git-dir', origin, 'rev-parse', '--verify', '-q', branch], {
@@ -169,6 +191,25 @@ test('a push runs the range check and the full suite, and refuses when either fa
   assert.equal(p.status, 0, p.out);
   assert.equal(r.suiteRuns(), 3);
   assert.equal(r.remoteHead('feat/y'), r.head());
+});
+
+test('a push from a linked worktree: the suite gets no GIT_ variables, so a fixture cannot write into the repository (F-214)', (t) => {
+  const r = setup(t);
+  const wt = join(r.root, 'wt'); // beside work, so the suite's ../ctl still resolves
+  r.git('worktree', 'add', '-q', wt, '-b', 'feat/wt');
+  r.change('w1', wt);
+  // git exports GIT_DIR to a hook run from a linked worktree; the main checkout gets less
+  const p = r.push(['origin', 'feat/wt'], r.env, wt);
+  assert.equal(p.status, 0, p.out);
+  assert.equal(r.suiteRuns(), 1);
+  assert.deepEqual(r.suiteEnvs(), [], 'the suite saw GIT_ variables from the hook');
+  const leaked = spawnSync(GIT, ['config', '--get', 'fixture.wrote'], {
+    cwd: r.work,
+    env: r.env,
+    encoding: 'utf8',
+  });
+  assert.equal(leaked.stdout.trim(), '', 'a fixture wrote into the pushed repository');
+  assert.equal(r.git('config', '--get', 'core.bare'), 'false');
 });
 
 test('the full suite runs once per tree: a second push of the same tree skips it', (t) => {
