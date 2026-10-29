@@ -57,7 +57,10 @@ cannot move spend out of today's cap window (F-205).
 - `SPEND_UNREADABLE`: a log line today could not be read.
 - `SPEND_LOGS_UNLISTABLE`: a log directory could not be listed (permissions),
   so today's spend cannot be counted. The cap fails closed, and `sakk spend`
-  names the directory, until a person fixes the permissions (F-204).
+  names the directory, until a person fixes the permissions (F-204). The log
+  ROOT itself is held to the same rule: an unreadable parent, a dangling
+  symlink or a symlink loop at the root is this deny, never an
+  honest-looking $0 — only a root that truly does not exist is $0 (F-208).
 
 In v1 a log file the user cannot read at all (permissions) is handled
 badly: `sakk spend` exits with a raw error, and the hook's deny says it

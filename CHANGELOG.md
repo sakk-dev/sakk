@@ -16,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release test pins them together with the `v0.1.0` tag-name format the
   links below use. Publishing (the tag and npm) remains the owner's step.
 
+### Fixed — a spend check that cannot see the log root fails closed (F-208)
+
+- The daily-cap reader treated a missing log ROOT as "no spend yet", so an
+  unreadable parent directory, a dangling symlink or a symlink loop at the
+  root reported an honest-looking $0 and the cap allowed. The root is now
+  read like any subdirectory: only true absence is $0; every other failure
+  denies with `SPEND_LOGS_UNLISTABLE`.
+
+### Fixed — a resume no-op never reaches the write path (F-209)
+
+- `sakk resume` with nothing halted now answers and exits before the
+  in-lock write path is reachable (same message, same exit code), so a halt
+  landing between the check and the lock can no longer be lifted without a
+  person's confirmation — matching `sakk reconcile` and `sakk unlock`.
+
 ### Fixed — the console refuses a cross-site Origin on every route (F-195)
 
 - `sakk ui` now refuses a request whose Origin header is not the console's

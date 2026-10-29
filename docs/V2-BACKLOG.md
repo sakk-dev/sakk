@@ -9,6 +9,15 @@ Sources: `findings/ledger.json` (the findings),
 `findings/reviews/2026-10-28-p0-uat-blackbox.md` (the cases),
 `findings/reviews/2026-10-28-v1-closeout-deferrals.md` (the detectors).
 
+**Status 2026-10-29 (`oss/v2-fixes`, owner decision D11):** the owner
+answered the open questions and this batch landed the fixes — F-176
+(always ask), F-177 (deny + ledger under `~/.sakk`), F-188 (deny), F-195
+(Origin on every route), F-175 (retracted), F-111 (0.1.0 cut), F-199
+(NOTICE), plus the review findings F-204…F-209. The tables below are kept
+as written for traceability; `findings/ledger.json` is current for each
+finding's state, and docs/DECISIONS.md D11 records the answers. F-210 is
+open on the owner.
+
 ## When an item is done
 
 - Its P0 case's **expected result is observed** in a run of the case's own

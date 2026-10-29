@@ -476,7 +476,10 @@ describe('release honesty (V2 line D)', () => {
     );
     for (const [cmd, subs] of Object.entries(SUBS))
       for (const s of subs)
-        assert.ok(literals.has(s), `SUBS says \`sakk ${cmd} ${s}\` exists; bin/sakk.mjs has no such literal`);
+        assert.ok(
+          literals.has(s),
+          `SUBS says \`sakk ${cmd} ${s}\` exists; bin/sakk.mjs has no such literal`,
+        );
     for (const lit of literals)
       assert.ok(
         Object.values(SUBS).some((subs) => subs.includes(lit)),
@@ -508,7 +511,8 @@ describe('release honesty (V2 line D)', () => {
     const offenders = [];
     const check = (file, text) => {
       for (const m of text.matchAll(/\bsakk ([a-z][a-z-]*) ([a-z][a-z-]*)\b/g))
-        if (m[1] in SUBS && !SUBS[m[1]].includes(m[2])) offenders.push(`${file}: sakk ${m[1]} ${m[2]}`);
+        if (m[1] in SUBS && !SUBS[m[1]].includes(m[2]))
+          offenders.push(`${file}: sakk ${m[1]} ${m[2]}`);
     };
     for (const f of mdFiles) check(f, codeSpans(read(f)));
     for (const f of srcFiles) check(f, read(f));
@@ -555,10 +559,17 @@ describe('release honesty (V2 line D)', () => {
     // one artifact: an empty [Unreleased] means the package IS the latest
     // release; a loaded one means the version must already be bumped past it.
     const unreleased = log
-      .slice(log.indexOf('## [Unreleased]') + '## [Unreleased]'.length, log.indexOf(`## [${latest}]`))
+      .slice(
+        log.indexOf('## [Unreleased]') + '## [Unreleased]'.length,
+        log.indexOf(`## [${latest}]`),
+      )
       .trim();
     if (unreleased === '')
-      assert.equal(pkg.version, latest, 'with an empty [Unreleased], package.json names the latest release');
+      assert.equal(
+        pkg.version,
+        latest,
+        'with an empty [Unreleased], package.json names the latest release',
+      );
     else
       assert.ok(
         gt(pkg.version, latest),
@@ -568,7 +579,10 @@ describe('release honesty (V2 line D)', () => {
     const esc = (v) => v.replace(/\./g, '\\.');
     assert.match(
       log,
-      new RegExp(`^\\[Unreleased\\]: https://github\\.com/\\S+/compare/v${esc(latest)}\\.\\.\\.HEAD$`, 'm'),
+      new RegExp(
+        `^\\[Unreleased\\]: https://github\\.com/\\S+/compare/v${esc(latest)}\\.\\.\\.HEAD$`,
+        'm',
+      ),
       'the Unreleased link compares from the v-prefixed latest tag',
     );
     for (const r of released)
@@ -588,9 +602,14 @@ describe('release honesty (V2 line D)', () => {
     // the MIT licence requires its permission notice to travel with the
     // material — once per derived source.
     const mitCount = notice.match(/Permission is hereby granted, free of charge/g)?.length ?? 0;
-    assert.ok(mitCount >= 2, `NOTICE carries the MIT permission notice per derived source (found ${mitCount})`);
+    assert.ok(
+      mitCount >= 2,
+      `NOTICE carries the MIT permission notice per derived source (found ${mitCount})`,
+    );
     // gitleaks: NOTICE pins the same upstream tag+commit the generated rules pin
-    const pin = read('src/secret-rules.generated.mjs').match(/tag (v\d+\.\d+\.\d+) commit ([0-9a-f]{7,})/);
+    const pin = read('src/secret-rules.generated.mjs').match(
+      /tag (v\d+\.\d+\.\d+) commit ([0-9a-f]{7,})/,
+    );
     assert.ok(pin, 'the generated rules pin their upstream tag and commit');
     assert.ok(
       notice.includes(pin[1]) && notice.includes(pin[2]),
@@ -598,7 +617,11 @@ describe('release honesty (V2 line D)', () => {
     );
     assert.match(notice, /Zachary Rice/, 'NOTICE carries the gitleaks copyright holder');
     // LiteLLM: the shipped snapshot names its source; NOTICE credits it
-    assert.match(read('prices/snapshot.json'), /LiteLLM \(MIT/, 'the snapshot names its source and licence');
+    assert.match(
+      read('prices/snapshot.json'),
+      /LiteLLM \(MIT/,
+      'the snapshot names its source and licence',
+    );
     assert.match(notice, /LiteLLM/, 'NOTICE credits LiteLLM');
     assert.match(notice, /Berri AI/, 'NOTICE carries the LiteLLM copyright holder');
     // cc-safety-net: studied, not copied — the acknowledgment stays on the record

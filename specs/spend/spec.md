@@ -11,10 +11,10 @@ Sakk reads what Claude Code already writes on the machine and prices it.
 The guard hook then stops the agent once today's spend reaches the cap:
 "ccusage tells you; Sakk stops you".
 
-| Command                                  | What it does                                                                                        |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `sakk spend [--day YYYY-MM-DD] [--json]` | Today's (or that day's) spend by model, session and project, with the count of unpriced calls       |
-| `sakk cap set <usd>` / `sakk cap off`    | Sets the daily cap in `$SAKK_HOME/config.json`                                                      |
+| Command                                  | What it does                                                                                                   |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `sakk spend [--day YYYY-MM-DD] [--json]` | Today's (or that day's) spend by model, session and project, with the count of unpriced calls                  |
+| `sakk cap set <usd>` / `sakk cap off`    | Sets the daily cap in `$SAKK_HOME/config.json`                                                                 |
 | `sakk prices`                            | Shows the price table in use (a fetching updater was retracted — F-175; edit `$SAKK_HOME/prices.json` by hand) |
 
 ## Source: Claude Code's logs
