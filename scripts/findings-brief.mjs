@@ -62,9 +62,9 @@ const changed = () => {
   const base = git('merge-base', 'HEAD', 'main')[0];
   return [
     ...new Set([
-      ...(base ? git('diff', '--name-only', base, 'HEAD') : []),
-      ...git('diff', '--name-only'),
-      ...git('diff', '--name-only', '--cached'),
+      ...(base ? git('diff', '--name-only', '--no-renames', base, 'HEAD') : []),
+      ...git('diff', '--name-only', '--no-renames'),
+      ...git('diff', '--name-only', '--no-renames', '--cached'),
       ...git('ls-files', '--others', '--exclude-standard'),
     ]),
   ].sort();

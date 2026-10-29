@@ -1,0 +1,4 @@
+#!/bin/sh
+# Before a push leaves: the range check CI runs, and the full suite once per
+# tree (scripts/hooks/pre-push.mjs). exec hands it git's arguments and stdin.
+exec node scripts/hooks/pre-push.mjs "$@"

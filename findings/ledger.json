@@ -4184,6 +4184,102 @@
       ],
       "mechanism_gap": "The RC-07 detectors check that gates run; none checks the flags that tell git not to run them.",
       "mechanism_upgrade": "test/self-evolution-cli.test.mjs::F-140: commands that turn the git hooks off are refused even with every answer given"
+    },
+    {
+      "id": "F-212",
+      "date": "2026-10-29",
+      "introduced_in": "efc4050",
+      "found_by": "human",
+      "class": "C-09",
+      "title": "The range check read a stacked or merged branch as one straight line with one answers file",
+      "symptom": "PR #27 (the open-source v2 fixes, a stack of #19 to #26 with four lines developed in parallel and merged) failed findings-check --range with 301 problems although each part had passed its own pull request: every parent's own answers file was charged as a rename of this branch's file, and parallel lines were compared with whichever commit rev-list printed before them.",
+      "evidence": "CI on PR #27; reproduced locally on 97d00e9 and on the merge commit CI checks out; the history-aware checker leaves 2 problems there, both guards that no longer resolve after test renames",
+      "direct_cause": "The R2 walk compared each commit with the commit printed before it, and every answers file added in the range was treated as this branch's file under an earlier name.",
+      "why": [
+        "Each earlier fix (F-72, F-128, F-134) covered the one history shape that had failed, not the history the check is given.",
+        "The rename rule (F-134) had no way to tell another live branch's file from this branch's old one, so a stack read as renames."
+      ],
+      "root_cause": "The check assumed a straight history with one answers file, a state real branches do not keep.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: files are those that differ from the base at the tip and since the fork point; every commit is compared with every parent; an answers file whose branch still exists is inherited (kept intact, guards resolve at the tip), one whose branch is gone is a rename; base answers files are append-only; every diff runs without rename detection",
+      "class_fix": "findings/reviews/2026-10-29-history-shape.md",
+      "guard": "test/range-topology.test.mjs::a stack merged into main as one pull request: the parents' answers files are inherited, not carried forward",
+      "sweep": "The same diffs in --staged and in findings-brief also ran with rename detection, so a moved file was never asked about its old path; they now run without it (test: moving a file asks about its old path too). The CI merge commit, a parent kept only on the remote, a parent squash- or rebase-merged first, and a parent whose branch is gone are each a test in test/range-topology.test.mjs.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/findings-check.mjs", "scripts/findings-brief.mjs"],
+      "mechanism_gap": "The C-09 detectors try the shipped hook and a relative output path; nothing built the history shapes the range check meets.",
+      "mechanism_upgrade": "test/range-topology.test.mjs::a stack merged into main as one pull request: the parents' answers files are inherited, not carried forward",
+      "distinct_from": {
+        "F-128": "F-128 is which base CI compares a stacked branch with; F-212 is how the commits between that base and the tip are walked once the base is right.",
+        "F-134": "F-134 is a branch renamed under one author; F-212 is other branches' answers files arriving through a merge, which the F-134 rule misread as renames."
+      }
+    },
+    {
+      "id": "F-213",
+      "date": "2026-10-29",
+      "introduced_in": "unknown",
+      "found_by": "human",
+      "class": "C-10",
+      "title": "A branch could be pushed with only the targeted tests run; the full suite and the range check before a push were rule text",
+      "symptom": "On 2026-10-29 a commit was pushed after running only the tests it touched; CI then found what the full suite and the range check would have found locally, and the stacked PR #27 reached review before its range check had ever run.",
+      "evidence": "session record 2026-10-29; the rule 'full suite once per commit' lived only in working notes",
+      "direct_cause": "No hook ran anything before git push.",
+      "why": [
+        "Targeted regression during a fix is the working rule, and the step back to the full suite before pushing depended on memory.",
+        "The range check needs the pull request's base, which pre-commit cannot see, so it only ever ran in CI."
+      ],
+      "root_cause": "A required step existed only as rule text.",
+      "dt": ["DT-PROC"],
+      "rc": ["RC-07"],
+      "es": ["ES-06"],
+      "instance_fix": "this commit: scripts/hooks/pre-push refuses a push of anything but a clean HEAD, runs the range check against the pull request's base (SAKK_PR_BASE, then gh, then main, named in its output) and the full suite once per tree; it has no switch to skip either",
+      "class_fix": "findings/reviews/2026-10-29-history-shape.md",
+      "guard": "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails",
+      "sweep": "install.mjs makes the new hook executable with the others; --no-verify on push is already refused by the edit hook (F-140) and CI still runs the range check.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/hooks/"],
+      "mechanism_gap": "The C-10 detectors check that the commit gate passes exit codes through and that audit steps are wired; no hook ran before a push.",
+      "mechanism_upgrade": "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails"
+    },
+    {
+      "id": "F-214",
+      "date": "2026-10-29",
+      "introduced_in": "9fcf205",
+      "found_by": "human",
+      "class": "C-09",
+      "title": "The pre-push hook ran the full suite with the GIT_ variables git exports to a hook, so test fixtures wrote into the real repository",
+      "symptom": "On 2026-10-29 a push from a linked worktree ran npm test from the new pre-push hook; afterwards the shared repository had core.bare=true, a test hooksPath, a test user, diff.relative and a replace ref, the branch had two extra \"base\" commits, and a second push that no longer ran any hook sent one of them to the remote. The user restored the repository by hand.",
+      "evidence": "session record 2026-10-29 16:31; probe: git exports GIT_DIR, GIT_EXEC_PATH and GIT_PREFIX to pre-push from a linked worktree, only GIT_EXEC_PATH and GIT_PREFIX from the main checkout",
+      "direct_cause": "spawnSync(\"npm\", [\"test\"]) in scripts/hooks/pre-push.mjs passed the hook environment on; the secret-scan and evidence-bundle fixtures run git in throwaway repositories without removing GIT_DIR, so their git acted on the repository being pushed.",
+      "why": [
+        "The hook tests replaced the suite with a stub that never looked at its environment, and pushed only from the main checkout, where git does not export GIT_DIR.",
+        "Removing GIT_ variables before a fixture runs git was a per-file habit (findings-proof did it, the fixture helpers did not), not something every test run got."
+      ],
+      "root_cause": "An environment was assumed, never tried: the suite was only ever run from a hook with a stand-in, and only from the main checkout.",
+      "dt": ["DT-STATE", "DT-TOOL"],
+      "rc": ["RC-01", "RC-06"],
+      "es": ["ES-03"],
+      "answer_failed": {
+        "qid": "C-09.2",
+        "why": "The answer said the real hook was exercised, but its tests ran a stub suite and pushed only from the main checkout; from a linked worktree, where it really ran, git exports GIT_DIR and the real suite wrote into the repository."
+      },
+      "instance_fix": "this commit: scripts/hooks/pre-push.mjs starts the range check and npm test with every GIT_ variable removed (CHILD_ENV)",
+      "class_fix": "test/clean-git-env.mjs is loaded with --import by every node --test launch in package.json and the git hooks, and deletes every GIT_ variable before the runner starts a test file; a meta-test refuses a launch without it",
+      "guard": "test/pre-push.test.mjs::a push from a linked worktree: the suite gets no GIT_ variables, so a fixture cannot write into the repository (F-214)",
+      "sweep": "Every node --test launch was listed: package.json test and test:eval, pre-commit, commit-msg and pre-push now load the preload; scripts/findings-proof.mjs already strips GIT_ itself; scripts/gate-certificate.mjs and scripts/audit.mjs are started from a person's or CI's shell, not from a hook, so they inherit no GIT_DIR.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["scripts/hooks/", "test/", "package.json"],
+      "mechanism_gap": "The C-09 detectors covered a stranger's --out path, the hook as shipped and history shapes; none ran a hook from a linked worktree or checked what environment a hook hands the suite.",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::every node --test launch in package.json and the hooks loads test/clean-git-env.mjs first",
+      "distinct_from": {
+        "F-114": "F-114 is leftover ledger and release nits (lock errors, temp files, tool integrity, CI running twice); F-214 is the environment a git hook hands the test suite, which none of those touch.",
+        "F-123": "F-123 is which Sakk files a copied hook expects to exist; F-214 is which environment a hook hands the checks it starts. The pre-commit preload adds test/clean-git-env.mjs to the files F-123 lists, and F-123 stays open for that."
+      }
     }
   ]
 }

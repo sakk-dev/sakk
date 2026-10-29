@@ -245,7 +245,9 @@ if (mode === '--staged') {
   } catch (e) {
     fail(`self-evolution: ${e.message}`);
   }
-  const files = git(root, 'diff', '--cached', '--name-only').split('\n').filter(Boolean);
+  const files = git(root, 'diff', '--cached', '--name-only', '--no-renames')
+    .split('\n')
+    .filter(Boolean);
   const req = required(ledger, registry, files);
   const problems = answerProblems({
     root,
@@ -310,10 +312,25 @@ if (mode === '--commit-msg') {
 if (mode === '--range') {
   const base = args[1];
   if (!base) fail('usage: findings-check --range <base-ref>', 2);
-  const files = git(root, 'diff', '--name-only', `${base}...HEAD`).split('\n').filter(Boolean);
+  const lines = (...a) =>
+    git(root, ...a)
+      .split('\n')
+      .filter(Boolean);
+  // what this range changes: files changed since the merge base that still differ
+  // from the base tip. A parent already rebase- or squash-merged into the base is
+  // the base's change, not this range's; on CI's merge commit both diffs agree.
+  const atTip = new Set(lines('diff', '--name-only', '--no-renames', base, 'HEAD'));
+  const files = lines('diff', '--name-only', '--no-renames', `${base}...HEAD`).filter((f) =>
+    atTip.has(f),
+  );
   const branch = process.env.SAKK_BRANCH || branchOf(root);
   const rel = relative(root, ackPath(root, branch));
-  const revs = git(root, 'rev-list', '--reverse', `${base}..HEAD`).split('\n').filter(Boolean);
+  // history is a graph, not a line: every commit with its parents, parents first
+  // (parallel lines merged together, a pull request's merge commit)
+  const graph = lines('rev-list', '--reverse', '--topo-order', '--parents', `${base}..HEAD`).map(
+    (l) => l.split(' '),
+  );
+  const revs = graph.map(([c]) => c);
   const problems = [];
   let ack, baseAck, baseLedger;
   try {
@@ -337,69 +354,154 @@ if (mode === '--range') {
       read: reader(root),
     }),
   );
-  // R2 over every commit, so a middle commit cannot rewrite and restore
-  let prev = baseAck;
-  for (const c of revs) {
-    let cur;
-    try {
-      cur = json(reader(root, c)(rel), `${rel} at ${c.slice(0, 7)}`);
-    } catch (e) {
-      problems.push(`self-evolution: ${e.message}`);
-      continue;
-    }
-    if (cur === null) {
-      if (prev !== null)
-        problems.push(`commit ${c.slice(0, 7)}: ${rel} was removed — answers are append-only`);
-      continue;
-    }
-    let atC = ledger;
-    try {
-      atC = JSON.parse(git(root, 'show', `${c}:findings/ledger.json`));
-    } catch {
-      /* keep HEAD's */
-    }
-    for (const p of ackRewrites(prev, cur, ids(atC)))
-      problems.push(`commit ${c.slice(0, 7)}: ${rel}: ${p}`);
-    prev = cur;
-  }
-  // R2 across names (review I2): renaming the branch starts a new answers file;
-  // every answers file this range added is frozen too, so the current one must
-  // carry its answers forward unchanged
-  const acksAt = (rev) => {
-    try {
-      return git(root, 'ls-tree', '--name-only', rev, 'findings/acks/').split('\n').filter(Boolean);
-    } catch {
-      return [];
-    }
-  };
-  const atBase = new Set(acksAt(base));
-  const earlier = new Map(); // another answers file the range added → its last version
-  for (const c of revs)
-    for (const f of acksAt(c)) {
-      if (atBase.has(f) || f === rel) continue;
-      let cur;
+  // R2 over every commit, each against its own parents (every parent of a merge),
+  // so a middle commit cannot rewrite and restore, and parallel lines merged
+  // together are not read as one line
+  const ACKS = 'findings/acks/';
+  const trees = new Map(); // commit → answers file → blob
+  const treeOf = (rev) => {
+    if (!trees.has(rev)) {
+      const m = new Map();
       try {
-        cur = JSON.parse(git(root, 'show', `${c}:${f}`));
+        for (const e of git(root, 'ls-tree', '-z', rev, ACKS).split('\0').filter(Boolean)) {
+          const [meta, f] = e.split('\t');
+          const [, type, blob] = meta.split(' ');
+          if (type === 'blob') m.set(f, blob);
+        }
       } catch {
-        problems.push(`self-evolution: ${f} at ${c.slice(0, 7)} is not valid JSON`);
+        // no answers folder at that commit
+      }
+      trees.set(rev, m);
+    }
+    return trees.get(rev);
+  };
+  const blobs = new Map(); // blob → parsed file, or undefined when it is not valid JSON
+  /** An answers file at a commit: null when absent, undefined when unreadable (reported once). */
+  const at = (rev, f) => {
+    const blob = treeOf(rev).get(f);
+    if (blob === undefined) return null;
+    if (!blobs.has(blob)) {
+      let v;
+      try {
+        v = JSON.parse(git(root, 'cat-file', 'blob', blob));
+      } catch (e) {
+        problems.push(
+          `self-evolution: ${f} at ${rev.slice(0, 7)} is not valid JSON (${e.message})`,
+        );
+      }
+      blobs.set(blob, v);
+    }
+    return blobs.get(blob);
+  };
+  const ledgerIds = new Map();
+  const idsAt = (rev) => {
+    if (!ledgerIds.has(rev)) {
+      let l = ledger;
+      try {
+        l = JSON.parse(git(root, 'show', `${rev}:findings/ledger.json`));
+      } catch {
+        /* keep HEAD's */
+      }
+      ledgerIds.set(rev, ids(l));
+    }
+    return ledgerIds.get(rev);
+  };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const atBase = treeOf(base);
+  const head = git(root, 'rev-parse', 'HEAD').trim();
+  // the answers files this range is responsible for: this branch's, every one the
+  // range added, and every one already on the base that the range changes
+  const tracked = new Set([rel]);
+  for (const f of files) if (f.startsWith(ACKS) && atBase.has(f)) tracked.add(f);
+  for (const c of revs) for (const f of treeOf(c).keys()) if (!atBase.has(f)) tracked.add(f);
+  const removals = new Map(); // answers file → commits that removed it
+  const last = new Map(); // answers file → its nearest versions on every path back from HEAD
+  const inRange = new Set(revs);
+  for (const f of tracked) {
+    const near = new Map(); // commit → nearest versions along each path back from it
+    const nearAt = (p) => {
+      if (inRange.has(p)) return near.get(p) ?? [];
+      const v = at(p, f);
+      return v ? [v] : [];
+    };
+    for (const [c, ...parents] of graph) {
+      const before = [];
+      for (const v of parents.flatMap(nearAt)) if (!before.some((b) => same(b, v))) before.push(v);
+      const cur = at(c, f);
+      if (!cur) {
+        if (cur === null && parents.some((p) => at(p, f)))
+          removals.set(f, [...(removals.get(f) ?? []), c]);
+        near.set(c, before);
         continue;
       }
-      // every answers file the range added is append-only through its own history
-      if (earlier.has(f))
-        for (const p of ackRewrites(earlier.get(f), cur, ids(ledger)))
-          problems.push(`commit ${c.slice(0, 7)}: ${f}: ${p}`);
-      earlier.set(f, cur);
+      for (const b of before)
+        if (!same(b, cur))
+          for (const p of ackRewrites(b, cur, idsAt(c)))
+            problems.push(`commit ${c.slice(0, 7)}: ${f}: ${p}`);
+      near.set(c, [cur]);
     }
-  // within a pull request's own range there is one answers file: another one the
-  // range added (kept or removed) is this branch under another name, and the
-  // current file carries its answers forward — keeping the old file while a
-  // looser new one is read would be the same bypass (CI ranges from the PR's own
-  // base, so a stacked parent's file is already at the base)
-  for (const [f, last] of earlier)
-    for (const p of ackRewrites(last, ack, ids(ledger)))
-      problems.push(
-        `self-evolution: ${f} was this branch's answers file under another name — ${rel} must carry its answers forward: ${p}`,
-      );
+    last.set(f, near.get(head) ?? []);
+  }
+  // R2 across names (review I2). Another answers file the range added is either
+  // inherited — the answers file of a branch that still exists (a stacked parent
+  // merged into this one), which stays as that branch has it: present, append-only,
+  // its guards resolving — or this branch's own file under an old name (the branch
+  // was renamed), whose answers the current file carries forward unchanged.
+  const refOf = (b) => {
+    for (const r of [`refs/heads/${b}`, `refs/remotes/origin/${b}`])
+      try {
+        return git(root, 'rev-parse', '--verify', '-q', `${r}^{commit}`).trim();
+      } catch {
+        // not this one
+      }
+    return null;
+  };
+  const renamed = new Set();
+  for (const f of tracked) {
+    if (f === rel || atBase.has(f)) continue;
+    const vs = last.get(f);
+    const named = vs.map((v) => v?.branch).find((b) => typeof b === 'string');
+    const own = named !== undefined && named !== branch && f === `${ACKS}${slug(named)}.json`;
+    const tip = own ? refOf(named) : null;
+    const theirs = tip ? at(tip, f) : null;
+    if (theirs) {
+      // both copies grow from one file: every answer they share is the same, and
+      // one's revisions lead the other's (this range may append a revision, F-178)
+      for (const v of vs)
+        for (const [q, x] of Object.entries(v?.answers ?? {})) {
+          const y = theirs.answers?.[q];
+          if (!y) continue;
+          const [s, l] = [x?.revisions, y?.revisions]
+            .map((r) => (Array.isArray(r) ? r : []))
+            .sort((m, n) => m.length - n.length);
+          if (x?.answer !== y?.answer || x?.guard !== y?.guard || !s.every((r, k) => same(r, l[k])))
+            problems.push(
+              `self-evolution: ${f} is inherited from branch ${named}, but its ${q} differs from that branch's own copy — answers are append-only; a correction is a revision`,
+            );
+        }
+      const kept = at(head, f);
+      if (kept?.version === 2)
+        problems.push(
+          ...guardResolution(kept, reader(root)).map((p) => `self-evolution: ${f}: ${p}`),
+        );
+      continue;
+    }
+    renamed.add(f);
+    const hint =
+      named !== undefined && named !== branch
+        ? ` (if it is a stacked parent's answers file, keep branch ${named} on the remote so it counts as inherited)`
+        : '';
+    for (const v of vs)
+      for (const p of ackRewrites(v, ack, ids(ledger)))
+        problems.push(
+          `self-evolution: ${f} was this branch's answers file under another name — ${rel} must carry its answers forward: ${p}${hint}`,
+        );
+  }
+  // answers are never removed: this branch's, an inherited one, or one on the base
+  for (const [f, cs] of removals)
+    if (!renamed.has(f))
+      for (const c of cs)
+        problems.push(`commit ${c.slice(0, 7)}: ${f} was removed — answers are append-only`);
   if (ack?.version === 2)
     problems.push(...guardResolution(ack, reader(root)).map((p) => `self-evolution: ${rel}: ${p}`));
   // R6: the ledger and the registry only move forward from the base

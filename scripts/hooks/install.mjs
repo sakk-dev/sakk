@@ -24,6 +24,7 @@ try {
   process.exit(0);
 }
 if (top !== ROOT && git('rev-parse', '--show-prefix') !== '') process.exit(0); // vendored copy: not ours to configure
-for (const h of ['pre-commit', 'commit-msg']) chmodSync(join(ROOT, 'scripts', 'hooks', h), 0o755);
+for (const h of ['pre-commit', 'commit-msg', 'pre-push'])
+  chmodSync(join(ROOT, 'scripts', 'hooks', h), 0o755);
 git('config', 'core.hooksPath', 'scripts/hooks');
 console.log('self-evolution: git hooks active (core.hooksPath = scripts/hooks)');

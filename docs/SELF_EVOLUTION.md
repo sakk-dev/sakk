@@ -64,6 +64,43 @@ none, 20+ characters>`. The edit hook needs only the field, because the
   original stays readable:
   `"revisions": [{"finding": "F-nn", "answer": "what is true now", "guard": "…"}]`.
 
+## Stacked, parallel and merged branches
+
+CI checks a pull request as its merge commit, and a branch can carry other
+branches' work: a stack of pull requests, lines developed in parallel and
+merged together, or a branch that merged its base back in. The range check
+follows the history as it is (F-72, F-128, F-134, F-212):
+
+- **Files.** A file counts as changed when it differs from the base both
+  at the tip and since the fork point (`base...HEAD`). A file the base
+  changed and the branch did not is not charged to the branch.
+- **Every commit against every parent.** Answers stay append-only from each
+  parent to its child, so a merge commit is compared with both sides. Two
+  lines may each add answers; neither may rewrite the other's.
+- **Inherited answers files.** A file in `findings/acks/` added in the range
+  whose `branch` names another branch that still exists (a local branch, or
+  `origin/<branch>` on the remote) is that branch's own file. It must match
+  that branch's copy for every answer both carry, it is never removed, and
+  its guards must resolve at the tip; a correction is a revision there too.
+  Keep a stacked parent's branch on the remote until its child is merged,
+  or its file is read as a rename.
+- **Renames.** A file added in the range whose branch no longer exists is
+  this branch's own file under an earlier name, and the current answers
+  file must carry its answers forward.
+- **Files already on the base.** An answers file the base has, which the
+  range changes, is append-only too and is never removed.
+
+The pre-push hook (`scripts/hooks/pre-push`) runs this range check against
+the pull request's base, and the full suite once per tree, before anything
+leaves the machine (F-212). `SAKK_PR_BASE` names the base; without it the
+hook asks `gh`, then falls back to `main` and says so.
+
+Both checks start with every `GIT_` variable removed. git exports `GIT_DIR`
+to a hook run from a linked worktree, and a test fixture's git would then act
+on the repository being pushed instead of its own throwaway one (F-214). Every
+`node --test` launch in `package.json` and the hooks also loads
+`test/clean-git-env.mjs` first, which removes them before any test file runs.
+
 ## Shell commands
 
 The PreToolUse hook also sees `Bash`. A command passes without answers only
