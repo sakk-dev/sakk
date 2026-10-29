@@ -35,6 +35,11 @@
           "kind": "detector",
           "ref": "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)",
           "since": "F-105"
+        },
+        {
+          "kind": "detector",
+          "since": "F-204",
+          "ref": "test/spend.test.mjs::chmod 000 on a log subdirectory is a typed deny, not $0"
         }
       ]
     },
@@ -60,6 +65,11 @@
           "kind": "detector",
           "ref": "test/self-evolution-cli.test.mjs::F-157: the window resolves a symlink leaf, survives a non-error, and ignores a stray key",
           "since": "F-157"
+        },
+        {
+          "kind": "detector",
+          "since": "F-205",
+          "ref": "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap"
         }
       ]
     },
@@ -6346,6 +6356,68 @@
       "mechanism_gap": "The real-path work for this class is the gold v2 debt (REAL-mode cases, F-90/F-112); no detector drives the console page in a browser, so the page-to-route path stayed unrun.",
       "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
       "distinct_from": {}
+    },
+    {
+      "id": "F-204",
+      "date": "2026-10-29",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-01",
+      "title": "A spend-log directory that cannot be listed is silently skipped, so the daily cap reads $0 and fails open",
+      "symptom": "When a directory under the Claude log root cannot be listed (permissions), the spend walk skipped it without a word: sakk spend printed a clean $0 figure and capCheck answered 'under the cap', so the daily cap failed open exactly when the logs that carry today's spend were out of reach.",
+      "evidence": "来自 2026-10-28 黑盒 UAT（沙箱 HOME）case S-REL-002，2026-10-29 D11 解冻后补档。Red baseline on the unfixed tree: test/spend-cli.test.mjs 'F-204: an unlistable log directory is a typed failure, never $0' printed `spend 2026-10-22 (UTC, from local logs): $0 of $5 cap` while the only log directory was unlistable, and test/spend.test.mjs 'chmod 000 on a log subdirectory is a typed deny, not $0' saw updateIndex return no unlistable channel at all (TypeError on .length) and capCheck answer null (under the cap).",
+      "direct_cause": "listLogs wrapped its directory walk in a catch that returned silently, so an unlistable directory produced a file list indistinguishable from an empty day; updateIndex and capCheck never learned the walk was partial.",
+      "why": [
+        "The walk's catch was written for the benign case (a folder vanishing mid-walk) and treated every readdir failure the same way, so absence of listings read as absence of spend.",
+        "The fail-closed path covered unreadable files and lines (SPEND_UNREADABLE), but the C-01 question was never asked one level up: what happens when the listing itself is absent?",
+        "The spend input-space table had rows for an absent folder and an unreadable file but none for an unlistable directory, so no test ever drove the shape and the gap sat until black-box UAT."
+      ],
+      "root_cause": "The spend pipeline reported what it saw but had no channel for what it could not see: listLogs could not say 'this directory was out of reach', so every caller took a partial walk for a complete one and the cap compared today's spend against an undercount.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: listLogs collects {path, code} for every directory it cannot list (and statSync failures land in the same channel); updateIndex returns the list; capCheck denies with SPEND_LOGS_UNLISTABLE — the cap fails closed until a person fixes the permissions — and sakk spend exits 1 naming each path instead of printing a figure.",
+      "guard": "test/spend.test.mjs::chmod 000 on a log subdirectory is a typed deny, not $0",
+      "sweep": "Swept the spend pipeline for other places a failed read becomes $0: an unreadable file or line is already a typed SPEND_UNREADABLE deny; a malformed price override refuses rather than falling back; an absent log root is declared ('no logs found at <path>'). no follow-up needed: the remaining known undercounts are already open findings of their own — F-180 (server-tool charges unpriced) and F-191 (log root resolved from the agent's environment) — and this entry is distinct from both.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/spend.mjs", "bin/sakk.mjs", "docs/SPEND.md", "specs/spend/spec.md"],
+      "mechanism_gap": "The C-01 detectors probe CLI argument strictness, silently deletable bundle keys and CI skip-laundering; nothing asked the absence question of the spend walk's directory level, and the input-space table stopped at 'unreadable file', so a directory-level absence was outside every check.",
+      "mechanism_upgrade": "test/spend.test.mjs::chmod 000 on a log subdirectory is a typed deny, not $0",
+      "distinct_from": {
+        "F-180": "F-180 is a pricing omission: server-tool charges are not in the price model, so even a perfect walk undercounts. F-204 is the walk itself failing silently — a directory the counter cannot list read as zero spend. Different layer: price coverage vs the log walk's error channel."
+      }
+    },
+    {
+      "id": "F-205",
+      "date": "2026-10-29",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-07",
+      "title": "A future-dated log line is booked to its own future day, moving spend out of today's cap window",
+      "symptom": "A log line whose timestamp lies ahead of the clock was booked to that future day's bucket: today's daySpend did not include it, so money visible in the logs did not count against today's cap, and specs/spend/spec.md already required the opposite ('a line timestamp in the future (counted today, flagged)').",
+      "evidence": "来自 2026-10-28 黑盒 UAT（沙箱 HOME）case S-REL-005，2026-10-29 D11 解冻后补档。Red baseline on the unfixed tree: test/spend.test.mjs 'a line stamped tomorrow lands in today, flagged, and still hits the cap' failed 'the call counts today: 0 !== 1' (the row sat in the next day's bucket), and test/spend-cli.test.mjs 'F-205: a future-dated line is counted on the day observed and said so' saw spend_usd 0 for the observation day.",
+      "direct_cause": "updateIndex booked every call to the day of its own claimed timestamp with no comparison against the clock, so a timestamp later than now moved the row into a future bucket that today's capCheck never reads.",
+      "why": [
+        "The day-bucketing code treated the log timestamp as a fact about time rather than as input the guarded party can author; the spec's Time row named the required behaviour but it was never implemented.",
+        "The Time-row tests covered zone boundaries and DST — the calendar arithmetic — and never an adversarial timestamp, so every positive case passed while the negative shape went undriven (ES-04).",
+        "The 'spend never goes down' invariant gave comfort that touching logs cannot help the agent, but a future date is not a rewrite of counted spend — it is a first write that lands outside the window the cap reads."
+      ],
+      "root_cause": "The pipeline let a field the guarded party can author (the line's timestamp) choose which cap window the money lands in; nothing compared claimed time with observed time, so the C-07 trust boundary ran unguarded through the day bucket.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-05"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: updateIndex flags any call whose timestamp is later than now (future: true) and books it to the day it was observed; mergeCall keeps the flag and the earliest timestamp; daySpend counts the flagged calls, and sakk spend reports them ('counted on the day observed', plus a future field in --json). Re-reading a still-future row across midnight can double-count — conservative under the 'spend never goes down' invariant, written into specs/spend/v2-line-c-three-tables.md.",
+      "guard": "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap",
+      "sweep": "Swept every field of a log line the spend pipeline trusts: usage counts are bounded (non-numeric → unreadable), an unpriced model is a PRICE_UNKNOWN deny, and a forged id/requestId pair can only merge rows, never subtract, under 'spend never goes down'. The timestamp was the one field that chose a cap window; it is now pinned to the observation day when it claims the future. no follow-up needed: a past-dated line is indistinguishable from a legitimately late-read line and books to its own already-counted day, and rewriting local logs at all is the README's standing REQ-P04 limit ('The logs are local files the agent can reach').",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/spend.mjs", "bin/sakk.mjs", "docs/SPEND.md", "specs/spend/spec.md"],
+      "mechanism_gap": "C-07's detectors probe hostile names and hostile MCP frame shapes; no detector treated a log line's timestamp as input the guarded party authors, and the spec row that named the required behaviour had no test behind it, so spec and code diverged unnoticed until black-box UAT.",
+      "mechanism_upgrade": "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap",
+      "distinct_from": {
+        "F-191": "F-191 is where the logs are found: the pipeline resolves the log root from the agent's own environment, so a moved folder reads $0. F-205 is when a line counts: a timestamp inside the line chose the cap window. Different trusted input — the directory path from env vs the time field the line carries."
+      }
     }
   ]
 }

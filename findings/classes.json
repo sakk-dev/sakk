@@ -40,7 +40,8 @@
       "detectors": [
         "test/cli-strictness.test.mjs::every CLI refuses what it does not understand",
         "test/bundle-absence.test.mjs::every silently deletable key is declared, and every declaration is still needed",
-        "test/ci-honesty.test.mjs::no workflow turns a skip or a failure into a green check"
+        "test/ci-honesty.test.mjs::no workflow turns a skip or a failure into a green check",
+        "test/spend.test.mjs::chmod 000 on a log subdirectory is a typed deny, not $0"
       ]
     },
     {
@@ -197,15 +198,12 @@
       ],
       "detectors": [
         "test/hostile-names.test.mjs::callIds and agentIds that are prototype names reserve, settle, halt and resume like any id",
-        "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving"
+        "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving",
+        "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap"
       ],
       "stopline": {
-        "after": "F-193",
-        "waiver": {
-          "by": "the maintainer (owner)",
-          "on": "2026-10-28",
-          "record": "docs/DECISIONS.md D10: the owner deferred every open P0 UAT failure to V2; the class detector is V2 work in docs/V2-BACKLOG.md"
-        }
+        "after": "F-205",
+        "detector": "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap"
       }
     },
     {

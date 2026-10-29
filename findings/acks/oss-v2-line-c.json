@@ -54,9 +54,33 @@
    "answer": "被约束方不能自己清闸：解除停机、清账对账、破锁解锁正是 agent 被约束的三个逆操作，修复后 hook 把它们判成守护状态写入直接 deny（不走 ask，agent 无法靠会话里点确认通过），CLI 侧无终端即拒、有终端要真人重打确认词；账本默认路径移到 ~/.sakk 之下后，直接改账本文件也落在 protect-guard-state 的 deny 范围。",
    "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
   },
+  "C-15.1": {
+   "answer": "每条新测试都跑真路径：真人终端闸用 test/pty.mjs 的 python3 伪终端驱动真实 bin/sakk.mjs 子进程打字确认，无终端路径用真 spawnSync 断言退出码与账本字节不变；hook deny 走真实 evaluate()；F-204/F-205 用真实文件系统 chmod 000 与真实 jsonl 行驱动真实 updateIndex/capCheck。没有一条用 mock 自写证据。",
+   "guard": "test/kill-switch.test.mjs::J-UAT-016 a person at a terminal who types the word makes the change"
+  },
+  "C-11.1": {
+   "answer": "resume/reconcile/unlock 这三个写各自确认的意义被重新分类：它们解除约束 agent 的控制（F-171 同族），所以写者只能是真人——hook 把 agent 发起的这三个子命令按其造成的守护状态写入 deny，CLI 把它们全部挂到 confirmByPerson；默认账本移入 SAKK_HOME 后，写账本文件这件事本身也落入 protect-guard-state 的 deny 作用域，写者范围与含义一致。",
+   "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
+  },
+  "C-09.1": {
+   "answer": "默认路径改动假设的是「没有 flag/config/env 时」这一分支：测试同时打两种环境——干净沙箱 HOME（init 落到 SAKK_HOME/sakk-ledger.json 并记入 config）和 cwd 里已有旧 ./sakk-ledger.json 的环境（类型化拒绝 LEDGER_PATH_LEGACY，绝不静默二选一）；flag/config/env 各优先级已有既有测试钉住，fallback 之外的路径不变。",
+   "guard": "none: 两种环境的用例随 F-177b 修复红先行落地在 test/cli.test.mjs，落地前没有覆盖 fallback 歧义的测试"
+  },
+  "C-09.2": {
+   "answer": "真正运行处是任意项目 cwd 下被 spawn 的 CLI 与 agent 宿主里的 hook：测试用 spawnSync 在沙箱 cwd 真跑 bin/sakk.mjs（不是单测函数），hook 判定用 R-24 的 evaluate 以 agent cwd+env 真跑；伪终端用例真起 python3 pty。配置写在哪、从哪读，都以子进程的实际输出与磁盘文件断言。",
+   "guard": "test/kill-switch.test.mjs::R-24 every sakk subcommand is declared by its effect on a control, and judged by it"
+  },
+  "C-08.1": {
+   "answer": "F-172 的教训直接适用：默认账本从「cwd 相对路径」这个会随会话目录变名的别名，移到 SAKK_HOME 下的单一绝对路径，init 仍把绝对路径记入 config.json，读写两侧都走同一个 resolveLedgerPath；旧名（./sakk-ledger.json）还存在时不猜哪个是真身，类型化拒绝让人显式指定，杜绝同一账本两个名字各记各的。",
+   "guard": "test/cli.test.mjs::records the ledger for the hook and never replaces a different one (F-172)"
+  },
   "C-10.1": {
    "answer": "「agent 不得解除停机/清账/解锁」这次从 README 限制文字变成机器强制：classify 的子命令映射加 hook 的 deny 是第一道，CLI 的 confirmByPerson 是第二道，两道各有缺了就红的测试；「账本默认在 ~/.sakk」由 init 与 resolveLedgerPath 的同一函数执行并有路径断言，不靠文档约定。",
    "guard": "none: 两道强制的缺失即红测试随 F-177 修复红先行落地，现有 kill-switch 测试只覆盖 cap 与 guard 两族"
+  },
+  "C-14.1": {
+   "answer": "一个读不到的子目录或 stat 失败的文件不再让整个遍历静默短路，也不炸整条命令：每个失败单元被收集为带 path+code 的 unlistable 条目，其余文件照常计数；上限判定对非空 unlistable 整体 fail closed（SPEND_LOGS_UNLISTABLE 点名路径），sakk spend 非零退出并逐条列出，而不是 F-192 那种裸栈或把错误归因到别处。",
+   "guard": "none: 单元级隔离的检测器（chmod 000 子目录下其余文件仍计数、失败路径被点名）随 F-204 修复红先行落地，落地前仓库没有覆盖该隔离语义的测试"
   },
   "C-10.2": {
    "answer": "绕路逐条封：hook 的判定按子命令效果映射，对 sakk 的三个解除子命令生效而不看参数拼写顺序；直接编辑账本文件这条旁路靠账本移入 ~/.sakk 后的 protect-guard-state deny 封住；旧路径仍存在时 CLI 不静默二选一而是类型化拒绝，防止换个目录起会话就绕开新默认；MCP 与 console 两条写账本路径在 sweep 里核对后记录。",

@@ -889,12 +889,21 @@ if (cmd === 'init') {
   try {
     // an explicit historical --day scans all files (their mtime is old); today
     // only needs files touched in the last 36 h (spend/cap review: no false $0)
-    updateIndex({
+    const idx = updateIndex({
       home,
       logDir,
       zone,
       since: dayArg !== undefined ? 0 : Date.now() - 36 * 3600 * 1000,
     });
+    // a folder that cannot be listed is uncounted spend, not $0: a seemingly
+    // credible low figure must not be reported (F-204, UAT S-REL-002)
+    if (idx.unlistable.length) {
+      console.error(
+        `SPEND_LOGS_UNLISTABLE: ${idx.unlistable.length} path(s) under ${logDir} could not be read, so spend cannot be counted — fix the permissions and run sakk spend again:`,
+      );
+      for (const u of idx.unlistable) console.error(`  ${display(u.path)} (${u.code})`);
+      process.exit(1);
+    }
   } catch (e) {
     if (!(e instanceof SpendError)) throw e;
     indexNote = ` (index not refreshed: ${e.code})`;
@@ -907,6 +916,7 @@ if (cmd === 'init') {
     cap_usd: config.capUsd ?? null,
     spend_usd: s.usd,
     calls: s.calls,
+    future: s.future,
     by_model: s.byModel,
     unpriced: s.unpriced,
     unreadable: s.unreadable,
@@ -922,6 +932,8 @@ if (cmd === 'init') {
       console.log(
         `  unpriced: ${unpriced.map(display).join(', ')} — add it to ${join(home, 'prices.json')}`,
       );
+    if (s.future)
+      console.log(`  ${s.future} call(s) dated in the future — counted on the day observed`);
     if (s.unreadable) console.log(`  ${s.unreadable} log line(s) unreadable today`);
   }
 } else if (cmd === 'prices') {
