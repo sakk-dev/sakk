@@ -7003,7 +7003,8 @@
       "mechanism_upgrade": "test/claims-are-checked.test.mjs::every node --test launch in package.json and the hooks loads test/clean-git-env.mjs first",
       "distinct_from": {
         "F-114": "F-114 is leftover ledger and release nits (lock errors, temp files, tool integrity, CI running twice); F-214 is the environment a git hook hands the test suite, which none of those touch.",
-        "F-123": "F-123 is which Sakk files a copied hook expects to exist; F-214 is which environment a hook hands the checks it starts. The pre-commit preload adds test/clean-git-env.mjs to the files F-123 lists, and F-123 stays open for that."
+        "F-123": "F-123 is which Sakk files a copied hook expects to exist; F-214 is which environment a hook hands the checks it starts. The pre-commit preload adds test/clean-git-env.mjs to the files F-123 lists, and F-123 stays open for that.",
+        "F-220": "F-214 is the environment variables a git hook hands the suite it starts; F-220 is two whole-suite runs sharing one machine at the same time, which happens with or without a hook."
       }
     },
     {
@@ -7153,6 +7154,80 @@
         "F-166": "F-166 is one job's clock limit not covering its own work; F-218 is the same work started twice per commit, with no bound on what all the jobs of a commit cost together.",
         "F-91": "F-91 is a review job with no timeout; F-218 is jobs that each had a timeout but ran more times than the commit needed."
       }
+    },
+    {
+      "id": "F-219",
+      "date": "2026-10-29",
+      "introduced_in": "b2119ec",
+      "found_by": "human",
+      "class": "C-04",
+      "title": "The mutation drill reran a whole test suite for every mutant, so its CI time grew as mutants times suite and became most of the Actions bill",
+      "symptom": "The owner's $50 Actions limit ran out in October with CI firing once per commit already planned (F-218). The drill job alone was 9,087 of sakk's 10,111 runner-minutes, and one drill run went from 18-25 minutes at 26 mutants to 52-61 minutes at 40, near its 75-minute limit.",
+      "evidence": "Drill job durations from GitHub's Actions API (started_at to completed_at) on main and on pull requests in October 2026; scripts/mutation-drill.sh ran `npm run --silent \"$ts\"` per mutant, the whole of npm test (38 files) for 32 of the 40 mutants and the whole of test:eval for the other 8. Locally on one tree (b7d3c51 with this change): npm test takes about 49 s, while the files that hold a mutant's named test take 1-26 s. The old drill took 1698 s and the new one 366 s on that commit, and their 40 verdicts, the control line and the PASS line are identical. Planted on a copy, each turned the new drill red: a mutant no test catches (MUTANT SURVIVED), a named test no file contains (DRILL BROKEN) and a mutant that fails a different test (WRONG KILLER).",
+      "direct_cause": "run_drill ran the mutant's whole npm suite to find out whether one named test failed.",
+      "why": [
+        "The first drill had a handful of mutants against a short suite, so rerunning the suite per mutant cost seconds and was the simplest correct check.",
+        "Each red line added a mutant and each fix added tests, so the drill's work grew as the product of the two while each step looked small.",
+        "The only bound on the drill was its job timeout, raised whenever it was hit (F-166), so nothing asked what one mutant needs to run, only whether the total still fit."
+      ],
+      "root_cause": "Each mutant's verdict depends on one named test, but the drill selected no tests: it paid for the whole suite per mutant, and the only bound was a clock limit that was raised instead of the work being cut.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit: scripts/drill-guardians.mjs finds, per mutant, the files of its suite whose source contains its named test and builds the suite's own command with only those files; the drill runs that command and reports DRILL BROKEN when no file holds the name; the pristine control still runs the whole of test:all; the drill timeout and the per-mutant budget in claims-are-checked are lowered to the measured time; the helper's main-module check resolves symlinks on both sides (a temp folder under macOS /var made it print nothing and exit 0), and an empty command is DRILL BROKEN",
+      "class_fix": "test/drill-guardians.test.mjs",
+      "guard": "test/drill-runs-guardians-only.test.mjs::the drill runs a mutant against the files holding its named test, not the whole suite",
+      "sweep": "All three callers of the drill (CI's drill job, the audit and the gate certificate) run the same script and get the selection. Every one of the 40 mutants resolves to guardian files today, checked by the guard. The old and new drill were run on one commit and every verdict compared. The fuzzers and campaigns in the same job run once per job, not per mutant, so they do not multiply. Running only changed files' mutants per pull request, one Node version per pull request, or a nightly drill weaken the gate and stay the owner's decision.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "scripts/mutation-drill.sh",
+        "scripts/drill-guardians.mjs",
+        "test/drill-guardians.test.mjs",
+        "test/claims-are-checked.test.mjs",
+        ".github/workflows/ci.yml"
+      ],
+      "mechanism_gap": "The C-04 detectors bound the drill job's clock against its mutant count (F-166) and one commit's total runner-minutes (F-218), but none looked at how much each mutant runs, so a whole-suite rerun per mutant stayed inside every bound until the limits were raised.",
+      "mechanism_upgrade": "test/drill-guardians.test.mjs::a mutant runs only its guardian files, through the suite's own command",
+      "distinct_from": {
+        "F-166": "F-166 is the drill job's timeout not tied to its mutant count; F-219 is what each mutant runs, which made the count expensive.",
+        "F-218": "F-218 is CI starting twice per commit; F-219 is the drill's own work per run, which stays the same however often it starts."
+      }
+    },
+    {
+      "id": "F-220",
+      "date": "2026-10-29",
+      "introduced_in": "unknown",
+      "found_by": "T0",
+      "class": "C-09",
+      "title": "Two whole-suite runs on one machine at once kill tests that pass alone, and nothing stops them running together",
+      "symptom": "test/guard.test.mjs 'every malformed payload is a deny with a code' hung until the 240 s spawn bound killed it, in one gate run on a merge of PR #32 while a mutation drill ran on the same machine; alone it passes in 0.8 s. Earlier the same day a drill run beside other test runs had mutants SIGKILLed and was dismissed as known CPU contention (findings/dismissed.jsonl, 2026-10-29T09-17-43-934Z-0b18ae).",
+      "evidence": "Inbox item 2026-10-29T19-04-00-619Z-2f5835 (source audit): status null, killed by test/bounded-spawn.mjs at 240 s. The same test alone and this branch's full gate run alone were green (1264 + 105 tests). Which of the nine payloads hung was not recorded: the bound names the command, not the input. A 300x slowdown is more than CPU sharing alone explains, so the cause inside the child is not known yet.",
+      "direct_cause": "A gate run and a mutation drill, each spawning hundreds of node and git children, ran at the same time on one laptop, and one hook child did not finish inside the per-child wall-clock bound.",
+      "why": [
+        "The gate and the drill each assume they have the machine to themselves; their bounds (240 s per child, 300 s per test) were set on a quiet machine.",
+        "I started the second run to save wall-clock time; no script refuses a gate while a drill runs, or the other way round.",
+        "The first occurrence was dismissed as a known phenomenon instead of logged, so the second had no record to count against."
+      ],
+      "root_cause": "Nothing makes the heavy local runs take turns: the only guard against two of them sharing a machine was my own habit, and the bounds that judge them are wall clocks.",
+      "dt": ["DT-PROC", "DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-06"],
+      "instance_fix": "open",
+      "class_fix": "open: the gate, the drill and the audit take one machine-wide lock before they start, so a second heavy run waits or refuses instead of sharing the machine; the spawn bound names the input it killed",
+      "guard": "none: open",
+      "sweep": "Not swept yet: the callers that start whole-suite runs are npm run gate (scripts/gate.sh), npm run drill (scripts/mutation-drill.sh), npm run audit (scripts/audit.mjs) and the pre-push hook; CI runs each job on its own runner and is not affected.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "areas": [
+        "scripts/gate.sh",
+        "scripts/mutation-drill.sh",
+        "scripts/audit.mjs",
+        "test/bounded-spawn.mjs"
+      ],
+      "mechanism_gap": "No detector looks at what else runs on the machine; bounded-spawn (F-143) bounds each child and did kill this one, but a bound that fires under load reads as a product failure.",
+      "mechanism_upgrade": "none: open — a lock shared by gate, drill and audit, with a test that a second run refuses while the first holds it",
+      "distinct_from": {}
     }
   ]
 }

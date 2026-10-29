@@ -23,9 +23,9 @@ const DIR = join(ROOT, '.github', 'workflows');
 // https://docs.github.com/en/billing/reference/actions-runner-pricing
 const LINUX_USD_PER_MIN = 0.006;
 // Worst case today: ci.yml test 2x30 + self-evolution 10 + base-checker 10 +
-// format 10 + drill 2x75, plus pr-review 2 + 20. Raising a ceiling is a cost
+// format 10 + drill 2x30 (F-219), plus pr-review 2 + 20. Raising a ceiling is a cost
 // decision: say the new figure in the pull request.
-const CEILING = { pull_request: 262, push: 220 };
+const CEILING = { pull_request: 172, push: 130 };
 
 const GROUP = '${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}';
 const EVENTS = new Set(['push', 'pull_request']);
