@@ -112,8 +112,8 @@
       "stopline": {
         "after": "F-107",
         "debt": {
-          "plan": "Open-source v1 M0: a class detector that sizes attacker-shaped inputs for every exported matcher and ledger operation by an operation counter (never a clock) and asserts the bound; closes the F-105 and F-107 gap before M1 and M2 touch src/match.mjs and src/ledger.mjs.",
-          "until": "2026-10-28"
+          "plan": "The detector is written: test/cost-bounds.test.mjs::every exported function shows how its work is bounded, in PR #27 (open-source v2 fixes), which also replaces this debt with that detector. #27 cannot merge until this pull request fixes the range check it fails, so the debt runs one day past the original date.",
+          "until": "2026-10-30"
         }
       }
     },
@@ -215,7 +215,8 @@
       ],
       "detectors": [
         "eval/__tests__/stranger-regressions.test.mjs::relative --out stranger",
-        "test/secret-scan.test.mjs::the hook as SHIPPED"
+        "test/secret-scan.test.mjs::the hook as SHIPPED",
+        "test/range-topology.test.mjs::a stack merged into main as one pull request: the parents' answers files are inherited, not carried forward"
       ]
     },
     {
@@ -238,7 +239,8 @@
       "detectors": [
         "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through",
         "test/core-specs.test.mjs::every source file is classified core or not core",
-        "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit"
+        "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit",
+        "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails"
       ]
     },
     {
