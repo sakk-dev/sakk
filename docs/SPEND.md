@@ -45,13 +45,18 @@ The cap applies at the **next** tool call. A response already in progress
 completes, so a running agent can go over by one response.
 
 Spend never goes down: deleting or rewriting a log keeps what was already
-counted.
+counted. A call stamped with a future date is counted on the day it is
+observed and flagged (`sakk spend` says how many), so a forged timestamp
+cannot move spend out of today's cap window (F-205).
 
 ## When Sakk denies because it cannot be sure
 
 - `PRICE_UNKNOWN`: a call today used a model the table does not list. Add
   the model to your own table, as above.
 - `SPEND_UNREADABLE`: a log line today could not be read.
+- `SPEND_LOGS_UNLISTABLE`: a log directory could not be listed (permissions),
+  so today's spend cannot be counted. The cap fails closed, and `sakk spend`
+  names the directory, until a person fixes the permissions (F-204).
 
 In v1 a log file the user cannot read at all (permissions) is handled
 badly: `sakk spend` exits with a raw error, and the hook's deny says it

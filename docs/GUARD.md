@@ -135,9 +135,12 @@ normally.
   runs in a pseudo-terminal, or a script it writes that opens one, can type
   the word. The guard knows Sakk only by the name `sakk`, so `npx sakk` or
   `node bin/sakk.mjs` meets the confirmation but not the deny.
-- `sakk resume`, `reconcile` and `unlock` from the agent are allowed, and the
-  default ledger (`./sakk-ledger.json`) is a project file the agent may write,
-  so one agent can lift a halt on another. A global halt holds.
+- `sakk resume`, `reconcile` and `unlock` from the agent are denied: each is
+  classified as the ledger write it makes, and at the CLI each asks a person
+  at a terminal before acting (F-177). The default ledger lives at
+  `~/.sakk/sakk-ledger.json`, outside the project tree; a leftover
+  `./sakk-ledger.json` refuses with `LEDGER_PATH_LEGACY` instead of being
+  silently ignored. A global halt holds until a person lifts it.
 - Cursor and Codex payloads are taken from their documentation; they have
   not yet been recorded from a running copy (test/fixtures/hooks/).
 

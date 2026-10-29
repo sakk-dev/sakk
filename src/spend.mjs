@@ -54,14 +54,20 @@ export function dayOf(ms, timeZone) {
 }
 export const systemZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-/** Every *.jsonl under `dir`, without following links out of it; bounded. */
-export function listLogs(dir) {
+/**
+ * Every *.jsonl under `dir`, without following links out of it; bounded.
+ * A directory that exists but cannot be listed is NOT "no logs": it is pushed
+ * onto `unlistable` as { path, code } so the caller can fail closed — read as
+ * absent, it would read as $0 spend (F-204, UAT S-REL-002).
+ */
+export function listLogs(dir, unlistable = []) {
   const out = [];
   const walk = (d) => {
     let entries;
     try {
       entries = readdirSync(d, { withFileTypes: true });
-    } catch {
+    } catch (e) {
+      unlistable.push({ path: d, code: e.code ?? 'UNREADABLE' });
       return;
     }
     for (const e of entries) {
@@ -162,7 +168,9 @@ export function mergeCall(a, b) {
       ),
     };
   for (const k of ['service_tier', 'speed', 'inference_geo']) usage[k] = b.usage[k] ?? a.usage[k];
-  return { ...a, model: a.model ?? b.model, usage, ts: Math.min(a.ts, b.ts) };
+  const merged = { ...a, model: a.model ?? b.model, usage, ts: Math.min(a.ts, b.ts) };
+  if (a.future || b.future) merged.future = true; // once flagged future-dated, stays flagged (F-205)
+  return merged;
 }
 
 const readJson = (p, empty) => {
@@ -189,9 +197,13 @@ const headOf = (file) => {
 
 /**
  * Bring the index up to date. `since` (ms) skips files not modified since —
- * the hook passes the start of today. Returns { rewritten: [paths], unreadable: n }.
+ * the hook passes the start of today. `now` is the observing clock: a call
+ * whose own timestamp lies beyond it is booked to the day of observation and
+ * flagged `future` — an agent-authored timestamp must not move spend out of
+ * today's cap window (F-205, UAT S-REL-005; spec row "counted today, flagged").
+ * Returns { rewritten: [paths], unreadable: n, unlistable: [{ path, code }] }.
  */
-export function updateIndex({ home, logDir, zone, since = 0 }) {
+export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() }) {
   const dir = join(home, 'spend');
   mkdirSync(join(dir, 'days'), { recursive: true });
   const filesPath = join(dir, 'files.json');
@@ -203,11 +215,14 @@ export function updateIndex({ home, logDir, zone, since = 0 }) {
   };
   const rewritten = [];
   let unreadable = 0;
-  for (const file of existsSync(logDir) ? listLogs(logDir) : []) {
+  const unlistable = [];
+  for (const file of existsSync(logDir) ? listLogs(logDir, unlistable) : []) {
     let st;
     try {
       st = statSync(file);
-    } catch {
+    } catch (e) {
+      // listed but not statable: an absent reading, not zero spend (F-204)
+      unlistable.push({ path: file, code: e.code ?? 'UNREADABLE' });
       continue;
     }
     if (st.mtimeMs < since) continue;
@@ -241,7 +256,10 @@ export function updateIndex({ home, logDir, zone, since = 0 }) {
         d['~unreadable'] = (d['~unreadable'] ?? 0) + 1;
         continue;
       }
-      const d = day(dayOf(r.call.ts, zone));
+      // a timestamp beyond the observing clock books to the observation day,
+      // flagged — never ahead, out of today's cap window (F-205)
+      if (r.call.ts > now) r.call.future = true;
+      const d = day(dayOf(r.call.future ? now : r.call.ts, zone));
       d[r.call.key] = mergeCall(d[r.call.key], r.call);
     }
     files[file] = {
@@ -253,7 +271,7 @@ export function updateIndex({ home, logDir, zone, since = 0 }) {
   }
   for (const [d, calls] of days) writeAtomic(join(dir, 'days', `${d}.json`), calls);
   writeAtomic(filesPath, files);
-  return { rewritten, unreadable };
+  return { rewritten, unreadable, unlistable };
 }
 
 /** One day's spend: total of priced calls, and what could not be priced or read. */
@@ -263,10 +281,12 @@ export function daySpend({ home, day, table }) {
   const unpriced = new Map();
   const byModel = {};
   let n = 0;
+  let future = 0;
   let unreadable = calls['~unreadable'] ?? 0;
   for (const [key, c] of Object.entries(calls)) {
     if (key === '~unreadable') continue;
     n += 1;
+    if (c.future) future += 1;
     const entry = priceOf(table, c.model);
     if (!entry) {
       unpriced.set(c.model ?? '(no model)', (unpriced.get(c.model ?? '(no model)') ?? 0) + 1);
@@ -290,6 +310,7 @@ export function daySpend({ home, day, table }) {
     day,
     usd,
     calls: n,
+    future,
     unpriced: Object.fromEntries(unpriced),
     unreadable,
     byModel,
@@ -299,7 +320,8 @@ export function daySpend({ home, day, table }) {
 /**
  * The guard's step 2 (spec "Cap"): null when there is no cap or spend is under
  * it; otherwise { deny: true, reason }. Fails closed: unpriced or unreadable
- * spend today, or an index that cannot be read, is a deny.
+ * spend today, a log folder that cannot be listed, or an index that cannot
+ * be read, is a deny.
  */
 export function capCheck({ home, config, table, now = Date.now(), env = process.env }) {
   if (config.capUsd === undefined || config.capUsd === null) return null;
@@ -311,7 +333,14 @@ export function capCheck({ home, config, table, now = Date.now(), env = process.
   const logDir = config.claudeLogDir || claudeLogDir(env);
   // files untouched since the start of today hold no new spend for today
   const startOfToday = now - 36 * 3600 * 1000; // generous: any zone's midnight lies within 36 h
-  updateIndex({ home, logDir, zone, since: startOfToday });
+  const idx = updateIndex({ home, logDir, zone, since: startOfToday, now });
+  if (idx.unlistable.length) {
+    const first = idx.unlistable[0];
+    return {
+      deny: true,
+      reason: `SPEND_LOGS_UNLISTABLE: ${idx.unlistable.length} path(s) under ${logDir} could not be read (${first.path}: ${first.code}), so today's spend cannot be counted — the cap fails closed until a person fixes the permissions`,
+    };
+  }
   const s = daySpend({ home, day: today, table });
   const models = Object.keys(s.unpriced);
   if (models.length)

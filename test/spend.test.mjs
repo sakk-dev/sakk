@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   appendFileSync,
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -765,5 +766,57 @@ describe('the usage input space (R-03, F-179)', () => {
       costOf(e, { input_tokens: 199_500, cache_creation: { ephemeral_5m_input_tokens: 1000 } }),
       199_500 * 6 * M + 1000 * 7.5 * M,
     );
+  });
+});
+
+describe('F-204 — a log directory that cannot be listed fails the cap closed (UAT S-REL-002)', () => {
+  const asRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+  test(
+    'chmod 000 on a log subdirectory is a typed deny, not $0',
+    { skip: asRoot && 'root ignores file modes' },
+    () => {
+      const w = world();
+      writeFileSync(w.file, line());
+      utimesSync(w.file, NOW / 1000, NOW / 1000);
+      chmodSync(w.logs, 0o000);
+      try {
+        const idx = updateIndex({
+          home: w.home,
+          logDir: w.config.claudeLogDir,
+          zone: 'UTC',
+          now: NOW,
+        });
+        assert.equal(idx.unlistable.length, 1, 'the unlistable directory is reported');
+        assert.equal(idx.unlistable[0].path, w.logs);
+        assert.equal(idx.unlistable[0].code, 'EACCES');
+        const r = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+        assert.equal(r?.deny, true, 'the cap fails closed');
+        assert.match(r.reason, /SPEND_LOGS_UNLISTABLE/);
+        assert.ok(r.reason.includes(w.logs), 'the refusal names the path');
+      } finally {
+        chmodSync(w.logs, 0o700);
+      }
+      // permissions fixed → the same spend counts again and the cap can decide
+      const r2 = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+      assert.equal(r2, null, 'under the cap once the directory is listable');
+    },
+  );
+});
+
+describe('F-205 — a future-dated log line is counted on the day observed (UAT S-REL-005)', () => {
+  test('a line stamped tomorrow lands in today, flagged, and still hits the cap', () => {
+    const w = world({ cap: 0.001 });
+    writeFileSync(w.file, line({ ts: '2026-10-23T12:00:00Z' })); // 24 h in the future
+    utimesSync(w.file, NOW / 1000, NOW / 1000);
+    updateIndex({ home: w.home, logDir: w.config.claudeLogDir, zone: 'UTC', now: NOW });
+    const today = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+    assert.equal(today.calls, 1, 'the call counts today');
+    assert.ok(today.usd > 0, 'with its money');
+    assert.equal(today.future, 1, 'and is flagged as future-dated');
+    const tomorrow = daySpend({ home: w.home, day: '2026-10-23', table: TABLE });
+    assert.equal(tomorrow.calls, 0, 'nothing is booked to the future day');
+    const r = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+    assert.equal(r?.deny, true, 'the future-dated spend cannot escape the cap window');
+    assert.match(r.reason, /SPEND_CAP_REACHED/);
   });
 });

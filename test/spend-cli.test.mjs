@@ -1,6 +1,13 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  realpathSync,
+} from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -204,5 +211,47 @@ describe('spend / cap / prices CLI (F-161)', () => {
       assert.notEqual(a, '', `not a silent allow: ${command}`);
       assert.doesNotMatch(a, /"permissionDecision":"allow"/, command);
     }
+  });
+});
+
+describe('F-204 / F-205 — sakk spend tells the truth about what it could not count', () => {
+  const asRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+
+  test(
+    'F-204: an unlistable log directory is a typed failure, never $0 (UAT S-REL-002)',
+    { skip: asRoot && 'root ignores file modes' },
+    () => {
+      const w = world();
+      sakk(w, ['cap', 'set', '5', '--zone', 'UTC']);
+      seed(w, [callLine({ ts: '2026-10-22T10:00:00Z' })]);
+      const logs = dirname(w.sessionFile);
+      chmodSync(logs, 0o000);
+      try {
+        const r = sakk(w, ['spend', '--day', '2026-10-22']);
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /SPEND_LOGS_UNLISTABLE/);
+        assert.ok(r.stderr.includes(logs), 'the failure names the directory');
+        assert.doesNotMatch(r.stdout, /\$0/, 'no figure is reported');
+      } finally {
+        chmodSync(logs, 0o700);
+      }
+      const ok = sakk(w, ['spend', '--day', '2026-10-22', '--json']);
+      assert.equal(ok.status, 0, ok.stderr);
+      assert.ok(JSON.parse(ok.stdout).spend_usd > 0, 'counted once the directory is listable');
+    },
+  );
+
+  test('F-205: a future-dated line is counted on the day observed and said so (UAT S-REL-005)', () => {
+    const w = world();
+    sakk(w, ['cap', 'set', '5', '--zone', 'UTC']);
+    seed(w, [callLine({ ts: new Date(Date.now() + 172_800_000).toISOString() })]); // 48 h ahead
+    const today = new Date().toISOString().slice(0, 10);
+    const r = sakk(w, ['spend', '--day', today, '--json']);
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.ok(out.spend_usd > 0, 'the future-dated call counts today');
+    assert.equal(out.future, 1, 'and the JSON flags it');
+    const t = sakk(w, ['spend', '--day', today]);
+    assert.match(t.stdout, /dated in the future — counted on the day observed/);
   });
 });

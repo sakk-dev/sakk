@@ -70,6 +70,18 @@
    "answer": "单元失败的隔离由 C 线落地：spend 遍历遇到不可列目录不再静默跳过，收集成命名错误 SPEND_LOGS_UNLISTABLE 并让上限判定失败关闭、退出码非零点名目录；其余目录照常读。集成合并时保留该行为，不把「一个目录坏」重新变回「整体读出偏小数字」。",
    "guard": "none: C 线分支尚未合入集成分支，SPEND_LOGS_UNLISTABLE 用例合入后随全量门禁执行，当前引用不解析"
   },
+  "C-07.1": {
+   "answer": "C 线把「对方可作者的输入」逐一过界审查：日志行的时间戳由被管的 agent 写，F-205 改为声称未来的行按观察日入账并打 future 标记，不再让它选择 cap 窗口；日志目录不可列（F-204）按类型化失败关闭而非读成 $0。集成侧合并时保留这两条拒绝路径与 spec 对应行。",
+   "guard": "none: F-205/F-204 的检测器在 C 线 test/spend.test.mjs 内随本次合并入集成分支，由合并后全量门禁执行验证"
+  },
+  "C-07.2": {
+   "answer": "解除闸门的那一步必须由人完成：F-177 把 resume/reconcile/unlock 分类为对账本状态的写入直接拒，CLI 解除要求终端真人确认（无终端退出码 2，HUMAN_CONFIRMATION_REQUIRED），被约束的 agent 自己清不掉自己的停机。合并时我核对该拒绝路径未被其它线的 classify 改动冲掉。",
+   "guard": "test/kill-switch.test.mjs::J-UAT-016 cap off, a raised cap and guard uninstall refuse without a person at a terminal"
+  },
+  "C-15.1": {
+   "answer": "真路径执行：C 线的 spend 用例对真实临时目录 chmod 000 再跑真实 updateIndex/capCheck，不是打桩；D 线 console 用例起真实 http 实例发伪 Origin 请求；集成分支本机全量跑 npm run gate 与 test:all，再由 CI 在干净机复跑，两层都是真实执行器。",
+   "guard": "none: 真路径验证以集成分支与 CI 的全量门禁执行为准，本批没有再新增独立的 real-path 元测试"
+  },
   "C-10.2": {
    "answer": "绕路问题逐条封：保护区判定对所有写入工具生效（Write、Edit、Bash、MCP 任何携带内容的调用都过同一判定），不是只拦某个工具名；未解析变量展开一律 ask（F-176）在规范化之后判，换一种拼法也落到同一条路径；console 的 Origin 在 GET 和 Stop 两条路由都查，不留只查一条的侧门。",
    "guard": "none: 工具乘字段清单用例与双路由 Origin 用例随 F-202/F-195 修复红先行落地，建成前没有既有测试枚举全部路由"
