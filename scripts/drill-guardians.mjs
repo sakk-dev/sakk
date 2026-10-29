@@ -19,7 +19,7 @@
 //
 // Usage: node scripts/drill-guardians.mjs <repo-dir> <npm-script> <named-test>
 // Prints the command on stdout; exits 2 with the reason on stderr.
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -58,7 +58,17 @@ export function guardianCommand(root, script, named) {
   };
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// resolved on both sides: a temp folder reached through a symlink (macOS
+// /var -> /private/var) made the plain comparison false, so the CLI printed
+// nothing and exited 0
+const isMain = (() => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isMain) {
   const [root, script, named] = process.argv.slice(2);
   try {
     process.stdout.write(`${guardianCommand(root, script, named).command}\n`);

@@ -47,6 +47,10 @@ run_drill() {
     log "[$id] DRILL BROKEN: $cmd"
     FAILED=1; rm -rf "$dir"; return
   fi
+  if [ -z "$cmd" ]; then
+    log "[$id] DRILL BROKEN: no command for the guardian files of '$named'"
+    FAILED=1; rm -rf "$dir"; return
+  fi
   target="$dir/$file"
   before_hash="$(shasum -a 256 "$target" | cut -d' ' -f1)"
   node -e '
