@@ -23,8 +23,9 @@ export class ClassifyError extends Error {
 
 /**
  * Split a command into segments (arrays of words) outside quotes, collecting
- * output-redirect targets and whether anything opaque (heredoc, command
- * substitution) appears. Linear in the length; no backtracking.
+ * output-redirect targets, whether anything opaque (heredoc, command
+ * substitution) appears, and whether a variable or brace expansion the guard
+ * cannot resolve statically does (F-176). Linear in the length; no backtracking.
  */
 export function shellSegments(cmd) {
   const segs = [];
@@ -34,11 +35,15 @@ export function shellSegments(cmd) {
   let inWord = false;
   let q = null;
   let opaque = false;
+  let expands = false; // a variable or brace expansion the guard cannot resolve (F-176)
+  let uq = ''; // the word's unquoted text: quoted or escaped braces never expand
   let wantTarget = false;
   let heredoc = null; // delimiter waiting for the end of the line
   let hasRedirect = false;
   const endWord = () => {
     if (inWord) {
+      // a brace with a comma or range in the word's unquoted text expands (F-176)
+      if (/\{[^{}]*(,|\.\.)[^{}]*\}/.test(uq)) expands = true;
       if (wantTarget) {
         redirects.push({ seg: segs.length, target: w }); // resolved in its own segment's directory
         wantTarget = false;
@@ -46,6 +51,7 @@ export function shellSegments(cmd) {
       } else words.push(w);
     }
     w = '';
+    uq = '';
     inWord = false;
   };
   const endSeg = () => {
@@ -66,6 +72,7 @@ export function shellSegments(cmd) {
       else if (c === '\\' && i + 1 < cmd.length) w += cmd[++i];
       else {
         if (c === '`' || (c === '$' && cmd[i + 1] === '(')) opaque = true;
+        else if (c === '$' && /[\w{@*#?$!-]/.test(cmd[i + 1] ?? '')) expands = true;
         w += c;
       }
       continue;
@@ -131,6 +138,7 @@ export function shellSegments(cmd) {
     if (c === '>') {
       if (inWord && /^\d+$/.test(w)) {
         w = '';
+        uq = '';
         inWord = false;
       } else endWord();
       if (cmd[i + 1] === '>' || cmd[i + 1] === '|') i++;
@@ -154,8 +162,12 @@ export function shellSegments(cmd) {
     if (c === '|' || c === '&' || c === ';' || c === '(' || c === ')' || c === '{' || c === '}') {
       if ((c === '{' || c === '}') && inWord) {
         w += c;
+        uq += c;
         continue;
       }
+      // a word-start brace holding anything but a lone `}` (a `{}` placeholder,
+      // a `{ group; }`) is a brace expansion the shell performs later (F-176)
+      if (c === '{' && /[^\s}]/.test(cmd[i + 1] ?? '')) expands = true;
       endSeg();
       continue;
     }
@@ -163,12 +175,14 @@ export function shellSegments(cmd) {
       endWord();
       continue;
     }
+    if (c === '$' && /[\w{@*#?$!-]/.test(cmd[i + 1] ?? '')) expands = true;
     w += c;
+    uq += c;
     inWord = true;
   }
   endSeg();
   if (q !== null) opaque = true; // unterminated quote: cannot be read
-  return { segs, redirects, opaque };
+  return { segs, redirects, opaque, expands };
 }
 
 // --- scopes -------------------------------------------------------------------
@@ -229,7 +243,10 @@ export function scopeOf(path, { repoRoot, sakkHome, homeDir, real = realOf }) {
 const SECRET_NAME =
   /^(\.env(\..+)?|.*\.pem|.*\.key|id_(rsa|dsa|ecdsa|ed25519)(\.old)?|.*\.p12|.*\.pfx|.*\.keystore|\.npmrc|\.pypirc|\.netrc|\.pgpass|\.git-credentials|credentials|\.htpasswd)$/i;
 const NOT_SECRET = /^\.env\.(example|sample|template|defaults?|dist)$/i;
+// the process-environment pseudo-file is every exported secret at once (F-203)
+const PROC_ENVIRON = /^\/proc\/(\d+|self|thread-self)(\/task\/\d+)?\/environ$/;
 export const isSecretPath = (p) => {
+  if (PROC_ENVIRON.test(p)) return true;
   const b = basename(p);
   return SECRET_NAME.test(b) && !NOT_SECRET.test(b);
 };
@@ -265,6 +282,44 @@ const READERS = new Set(
   ),
 );
 const GREPS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack']);
+// shell builtins that bind or unbind names: their arguments spell names, never
+// files they read, so the F-203 piece scan does not judge them
+const BINDERS = new Set([
+  'export',
+  'declare',
+  'typeset',
+  'local',
+  'readonly',
+  'set',
+  'unset',
+  'alias',
+]);
+/**
+ * Commands whose whole purpose is printing or handing over a credential: a
+ * closed set, each member pinned by a test, so a new member is added together
+ * with its test (F-203). They print the secret with no secret-named file in
+ * the command's text.
+ */
+const credentialPrint = (name, plain, args) => {
+  if (name === 'gh' && plain[0] === 'auth')
+    return (
+      plain[1] === 'token' ||
+      (plain[1] === 'status' && args.some((a) => /^--show-token$|^-t$/.test(a)))
+    );
+  if (name === 'aws' && plain[0] === 'configure')
+    return (
+      plain[1] === 'export-credentials' ||
+      (plain[1] === 'get' && /(secret|token|key|password)/i.test(plain[2] ?? ''))
+    );
+  if (name === 'aws' && plain[0] === 'sts')
+    return /^(get-session-token|get-federation-token|assume-role)/.test(plain[1] ?? '');
+  if (name === 'npm' && plain[0] === 'token') return true;
+  if (name === 'npm' && plain[0] === 'config' && plain[1] === 'get')
+    return /(_auth|token|password)/i.test(plain[2] ?? '');
+  if (name === 'gcloud' && plain[0] === 'auth')
+    return /^print-(access|identity)-token$/.test(plain[1] ?? '');
+  return false;
+};
 // commands that run another under a pseudo-terminal, and can type into it: the
 // confirmation `sakk cap off` asks a person for must not be answerable this way (F-171)
 const PTY_DRIVERS = new Set(['script', 'expect', 'unbuffer']);
@@ -330,8 +385,12 @@ export function shellActions(
     );
   const out = [];
   const add = (action, path) => out.push(path === undefined ? { action } : { action, path });
-  const { segs, redirects, opaque } = shellSegments(cmd);
+  const { segs, redirects, opaque, expands } = shellSegments(cmd);
   if (opaque) add('shell.constructed'); // command substitution, a heredoc or an unterminated quote
+  // a variable or brace expansion the guard cannot resolve statically: the
+  // shell substitutes it after the hook judged the written word, so the
+  // command is constructed — asked, never allowed (F-176)
+  if (expands) add('shell.constructed');
   // curl … | sh, base64 -d | bash: the text that runs is built at run time
   if (/\|\s*(sudo\s+)?(sh|bash|zsh|dash|python[\d.]*|node|perl|ruby)\b/.test(cmd))
     add('shell.constructed');
@@ -346,6 +405,14 @@ export function shellActions(
     if (!name) continue;
     const plain = args.filter((a) => !a.startsWith('-'));
     const has = (re) => args.some((a) => re.test(a));
+    // a secret filename is judged wherever it appears in the command — inside
+    // an upload reference (`file=@…`), a git version-path (`HEAD:…`), a mount
+    // or remote-copy spec — not only as a plain operand of a known reader (F-203)
+    if (!BINDERS.has(name))
+      for (const a of args)
+        if (/[=@:]/.test(a))
+          for (const piece of a.split(/[=@:]+/))
+            if (piece && isSecretPath(piece)) add('secret.read', abs(piece));
     if (name === 'cd') {
       if (plain[0] && plain[0] !== '-') here = abs(plain[0]);
       continue;
@@ -363,6 +430,9 @@ export function shellActions(
       continue;
     }
     if (name === 'git') {
+      // a spelled-out secret among git's arguments is reached whatever the
+      // subcommand does with it — add, diff, show, stash alike (F-203)
+      for (const a of args) if (!a.startsWith('-') && isSecretPath(a)) add('secret.read', abs(a));
       gitActions(args, here, abs, add);
       continue;
     }
@@ -443,7 +513,12 @@ export function shellActions(
       continue;
     }
     if (name === 'mv') {
-      for (const f of plain.slice(0, -1)) add('file.delete', abs(f));
+      // a move reads the source into the destination before unlinking it, so a
+      // secret source is a secret read, not only a delete (F-203)
+      for (const f of plain.slice(0, -1)) {
+        add('file.read', abs(f));
+        add('file.delete', abs(f));
+      }
       if (plain.length) add('file.write', abs(plain.at(-1)));
       continue;
     }
@@ -497,7 +572,10 @@ export function shellActions(
     }
     const verb = plain[0];
     const joined = args.join(' ');
-    if (name === 'kubectl' && verb === 'delete') add('prod.delete');
+    let modeled = true;
+    // a command whose whole purpose is printing a credential is a secret read (F-203)
+    if (credentialPrint(name, plain, args)) add('secret.read');
+    else if (name === 'kubectl' && verb === 'delete') add('prod.delete');
     else if (name === 'kubectl' && ['apply', 'replace', 'rollout', 'create'].includes(verb))
       add('deploy');
     else if (name === 'terraform' && verb === 'destroy') add('prod.delete');
@@ -555,11 +633,12 @@ export function shellActions(
       Object.hasOwn(AGENT_CONFIG, plain[2] ?? '')
     )
       add('file.write', join(has(/^--user$/) ? home : (repoRoot ?? here), AGENT_CONFIG[plain[2]]));
-    // a command the classifier does not model, reading a secret file by name, is
-    // still a secret read — the reader list is not the whole world (F-155)
-    else if (plain.some((a) => isSecretPath(a))) {
-      for (const a of plain) if (isSecretPath(a)) add('secret.read', abs(a));
-    } else add('shell.run');
+    else modeled = false;
+    // a spelled-out secret operand is a secret read whether or not the command
+    // is otherwise modeled — the reader list is not the whole world (F-155, F-203)
+    const secrets = plain.filter((a) => isSecretPath(a));
+    for (const a of secrets) add('secret.read', abs(a));
+    if (!modeled && secrets.length === 0) add('shell.run');
   }
   return dedupe(out);
 }
@@ -577,6 +656,9 @@ const GIT_JUDGED = new Set([
   'checkout',
   'restore',
   'clone',
+  'credential',
+  'credential-store',
+  'credential-cache',
 ]);
 
 function gitActions(args, here, abs, add) {
@@ -641,6 +723,12 @@ function gitActions(args, here, abs, add) {
       return;
     case 'clone':
       add('net.download');
+      return;
+    case 'credential':
+    case 'credential-store':
+    case 'credential-cache':
+      // their whole purpose is reading or storing a credential (F-203)
+      add('secret.read');
       return;
     default:
       add('shell.run');

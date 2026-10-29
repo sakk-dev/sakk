@@ -138,6 +138,35 @@ describe('the classifier', () => {
         `${cmd} -> ${JSON.stringify(acts(cmd))}`,
       );
   });
+  test('an unresolved variable or brace expansion anywhere in a command is constructed (F-176)', () => {
+    // flagged: the shell substitutes these after the hook judged the written word
+    for (const cmd of [
+      'rm $f',
+      'rm ${f}',
+      'cat "$f"',
+      'echo x > $f',
+      'git push $o origin main',
+      'git push --for{ce,} origin main',
+      'cat .e{nv,x}',
+      'cat {.env,x}',
+      'seq {1..5}',
+      'tar -cf $a.tar src',
+    ])
+      assert.ok(does(cmd, 'shell.constructed'), `${cmd} -> ${JSON.stringify(acts(cmd))}`);
+    // not flagged: quoted, escaped or positional text the shell leaves alone
+    for (const cmd of [
+      "cat '$f'",
+      "grep 'foo$' src/a.js",
+      "awk '{print $1}' src/a.js",
+      'echo \\$HOME',
+      'echo \\{a,b\\}',
+      'find /r -name x -exec cat {} +',
+      'echo {} > notes.txt',
+      'cat src/a.js',
+      'echo price100$',
+    ])
+      assert.ok(!does(cmd, 'shell.constructed'), `${cmd} -> ${JSON.stringify(acts(cmd))}`);
+  });
   test('the classifier table: destructive forms caught, ordinary work untouched', () => {
     const named = (cmd) => act(cmd).map((a) => a.action);
     const ordinary = {
@@ -370,13 +399,12 @@ describe('the hook as an agent runs it', () => {
     assert.equal(run(w, 'rm -rf ~/.sakk').v, 'deny');
   });
   // The classifier resolves no shell variable, so a target or flag the shell
-  // reads from one is judged by the bare `$name`, which names nothing protected.
-  // A glob outside the project is still caught (its literal prefix is outside),
-  // so the gap is the variable (and a brace on a flag). This pins the current
-  // behaviour so the fix (F-176) has to change it deliberately; the title is
-  // F-176's mechanism_upgrade guard, not a green pretending the guard is
-  // variable-aware.
-  test('GAP G-STATE-001 a guard-state, outside-repo or destructive-git target held in a shell variable is allowed', () => {
+  // reads from one cannot be judged by its name. Since F-176 a word holding an
+  // unresolved variable or brace expansion makes the command constructed: it
+  // is asked, never allowed. A glob outside the project is still caught by its
+  // literal prefix; globs inside the project remain the documented F-173
+  // boundary (test/secret-guard.test.mjs).
+  test('a guard-state, outside-repo or destructive-git target held in a shell variable or brace is asked, never allowed (F-176)', () => {
     const w = world();
     // precondition: each target, written out, is refused
     for (const cmd of [
@@ -388,6 +416,7 @@ describe('the hook as an agent runs it', () => {
       assert.equal(run(w, cmd).v, 'deny', cmd);
     // and a glob outside the project is not silently allowed
     assert.notEqual(run(w, 'rm ~/.sak*/config.json').v, 'allow');
+    // held in a variable or a brace, the command is constructed: asked, never allowed
     for (const cmd of [
       'f=~/.sakk/config.json; rm $f',
       'f=~/.sakk/config.json; echo {} > $f',
@@ -395,7 +424,9 @@ describe('the hook as an agent runs it', () => {
       'o=--force; git push $o origin main',
       'git push --for{ce,} origin main',
     ])
-      assert.equal(run(w, cmd).v, 'allow', `GAP F-176: ${cmd} is currently allowed`);
+      assert.equal(run(w, cmd).v, 'ask', `F-176: ${cmd} must be asked, never allowed`);
+    // ask is the floor, not the ceiling: a deny beside an expansion still wins
+    assert.equal(run(w, 'x=1; rm -rf ~/.sakk').v, 'deny');
   });
   test('writes to agent hook configs are asked', () => {
     const w = world();
