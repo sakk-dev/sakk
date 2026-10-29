@@ -275,7 +275,9 @@ if (mode === '--staged') {
       ),
     );
   if (ack?.version === 2)
-    problems.push(...guardResolution(ack, index).map((p) => `self-evolution: ${rel}: ${p}`));
+    problems.push(
+      ...guardResolution(ack, index, ledger).map((p) => `self-evolution: ${rel}: ${p}`),
+    );
   problems.push(
     ...answerFailedProblems(headLedger, ledger, ack, (f) => f.introduced_in === 'worktree').map(
       (p) => `self-evolution: ${p}`,
@@ -482,7 +484,7 @@ if (mode === '--range') {
       const kept = at(head, f);
       if (kept?.version === 2)
         problems.push(
-          ...guardResolution(kept, reader(root)).map((p) => `self-evolution: ${f}: ${p}`),
+          ...guardResolution(kept, reader(root), ledger).map((p) => `self-evolution: ${f}: ${p}`),
         );
       continue;
     }
@@ -503,7 +505,9 @@ if (mode === '--range') {
       for (const c of cs)
         problems.push(`commit ${c.slice(0, 7)}: ${f} was removed — answers are append-only`);
   if (ack?.version === 2)
-    problems.push(...guardResolution(ack, reader(root)).map((p) => `self-evolution: ${rel}: ${p}`));
+    problems.push(
+      ...guardResolution(ack, reader(root), ledger).map((p) => `self-evolution: ${rel}: ${p}`),
+    );
   // R6: the ledger and the registry only move forward from the base
   let baseRegistry = null;
   try {

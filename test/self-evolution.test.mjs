@@ -9,6 +9,7 @@ import {
   classifyShell,
   dataRegressions,
   FROZEN,
+  guardResolution,
   messageProblem,
   missingAnswers,
   required,
@@ -523,6 +524,101 @@ describe('R2–R3: answers are frozen once committed, and each names its check',
     writeFileSync(join(d, 'test', 'a.test.mjs'), "test('refuses absent input', () => {});\n");
     git('add', '-A');
     assert.equal(check(d, ['--staged']).status, 0);
+  });
+  test("a guard a revision supersedes may stop resolving only when the revision's finding records the rename (F-178)", () => {
+    const GAP = 'test/a.test.mjs::GAP the agent lifts the cap';
+    const { d, git } = repo();
+    mkdirSync(join(d, 'test'), { recursive: true });
+    writeFileSync(
+      join(d, 'test', 'a.test.mjs'),
+      "test('GAP the agent lifts the cap', () => {});\n",
+    );
+    ack(d, { ...ANSWERS(), 'C-01.1': { answer: ANSWER, guard: GAP } });
+    git('add', '-A');
+    commit(git, 'test: pin the gap');
+    // the gap closes: its test takes the fix's name and the answer gains a revision
+    writeFileSync(join(d, 'test', 'a.test.mjs'), "test('the cap refuses the agent', () => {});\n");
+    const closed = (finding = 'F-01', guard = 'test/a.test.mjs::the cap refuses the agent') => ({
+      ...ANSWERS(),
+      'C-01.1': {
+        answer: ANSWER,
+        guard: GAP,
+        revisions: [{ finding, answer: `${ANSWER} The gap is closed now.`, guard }],
+      },
+    });
+    const stale = /C-01\.1: guard test\/a\.test\.mjs::GAP the agent lifts the cap does not resolve/;
+    ack(d, closed());
+    git('add', '-A');
+    assert.match(check(d, ['--staged']).stderr, stale, 'no finding records the rename');
+    const ledger = structuredClone(LEDGER);
+    ledger.findings[0].corrections = [
+      {
+        field: 'mechanism_upgrade',
+        from: GAP,
+        why: 'the gap closed and its test took the name of the fix',
+      },
+    ];
+    writeFileSync(join(d, 'findings', 'ledger.json'), JSON.stringify(ledger));
+    git('add', '-A');
+    let r = check(d, ['--staged']);
+    assert.equal(r.status, 0, r.stderr);
+    // the correction must sit on the finding the revision names
+    ack(d, closed('F-02'));
+    git('add', '-A');
+    assert.match(check(d, ['--staged']).stderr, stale);
+    // the current guard always resolves
+    ack(d, closed('F-01', 'test/a.test.mjs::a test nobody wrote'));
+    git('add', '-A');
+    r = check(d, ['--staged']);
+    assert.match(
+      r.stderr,
+      /C-01\.1 revision 1: guard test\/a\.test\.mjs::a test nobody wrote does not resolve/,
+    );
+    assert.doesNotMatch(r.stderr, stale);
+    // ...even when its own finding records a correction from it: only a later revision retires
+    const nobody = 'test/a.test.mjs::a test nobody wrote';
+    assert.deepEqual(
+      guardResolution(
+        { answers: { 'C-01.1': { guard: GAP, revisions: [{ finding: 'F-01', guard: nobody }] } } },
+        () => "test('the cap refuses the agent', () => {});\n",
+        { findings: [{ id: 'F-01', corrections: [{ from: nobody, why: 'x'.repeat(30) }] }] },
+      ),
+      [
+        `C-01.1: guard ${GAP} does not resolve (no such file or name)`,
+        `C-01.1 revision 1: guard ${nobody} does not resolve (no such file or name)`,
+      ],
+    );
+  });
+  test('a malformed corrections field retires nothing and the other guards are still checked (F-178)', () => {
+    const read = (path) => (path === 'test/a.test.mjs' ? "test('present', () => {});\n" : null);
+    const ack = {
+      answers: {
+        'C-01.1': {
+          guard: 'test/a.test.mjs::gone',
+          revisions: [{ finding: 'F-01', guard: 'test/a.test.mjs::present' }],
+        },
+        'C-02.1': { guard: 'test/a.test.mjs::also gone' },
+      },
+    };
+    for (const ledger of [
+      undefined,
+      { findings: [{ id: 'F-01', corrections: 'test/a.test.mjs::gone' }] },
+      {
+        findings: [
+          { id: 'F-01', corrections: [null, { from: 'test/a.test.mjs::gone', why: 'short' }] },
+        ],
+      },
+      {
+        findings: [
+          null,
+          { id: 'F-09', corrections: [{ from: 'test/a.test.mjs::gone', why: 'x'.repeat(30) }] },
+        ],
+      },
+    ])
+      assert.deepEqual(guardResolution(ack, read, ledger), [
+        'C-01.1: guard test/a.test.mjs::gone does not resolve (no such file or name)',
+        'C-02.1: guard test/a.test.mjs::also gone does not resolve (no such file or name)',
+      ]);
   });
 });
 
