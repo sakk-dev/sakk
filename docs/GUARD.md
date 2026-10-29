@@ -122,10 +122,14 @@ normally.
 - The guard reads what a command **says**. A script that deletes your home
   folder runs as `shell.run`. Only isolation (a container) answers what a
   script **does**.
-- A name the shell fills in at run time is judged as written. A glob or brace
-  that reaches a secret inside the project (`cat .e*`) is allowed; a target or
-  flag held in a variable (`f=~/.sakk/config.json; rm $f`,
-  `o=--force; git push $o`) is allowed wherever it points. A glob that reaches
+- A name the shell fills in at run time is judged as written. A glob that
+  reaches a secret inside the project (`cat .e*`) is allowed; a target or flag
+  held in a variable or brace expansion (`f=…; rm $f`, `o=…; git push $o`)
+  makes the command constructed, so it is asked, never allowed (F-176). A
+  spelled-out secret name is judged wherever it appears in the command — an
+  upload reference, a git version-path, a mount or remote-copy spec — and a
+  command whose whole purpose is printing a credential, or a read of the
+  process-environment file, is a secret read (F-203). A glob that reaches
   outside the project is still refused or asked.
 - The confirmation checks for a terminal, not a person: an agent whose shell
   runs in a pseudo-terminal, or a script it writes that opens one, can type

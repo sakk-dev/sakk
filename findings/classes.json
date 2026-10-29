@@ -65,15 +65,12 @@
         "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
         "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has",
         "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)",
-        "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)"
+        "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)",
+        "test/secret-guard.test.mjs::K-SEC-049/K-SEC-050 a secret filename inside an upload reference, git path, copy or mount is denied"
       ],
       "stopline": {
-        "after": "F-194",
-        "waiver": {
-          "by": "the maintainer (owner)",
-          "on": "2026-10-28",
-          "record": "docs/DECISIONS.md D10: the owner deferred every open P0 UAT failure to V2; the class detector is V2 work in docs/V2-BACKLOG.md"
-        }
+        "after": "F-203",
+        "detector": "test/secret-guard.test.mjs::K-SEC-049/K-SEC-050 a secret filename inside an upload reference, git path, copy or mount is denied"
       }
     },
     {
