@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "branch": "ci/drill-test-selection",
+  "answers": {
+    "C-01.1": {
+      "answer": "Absence refuses: a mutant whose named test is found in no file its suite runs is DRILL BROKEN and fails the drill, never a pass or a silent full-suite fallback. A suite script in package.json without exactly one test-file glob also refuses, so the drill cannot guess a command. The pristine control still runs the whole of test:all.",
+      "guard": "test/drill-guardians.test.mjs::a named test found in no file refuses, and a suite without one glob refuses"
+    },
+    "C-01.2": {
+      "answer": "Deleting the selection makes the drill run nothing for that mutant, and the kill check still needs the named test printed as failing, so the outcome reads MUTANT SURVIVED or DRILL BROKEN, not PASS. I planted a surviving mutant and a named test that no file contains and watched both turn the drill red before trusting it.",
+      "guard": "test/drill-guardians.test.mjs::a named test found in no file refuses, and a suite without one glob refuses"
+    },
+    "C-02.1": {
+      "answer": "No hand map of mutant to file: the drill finds the guardian files by searching the files the suite's own glob would run for the named test's text, and builds the command from the suite script in package.json, so a new test file, a moved test or a changed node flag is picked up without editing the drill.",
+      "guard": "test/drill-guardians.test.mjs::every mutant's named test is found in a file its suite runs"
+    },
+    "C-02.2": {
+      "answer": "The same whole-suite rerun is in three places that read the drill: CI's drill job, the audit, and the gate certificate. All three call the same script, so all three get the selection. The per-mutant budget in claims-are-checked and the drill timeout in ci.yml are lowered together with the measured time, in this diff.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-03.1": {
+      "answer": "The kill check is unchanged: a mutant is killed only when the run exits non-zero and the named test itself prints as failing. Running only the guardian's file cannot make a mutant read killed that the full suite would not kill, because node runs each test file in its own process, so the named test sees the same code either way.",
+      "guard": "test/drill-guardians.test.mjs::a mutant runs only its guardian files, through the suite's own command"
+    },
+    "C-03.2": {
+      "answer": "Proved on the real thing, not a copy: I ran the old drill and the new drill on the same commit and compared the verdict of every one of the 40 mutants, plus the pristine control; the PR carries both reports' verdict lines. The selection helper is also tested on planted package.json and test folders inside its own test.",
+      "guard": "test/drill-guardians.test.mjs::every mutant's named test is found in a file its suite runs"
+    },
+    "C-03.3": {
+      "answer": "Backed by the CI run itself: the drill job's duration on this pull request is read from GitHub's API after it finishes and compared with the 52 to 61 minutes the same job took on main, so the speed-up is GitHub's measurement, not my estimate.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-04.1": {
+      "answer": "The bound stays a counter: the timeout check multiplies the mutant count by a per-mutant budget and compares it with the drill job's timeout-minutes; no wall clock is measured in a test. The budget figure is taken from the measured CI run with room for runner variance, and the comment says where it came from.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-05.1": {
+      "answer": "The drill's header comment and the claims-are-checked comment say the drill runs each mutant's guardian files, found by the named test, and the control runs everything; each sentence maps to the selection test or the timeout test. The ledger entry states the measured times, not a target.",
+      "guard": "test/drill-guardians.test.mjs::a mutant runs only its guardian files, through the suite's own command"
+    },
+    "C-05.2": {
+      "answer": "The drill report keeps its format (id, file, anchor, hashes, KILLED line) so the certificate's freshness check reads it as before, and it adds which files ran, so a person reading a red line can rerun exactly that file. The minutes and dollars in the PR are read from GitHub's job timings.",
+      "guard": "test/drill-guardians.test.mjs::a mutant runs only its guardian files, through the suite's own command"
+    },
+    "C-06.1": {
+      "answer": "The before and after times come from GitHub's Actions API (drill job started_at and completed_at on main and on this pull request) and from timing both drills locally on the same commit; the ledger names both sources and says the bill itself was not read, since that needs a token scope this session does not have.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-09.1": {
+      "answer": "Assumed: node's test runner runs each file in its own child process, so one file alone behaves as it does inside the full run. Tried the other way: I compared all 40 verdicts between the old and new drill on one commit instead of trusting the assumption, and the PR lists any difference.",
+      "guard": "test/drill-guardians.test.mjs::every mutant's named test is found in a file its suite runs"
+    },
+    "C-09.2": {
+      "answer": "It runs on GitHub's Ubuntu runners on Node 20 and 22, the drill job's matrix. The first live firing is this pull request's own drill job; its duration and its DRILL PASS line are read back from the run before merging, and the merge to main is the second firing.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-10.1": {
+      "answer": "The rule that every mutant names a test the drill can find is enforced by a unit test in npm test and by the drill itself refusing, not by a comment. The timeout budget is enforced by the existing claims-are-checked test, updated in the same diff.",
+      "guard": "test/drill-guardians.test.mjs::every mutant's named test is found in a file its suite runs"
+    },
+    "C-10.2": {
+      "answer": "Other routes: the audit and the gate certificate call the same drill script, so they cannot keep the old whole-suite path; a mutant added later with a name no file contains fails the unit test before CI, and the drill refuses it at run time too. The control still runs the whole of test:all, so a red baseline cannot hide.",
+      "guard": "test/drill-guardians.test.mjs::a named test found in no file refuses, and a suite without one glob refuses"
+    },
+    "C-16.1": {
+      "answer": "No: one model wrote and checked this change; no independent reviewer has run on it, and the PR says so. The evidence that matters is outside my claim: GitHub's own job timings before and after, and the side-by-side verdicts of the old and new drill on one commit.",
+      "guard": "test/drill-guardians.test.mjs::a mutant runs only its guardian files, through the suite's own command"
+    }
+  }
+}
