@@ -36,13 +36,37 @@ import { capCheck as spendCap } from './spend.mjs';
 import { scanText } from './secret-scan.mjs';
 
 /**
- * The guard's step 3 (specs/secret-guard): a write whose content is a secret,
- * or a shell command (or patch) whose text contains a literal secret, is
- * denied. Returns the first finding { rule, fingerprint } (never the value),
- * or null. A scan error is surfaced as a HookError, so it fails closed.
+ * Every string the payload carries — keys and values, at any depth — joined
+ * for one scan. The rule is structural (F-202): a field is scanned because it
+ * is there, never because its tool or field name is on a list, so an MCP
+ * argument, an unknown tool's input, a path or a pattern is covered like a
+ * Write's content. An explicit worklist (no recursion) keeps hostile nesting
+ * from overflowing the stack; the work is bounded by MAX_PAYLOAD, since the
+ * payload was parsed from at most that many bytes.
+ */
+function payloadText(p) {
+  const parts = [];
+  const todo = [p];
+  while (todo.length) {
+    const v = todo.pop();
+    if (typeof v === 'string') parts.push(v);
+    else if (Array.isArray(v)) for (const x of v) todo.push(x);
+    else if (v !== null && typeof v === 'object')
+      for (const [k, x] of Object.entries(v)) todo.push(k, x);
+  }
+  return parts.join('\n');
+}
+
+/**
+ * The guard's step 3 (specs/secret-guard): a call whose payload carries a
+ * literal secret anywhere — write content, command or patch text, an MCP or
+ * unknown tool's arguments, a path, any field (F-202) — is denied. Returns
+ * the first finding { rule, fingerprint } (never the value), or null. A scan
+ * error is surfaced as a HookError, so it fails closed. The named surfaces
+ * remain as a floor for hand-built events that carry no scanText.
  */
 export function secretHit(ev) {
-  for (const surface of [ev.content, ev.command, ev.patch]) {
+  for (const surface of [ev.scanText, ev.content, ev.command, ev.patch]) {
     if (typeof surface !== 'string' || surface === '') continue;
     let r;
     try {
@@ -161,6 +185,7 @@ export function normalize(agent, p) {
   if (!cwd || !isAbsolute(cwd))
     throw new HookError('HOOK_PAYLOAD_INVALID', 'the payload names no absolute cwd');
   const ev = { agent, cwd, paths: [], kind: 'other' };
+  ev.scanText = payloadText(p); // every string the payload carries is scanned, whatever the tool (F-202)
   if (agent === 'claude-code' || agent === 'codex') {
     ev.tool = text(p.tool_name, 'tool_name');
     ev.callId = opt(p.tool_use_id);

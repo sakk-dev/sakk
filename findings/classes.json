@@ -65,15 +65,13 @@
         "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository",
         "eval/__tests__/exec-env.test.mjs::a failing suite stays red whatever NODE_OPTIONS or NODE_TEST_CONTEXT the operator has",
         "test/self-evolution.test.mjs::the gate's files are listed once, and the list is what the checker loads (F-144)",
-        "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)"
+        "test/guard.test.mjs::every wrapper, with a flag that takes a value, still names the command it runs (F-145)",
+        "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan",
+        "test/hook-scan-coverage.test.mjs::the checklist covers every tool the installed matchers deliver (enumerated from the source)"
       ],
       "stopline": {
-        "after": "F-194",
-        "waiver": {
-          "by": "the maintainer (owner)",
-          "on": "2026-10-28",
-          "record": "docs/DECISIONS.md D10: the owner deferred every open P0 UAT failure to V2; the class detector is V2 work in docs/V2-BACKLOG.md"
-        }
+        "after": "F-202",
+        "detector": "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan"
       }
     },
     {

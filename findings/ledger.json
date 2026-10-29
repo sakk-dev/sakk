@@ -6346,6 +6346,37 @@
       "mechanism_gap": "The real-path work for this class is the gold v2 debt (REAL-mode cases, F-90/F-112); no detector drives the console page in a browser, so the page-to-route path stayed unrun.",
       "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
       "distinct_from": {}
+    },
+    {
+      "id": "F-202",
+      "date": "2026-10-29",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "class": "C-02",
+      "title": "The secret scan reads a hand-picked field list, so an MCP argument, an unknown tool, a path or a pattern carries a secret through unscanned",
+      "symptom": "A write-shaped MCP tool call whose parameters carry a secret is allowed, while the same secret through Write's content is denied. Any payload field outside the known write/command/patch fields — MCP arguments of any shape, an unknown tool's input, file paths, search patterns, Edit's old_string — is never scanned.",
+      "evidence": "2026-10-28 black-box UAT (sandboxed runner, throwaway HOME) case K-INS-026; filed 2026-10-29 after D11 lifted the V1 freeze (docs/DECISIONS.md D11).",
+      "direct_cause": "secretHit scans only ev.content, ev.command and ev.patch, and writeContent joins only the known write fields; every other string in the payload never reaches scanText.",
+      "why": [
+        "The scan surfaces were enumerated from the tools known to carry bytes to disk (write content, shell command, patch), so each new tool or field needed a hand edit.",
+        "MCP tools carry arbitrary argument shapes that no field enumeration can anticipate, and paths and patterns are attacker-chosen content too.",
+        "No test tied the scan's coverage to the set of tools the installed matchers deliver, so a tool with no scanned field was invisible."
+      ],
+      "root_cause": "The scanned fields are a hand-written list where the rule is every string the hook receives — the same C-02 shape as F-194, on the inbound side.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-04"],
+      "es": ["ES-01"],
+      "instance_fix": "this commit",
+      "guard": "test/hook-scan-coverage.test.mjs::every tool and every payload field the hook can receive passes the same secret scan",
+      "sweep": "Swept the rule's other faces: all three agent branches of normalize route through the one structural payload collector (keys and values, any depth); writeContent stays classification-only; the outbound face — a decision record's string fields logged and exported raw — is the open F-194 (V2 backlog), not re-filed here.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/hook.mjs"],
+      "mechanism_gap": "C-02's detectors check lists of files, wrappers and doc claims; none enumerates the hook's inbound tool-and-field surface from the installed matchers, so a field absent from the scan list raised nothing.",
+      "mechanism_upgrade": "test/hook-scan-coverage.test.mjs::the checklist covers every tool the installed matchers deliver (enumerated from the source)",
+      "distinct_from": {
+        "F-194": "F-194 is the outbound face: a decision record already written is redacted in one field only when logged, shown and exported. F-202 is the inbound face: payload fields are never scanned at all, so the deny never happens. Different seam and different fix; closing one does not close the other."
+      }
     }
   ]
 }
