@@ -6429,7 +6429,7 @@
     {
       "id": "F-202",
       "date": "2026-10-29",
-      "introduced_in": "unknown",
+      "introduced_in": "7d0ea44",
       "found_by": "review",
       "class": "C-02",
       "title": "The secret scan reads a hand-picked field list, so an MCP argument, an unknown tool, a path or a pattern carries a secret through unscanned",
@@ -6455,12 +6455,23 @@
       "mechanism_upgrade": "test/hook-scan-coverage.test.mjs::the checklist covers every tool the installed matchers deliver (enumerated from the source)",
       "distinct_from": {
         "F-194": "F-194 is the outbound face: a decision record already written is redacted in one field only when logged, shown and exported. F-202 is the inbound face: payload fields are never scanned at all, so the deny never happens. Different seam and different fix; closing one does not close the other."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/hook.mjs gained its secret scan, reading the content, command and patch fields only, in 7d0ea44 (M3); main has no src/hook.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-02.2",
+        "why": "The M3 answer (oss-m3-secret-guard.json, carried into this branch's file) named the three surfaces it knew — a write's content, a command's text, an apply_patch body — and its guard tested those three, so the answer was itself the hand list; no question asked what else a payload can carry."
       }
     },
     {
       "id": "F-203",
       "date": "2026-10-29",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-02",
       "title": "The classifier recognises a secret read only as a reader command taking the literal filename as a plain operand; every equivalent reading falls through to allow",
@@ -6487,12 +6498,23 @@
       "distinct_from": {
         "F-185": "F-185 is the guard recognising Sakk's own CLI only by the name sakk, so a launcher bypasses the control-loosening deny; F-203 is the secret-read recognition keying on one command grammar. Different rule, different bypass surface.",
         "F-194": "F-194 is redaction of secrets in the decision records after a verdict exists (log, console, exports); F-203 is the classifier failing to produce the secret.read verdict at all. One is output hygiene, the other is detection."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/classify.mjs was added with the two narrow secret.read sites in 294f391 (M1); main has no src/classify.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-02.1",
+        "why": "The M1 answer stated the rule as 'a named action only when its form is recognised', and its guard measured destructive forms only; secret.read was left to the recognised reader forms, and no test spelt a secret read any other way."
       }
     },
     {
       "id": "F-204",
       "date": "2026-10-29",
-      "introduced_in": "unknown",
+      "introduced_in": "0dd328d",
       "found_by": "review",
       "class": "C-01",
       "title": "A spend-log directory that cannot be listed is silently skipped, so the daily cap reads $0 and fails open",
@@ -6518,12 +6540,23 @@
       "mechanism_upgrade": "test/spend.test.mjs::chmod 000 on a log subdirectory is a typed deny, not $0",
       "distinct_from": {
         "F-180": "F-180 is a pricing omission: server-tool charges are not in the price model, so even a perfect walk undercounts. F-204 is the walk itself failing silently — a directory the counter cannot list read as zero spend. Different layer: price coverage vs the log walk's error channel."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/spend.mjs was added with the silent catch in listLogs in 0dd328d (M2); main has no src/spend.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-01.2",
+        "why": "The M2 answer said each input is removed and the outcome checked, but its tests removed lines and files, never the right to list a directory, so the silent catch in listLogs that turned an unlistable directory into an empty day was never run."
       }
     },
     {
       "id": "F-205",
       "date": "2026-10-29",
-      "introduced_in": "unknown",
+      "introduced_in": "0dd328d",
       "found_by": "review",
       "class": "C-07",
       "title": "A future-dated log line is booked to its own future day, moving spend out of today's cap window",
@@ -6550,12 +6583,23 @@
       "distinct_from": {
         "F-191": "F-191 is where the logs are found: the pipeline resolves the log root from the agent's own environment, so a moved folder reads $0. F-205 is when a line counts: a timestamp inside the line chose the cap window. Different trusted input — the directory path from env vs the time field the line carries.",
         "F-210": "F-205 fixed the FUTURE direction: ts > now books to the observation day, flagged. F-210 is the PAST direction this entry’s sweep ruled no-follow-up-needed; the 2026-10-29 adversarial review contested that ruling (the already-counted-day justification fails on a fresh install or past the index horizon), so the past direction is now its own open finding awaiting the owner’s booking ruling."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/spend.mjs was added with updateIndex booking each call to its own claimed day in 0dd328d (M2); main has no src/spend.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-07.1",
+        "why": "The M2 answer treated the agent-written log lines as untrusted and typed each field, but a well-typed timestamp was still trusted to choose the day it is booked to; the answer bounded the shape of the input, not what its value is allowed to decide."
       }
     },
     {
       "id": "F-206",
       "date": "2026-10-29",
-      "introduced_in": "unknown",
+      "introduced_in": "294f391",
       "found_by": "review",
       "class": "C-01",
       "title": "After the host tool is upgraded or reinstalled, the guard hook entry can sit stale, degraded or in another spelling — and `sakk guard install` reads it as already protected, so the repair path is a no-op and the fail-open state persists",
@@ -6581,6 +6625,17 @@
       "mechanism_upgrade": "test/guard.test.mjs::R-REL-015 reinstall converges: a stale, degraded or oddly spelt entry is repaired, never read as protected (F-206)",
       "distinct_from": {
         "F-174": "F-174 is the missing WARNING on a degraded fresh install: old Claude Code forces a fail-open hook and nobody is told. F-206 is the REPAIR path: once the host is new enough, reinstalling must actually fix the entry — before this fix, install read the degraded entry as already protected and changed nothing, so even an operator who followed the F-174 warning and reinstalled stayed fail-open. Different seam (warn vs converge); the F-174 fix left this one open."
+      },
+      "corrections": [
+        {
+          "field": "introduced_in",
+          "from": "unknown",
+          "why": "src/guard-install.mjs was added with withGuard and the one-spelling ours() in 294f391 (M1); main has no src/guard-install.mjs, so the bug was introduced in this range, not before it."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-01.1",
+        "why": "The M1 answer covered every absent input of the hook at run time; install's reading of an existing entry was not treated as an input at all, so 'an entry of ours is present' was taken to mean protected, whether the entry was stale, degraded or spelt another way."
       }
     },
     {
