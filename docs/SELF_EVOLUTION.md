@@ -109,7 +109,9 @@ follows the history as it is (F-72, F-128, F-134, F-212):
   changed and the branch did not is not charged to the branch.
 - **Every commit against every parent.** Answers stay append-only from each
   parent to its child, so a merge commit is compared with both sides. Two
-  lines may each add answers; neither may rewrite the other's.
+  lines may each add answers; neither may rewrite the other's. A planted
+  checker that reads only the first parent must fail the range tests
+  (F-221).
 - **Inherited answers files.** A file in `findings/acks/` added in the range
   whose `branch` names another branch that still exists (a local branch, or
   `origin/<branch>` on the remote) is that branch's own file. It must match
@@ -117,6 +119,10 @@ follows the history as it is (F-72, F-128, F-134, F-212):
   its guards must resolve at the tip; a correction is a revision there too.
   Keep a stacked parent's branch on the remote until its child is merged,
   or its file is read as a rename.
+- **Retargeted pull requests.** When a stacked parent is merged, GitHub
+  retargets the child to the parent's base and CI checks it again there.
+  Whether the parent went in as a merge commit, a rebase or a squash, the
+  child is asked only about its own files.
 - **Renames.** A file added in the range whose branch no longer exists is
   this branch's own file under an earlier name, and the current answers
   file must carry its answers forward.

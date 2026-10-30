@@ -151,8 +151,9 @@ function stack({ parent, child } = {}) {
 
 /**
  * feat/p (two commits to src/x.mjs, answered) and feat/c started from it, which only touches
- * README.md; then main moves on and takes feat/p by rebase (new commits) or squash (one new
- * commit). Ends on feat/c, which still carries feat/p's original commits.
+ * README.md; then main moves on and takes feat/p by a merge commit, by rebase (new commits) or
+ * by squash (one new commit) — the three ways GitHub merges a pull request, after which it
+ * retargets feat/c to main. Ends on feat/c, which still carries feat/p's original commits.
  */
 function parentMergedFirst(how) {
   const r = repo();
@@ -166,7 +167,8 @@ function parentMergedFirst(how) {
   r.git('checkout', '-q', 'main');
   r.write('CHANGELOG.md', '# changes\n');
   r.commit('main moves on');
-  if (how === 'rebase') r.git('cherry-pick', 'main..feat/p');
+  if (how === 'merge') r.merge('feat/p');
+  else if (how === 'rebase') r.git('cherry-pick', 'main..feat/p');
   else {
     r.git('merge', '-q', '--squash', 'feat/p');
     r.commit('feat/p, squashed');
@@ -245,6 +247,36 @@ describe('the range check across real git histories', () => {
     );
   });
 
+  test('a merge commit is compared with every parent: rewording an answer that came only from its second parent is refused', () => {
+    // feat/y has no answer yet; line A adds C-01.1. Compared with its first parent alone, the
+    // merge only adds C-01.1, so the rewrite shows only against the second parent (F-221).
+    const build = (reword) => {
+      const r = repo();
+      r.git('checkout', '-qb', 'feat/y');
+      r.answers('feat/y');
+      r.commit('feat/y opens its answers file');
+      r.git('checkout', '-qb', 'line/a');
+      r.write('src/x.mjs', 'export const x = 2;\n');
+      r.answers('feat/y', { 'C-01.1': { answer: said('line A') } });
+      r.commit('line A');
+      r.git('checkout', '-q', 'feat/y');
+      r.git('merge', '-q', '--no-ff', '--no-commit', 'line/a');
+      if (reword) r.answers('feat/y', { 'C-01.1': { answer: said('the merge') } });
+      const m = r.commit('merge line/a');
+      assert.equal(
+        r.git('rev-list', '--parents', '-n', '1', 'HEAD').split(' ').length,
+        3,
+        'two parents',
+      );
+      return { m, res: r.check('main') };
+    };
+    const kept = build(false).res;
+    assert.equal(kept.status, 0, kept.stderr);
+    const { m, res } = build(true);
+    assert.equal(res.status, 1, res.stdout);
+    assert.match(res.stderr, new RegExp(`${m}[^\\n]*C-01\\.1: a committed answer was rewritten`));
+  });
+
   test("a stack merged into main as one pull request: the parents' answers files are inherited, not carried forward", () => {
     // feat/g ← feat/p ← feat/c, each answering C-01.1 in its own words; every branch still exists
     const r = repo();
@@ -297,10 +329,16 @@ describe('the range check across real git histories', () => {
     assert.equal(res.status, 0, res.stderr);
   });
 
-  test("a child whose parent was rebase-merged or squash-merged into main is not asked about the parent's files", () => {
-    for (const how of ['rebase', 'squash']) {
+  test("a child whose parent was merged, rebase-merged or squash-merged into main is not asked about the parent's files", () => {
+    // a merge commit makes feat/p's commits part of main; rebase and squash leave them in the range
+    const own = { merge: '1', rebase: '3', squash: '3' };
+    for (const how of ['merge', 'rebase', 'squash']) {
       const r = parentMergedFirst(how);
-      assert.equal(r.git('rev-list', '--count', 'main..HEAD'), '3', `${how}: feat/p's own commits`);
+      assert.equal(
+        r.git('rev-list', '--count', 'main..HEAD'),
+        own[how],
+        `${how}: commits in range`,
+      );
       const res = r.check('main');
       assert.equal(res.status, 0, `${how}: ${res.stderr}`);
       assert.doesNotMatch(res.stderr, /C-01\.1/, how);

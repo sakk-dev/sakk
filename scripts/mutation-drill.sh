@@ -392,6 +392,34 @@ run_drill MUT-AN src/spend.mjs \
   "a file planted with a faked old mtime is still read — mtime is not a trust boundary" \
   "test"
 
+# MUT-AO: compare a merge commit with its first parent only → the F-221 second-parent test must die red
+run_drill MUT-AO scripts/findings-check.mjs \
+  "      for (const v of parents.flatMap(nearAt)) if (!before.some((b) => same(b, v))) before.push(v);" \
+  "      for (const v of parents.slice(0, 1).flatMap(nearAt)) if (!before.some((b) => same(b, v))) before.push(v);" \
+  "a merge commit is compared with every parent: rewording an answer that came only from its second parent is refused" \
+  "test"
+
+# MUT-AP: let an inherited answers file be removed → the inherited-file test must die red
+run_drill MUT-AP scripts/findings-check.mjs \
+  "    if (!renamed.has(f))" \
+  "    if (false)" \
+  "an inherited answers file may not be removed, rewritten or keep a guard that no longer resolves" \
+  "test"
+
+# MUT-AQ: push on although the range check refused → the real-hook push test must die red
+run_drill MUT-AQ scripts/hooks/pre-push.mjs \
+  "  if (range.status !== 0) {" \
+  "  if (false) {" \
+  "a push runs the range check and the full suite, and refuses when either fails" \
+  "test"
+
+# MUT-AR: push on although the full suite failed → the real-hook push test must die red
+run_drill MUT-AR scripts/hooks/pre-push.mjs \
+  "  if (t.status !== 0) {" \
+  "  if (false) {" \
+  "a push runs the range check and the full suite, and refuses when either fails" \
+  "test"
+
 # Pristine control: an unmutated copy must be fully green on BOTH suites
 dir="$(copy_repo)"
 out="$(cd "$dir" && npm run --silent test:all 2>&1)"
