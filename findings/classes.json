@@ -308,7 +308,8 @@
         "test/core-specs.test.mjs::every source file is classified core or not core",
         "test/core-specs.test.mjs::each script in scripts/campaign/ is a step of the audit",
         "test/core-specs.test.mjs::every drill anchor is found exactly once in its file, without running the drill (F-149)",
-        "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails"
+        "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails",
+        "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
       ]
     },
     {

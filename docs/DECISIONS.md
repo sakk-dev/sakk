@@ -77,6 +77,28 @@ reading the agent's own logs (local proxy + key custody) — goes to v2
 scan-boundary hole found during the fix (mtime trusted, F-211) was closed
 in the same change.
 
+## D13 — sakk auto-merge (owner, 2026-10-30)
+
+Ruled "sakk 开自动合并". `main` now has a ruleset (id 26185740, created
+from `.github/rulesets/main.json`) that requires every check a pull
+request runs except the adversarial review, with no bypass actors, and
+the repository allows auto-merge. A pull request set to auto-merge merges
+as soon as those checks pass, so a green change no longer waits for a
+person; a red one cannot be merged by any route, the owner's included,
+without first changing the ruleset. This answers F-116.
+
+The rule is not strict: a branch need not be up to date with `main`
+before it merges, and `main`'s own CI run on each push catches a combined
+break. The adversarial review is not required, because its job fails only
+when the review cannot be made or posted, so requiring it would let a
+provider outage block every merge; a core change is set to auto-merge
+only after its review has been read. Cost: $0, no new plan or service.
+
+To apply a changed file, update the live ruleset with
+`gh api -X PUT repos/sakk-dev/sakk/rulesets/26185740 --input .github/rulesets/main.json`.
+Changing the setting stays the owner's call (GitHub, "About rulesets",
+https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets).
+
 ## Acceptance
 
 The author runs the full UAT first and fixes what it finds; the owner then

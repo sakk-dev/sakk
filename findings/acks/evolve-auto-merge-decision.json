@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "branch": "evolve/auto-merge-decision",
+  "answers": {
+    "C-01.1": {
+      "answer": "A missing ruleset file, a ruleset without a required-checks rule, a workflow whose jobs cannot be read, or an exempted check that no workflow runs each fails the merge-rule tests by assertion; nothing absent reads as covered.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-01.2": {
+      "answer": "Deleting .github/rulesets/main.json, or one check from it, turns the first merge-rule test red; so does a new CI job that is not added to the ruleset. The adversarial review is the one declared exemption, and the test fails if that job is renamed away.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-02.1": {
+      "answer": "The workflow files are read from .github/workflows (every .yml or .yaml), and each check name is derived from their jobs; the hand-written required list in .github/rulesets/main.json is compared against that derived set, so a missed or extra check fails the test. The one hand-written exemption, the adversarial review, must name a job a pull request runs.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-02.2": {
+      "answer": "Every workflow that runs on a pull request is covered, not only ci.yml. A grep of the docs for branch protection, F-116, red CI and merge blocking found three live claims (docs/SELF_EVOLUTION.md, docs/testing-profile.md, docs/V2-BACKLOG.md); all three are updated here. Older acks and review notes are records of their time and stay as written. The ruleset covers main only; there is no other long-lived branch.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-03.1": {
+      "answer": "On origin/main the ruleset file does not exist and the test fails by its own assertion; at the head it passes. Planted by hand before commit: dropping format from the file and adding a paths filter to ci.yml's pull_request trigger each turned the named test red.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-03.2": {
+      "answer": "The test reads the same two workflow files GitHub runs and derives each check name the way GitHub names it (job id, plus the matrix value in brackets); the live rule read with gh api on 2026-10-30 listed exactly the names the test derives.",
+      "guard": "test/merge-rule.test.mjs::every required check comes from a job that reports on every pull request: no path or branch filter, no needs (F-116)"
+    },
+    "C-03.3": {
+      "answer": "Tests may not call GitHub, so the test checks the file, not the live setting; the file is the payload the live ruleset was created from, and this pull request is the live proof: its auto-merge waits on the required checks. The drift between file and setting is a declared limit in docs/SELF_EVOLUTION.md.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-04.1": {
+      "answer": "The tests read three small files and spawn nothing; there is no clock in them.",
+      "guard": "test/merge-rule.test.mjs::every required check comes from a job that reports on every pull request: no path or branch filter, no needs (F-116)"
+    },
+    "C-05.1": {
+      "answer": "The new sentences in docs/DECISIONS.md D13, docs/SELF_EVOLUTION.md and docs/testing-profile.md say main requires every pull request check but the review, with no bypass; the first merge-rule test fails if the file stops saying that. The docs give no count of checks, so no number can drift (F-198).",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-05.2": {
+      "answer": "The only command the docs add is GitHub's update call for a ruleset (PUT repos/{owner}/{repo}/rulesets/{id}) with the file as input. It was not run: the live ruleset 26185740, created from this file with the matching POST on 2026-10-30, was read back the same day with gh api and matched the file field for field (only key order differed).",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-06.1": {
+      "answer": "The evidence for F-116 is the live read gh api repos/sakk-dev/sakk/rules/branches/main on 2026-10-30, named as such in the ledger; the tests are named as checking the file only, never the live setting.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-09.1": {
+      "answer": "It assumes GitHub names a check by job id plus a one-key matrix value in brackets, and that a skipped job counts as passed while a workflow skipped by a filter stays pending (GitHub's troubleshooting page); the test refuses job names, multi-key matrices and pull_request filters it cannot read instead of guessing.",
+      "guard": "test/merge-rule.test.mjs::every required check comes from a job that reports on every pull request: no path or branch filter, no needs (F-116)"
+    },
+    "C-09.2": {
+      "answer": "The rule runs on GitHub's side for every merge into main; the first run is this pull request, opened with auto-merge on, which merges only after its required checks report.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-10.1": {
+      "answer": "A red CI blocking a merge was rule text; it is now enforced by GitHub's ruleset on main, and the test makes the file fail when a check a pull request runs is not required.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-10.2": {
+      "answer": "The ruleset has no bypass actors, so the web merge button, gh pr merge, the API, auto-merge and a direct push to main all meet the same checks; the test fails if a bypass actor is added to the file. Editing the setting itself stays an owner action, kept in the ruleset's history.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-16.1": {
+      "answer": "No: one model (Claude Opus 5.5) wrote and checked this. What judges a merge from now on is GitHub, not the writer: the required checks run in CI on GitHub's runners.",
+      "guard": "test/merge-rule.test.mjs::every required check comes from a job that reports on every pull request: no path or branch filter, no needs (F-116)"
+    }
+  }
+}

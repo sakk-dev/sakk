@@ -98,8 +98,10 @@ commits that name no finding; the CI `self-evolution` job re-checks the
 whole branch. Every finding belongs to one class in `findings/classes.json`
 (§15.7). Design: `docs/SELF_EVOLUTION.md`.
 
-**CI is advisory until `main` has branch protection** (F-116): a red check
-does not stop a merge today.
+**A red check blocks a merge** (F-116, D13): `main`'s ruleset requires
+every check a pull request runs except the adversarial review, and
+`test/merge-rule.test.mjs` keeps `.github/rulesets/main.json` in step with
+the workflows.
 
 ## Open items
 

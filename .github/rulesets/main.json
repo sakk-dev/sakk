@@ -1,0 +1,26 @@
+{
+  "name": "main: CI must pass",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          { "context": "test (20)", "integration_id": 15368 },
+          { "context": "test (22)", "integration_id": 15368 },
+          { "context": "drill (20)", "integration_id": 15368 },
+          { "context": "drill (22)", "integration_id": 15368 },
+          { "context": "format", "integration_id": 15368 },
+          { "context": "self-evolution", "integration_id": 15368 },
+          { "context": "base-checker", "integration_id": 15368 },
+          { "context": "review-key", "integration_id": 15368 }
+        ]
+      }
+    }
+  ]
+}
