@@ -99,6 +99,28 @@ To apply a changed file, update the live ruleset with
 Changing the setting stays the owner's call (GitHub, "About rulesets",
 https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets).
 
+## D14 — gateway for applications in any language (owner, 2026-10-30)
+
+Ruled "你去业界找一下有没有我们现成能用的网关，然后直接加进去 … 针对于
+Java、Python、PHP … 我们只需要微调一下", replacing the earlier "网关留 V2".
+Sakk's v1 interfaces (hooks, MCP, the Node library) reach coding agents
+only; an application such as a production content app (Python), or one in Java or PHP, had
+no way in. We adopt the LiteLLM proxy as the gateway and add one callback,
+`integrations/litellm/sakk_gateway.py`: every chat call reserves its worst
+case before the provider is called and settles the reported usage after.
+Any language reaches it over the OpenAI chat completions API by changing
+the base URL and the key.
+
+Chosen over Portkey's open-source gateway (budgets and guardrail hooks sit
+in the hosted or paid tiers) and Bifrost (custom logic needs Go plugins).
+LiteLLM is pinned to 1.106.2 from a hash-locked install, because its PyPI
+releases were compromised in March 2026 (1.82.7, 1.82.8) and on 2026-10-21
+(1.107.0). Cost: $0 to install, about 472 MB; upkeep is watching LiteLLM's
+advisories before any version move. Declared limits, in the README: a
+client holding a real provider key bypasses the gateway, only chat
+completions are metered (other routes are refused), and the Python tests
+are not in CI, since adding a required job is the owner's call.
+
 ## Acceptance
 
 The author runs the full UAT first and fixes what it finds; the owner then

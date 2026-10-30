@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "branch": "feat/litellm-gateway",
+  "answers": {
+    "C-01.1": {
+      "answer": "Anything the gateway cannot price or meter is refused, never let through: a model with no price in the config, a wildcard model, a deployment missing one price, a non-text message part, and every route other than chat completions each answer 403 before the provider is called. A ledger that cannot be reached answers 503. A gateway started without SAKK_BIN, SAKK_LEDGER or SAKK_GATEWAY_CONFIG refuses to start.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_f_unpriced_model_is_refused"
+    },
+    "C-01.2": {
+      "answer": "Deleting the callback line from the config, or the reserve call from the hook, lets the over-cap call reach the provider, and the cap test fails on the provider hit count and the 402. Deleting the settle path leaves the ledger outstanding, and the exact-cost test fails.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_c_over_the_cap_is_refused_before_the_provider"
+    },
+    "C-10.1": {
+      "answer": "Reserving before the provider call is enforced in code: the pre-call hook raises before the router runs, and the cap test checks the provider saw no request. The gate does not rely on a client remembering to call Sakk.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_c_over_the_cap_is_refused_before_the_provider"
+    },
+    "C-10.2": {
+      "answer": "Declared route around it: a client holding a real provider key can call the provider directly and the gateway never sees it. The mitigation is operational: the gateway holds the provider keys and clients get only the gateway key. Inside the gateway, routes without a cost model (embeddings, images, audio, responses, pass-through) are refused rather than skipped, and no-retry settings keep one reservation per provider hit.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_h_unmetered_route_is_refused"
+    },
+    "C-05.1": {
+      "answer": "Each claim in integrations/litellm/README.md has a test: refusal before the provider (cap test), exact settle from usage (ok and stream tests), zero on a provider error, worst case on a timeout, a halt on an overrun, refusal of unpriced models, non-text parts and other routes, and a refused start without the ledger. The declared limits (direct provider calls, paid search outside LiteLLM, the Python tests not in CI) are written as limits, not as coverage.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_z_overrun_halts_the_ledger_and_refuses_the_next_call"
+    },
+    "C-05.2": {
+      "answer": "The figures the tests check are computed from the mock usage and the config prices (11 prompt and 7 completion tokens at the stated per-token prices), and the ledger totals are read back with sakk status --json, the same command an operator runs. The 402 and 403 bodies carry the Sakk refusal code a client can act on.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_a_ok_call_settles_the_exact_cost"
+    },
+    "C-06.1": {
+      "answer": "Ledger figures come from sakk status --json on the real ledger file, the same command an operator runs, not from the hook's own bookkeeping. Whether the provider was called comes from the mock provider's own request counter (/hits), not from the gateway. The README says the Java and PHP snippets were not run, so readers are not told they were tested.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_c_over_the_cap_is_refused_before_the_provider"
+    },
+    "C-03.1": {
+      "answer": "Put back two bugs on 2026-10-30 in a scratch copy: with the reserve call skipped, the cap test failed on 'APIStatusError not raised'; with the callback line removed from the config, the cap test failed the same way and the exact-cost test failed on 0 != 2.5e-05 settled. Each failed on its named claim (no refusal, no settle), not on setup.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_c_over_the_cap_is_refused_before_the_provider"
+    },
+    "C-03.2": {
+      "answer": "The cap test reads the provider's hit counter, and the exact-cost test shows the same counter and ledger move on an allowed call, so 'never reaches the provider' is observed against a live counter. The timeout test uses a mock that really sleeps 5 s against a shorter gateway timeout and checks one provider hit.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_a_ok_call_settles_the_exact_cost"
+    },
+    "C-03.3": {
+      "answer": "The tests start the real pinned LiteLLM proxy, a real Sakk MCP server and a temporary ledger, then send real HTTP calls. Every pass condition is read from the ledger after the call or from the provider's counter, so a missing hook or settle path fails the test rather than a paperwork check.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_z_overrun_halts_the_ledger_and_refuses_the_next_call"
+    }
+  }
+}

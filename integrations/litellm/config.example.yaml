@@ -1,0 +1,61 @@
+# LiteLLM proxy config with the Sakk spend gate. Copy to config.yaml next to
+# sakk_gateway.py and point SAKK_GATEWAY_CONFIG at the copy.
+#
+# Prices are USD per token, written as decimals. PyYAML reads 1e-06 (no
+# decimal point) as a string, so a price written that way counts as missing
+# and every call to that model is refused with SAKK_NO_PRICE.
+#
+# A model with no price, or a wildcard model, is refused rather than let
+# through. Retries are off everywhere so one reservation covers one provider
+# request.
+
+model_list:
+  - model_name: deepseek-chat
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+      input_cost_per_token: 0.00000028
+      output_cost_per_token: 0.00000042
+      timeout: 60
+      max_retries: 0
+
+  - model_name: MiniMax-M3.1-Flash
+    litellm_params:
+      model: openai/MiniMax-M3.1-Flash
+      api_base: https://api.minimax.io/v1
+      api_key: os.environ/MINIMAX_API_KEY
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.0000006
+      timeout: 120
+      max_retries: 0
+
+  - model_name: MiniMax-M3
+    litellm_params:
+      model: openai/MiniMax-M3
+      api_base: https://api.minimax.io/v1
+      api_key: os.environ/MINIMAX_API_KEY
+      input_cost_per_token: 0.0000006
+      output_cost_per_token: 0.0000024
+      timeout: 120
+      max_retries: 0
+
+  - model_name: claude-haiku-4-5-20251001
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
+      api_key: os.environ/ANTHROPIC_API_KEY
+      input_cost_per_token: 0.000001
+      output_cost_per_token: 0.000005
+      timeout: 60
+      max_retries: 0
+
+litellm_settings:
+  callbacks: sakk_gateway.handler
+  num_retries: 0
+
+router_settings:
+  num_retries: 0
+
+general_settings:
+  # Clients send this key instead of a provider key. The provider keys stay
+  # in the gateway's environment.
+  master_key: os.environ/LITELLM_MASTER_KEY
