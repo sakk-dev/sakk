@@ -7234,6 +7234,47 @@
       "distinct_from": {
         "F-123": "F-123 is the hooks assuming Sakk's folder layout, so another project that copies them cannot commit; F-220 is two heavy runs sharing one machine in Sakk itself, where the layout is right and the runs starve each other."
       }
+    },
+    {
+      "id": "F-221",
+      "date": "2026-10-30",
+      "introduced_in": "9fcf205",
+      "found_by": "T0",
+      "class": "C-03",
+      "title": "The range tests passed with a checker that compares a merge commit with its first parent only, so the docs' 'compared with every parent' had no test that fails without it",
+      "symptom": "With scripts/findings-check.mjs changed by hand to read only the first parent of each commit (parents.slice(0, 1) on the every-parent line), all 10 tests in test/range-topology.test.mjs stayed green in about 6 s. The one test that rewrites an answer does it at a commit with a single parent, where the first parent is the only parent.",
+      "evidence": "Hand-planted mutant on 8d69800: range-topology 10 pass, 0 fail. With the new merge test added, the same mutant fails exactly that test and the other 10 pass; unmutated, all 11 pass. The other three range and push rules planted the same way (removal refusal, pre-push range result, pre-push suite result) were each killed by an existing named test.",
+      "direct_cause": "No test puts an answer rewrite on the second parent of a merge alone, so a checker that skips second parents gives the same result on every scenario.",
+      "why": [
+        "The range rules (F-212) were added with scenario tests, and each scenario was checked to pass, not to fail when its rule is removed.",
+        "The mutation drill plants bugs in the codes, anchors and scorer rules, but no entry was added for the range check or the pre-push hook when they shipped.",
+        "So nothing ever ran the range tests against a checker missing one of its rules."
+      ],
+      "root_cause": "New gate rules shipped with tests that were never shown to fail without the rule: the drill that does that for older rules was not extended to them.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-04"],
+      "instance_fix": "this commit: test/range-topology.test.mjs adds a merge whose answer appears only on its second parent and is refused when the merge rewords it; the parent-merged-first scenario now covers a plain merge as well as rebase and squash; docs/SELF_EVOLUTION.md says what happens when GitHub retargets a stacked pull request.",
+      "class_fix": "scripts/mutation-drill.sh plants four bugs in the range and push rules (MUT-AO first parent only, MUT-AP removal refusal off, MUT-AQ push ignores the range result, MUT-AR push ignores the suite result), each with the test that must kill it; EXPECTED_MUTANTS is 44, inside the 45 the drill job has time for (mutation testing as in PIT, https://pitest.org/, and Stryker, https://stryker-mutator.io/docs/).",
+      "guard": "test/range-every-parent-detector.test.mjs::the range tests go red when the checker compares a merge commit with its first parent only (F-221)",
+      "sweep": "Swept the range and push rules: every-parent comparison, removal refusal, the push's range result and the push's suite result now have planted bugs. The inherited-copy, rename and base-file rules stay covered by their scenario tests only; three more would exceed the 45 mutants the drill job has time for.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "scripts/findings-check.mjs",
+        "scripts/hooks/pre-push.mjs",
+        "scripts/mutation-drill.sh",
+        "scripts/gate-certificate.mjs",
+        "test/range-topology.test.mjs",
+        "test/range-every-parent-detector.test.mjs",
+        "docs/SELF_EVOLUTION.md"
+      ],
+      "mechanism_gap": "The C-03 detectors plant bugs for the codes, anchors and scorer rules; none planted one in the range check, so a range test that could not fail went unnoticed.",
+      "mechanism_upgrade": "test/range-every-parent-detector.test.mjs::the range tests go red when the checker compares a merge commit with its first parent only (F-221)",
+      "distinct_from": {
+        "F-212": "F-212 is the range check reading history as a straight line; F-221 is that fix's tests passing even with the every-parent part taken out.",
+        "F-215": "F-215 is a detector that matched one literal way of launching a test; F-221 is a gate rule with no detector at all."
+      }
     }
   ]
 }

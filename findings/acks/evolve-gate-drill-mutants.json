@@ -1,0 +1,82 @@
+{
+  "version": 2,
+  "branch": "evolve/gate-drill-mutants",
+  "answers": {
+    "C-01.1": {
+      "answer": "The new detector counts a range-topology run that reports no tests at all as a failure, never as a killed mutant; a drill anchor missing from its file is DRILL BROKEN, and the two push-hook mutants plant exactly the absence of a refusal.",
+      "guard": "test/core-specs.test.mjs::every drill anchor is found exactly once in its file, without running the drill (F-149)"
+    },
+    "C-01.2": {
+      "answer": "Deleting the every-parent merge test turns the detector red, because the planted first-parent-only checker then survives the range tests; deleting one of the new run_drill lines breaks the EXPECTED_MUTANTS tripwire.",
+      "guard": "test/certificate.test.mjs::EXPECTED_MUTANTS equals the number the drill actually defines"
+    },
+    "C-02.1": {
+      "answer": "The four new mutants are a chosen sample of the range rules, as mutation testing samples by design; the drill list is counted against EXPECTED_MUTANTS, not claimed complete, and the PR body names the range rules still without a planted bug.",
+      "guard": "test/certificate.test.mjs::every mutant the drill defines is counted exactly once"
+    },
+    "C-02.2": {
+      "answer": "The same gap applies to every rule of the range check and the push hook. Planted here: every-parent compare, the removal refusal, the range result and the suite result. The inherited-copy, rename and base-file rules stay test-only and are listed as remaining.",
+      "guard": "test/range-topology.test.mjs::an answers file already on the base may not be removed or rewritten"
+    },
+    "C-03.1": {
+      "answer": "Each mutant was applied by hand on a copy before it went into the drill, and its named test was seen red; the first-parent-only mutant was first seen to survive every existing test (finding F-221) and is now killed by the new merge test alone.",
+      "guard": "test/range-every-parent-detector.test.mjs::the range tests go red when the checker compares a merge commit with its first parent only (F-221)"
+    },
+    "C-03.2": {
+      "answer": "The reworded answer sits only on the merge commit's second parent, so a checker that compares only the first parent cannot see it; the control merges the same line without rewording and must pass, so the red comes from the rewrite.",
+      "guard": "test/range-topology.test.mjs::a merge commit is compared with every parent: rewording an answer that came only from its second parent is refused"
+    },
+    "C-03.3": {
+      "answer": "The docs' sentence that a merge commit is compared with both sides is now tied to a test that runs the real checker on a real merge, and each drill verdict carries the mutated file's hashes, which the certificate checks for freshness.",
+      "guard": "test/certificate.test.mjs::the freshness parser can see every mutant id the drill emits (the MUT-AA regex gap)"
+    },
+    "C-04.1": {
+      "answer": "Four mutants take the drill to 44 of the 45 its 30-minute job allows under the per-mutant budget, each running only its guardian files; the detector runs the range-topology file twice under a fixed spawn timeout, bounded by count, not a stopwatch assertion.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)"
+    },
+    "C-05.1": {
+      "answer": "The added retarget sentence says a retargeted child is asked only about its own files however its parent was merged; the parent-merged-first test now runs plain merge, rebase and squash, and fails if any of them asks about the parent's files.",
+      "guard": "test/range-topology.test.mjs::a child whose parent was merged, rebase-merged or squash-merged into main is not asked about the parent's files"
+    },
+    "C-05.2": {
+      "answer": "EXPECTED_MUTANTS goes to 44 and its comment now names MUT-A to MUT-AR; the certificate test compares the figure with the drill's real run_drill count, and the drill exits non-zero on any survivor, wrong killer or broken anchor.",
+      "guard": "test/certificate.test.mjs::every mutant the drill defines is counted exactly once"
+    },
+    "C-06.1": {
+      "answer": "The claim that the range rules are guarded rests on mutants applied and seen red in guardian files, plus the detector's own run, not on test names; the F-221 evidence is the run where the first-parent mutant passed every range test.",
+      "guard": "test/drill-runs-guardians-only.test.mjs::the drill runs a mutant against the files holding its named test, not the whole suite"
+    },
+    "C-07.1": {
+      "answer": "The only inputs are repository history and answers files that the tests build in throwaway repositories; the checker already treats each answers file as untrusted and compares it with every parent. Nothing from an outside party is newly read.",
+      "guard": "test/range-topology.test.mjs::two lines developed in parallel and merged are each compared with their own parents"
+    },
+    "C-07.2": {
+      "answer": "No new gate constrains an agent here: the mutants live in the drill and the detector is a test, and a raised EXPECTED_MUTANTS must still equal the drill's real count, which an agent cannot satisfy without adding a real mutant.",
+      "guard": "none: this change adds tests and planted bugs, and no gate a person must clear"
+    },
+    "C-09.1": {
+      "answer": "The detector copies the range test and the gate's files into a temp folder outside any repository and strips the GIT_ and node test runner variables, so it behaves the same under npm test, the pre-push hook and the guard proof.",
+      "guard": "test/range-every-parent-detector.test.mjs::an unmutated copy of the checker keeps the range tests green (control)"
+    },
+    "C-09.2": {
+      "answer": "The mutants run in CI's drill job through scripts/mutation-drill.sh, the same script the audit and the certificate call; I run the drill locally on this branch for the four new ids and read each verdict line before pushing.",
+      "guard": "test/drill-guardians.test.mjs::every mutant's named test is found in a file its suite runs"
+    },
+    "C-10.1": {
+      "answer": "That each range rule fails when broken was only a doc sentence; now a planted bug in four of those rules must die red in the drill, and the count of planted bugs is tied to the gate certificate's tripwire.",
+      "guard": "test/certificate.test.mjs::the freshness parser can see every mutant id the drill emits (the MUT-AA regex gap)"
+    },
+    "C-10.2": {
+      "answer": "The push-hook mutants plant a hook that ignores the range result or the suite result, and the test that kills them drives the real hook. A pull request retarget is no new route: CI runs again against the new base, a shape the tests cover.",
+      "guard": "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails"
+    },
+    "C-13.1": {
+      "answer": "Both sides are measured: a merge rewording a second-parent answer is refused while the same merge unchanged passes, and the detector sees the mutated checker go red while an unmutated copy of the checker stays green.",
+      "guard": "test/range-every-parent-detector.test.mjs::the range tests go red when the checker compares a merge commit with its first parent only (F-221)"
+    },
+    "C-14.1": {
+      "answer": "Each mutant runs in its own temporary copy, so a broken one is DRILL BROKEN under its own id while the others carry on; the detector removes its temp copy in a finally block, red or green.",
+      "guard": "test/drill-guardians.test.mjs::a named test found in no file refuses, and a suite without one glob refuses"
+    }
+  }
+}
