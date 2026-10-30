@@ -108,6 +108,17 @@ describe('C-04: every synchronous child a test starts is bounded (F-143)', () =>
       assert.equal(r.stdout.trim(), 'SIGKILL');
       assert.match(r.stderr, /bounded-spawn: .* killed after 300 ms \(F-143\)/);
     });
+  test('the kill names the whole command and the start of its stdin, not just the program (F-220)', () => {
+    const r = hang(
+      "cp.spawnSync(forever[0], [...forever[1], 'argv-marker-7'], { input: 'stdin-marker-9' + 'x'.repeat(500) })",
+    );
+    assert.equal(r.stdout.trim(), 'SIGKILL');
+    const line = r.stderr.split('\n').find((l) => l.startsWith('bounded-spawn:'));
+    assert.ok(line, r.stderr);
+    assert.match(line, /setInterval\(\(\) => \{\}, 1000\) argv-marker-7/);
+    assert.match(line, /with stdin "stdin-marker-9x+…"/);
+    assert.ok(line.length < 700, `the stdin is clipped: ${line.length} chars`);
+  });
   test('a timeout the test sets is kept', () => {
     const r = hang("cp.spawnSync(...forever, { timeout: 200, killSignal: 'SIGTERM' })");
     assert.equal(r.stdout.trim(), 'SIGTERM');

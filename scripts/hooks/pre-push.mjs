@@ -18,6 +18,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { acquire, LOCK_ENV, refusal, release } from '../heavy-lock.mjs';
 
 const GH_TIMEOUT_MS = 10_000;
 const FETCH_TIMEOUT_MS = 60_000;
@@ -147,12 +148,20 @@ function checkRef(localRef, sha) {
     say(`tree ${tree.slice(0, 12)} already passed the full suite; not running npm test again`);
     return true;
   }
+  // F-220: one heavy run at a time on this machine; beside a drill or a gate the
+  // suite would fail tests that pass alone
+  const lock = acquire(`pre-push suite in ${ROOT}`);
+  if (!lock.ok) {
+    say(`refused ${localRef}: ${refusal('the pre-push suite', lock)}`);
+    return false;
+  }
   say(`running the full suite (npm test) on tree ${tree.slice(0, 12)}`);
   const t = spawnSync('npm', ['test'], {
     cwd: ROOT,
-    env: CHILD_ENV,
+    env: { ...CHILD_ENV, [LOCK_ENV]: String(lock.owner) },
     stdio: ['ignore', 'inherit', 'inherit'],
   });
+  if (!lock.nested) release();
   if (t.status !== 0) {
     const how = t.error ? t.error.code : t.signal ? `signal ${t.signal}` : `exit ${t.status}`;
     say(

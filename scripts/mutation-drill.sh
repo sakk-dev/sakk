@@ -21,6 +21,14 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPORT="${1:-$ROOT/mutation-drill-report.txt}"
+# F-220: one heavy run at a time on this machine. A second one refuses here,
+# before the report is reset; inside the audit or the certificate the drill
+# runs in their lock.
+SAKK_HEAVY_LOCK_PID="$(node "$ROOT/scripts/heavy-lock.mjs" acquire "mutation drill in $ROOT" $$)" || exit 1
+export SAKK_HEAVY_LOCK_PID
+trap 'node "$ROOT/scripts/heavy-lock.mjs" release $$' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 : > "$REPORT"
 FAILED=0
 TOTAL=0

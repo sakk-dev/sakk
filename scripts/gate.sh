@@ -12,6 +12,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export CI=true
+# F-220: one heavy run at a time on this machine; a second one refuses here and
+# names the holder. Assigned apart from `export` so that set -e sees a refusal.
+SAKK_HEAVY_LOCK_PID="$(node scripts/heavy-lock.mjs acquire "gate in $PWD" $$)"
+export SAKK_HEAVY_LOCK_PID
+trap 'node scripts/heavy-lock.mjs release $$' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 # self-evolution step 1: what the ledger already learned about these changes
 npm run --silent brief
 npm run --silent lint

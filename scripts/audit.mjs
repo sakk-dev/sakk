@@ -13,6 +13,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { addItem } from './findings-inbox.mjs';
+import { acquire, LOCK_ENV, refusal, release } from './heavy-lock.mjs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -62,6 +63,15 @@ if (process.argv.length > 2) {
   console.error('usage: npm run audit   (no arguments)');
   process.exit(2);
 }
+// F-220: one heavy run at a time on this machine; the drill and the suites it
+// starts run in this lock
+const lock = acquire(`audit in ${ROOT}`);
+if (!lock.ok) {
+  console.error(refusal('npm run audit', lock));
+  process.exit(1);
+}
+process.env[LOCK_ENV] = String(lock.owner);
+process.on('exit', () => release());
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const logdir = join(ROOT, 'audit-logs', stamp);
 mkdirSync(logdir, { recursive: true });

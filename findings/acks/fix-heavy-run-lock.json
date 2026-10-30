@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "branch": "fix/heavy-run-lock",
+  "answers": {
+    "C-01.1": {
+      "answer": "Every absence refuses or is declared. No lock directory: the run takes it. A lock directory with no owner file, or one in another shape, is a lock nobody holds (pid NaN) and is taken over, never read as held by us. A holder pid that no longer runs is taken over. An unset SAKK_HEAVY_LOCK falls back to one declared path, <os tmpdir>/sakk-heavy-run.lock. An unset SAKK_HEAVY_LOCK_PID means not nested, so a run outside the holder is refused. The command line with a missing or malformed argument exits 2 with the usage line and touches no lock.",
+      "guard": "test/heavy-run-lock.test.mjs::the command line refuses a malformed call with the usage exit code"
+    },
+    "C-01.2": {
+      "answer": "Deleting the acquire line from any of the five entry points turns its test red: gate.sh, the drill, the audit and the certificate in heavy-run-lock.test.mjs, the pre-push hook in pre-push.test.mjs. Each was run with the line removed or its refusal branch disabled, and each went red (13 planted bugs, 13 red).",
+      "guard": "test/heavy-run-lock.test.mjs::the gate refuses to start while another heavy run holds the machine-wide lock, and runs nothing (F-220)"
+    },
+    "C-03.1": {
+      "answer": "Each test fails for the reason it names. With the lock removed from gate.sh the guard fails on its own first assertion (the gate exited 0 beside a live holder) and lists the steps that ran; on the base commit, where gate.sh has no lock, it fails the same way. 13 bugs were put back one at a time (lock dropped, refusal ignored, lock taken after the report reset, no pid handed to child steps, nesting not recognised, dead holder never taken over, non-atomic publish, release by anyone, kill line naming only the program) and each turned exactly its test red.",
+      "guard": "test/heavy-run-lock.test.mjs::the gate refuses to start while another heavy run holds the machine-wide lock, and runs nothing (F-220)"
+    },
+    "C-03.2": {
+      "answer": "The race test starts 8 acquire processes at once through the shipped command line, each for a different live pid, and asserts exactly one exits 0 and the owner file names it; with the atomic rename replaced by delete-then-rename it went red, so the processes do overlap. The SIGKILL test has its control: while the holder lives the gate is refused and runs no step; after SIGKILL (which runs no exit trap) the owner file is still there and the next gate takes it over.",
+      "guard": "test/heavy-run-lock.test.mjs::of many runs that start at once, exactly one takes the lock"
+    },
+    "C-03.3": {
+      "answer": "The checks run the real thing, not a record of it: the shipped gate.sh, mutation-drill.sh, audit.mjs, gate-certificate.mjs and pre-push hook run in a throwaway folder against a lock directory, and each npm step logs whether the lock was held and which pid it was handed. A gate step running outside the lock, or with no pid, fails the free-lock test.",
+      "guard": "test/heavy-run-lock.test.mjs::a free lock: every gate step runs inside it, and the gate releases it, green or red"
+    },
+    "C-04.1": {
+      "answer": "A refused run does not wait or retry in a loop: it exits at once with the holder named. acquire makes at most TRIES = 3 publish attempts and then refuses; each attempt is one rename plus at most one move aside. Nothing in the lock reads a clock to decide. The kill line is bounded by size, not time: argv and stdin are clipped at 200 characters and the test asserts the line stays under 700 characters for a 500-character stdin.",
+      "guard": "test/bounded-spawn.test.mjs::the kill names the whole command and the start of its stdin, not just the program (F-220)"
+    },
+    "C-05.1": {
+      "answer": "The only prose added is the comment headers of heavy-lock.mjs, gate.sh, mutation-drill.sh, audit.mjs, gate-certificate.mjs, pre-push.mjs and bounded-spawn.mjs. Each sentence is a behaviour a test drives: refuses and names the holder, atomic publish, a crashed run's lock taken over, nested runs keep the holder's lock, the drill refuses before it resets its report, the kill line names the command and stdin. No user-facing doc or spec claims more.",
+      "guard": "test/heavy-run-lock.test.mjs::the drill refuses before it resets its report"
+    },
+    "C-05.2": {
+      "answer": "The refusal names the holder's pid, what it is and when it started, and the lock path; acting on it works: wait for that pid to end, or, if its run crashed, the next run takes the lock over without anyone deleting it. Exit codes act as stated: the gate and the drill exit non-zero, the audit 1, the certificate 2 with CERT_LOCKED, the hook refuses the push and leaves the remote unchanged, the command line 1 when refused and 2 on bad usage.",
+      "guard": "test/heavy-run-lock.test.mjs::the certificate refuses with CERT_LOCKED and its refusal exit code"
+    },
+    "C-07.1": {
+      "answer": "Inputs from others: the owner file (any process of this user can write the directory), SAKK_HEAVY_LOCK and SAKK_HEAVY_LOCK_PID from the environment, and the what text. The owner file is parsed with one strict pattern; anything else is a lock nobody holds. A pid is believed only while kill(pid, 0) says it runs, and a run is nested only when the env pid equals the live holder, so an env pid that is dead or names another process does not let a second run in. Whitespace in the what text is collapsed so it cannot forge a second owner line. A reused pid keeps the lock refused, the safe direction; the refusal names the pid and the start time so a person can check it.",
+      "guard": "test/heavy-run-lock.test.mjs::only the holder releases; a lock nobody can read is taken over"
+    },
+    "C-07.2": {
+      "answer": "The party this constrains is a second heavy run started by me or by a person; the step that clears it is the first run ending, which needs no one, and a crashed run's lock clears itself on the next start. A person can always clear it by ending the holder named in the refusal. Nothing asks the constrained run to approve itself.",
+      "guard": "test/heavy-run-lock.test.mjs::a lock left by a run that is gone (killed with SIGKILL) is taken over"
+    },
+    "C-09.1": {
+      "answer": "It assumes node on PATH (gate.sh and the drill already call node, and the hook runs under node); a per-user temp folder (os.tmpdir, one lock per user, so CI runners each get their own); rename(2) failing on a non-empty target, which holds on macOS APFS and Linux ext4. It was tested in the states a real run reaches: a free lock, a live holder, a holder killed with SIGKILL, an unreadable lock, a nested run inside the audit or certificate, and 8 starts at once. flock(1) was not used because macOS does not ship it.",
+      "guard": "test/heavy-run-lock.test.mjs::a run inside the holder (the drill inside the audit) runs in its lock and leaves it held"
+    },
+    "C-09.2": {
+      "answer": "It runs where it will really run: gate.sh is started with bash as shipped and the drill with sh, the audit and the certificate with node from their own scripts folder, and the pre-push case pushes through the real installed hook from a clone, where the suite is seen running inside the lock with the hook's pid. The race test drives the shipped command line, the same one the shell scripts call.",
+      "guard": "test/pre-push.test.mjs::a push while another heavy run holds the machine-wide lock is refused before the suite runs, and the suite runs in the lock otherwise (F-220)"
+    },
+    "C-10.1": {
+      "answer": "One heavy run at a time is no longer rule text: each of the five entry points takes the lock in code before its first step, and a test per entry point fails when its lock is removed.",
+      "guard": "test/heavy-run-lock.test.mjs::the audit refuses before it starts a step or writes a log"
+    },
+    "C-10.2": {
+      "answer": "Every heavy route meets the lock: npm run gate, npm run drill, npm run audit, npm run certificate and git push (pre-push) all go through one of the five scripts that take it, and a test drives each. Running the drill from inside the audit or certificate is let in only as nested, with the holder's pid; any other run with the variable set to a dead or different pid is refused. A plain npm test run by hand is not locked: it is the light route the gate itself is built from.",
+      "guard": "test/pre-push.test.mjs::a push while another heavy run holds the machine-wide lock is refused before the suite runs, and the suite runs in the lock otherwise (F-220)"
+    }
+  }
+}
