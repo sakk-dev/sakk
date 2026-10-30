@@ -18,6 +18,9 @@ as written for traceability; `findings/ledger.json` is current for each
 finding's state, and docs/DECISIONS.md D11 records the answers. F-210 is
 open on the owner.
 
+**2026-10-30:** the owner answered F-116 (D13): `main` has a ruleset that
+blocks a merge on a red check, and auto-merge is on.
+
 ## When an item is done
 
 - Its P0 case's **expected result is observed** in a run of the case's own

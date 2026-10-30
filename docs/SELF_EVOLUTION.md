@@ -299,8 +299,12 @@ new class.
 
 ## What it does not do
 
-- Merge protection: a red CI blocks a merge only once `main` has branch
-  protection (F-116, open).
+- Check the live merge rule: `main`'s ruleset (`.github/rulesets/main.json`,
+  F-116, D13) requires every check a pull request runs except the
+  adversarial review, with no bypass, and auto-merge waits for those
+  checks. The tests read the file, never GitHub; the live setting is
+  applied and read with `gh api`, and a drift between the two is not
+  tested.
 - Order before the first commit: answers written after the code, but
   before the first commit, look the same as answers written first. Only the
   edit hook observes the order, and only on the routes it sees.
