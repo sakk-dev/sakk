@@ -192,7 +192,8 @@ function canonicalLedgerPath(ledgerPath) {
   return p;
 }
 
-function alertsPathFor(ledgerPath) {
+/** Where a ledger's alert trail lives: one file shared by every ledger in the folder. */
+export function alertsPathFor(ledgerPath) {
   return join(dirname(ledgerPath), 'sakk-alerts.jsonl');
 }
 
@@ -580,6 +581,41 @@ export function totalsOf(doc) {
 export function maxReservableUsd(totals) {
   const headroom = totals.capUsd - totals.committedUsd - LIMITS.minEstimateUsd;
   return headroom >= LIMITS.minEstimateUsd ? headroom : 0;
+}
+
+/**
+ * What `sakk status --json` prints and the console's ledger page shows — one
+ * function, so the two cannot drift. `doc` is a ledger readLedger returned.
+ */
+export function ledgerStatus({ ledgerPath, doc, now = Date.now() }) {
+  const t = totalsOf(doc);
+  const byStatus = { RESERVED: 0, SETTLED: 0, RECONCILIATION_REQUIRED: 0 };
+  for (const e of doc.entries) byStatus[e.status] += 1;
+  // the same two sources reserve() refuses on (review S2: status read one)
+  const reco =
+    doc.flags?.reconciliationRequired === true ||
+    doc.entries.some((x) => x.status === 'RECONCILIATION_REQUIRED');
+  const stale = now - Date.parse(doc.updatedAt) > DEFAULT_MAX_AGE_MS;
+  const blocked = Boolean(doc.halt?.global) || reco || stale;
+  return {
+    ledger: ledgerPath,
+    cap_usd: t.capUsd,
+    settled_usd: t.settledUsd,
+    outstanding_usd: t.outstandingUsd,
+    committed_usd: t.committedUsd,
+    remaining_usd: Math.max(0, t.capUsd - t.committedUsd),
+    // the largest amount a reserve() actually accepts: the cap is a wall, and
+    // an amount below the estimate floor is refused too (F-150). review S2: a
+    // figure that does not work when acted on is wrong
+    max_reservable_usd: blocked ? 0 : maxReservableUsd(t),
+    entries: byStatus,
+    reconciliation_required: reco,
+    reconciliation_reason: doc.flags?.reason ?? null,
+    halted: doc.halt?.global ?? null,
+    halted_agents: doc.halt?.agents ?? {},
+    updated_at: doc.updatedAt,
+    stale,
+  };
 }
 
 function writeLedger(ledgerPath, doc, { keepUpdatedAt = false } = {}) {

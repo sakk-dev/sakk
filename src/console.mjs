@@ -6,7 +6,7 @@
 // (contract #3). The one write is stopping an agent, behind --allow-halt.
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { openSync, fstatSync, readSync, closeSync, existsSync } from 'node:fs';
+import { openSync, fstatSync, readSync, closeSync, lstatSync, constants as FS } from 'node:fs';
 import { userInfo, homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -14,7 +14,7 @@ import { sakkHome, readConfig, repoRootOf, choosePolicy, evaluate, normalize } f
 import { loadPrices } from './prices.mjs';
 import { daySpend, systemZone, dayOf, SpendError } from './spend.mjs';
 import { doctor } from './guard-install.mjs';
-import { halt, LedgerError } from './ledger.mjs';
+import { halt, LedgerError, readLedger, ledgerStatus, alertsPathFor } from './ledger.mjs';
 
 export class ConsoleError extends Error {
   constructor(code, message) {
@@ -29,6 +29,9 @@ export class ConsoleError extends Error {
 export const TAIL_BYTES = 1024 * 1024; // read at most this from the end
 export const PAGE_LINES = 500; // show at most this many, newest first
 export const MAX_QUERY = 8 * 1024; // a request line over this is refused (input-space)
+// The hot ledger holds at most SEAL_AT settled plus MAX_INFLIGHT outstanding
+// entries (a few MB); a file far past that is refused before it is read.
+export const LEDGER_VIEW_BYTES = 32 * 1024 * 1024;
 const TOKEN_BYTES = 16; // 128-bit
 
 const token = () => randomBytes(TOKEN_BYTES).toString('hex');
@@ -62,12 +65,33 @@ function parseCookie(header) {
  * `scannedBytes` (<= TAIL_BYTES however big the file) and `unreadable`.
  */
 export function tailDecisions({ home, limit = PAGE_LINES, cap = TAIL_BYTES }) {
-  const path = join(home, 'decisions.jsonl');
-  if (!existsSync(path)) return { entries: [], scannedBytes: 0, unreadable: 0, truncated: false };
+  const { entries, scannedBytes, unreadable, truncated } = tailJsonl(
+    join(home, 'decisions.jsonl'),
+    { limit, cap },
+  );
+  return { entries, scannedBytes, unreadable, truncated };
+}
+
+/**
+ * The last `limit` lines of a JSON-lines log, newest first, read from the end
+ * within `cap` bytes. A missing file is `present: false`; a path that is not a
+ * regular file (a fifo would block a plain open forever) is skipped as
+ * `notAFile: true`, never read. `noFollow` refuses a symlink the same way.
+ */
+export function tailJsonl(path, { limit = PAGE_LINES, cap = TAIL_BYTES, noFollow = false } = {}) {
+  const none = { entries: [], scannedBytes: 0, unreadable: 0, truncated: false };
   let fd;
   try {
-    fd = openSync(path, 'r');
-    const size = fstatSync(fd).size;
+    fd = openSync(path, FS.O_RDONLY | FS.O_NONBLOCK | (noFollow ? FS.O_NOFOLLOW : 0));
+  } catch (e) {
+    if (e?.code === 'ENOENT') return { ...none, present: false };
+    if (e?.code === 'ELOOP') return { ...none, present: true, notAFile: true };
+    throw e;
+  }
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile()) return { ...none, present: true, notAFile: true };
+    const size = st.size;
     const start = size > cap ? size - cap : 0;
     const len = size - start;
     const buf = Buffer.alloc(len);
@@ -96,11 +120,126 @@ export function tailDecisions({ home, limit = PAGE_LINES, cap = TAIL_BYTES }) {
       entries: entries.slice(0, limit),
       scannedBytes: read,
       unreadable,
-      truncated: start > 0,
+      truncated: start > 0 || entries.length > limit,
+      present: true,
     };
   } finally {
-    if (fd !== undefined) closeSync(fd);
+    closeSync(fd);
   }
+}
+
+// What the page may show of a ledger entry or an alert: these fields, and
+// only plain values (a nested object in a hostile file is dropped, not shown).
+const ENTRY_FIELDS = [
+  'callId',
+  'agentId',
+  'runId',
+  'taskId',
+  'status',
+  'estimatedMaxUsd',
+  'actualUsd',
+  'createdAt',
+  'settledAt',
+];
+const ALERT_FIELDS = [
+  'at',
+  'kind',
+  'scope',
+  'callId',
+  'agentId',
+  'estimatedMaxUsd',
+  'committedUsd',
+  'capUsd',
+  'by',
+  'reason',
+];
+const plain = (v) =>
+  v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
+const pick = (o, fields) => {
+  const out = {};
+  for (const f of fields) out[f] = plain(o?.[f]) ? o[f] : null;
+  return out;
+};
+const timeOf = (s) => {
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? t : 0;
+};
+
+/**
+ * The spend ledger as the console shows it: the same status object as
+ * `sakk status --json` (one function, ledgerStatus), the newest entries, and
+ * the alert trail beside the ledger. Read-only: readLedger and a read-only
+ * open of the alerts file, never reserve, settle or halt. The path is the one
+ * the console was started with — a request cannot choose another file.
+ */
+export function ledgerData({
+  ledgerPath,
+  now = Date.now(),
+  limit = PAGE_LINES,
+  maxBytes = LEDGER_VIEW_BYTES,
+}) {
+  const source = 'from the ledger';
+  if (!ledgerPath)
+    return {
+      configured: false,
+      source,
+      note: 'No ledger is set — start with --ledger <path> or set ledgerPath in ~/.sakk/config.json',
+    };
+  let st = null;
+  try {
+    st = lstatSync(ledgerPath);
+  } catch {
+    // missing or unreachable: readLedger names it (LEDGER_MISSING / _UNREADABLE)
+  }
+  if (st?.isFile() && st.size > maxBytes)
+    return {
+      configured: true,
+      ledger: ledgerPath,
+      source,
+      error: 'CONSOLE_LEDGER_TOO_BIG',
+      message: `the ledger is ${st.size} bytes, over the ${maxBytes}-byte view limit — not read; use sakk status`,
+    };
+  let doc;
+  try {
+    doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY, now });
+  } catch (e) {
+    if (!(e instanceof LedgerError)) throw e;
+    return { configured: true, ledger: ledgerPath, source, error: e.code, message: e.message };
+  }
+  // newest first; reversed before the stable sort so calls in the same millisecond
+  // still list the later one first
+  const sorted = [...doc.entries]
+    .reverse()
+    .sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
+  const alertsPath = alertsPathFor(ledgerPath);
+  const tail = tailJsonl(alertsPath, { limit, noFollow: true });
+  let unreadable = tail.unreadable;
+  const alerts = [];
+  for (const a of tail.entries) {
+    if (a === null || typeof a !== 'object' || Array.isArray(a)) unreadable += 1;
+    else alerts.push(pick(a, ALERT_FIELDS));
+  }
+  return {
+    configured: true,
+    source,
+    status: ledgerStatus({ ledgerPath, doc, now }),
+    entries: sorted.slice(0, limit).map((e) => pick(e, ENTRY_FIELDS)),
+    entries_total: doc.entries.length,
+    truncated: doc.entries.length > limit,
+    archive: doc.archive
+      ? { settledCount: doc.archive.settledCount ?? 0, settledUsd: doc.archive.settledUsd ?? 0 }
+      : null,
+    alerts: {
+      source: 'from the alerts log',
+      path: alertsPath,
+      note: 'shared by every ledger in this folder',
+      present: tail.present === true && tail.notAFile !== true,
+      skipped: tail.notAFile === true ? 'not a regular file' : null,
+      entries: alerts,
+      unreadable,
+      truncated: tail.truncated,
+    },
+  };
 }
 
 /** The policy the hook would use for `cwd` — the same resolution as `sakk try`. */
@@ -198,7 +337,16 @@ export function tryData({ cwd, home, env = process.env, command }) {
   };
 }
 
-const PAGES = ['overview', 'rules', 'secret', 'agents', 'records', 'prices', 'enterprise'];
+const PAGES = [
+  'overview',
+  'ledger',
+  'rules',
+  'secret',
+  'agents',
+  'records',
+  'prices',
+  'enterprise',
+];
 
 /**
  * The console server. Binds 127.0.0.1 only. Resolves once listening with the
@@ -276,6 +424,8 @@ export function startConsole({
             haltReady: Boolean(ledgerPath),
             checks: doctor({ cwd, home: env.HOME || homedir(), env, probe: false }),
           });
+        // the path is the one the console started with; the request cannot pick a file
+        if (name === 'ledger') return json(res, ledgerData({ ledgerPath }));
         if (name === 'prices') {
           try {
             return json(res, pricesData({ home }));
@@ -439,8 +589,33 @@ const PAGES={
   const row=$("div",{class:"row"});
   const c1=$("div",{class:"card"});c1.append($("div",{class:"label",text:"Spend today ("+esc(d.day)+")"}),$("div",{class:"kpi",text:"$"+(d.spend_usd||0).toFixed(4)}),$("div",{class:"src",text:d.source+(d.cap_usd!=null?" \u00b7 cap $"+d.cap_usd:" \u00b7 no cap set")}));
   const c2=$("div",{class:"card"});c2.append($("div",{class:"label",text:"Recent decisions"}),$("div",{class:"kpi",text:(d.recent_counts.allow||0)+" / "+(d.recent_counts.deny||0)+" / "+(d.recent_counts.require_approval||0)}),$("div",{class:"src",text:"allowed / blocked / asked"}));
-  row.append(c1,c2);m.append(row);
+  const lg=await api("ledger");const c3=$("div",{class:"card"});c3.append($("div",{class:"label",text:"Spend ledger"}));
+  if(!lg.configured)c3.append($("div",{class:"src",text:lg.note}));
+  else if(lg.error)c3.append($("div",{class:"deny",text:esc(lg.error)}),$("div",{class:"src",text:lg.source}));
+  else c3.append($("div",{class:"kpi",text:"$"+Number(lg.status.settled_usd).toFixed(4)}),$("div",{class:"src",text:"of $"+esc(lg.status.cap_usd)+" cap \u00b7 "+(lg.entries_total+(lg.archive?lg.archive.settledCount:0))+" call(s) \u00b7 "+lg.source}));
+  row.append(c1,c2,c3);m.append(row);
   const card=$("div",{class:"card"});card.append(tableOf(["When","Agent","Verdict","Action","Scope"],d.recent,r=>[esc(r.at),esc(r.by),vpill(r.verdict),esc(r.context&&r.context.action),esc(r.context&&r.context.scope)]));m.append(card);},
+ ledger:async m=>{const d=await api("ledger");m.append($("h1",{text:"Spend ledger"}),$("p",{class:"sub",text:"Each metered call, the cap, what is left, and what was refused."}));
+  if(!d.configured){m.append($("p",{class:"empty",text:d.note}));return;}
+  if(d.error){m.append($("p",{class:"deny",text:esc(d.error)+": "+esc(d.message)}),$("p",{class:"src",text:"ledger: "+esc(d.ledger)}));return;}
+  const s=d.status;const usd=v=>typeof v==="number"?"$"+v.toFixed(6):esc(v);const calls=d.entries_total+(d.archive?d.archive.settledCount:0);
+  const kpi=(label,v,sub)=>{const c=$("div",{class:"card"});c.append($("div",{class:"label",text:label}),$("div",{class:"kpi",text:v}),$("div",{class:"src",text:sub}));return c;};
+  const row=$("div",{class:"row"});row.append(kpi("Cap",usd(s.cap_usd),d.source),kpi("Settled",usd(s.settled_usd),calls+" call(s)"),kpi("Reserved now",usd(s.outstanding_usd),s.entries.RESERVED+" in flight"),kpi("Remaining",usd(s.remaining_usd),"next call may reserve up to "+usd(s.max_reservable_usd)));m.append(row);
+  const st=$("div",{class:"card"});const pl=$("div",{class:"row"});const pill=(cls,t)=>pl.append($("span",{class:"pill "+cls,text:t}));
+  if(s.halted)pill("deny","halted by "+esc(s.halted.by)+(s.halted.reason?" \u2014 "+s.halted.reason:""));
+  const ha=Object.keys(s.halted_agents||{}).length;if(ha)pill("deny",ha+" agent(s) halted");
+  if(s.reconciliation_required)pill("deny","reconciliation required"+(s.reconciliation_reason?" \u2014 "+s.reconciliation_reason:""));
+  if(s.stale)pill("require_approval","stale \u2014 no write for over 7 days");
+  if(!s.halted&&!ha&&!s.reconciliation_required&&!s.stale)pill("allow","ok \u2014 accepting calls");
+  st.append($("div",{class:"label",text:"State"}),pl,$("div",{class:"src mono",text:esc(s.ledger)+" \u00b7 updated "+esc(s.updated_at)}));m.append(st);
+  const spill=v=>$("td",{},$("span",{class:"pill "+(v==="SETTLED"?"allow":v==="RESERVED"?"require_approval":"deny"),text:esc(v)}));
+  const en=$("div",{class:"card"});en.append($("div",{class:"label",text:"Calls"}),$("div",{class:"src",text:d.source+" \u00b7 "+(d.truncated?"newest "+d.entries.length+" of "+d.entries_total:d.entries_total+" in the ledger")+(d.archive&&d.archive.settledCount?" \u00b7 "+d.archive.settledCount+" earlier call(s), "+usd(d.archive.settledUsd)+", in the archive":"")}));
+  en.append(tableOf(["When","Agent","Status","Reserved (max)","Actual","Call"],d.entries,r=>[esc(r.createdAt),esc(r.agentId),spill(r.status),usd(r.estimatedMaxUsd),usd(r.actualUsd),$("td",{class:"mono",text:esc(r.callId)})]));m.append(en);
+  const a=d.alerts;const al=$("div",{class:"card"});al.append($("div",{class:"label",text:"Refusals and alerts"}),$("div",{class:"src",text:a.source+" \u00b7 "+a.note+(a.unreadable?" \u00b7 "+a.unreadable+" unreadable line(s)":"")+(a.truncated?" \u00b7 newest "+a.entries.length+" shown":"")}),$("div",{class:"src mono",text:esc(a.path)}));
+  if(a.skipped)al.append($("p",{class:"deny",text:"Skipped: "+a.skipped}));
+  else if(!a.present)al.append($("p",{class:"empty",text:"No alerts logged yet."}));
+  else al.append(tableOf(["When","Kind","Asked","Cap then","Call / agent"],a.entries,r=>[esc(r.at),$("td",{},$("span",{class:"pill "+(/REFUSED$/.test(String(r.kind))?"deny":"require_approval"),text:esc(r.kind)})),usd(r.estimatedMaxUsd),usd(r.capUsd),$("td",{class:"mono",text:esc(r.callId||r.agentId||r.by||r.reason)})]));
+  m.append(al);},
  rules:async m=>{const d=await api("rules");m.append($("h1",{text:"Guard rules"}),$("p",{class:"sub",text:"The policy in use, and a box to try a command (nothing runs)."}));
   const h=$("div",{class:"card"});h.append($("div",{class:"label",text:"Policy"}),$("div",{class:"mono",text:esc(d.policyPath)}),$("div",{class:"src",text:"sha256 "+(d.policyHash?d.policyHash.slice(0,16)+"\u2026":"\u2014")+(d.broken?" \u00b7 BROKEN: "+d.broken:"")}));m.append(h);
   const t=$("div",{class:"card"});const inp=$("input",{type:"text",placeholder:"git push --force","aria-label":"command"});const btn=$("button",{class:"act",text:"Try"});const out=$("div",{});
@@ -478,6 +653,7 @@ show("overview");
 function navLabel(p) {
   return {
     overview: 'Overview',
+    ledger: 'Spend ledger',
     rules: 'Guard rules',
     secret: 'Secret guard',
     agents: 'Agents',

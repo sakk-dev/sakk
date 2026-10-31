@@ -19,7 +19,8 @@ The pages and their data, as in v10:
 
 | Page                     | Data                                                                                                                    |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| Overview                 | today's spend and cap (M2), and "what the agent did recently" (allowed / blocked / asked) from the decision log         |
+| Overview                 | today's spend and cap (M2), the spend ledger's total, and "what the agent did recently" (allowed / blocked / asked)     |
+| Spend ledger             | each metered call in the ledger, the cap, what is reserved and left, and the refusals from the alerts log               |
 | Guard rules              | the policy in use, its hash and the try box (calls the same code as `sakk try`)                                         |
 | Secret guard             | commit-scan hook status and the "agent touched a secret" card (M3 log lines)                                            |
 | Agents                   | connections per agent (from `sakk doctor`'s checks) and per-agent stop (`sakk halt --agent`) when `--allow-halt` is set |
@@ -75,23 +76,52 @@ img-src 'self' data:; frame-ancestors 'none'`
    the installed state of each hook without firing it (`doctor({probe:false})`),
    so a read-only request never runs a subprocess or blocks on one. A 5 GB log
    never loads whole.
+9. **The spend ledger.** `GET /api/ledger` shows the ledger the console was
+   started with (`--ledger`, `config.json` under `SAKK_HOME`, or
+   `SAKK_LEDGER_PATH`); the request takes no query and cannot pick a file.
+   - With no ledger set the page says so and never shows a $0 cap
+     (`test/console.test.mjs::with no ledger set the ledger view says so, never $0`).
+   - A refusal from the ledger is shown by its own code — `LEDGER_MISSING`,
+     `LEDGER_PATH_NOT_CANONICAL` for a symlink or hard link, and the rest —
+     never as an empty ledger
+     (`test/console.test.mjs::a ledger path that does not exist answers LEDGER_MISSING, not an empty ledger`,
+     `test/console.test.mjs::a symlinked ledger is refused, not read through the link`).
+   - A ledger over 32 MiB is refused with `CONSOLE_LEDGER_TOO_BIG` before it is
+     read (`test/console.test.mjs::an oversized ledger is refused before it is read`).
+   - The calls list is the newest 500, with the total and `truncated`
+     (`test/console.test.mjs::the entries list is capped and says when it is cut`).
+   - The cap, settled, reserved, remaining and max-reservable figures are the
+     object `sakk status --json` prints, from one shared function
+     (`test/console.test.mjs::the ledger view and sakk status --json report the same numbers`).
+   - Refusals come from `sakk-alerts.jsonl` next to the ledger, newest first,
+     with the cap each was judged against; the file is labelled as shared by
+     every ledger in that folder, and one that is not a regular file is
+     skipped, never opened in a way that can block
+     (`test/console.test.mjs::refusals from the alerts log show newest first with the cap they were judged against`,
+     `test/console.test.mjs::an alerts file that is not a regular file is skipped, never blocks`).
+   - Reading it changes nothing: the ledger's bytes, mtime and folder are the
+     same after the request
+     (`test/console.test.mjs::reading the ledger view leaves the ledger and its folder untouched`).
 
 ## Adversary table
 
 The adversary is a web page in the user's browser, another local user or
 process, or a prompt-injected agent that wants the console to lie or to act.
 
-| #   | Move                                                                     | Must-hold outcome                                                          | Guard test                                                                       |
-| --- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| 1   | A web page fetches `http://127.0.0.1:<port>/api/decisions`               | no token → 403; and the response has no CORS header                        | `test/console.test.mjs::a request without the token gets nothing`                |
-| 2   | DNS rebinding: `evil.example` resolving to 127.0.0.1                     | wrong `Host` → 403                                                         | `test/console.test.mjs::a foreign Host header is refused`                        |
-| 3   | Cross-site POST to stop an agent                                         | no `--allow-halt` → 405; with it, a wrong or missing Origin or token → 403 | `test/console.test.mjs::writes need the flag, the origin and the token`          |
-| 4   | Another machine on the network                                           | the server is bound to loopback only; a test asserts the bound address     | `test/console.test.mjs::the server listens on loopback only`                     |
-| 5   | A log line carrying `<script>` (a tool name, a path, an MCP server name) | escaped and shown as text                                                  | `test/console.test.mjs::log text is escaped everywhere it is shown`              |
-| 6   | Guessing the token                                                       | 128 bits; constant-time compare; 403s are counted and shown                | `test/console.test.mjs::token compare is constant-time and failures are counted` |
-| 7   | A huge log to hang the server                                            | paged reads; a request finishes in bounded work                            | `test/console.test.mjs::a huge decision log is paged, never loaded whole`        |
-| 8   | The console shows spend as billed, or a self-declared stop as signed     | labels "from local logs" and "self-declared (the OS account name)" (F-126) | `test/console.test.mjs::evidence is labelled by its source`                      |
-| 9   | The page loads anything from the network (a CDN font)                    | CSP `default-src 'none'`; a test lists every URL in the HTML               | `test/console.test.mjs::the page makes no request to another origin`             |
+| #   | Move                                                                      | Must-hold outcome                                                          | Guard test                                                                                  |
+| --- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 1   | A web page fetches `http://127.0.0.1:<port>/api/decisions`                | no token → 403; and the response has no CORS header                        | `test/console.test.mjs::a request without the token gets nothing`                           |
+| 2   | DNS rebinding: `evil.example` resolving to 127.0.0.1                      | wrong `Host` → 403                                                         | `test/console.test.mjs::a foreign Host header is refused`                                   |
+| 3   | Cross-site POST to stop an agent                                          | no `--allow-halt` → 405; with it, a wrong or missing Origin or token → 403 | `test/console.test.mjs::writes need the flag, the origin and the token`                     |
+| 4   | Another machine on the network                                            | the server is bound to loopback only; a test asserts the bound address     | `test/console.test.mjs::the server listens on loopback only`                                |
+| 5   | A log line carrying `<script>` (a tool name, a path, an MCP server name)  | escaped and shown as text                                                  | `test/console.test.mjs::log text is escaped everywhere it is shown`                         |
+| 6   | Guessing the token                                                        | 128 bits; constant-time compare; 403s are counted and shown                | `test/console.test.mjs::token compare is constant-time and failures are counted`            |
+| 7   | A huge log to hang the server                                             | paged reads; a request finishes in bounded work                            | `test/console.test.mjs::a huge decision log is paged, never loaded whole`                   |
+| 8   | The console shows spend as billed, or a self-declared stop as signed      | labels "from local logs" and "self-declared (the OS account name)" (F-126) | `test/console.test.mjs::evidence is labelled by its source`                                 |
+| 9   | The page loads anything from the network (a CDN font)                     | CSP `default-src 'none'`; a test lists every URL in the HTML               | `test/console.test.mjs::the page makes no request to another origin`                        |
+| 10  | A process that can write the ledger folder puts `<script>` in an agent id | returned as JSON data and shown as text                                    | `test/console.test.mjs::hostile ledger text is returned as data, never put into the page`   |
+| 11  | The ledger path is swapped for a symlink to another file                  | `LEDGER_PATH_NOT_CANONICAL`; the target is not read                        | `test/console.test.mjs::a symlinked ledger is refused, not read through the link`           |
+| 12  | A fifo is put where the alerts log should be, to hang the request         | skipped as "not a regular file"; the ledger still shows                    | `test/console.test.mjs::an alerts file that is not a regular file is skipped, never blocks` |
 
 ## Input-space table
 
@@ -99,6 +129,7 @@ process, or a prompt-injected agent that wants the console to lie or to act.
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Request     | Every route with and without the token, cookie, Host and Origin; methods other than GET/POST; paths with `..`, `%2e`, `//`; query strings over 8 KiB |
 | Data files  | Absent (pages say "nothing yet" and how to start); empty; malformed lines (counted, shown, skipped); 5 GB                                            |
+| Ledger      | Not set; missing; symlinked; over 32 MiB; over 500 calls; hostile text; alerts log absent, a fifo, a directory or a symlink                          |
 | Port        | Default (random free port); `--port` in use (refuse, never pick another silently); privileged port (refuse)                                          |
 | Environment | Headless (no browser: print the address); `SAKK_HOME` unreadable (refuse at start)                                                                   |
 

@@ -9,6 +9,8 @@ import {
   readdirSync,
   statSync,
   realpathSync,
+  symlinkSync,
+  appendFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -25,8 +27,10 @@ import {
   tryData,
   TAIL_BYTES,
   PAGE_LINES,
+  ledgerData,
+  LEDGER_VIEW_BYTES,
 } from '../src/console.mjs';
-import { initLedger, readLedger } from '../src/ledger.mjs';
+import { initLedger, readLedger, reserve, settle, alertsPathFor } from '../src/ledger.mjs';
 import { normalize, evaluate } from '../src/hook.mjs';
 import { install } from '../src/guard-install.mjs';
 
@@ -91,7 +95,7 @@ describe('sakk ui console (M4): security', () => {
     const w = world({ decisions: [dec()] });
     const c = await startConsole({ ...w });
     try {
-      for (const path of ['/', '/api/overview', '/api/records', '/api/rules']) {
+      for (const path of ['/', '/api/overview', '/api/records', '/api/rules', '/api/ledger']) {
         const r = await hit(c.port, { path, headers: { Host: `127.0.0.1:${c.port}` } });
         assert.equal(r.status, 403, path);
         // no CORS header is ever sent
@@ -138,6 +142,7 @@ describe('sakk ui console (M4): security', () => {
         '/api/secret',
         '/api/agents',
         '/api/prices',
+        '/api/ledger',
         '/api/try?cmd=ls',
         '/api/forbidden',
         '/api/not-a-route',
@@ -423,6 +428,7 @@ describe('sakk ui console (M4): data and bounds', () => {
     const page = renderPage('n', false);
     for (const label of [
       'Overview',
+      'Spend ledger',
       'Guard rules',
       'Secret guard',
       'Agents',
@@ -449,7 +455,7 @@ describe('sakk ui console (M4): data and bounds', () => {
     });
     const c = await startConsole({ ...w, allowHalt: true });
     try {
-      for (const name of ['overview', 'rules', 'secret', 'agents', 'records', 'prices']) {
+      for (const name of ['overview', 'ledger', 'rules', 'secret', 'agents', 'records', 'prices']) {
         const r = await hit(c.port, {
           path: `/api/${name}`,
           headers: { Host: `127.0.0.1:${c.port}`, Cookie: cookie(c.token) },
@@ -865,7 +871,7 @@ describe('P0 UAT backfill — console (M4)', () => {
   // U-SEC-021 — every GET is read-only: hitting each page-data endpoint,
   // including the /api/try box that evaluates a command, changes no byte on disk.
   test('U-SEC-021 no GET endpoint writes anything, not even the try box', async () => {
-    const w = world({ decisions: [dec()] });
+    const w = world({ decisions: [dec()], ledger: true });
     const c = await startConsole({ ...w });
     try {
       const before = snapshotDir(w.base);
@@ -876,6 +882,7 @@ describe('P0 UAT backfill — console (M4)', () => {
         '/api/secret',
         '/api/agents',
         '/api/prices',
+        '/api/ledger',
         '/api/records',
         '/api/forbidden',
         '/api/try?cmd=ls%20-la',
@@ -889,5 +896,306 @@ describe('P0 UAT backfill — console (M4)', () => {
     } finally {
       await c.close();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The spend ledger page (feat/console-gateway-ledger). Ledgers are written by
+// the ledger's own initLedger / reserve / settle, and the server is the real
+// startConsole, so a green here is the page the user opens.
+// ---------------------------------------------------------------------------
+describe('sakk ui console: spend ledger', () => {
+  const own = (port, tok) => ({ Host: `127.0.0.1:${port}`, Cookie: cookie(tok) });
+  async function getLedger(c) {
+    const r = await hit(c.port, { path: '/api/ledger', headers: own(c.port, c.token) });
+    assert.equal(r.status, 200);
+    assert.match(r.headers['content-type'], /^application\/json/);
+    return { r, d: JSON.parse(r.body) };
+  }
+  // bytes, mtime and the listing of every file under dir
+  function fingerprint(dir) {
+    const out = {};
+    const walk = (d) => {
+      for (const name of readdirSync(d).sort()) {
+        const p = join(d, name);
+        const st = statSync(p);
+        if (st.isDirectory()) walk(p);
+        else
+          out[relative(dir, p)] = {
+            sha: createHash('sha256').update(readFileSync(p)).digest('hex'),
+            mtimeMs: st.mtimeMs,
+          };
+      }
+    };
+    walk(dir);
+    return out;
+  }
+  const spend = (ledgerPath, callId, est, actual, agentId = 'litellm-gateway') => {
+    reserve({ ledgerPath, callId, estimatedMaxUsd: est, agentId });
+    if (actual !== undefined) settle({ ledgerPath, callId, actualUsd: actual });
+  };
+
+  test('with no ledger set the ledger view says so, never $0', async () => {
+    const w = world();
+    const c = await startConsole({ ...w, ledgerPath: null });
+    try {
+      const { r, d } = await getLedger(c);
+      assert.equal(d.configured, false);
+      assert.match(d.note, /--ledger/);
+      assert.match(d.note, /config\.json/);
+      // no figure at all, so the page cannot print a $0 cap or $0 spent
+      assert.equal(d.status, undefined);
+      assert.doesNotMatch(r.body, /cap_usd|settled_usd/);
+    } finally {
+      await c.close();
+    }
+    assert.equal(ledgerData({ ledgerPath: '' }).configured, false);
+  });
+
+  test('a ledger path that does not exist answers LEDGER_MISSING, not an empty ledger', async () => {
+    const w = world();
+    const missing = join(w.base, 'no-such-ledger.json');
+    const c = await startConsole({ ...w, ledgerPath: missing });
+    try {
+      const { d } = await getLedger(c);
+      assert.equal(d.configured, true);
+      assert.equal(d.error, 'LEDGER_MISSING');
+      assert.equal(d.ledger, missing);
+      assert.equal(d.status, undefined);
+      assert.equal(d.entries, undefined);
+    } finally {
+      await c.close();
+    }
+  });
+
+  test('the ledger view and sakk status --json report the same numbers', async () => {
+    const w = world({ ledger: true });
+    spend(w.ledgerPath, 'g1', 0.5, 0.0123);
+    spend(w.ledgerPath, 'g2', 0.25, 0.004);
+    spend(w.ledgerPath, 'g3', 1.5); // still reserved: outstanding is non-zero
+    const env = { ...w.env };
+    delete env.SAKK_LEDGER_PATH;
+    const cli = spawnSync(
+      process.execPath,
+      [join(ROOT, 'bin', 'sakk.mjs'), 'status', '--json', '--ledger', w.ledgerPath],
+      { encoding: 'utf8', env, cwd: w.base },
+    );
+    assert.equal(cli.status, 0, cli.stderr);
+    const fromCli = JSON.parse(cli.stdout);
+    const c = await startConsole({ ...w });
+    try {
+      const { d } = await getLedger(c);
+      // the whole object, not a chosen subset
+      assert.deepEqual(d.status, fromCli);
+      assert.equal(d.status.entries.SETTLED, 2);
+      assert.equal(d.status.entries.RESERVED, 1);
+      assert.ok(Math.abs(d.status.settled_usd - 0.0163) < 1e-12);
+      assert.equal(d.status.outstanding_usd, 1.5);
+      assert.equal(d.status.cap_usd, 100);
+      assert.equal(d.entries_total, 3);
+      assert.equal(d.source, 'from the ledger');
+    } finally {
+      await c.close();
+    }
+  });
+
+  test('reading the ledger view leaves the ledger and its folder untouched', async () => {
+    const w = world({ ledger: true });
+    spend(w.ledgerPath, 'r1', 0.5, 0.1);
+    assert.throws(() => spend(w.ledgerPath, 'r2', 500)); // writes an alert
+    const before = fingerprint(w.base);
+    const c = await startConsole({ ...w });
+    try {
+      for (let i = 0; i < 3; i += 1) {
+        await getLedger(c);
+        await hit(c.port, { path: '/api/overview', headers: own(c.port, c.token) });
+      }
+    } finally {
+      await c.close();
+    }
+    assert.deepEqual(fingerprint(w.base), before, 'a GET changed a byte, an mtime or a file');
+  });
+
+  test('refusals from the alerts log show newest first with the cap they were judged against', async () => {
+    const w = world({ ledger: true });
+    spend(w.ledgerPath, 'ok1', 1, 0.5);
+    assert.throws(() => spend(w.ledgerPath, 'big1', 200));
+    assert.throws(() => spend(w.ledgerPath, 'big2', 300));
+    const c = await startConsole({ ...w });
+    try {
+      const { d } = await getLedger(c);
+      const a = d.alerts;
+      assert.equal(a.source, 'from the alerts log');
+      assert.match(a.note, /shared by every ledger/);
+      assert.equal(a.path, alertsPathFor(w.ledgerPath));
+      assert.equal(a.present, true);
+      assert.equal(a.skipped, null);
+      const refused = a.entries.filter((x) => x.kind === 'BUDGET_REFUSED');
+      assert.deepEqual(
+        refused.map((x) => x.callId),
+        ['big2', 'big1'],
+      );
+      assert.equal(refused[0].estimatedMaxUsd, 300);
+      assert.equal(refused[0].capUsd, 100);
+      assert.equal(refused[1].estimatedMaxUsd, 200);
+      // a refused call never became an entry
+      assert.deepEqual(
+        d.entries.map((e) => e.callId),
+        ['ok1'],
+      );
+    } finally {
+      await c.close();
+    }
+  });
+
+  test('an oversized ledger is refused before it is read', () => {
+    const w = world();
+    const big = join(w.base, 'big-ledger.json');
+    writeFileSync(big, 'x'.repeat(4096)); // not JSON: parsing it would say LEDGER_MALFORMED
+    const d = ledgerData({ ledgerPath: big, maxBytes: 1024 });
+    assert.equal(d.error, 'CONSOLE_LEDGER_TOO_BIG');
+    assert.match(d.message, /4096 bytes/);
+    assert.equal(d.status, undefined);
+    // control: under the limit the same file reaches the parser
+    assert.equal(ledgerData({ ledgerPath: big, maxBytes: 8192 }).error, 'LEDGER_MALFORMED');
+    // the default limit sits far above a full hot file (seal + in-flight cap)
+    assert.ok(LEDGER_VIEW_BYTES >= 16 * 1024 * 1024);
+  });
+
+  test('the entries list is capped and says when it is cut', () => {
+    const w = world({ ledger: true });
+    for (let i = 1; i <= 5; i += 1) spend(w.ledgerPath, `call-${i}`, 0.1, 0.01);
+    const cut = ledgerData({ ledgerPath: w.ledgerPath, limit: 3 });
+    assert.equal(cut.entries.length, 3);
+    assert.equal(cut.entries_total, 5);
+    assert.equal(cut.truncated, true);
+    assert.deepEqual(
+      cut.entries.map((e) => e.callId),
+      ['call-5', 'call-4', 'call-3'],
+    );
+    const whole = ledgerData({ ledgerPath: w.ledgerPath });
+    assert.equal(whole.entries.length, 5);
+    assert.equal(whole.truncated, false);
+    assert.ok(PAGE_LINES >= 5);
+  });
+
+  test('hostile ledger text is returned as data, never put into the page', async () => {
+    const w = world({ ledger: true });
+    const evilAgent = '<img src=x onerror=alert(1)>';
+    const evilCall = '<script>alert(1)</script>';
+    spend(w.ledgerPath, evilCall, 0.1, 0.01, evilAgent);
+    // a hand-written alerts log: a nested value, an array line and a broken line
+    appendFileSync(
+      alertsPathFor(w.ledgerPath),
+      JSON.stringify({
+        at: '2026-10-31T00:00:00.000Z',
+        kind: { nested: '<b>x</b>' },
+        callId: evilCall,
+      }) + '\n[1,2]\nnot json\n',
+    );
+    const c = await startConsole({ ...w });
+    try {
+      const { r, d } = await getLedger(c);
+      assert.match(r.headers['content-security-policy'], /default-src 'none'; script-src 'none'/);
+      assert.equal(d.entries[0].agentId, evilAgent);
+      assert.equal(d.entries[0].callId, evilCall);
+      const alert = d.alerts.entries.find((x) => x.callId === evilCall);
+      assert.equal(alert.kind, null, 'a nested value is dropped, not passed to the page');
+      assert.equal(d.alerts.unreadable, 2);
+    } finally {
+      await c.close();
+    }
+    // the page only ever sets text, never markup
+    const page = renderPage('n', false);
+    assert.doesNotMatch(page, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+    assert.ok(page.includes('ledger:async'), 'the ledger page is rendered by the same helpers');
+  });
+
+  test('sakk ui started elsewhere shows the ledger config.json points at', async () => {
+    const bin = join(ROOT, 'bin', 'sakk.mjs');
+    const w = world();
+    const drill = join(w.base, 'drill');
+    mkdirSync(drill);
+    const ledgerPath = join(drill, 'drill-ledger.json');
+    initLedger({ ledgerPath, capUsd: 0.3 });
+    spend(ledgerPath, 'gw-1', 0.01, 0.00123);
+    const cfgPath = join(w.home, 'config.json');
+    const cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
+    writeFileSync(cfgPath, JSON.stringify({ ...cfg, ledgerPath }));
+    const elsewhere = join(w.base, 'elsewhere');
+    mkdirSync(elsewhere);
+    const env = { ...w.env };
+    delete env.SAKK_LEDGER_PATH;
+    const ui = spawn(process.execPath, [bin, 'ui'], { env, cwd: elsewhere });
+    try {
+      const url = await new Promise((resolve, reject) => {
+        let out = '';
+        let err = '';
+        ui.stdout.on('data', (b) => {
+          out += b;
+          const m = out.match(/Sakk console: (\S+)/);
+          if (m) resolve(new URL(m[1]));
+        });
+        ui.stderr.on('data', (b) => (err += b));
+        ui.on('exit', (code) => reject(new Error(`sakk ui exited ${code}: ${err}`)));
+      });
+      const tok = url.searchParams.get('t');
+      const r = await hit(Number(url.port), {
+        path: '/api/ledger',
+        headers: { Host: url.host, Cookie: cookie(tok) },
+      });
+      assert.equal(r.status, 200);
+      const d = JSON.parse(r.body);
+      assert.equal(d.configured, true);
+      assert.equal(d.status.ledger, ledgerPath);
+      assert.equal(d.status.cap_usd, 0.3);
+      assert.equal(d.entries_total, 1);
+      assert.equal(d.entries[0].agentId, 'litellm-gateway');
+    } finally {
+      ui.kill('SIGINT');
+    }
+  });
+
+  test('a symlinked ledger is refused, not read through the link', async () => {
+    const w = world({ ledger: true });
+    spend(w.ledgerPath, 's1', 0.1, 0.01);
+    const link = join(w.base, 'linked-ledger.json');
+    symlinkSync(w.ledgerPath, link);
+    assert.equal(ledgerData({ ledgerPath: link }).error, 'LEDGER_PATH_NOT_CANONICAL');
+    const c = await startConsole({ ...w, ledgerPath: link });
+    try {
+      const { d } = await getLedger(c);
+      assert.equal(d.error, 'LEDGER_PATH_NOT_CANONICAL');
+      assert.equal(d.entries, undefined);
+    } finally {
+      await c.close();
+    }
+  });
+
+  test('an alerts file that is not a regular file is skipped, never blocks', () => {
+    const kinds = {
+      fifo: (p) => execFileSync('mkfifo', [p]),
+      directory: (p) => mkdirSync(p),
+      symlink: (p) => {
+        const real = join(dirname(p), 'real-alerts.jsonl');
+        writeFileSync(real, JSON.stringify({ at: 'x', kind: 'BUDGET_REFUSED' }) + '\n');
+        symlinkSync(real, p);
+      },
+    };
+    for (const [kind, make] of Object.entries(kinds)) {
+      const w = world({ ledger: true });
+      spend(w.ledgerPath, 'k1', 0.1, 0.01);
+      make(alertsPathFor(w.ledgerPath));
+      const d = ledgerData({ ledgerPath: w.ledgerPath });
+      assert.equal(d.alerts.skipped, 'not a regular file', kind);
+      assert.equal(d.alerts.present, false, kind);
+      assert.deepEqual(d.alerts.entries, [], kind);
+      // the ledger itself still shows
+      assert.equal(d.entries_total, 1, kind);
+    }
+    // the decisions tail shares the reader, so a fifo there is skipped too
+    const w = world();
+    execFileSync('mkfifo', [join(w.home, 'decisions.jsonl')]);
+    assert.deepEqual(tailDecisions({ home: w.home }).entries, []);
   });
 });
