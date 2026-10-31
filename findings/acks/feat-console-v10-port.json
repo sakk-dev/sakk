@@ -1,0 +1,65 @@
+{
+  "version": 2,
+  "branch": "feat/console-v10-port",
+  "answers": {
+    "C-04.1": {
+      "answer": "The page rewrite adds no new server-side reading: it calls the same /api/* routes, which keep their own bounds (size refusal before read, the entries cap with entries_total and truncated, the 1 MiB alerts tail, 20 recent rows). On the client the Spend log, Blocked actions and Model prices lists page 15, 10 and 20 rows at a time, so a long list never builds one huge table.",
+      "guard": "test/console.test.mjs::the entries list is capped and says when it is cut"
+    },
+    "C-05.1": {
+      "answer": "The spec and contract edits only rename where the ledger numbers appear (the Spend ledger page becomes the Spend log sub-page); each sentence is backed by a test: the nav labels and the coming-soon window by the open-source nav test, the same numbers by the status --json test, the v10 shell by the new layout test.",
+      "guard": "test/console.test.mjs::the console page follows the frozen v10 open-source layout (F-223)",
+      "revisions": [
+        {
+          "finding": "F-223",
+          "answer": "Contract row 2 used to name an adapted click-through test that does not exist; it now names the two template tests and says the rendered click-through is manual, as F-223 records.",
+          "guard": "test/console.test.mjs::every open-source page is in the nav and the coming-soon window is present"
+        }
+      ]
+    },
+    "C-05.2": {
+      "answer": "Every figure on the page comes from an /api route the tests already compare to the CLI (spend, cap, ledger settled/reserved/remaining). Cells with no data source in open source (per-call model and tokens, shadowed rules, the pre-commit hook status, the secret detection count, the tamper check) show a dash and the reason instead of a made-up number, so nobody acts on a figure that was never measured. The stop button now sends the token from the address it was opened with, so its result is real instead of always 403.",
+      "guard": "test/console.test.mjs::the page sends the halt token from its address, not the HttpOnly cookie (F-223)"
+    },
+    "C-02.1": {
+      "answer": "The page list is taken from the frozen v10 open-source design, not chosen by hand: its nav has Overview (with the Spend log and Blocked actions sub-pages), Guard rules, Secret guard, Agents, Records & export, Model prices and Enterprise. Every one of them is rendered and checked in the browser, at 829, 700 and 375 px, in light and dark.",
+      "guard": "test/console.test.mjs::every open-source page is in the nav and the coming-soon window is present"
+    },
+    "C-02.2": {
+      "answer": "All pages share one renderPage stylesheet and one DOM builder that sets text with textContent only; the no-markup rule (no innerHTML, outerHTML, insertAdjacentHTML or document.write) is tested on the whole page, so it covers every page and modal, not one.",
+      "guard": "test/console.test.mjs::hostile ledger text is returned as data, never put into the page"
+    },
+    "C-15.1": {
+      "answer": "The real path ran: the real bin/sakk.mjs ui served the rewritten page with its real CSP and token, a real browser drew it against the production content app drill home, and the console log was read for CSP refusals. The tests read the real renderPage output.",
+      "guard": "test/console.test.mjs::the console page follows the frozen v10 open-source layout (F-223)"
+    },
+    "C-09.1": {
+      "answer": "The assumed environment was a wide window in light mode with data present. The others were tried: 829, 700 and 375 px, dark mode, an empty home (the test that empty data says nothing yet still runs), and a console started without --allow-halt (the stop button explains how to enable it). Two narrow-width faults found this way were fixed: the price list source line now wraps, and the pager shows an ellipsis instead of every page number.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-09.2": {
+      "answer": "It was shown where it runs: in the desktop app's browser pane, the place the maintainer opens it, at that pane's real width, with scrollWidth measured against clientWidth on every page.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-06.1": {
+      "answer": "The look-and-feel evidence is the browser click-through recorded in F-223; the tests are weaker evidence and say so: they check the template holds the v10 shell, labels, the token source and no inline styles, not the rendered pixels. A rendered check would need a headless browser as a dev dependency, which is not added here and is listed as a decision for the maintainer.",
+      "guard": "test/console.test.mjs::the page template has no inline style attributes, which the CSP would block (F-223)"
+    },
+    "C-01.1": {
+      "answer": "If the token is absent from the address, the stop wizard says to open the address sakk ui printed instead of sending an empty token; if --allow-halt is absent the button explains how to enable it; if an /api route returns an error the page shows the error text, never an empty success. Missing data shows a dash and a reason. Checked in the browser: with the token missing from the address the page still loads from its cookie, and the stop wizard keeps Next disabled and says to open the printed address.",
+      "guard": "test/console.test.mjs::the page sends the halt token from its address, not the HttpOnly cookie (F-223)"
+    },
+    "C-01.2": {
+      "answer": "Each new check was removed by hand and the tests rerun: dropping the location.search token read, putting back an inline style attribute, or renaming the nav back to Spend ledger each turns a test red; with the file restored they pass.",
+      "guard": "test/console.test.mjs::the console page follows the frozen v10 open-source layout (F-223)"
+    },
+    "C-10.1": {
+      "answer": "The v10 layout is not left to rule text: the layout, token and inline-style tests run in npm test, the pre-push suite and CI, so a commit that drops the shell, puts back an inline style or reads the token from the cookie only fails the gate. The visual click-through is still manual, as F-223 states.",
+      "guard": "test/console.test.mjs::the console page follows the frozen v10 open-source layout (F-223)"
+    },
+    "C-10.2": {
+      "answer": "renderPage is the only place the console builds HTML; every other route returns JSON, and the halt route keeps its own server checks (Origin, X-Sakk-Token, --allow-halt), so the page cannot stop agents by another route than the tested POST.",
+      "guard": "test/console.test.mjs::the page sends the halt token from its address, not the HttpOnly cookie (F-223)"
+    }
+  }
+}

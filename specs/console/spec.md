@@ -20,7 +20,7 @@ The pages and their data, as in v10:
 | Page                     | Data                                                                                                                    |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | Overview                 | today's spend and cap (M2), the spend ledger's total, and "what the agent did recently" (allowed / blocked / asked)     |
-| Spend ledger             | each metered call in the ledger, the cap, what is reserved and left, and the refusals from the alerts log               |
+| Spend log (in Overview)  | each metered call in the ledger, the cap, what is reserved and left, and the refusals from the alerts log               |
 | Guard rules              | the policy in use, its hash and the try box (calls the same code as `sakk try`)                                         |
 | Secret guard             | commit-scan hook status and the "agent touched a secret" card (M3 log lines)                                            |
 | Agents                   | connections per agent (from `sakk doctor`'s checks) and per-agent stop (`sakk halt --agent`) when `--allow-halt` is set |
@@ -76,7 +76,8 @@ img-src 'self' data:; frame-ancestors 'none'`
    the installed state of each hook without firing it (`doctor({probe:false})`),
    so a read-only request never runs a subprocess or blocks on one. A 5 GB log
    never loads whole.
-9. **The spend ledger.** `GET /api/ledger` shows the ledger the console was
+9. **The spend ledger.** The Spend log sub-page under Overview reads
+   `GET /api/ledger`, which shows the ledger the console was
    started with (`--ledger`, `config.json` under `SAKK_HOME`, or
    `SAKK_LEDGER_PATH`); the request takes no query and cannot pick a file.
    - With no ledger set the page says so and never shows a $0 cap
