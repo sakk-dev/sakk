@@ -8,7 +8,14 @@
     },
     "C-05.1": {
       "answer": "The spec and contract edits only rename where the ledger numbers appear (the Spend ledger page becomes the Spend log sub-page); each sentence is backed by a test: the nav labels and the coming-soon window by the open-source nav test, the same numbers by the status --json test, the v10 shell by the new layout test.",
-      "guard": "test/console.test.mjs::the console page follows the frozen v10 open-source layout (F-223)"
+      "guard": "test/console.test.mjs::the console page follows the frozen v10 open-source layout (F-223)",
+      "revisions": [
+        {
+          "finding": "F-223",
+          "answer": "Contract row 2 used to name an adapted click-through test that does not exist; it now names the two template tests and says the rendered click-through is manual, as F-223 records.",
+          "guard": "test/console.test.mjs::every open-source page is in the nav and the coming-soon window is present"
+        }
+      ]
     },
     "C-05.2": {
       "answer": "Every figure on the page comes from an /api route the tests already compare to the CLI (spend, cap, ledger settled/reserved/remaining). Cells with no data source in open source (per-call model and tokens, shadowed rules, the pre-commit hook status, the secret detection count, the tamper check) show a dash and the reason instead of a made-up number, so nobody acts on a figure that was never measured. The stop button now sends the token from the address it was opened with, so its result is real instead of always 403.",
