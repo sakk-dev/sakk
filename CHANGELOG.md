@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `sakk ui` follows the frozen v10 open-source design
+
+- The console is rebuilt page by page to the frozen v10 open-source
+  prototype, on the same `/api` routes (F-223). Long paths and call ids no
+  longer widen the page in a narrow window (F-222).
+- A click no longer moves the nav: in a narrow window the nav strip keeps
+  its scroll and brings the chosen page into view, and nav items keep their
+  width when chosen (F-224).
+
 ### Added — the console shows the spend ledger
 
 - `sakk ui` has a new **Spend ledger** page, and the overview a ledger card:

@@ -1,0 +1,58 @@
+{
+  "version": 2,
+  "branch": "fix/console-nav-jump",
+  "answers": {
+    "C-09.1": {
+      "answer": "The assumed state was a nav that is never scrolled: every click re-renders the whole shell, which resets the nav's own scroll to 0. The other state was tried in the desktop pane at 829 px, where the nav is a horizontal strip: scrolled right, a click on Model prices or Enterprise snapped the strip back to the start and pushed the chosen item off screen. The fix keeps the nav's scroll across a re-render and brings the chosen item into view by moving the nav only, never the page; it was checked on every page at 829 and 375 px and in the side column at 1280x400, where the nav scrolls vertically.",
+      "guard": "test/console.test.mjs::the nav keeps its scroll and the chosen item in view across a re-render (F-224)"
+    },
+    "C-09.2": {
+      "answer": "It was shown where it runs: the real bin/sakk.mjs ui serving the rebuilt page in the desktop app's browser pane, the place the maintainer saw the jump, with the strip's scrollLeft and the chosen item's edges measured before and after each click.",
+      "guard": "test/console.test.mjs::the nav keeps its scroll and the chosen item in view across a re-render (F-224)"
+    },
+    "C-02.1": {
+      "answer": "No hand-written list of pages: the scroll is kept for the one nav element every page shares, and the width reserve is applied to every nav label the GROUPS loop builds, so a page added later gets both without a change here.",
+      "guard": "test/console.test.mjs::the nav keeps its scroll and the chosen item in view across a re-render (F-224)"
+    },
+    "C-02.2": {
+      "answer": "The same rule applies wherever render() rebuilds a scrolled box: the nav (both the strip and the side column) is the only scrolling container that survives a re-render; the page scroll is already kept by the browser for in-page actions and reset on purpose by go(). Open popovers and the tour are rebuilt from state by their own code. The bold-label shift had the same cause in every nav item and is fixed for all of them by one CSS rule; the Enterprise coming-soon tag and the count badges are held at weight 400 so they do not widen when their item is chosen.",
+      "guard": "test/console.test.mjs::nav labels reserve their bold width so the items do not shift (F-224)"
+    },
+    "C-04.1": {
+      "answer": "Nothing new is read on the server; the change is client layout only. Saving and restoring two scroll numbers per render costs nothing that grows with data.",
+      "guard": "test/console.test.mjs::the entries list is capped and says when it is cut"
+    },
+    "C-05.1": {
+      "answer": "No spec or doc sentence is added beyond the ledger entry; the contract's manual click-through line already covers rendered behaviour, and the two new template tests back the scroll keep and the width reserve.",
+      "guard": "test/console.test.mjs::the nav keeps its scroll and the chosen item in view across a re-render (F-224)"
+    },
+    "C-05.2": {
+      "answer": "No figure or exit code changes; the numbers on every page come from the same /api routes and the status --json parity test still holds.",
+      "guard": "test/console.test.mjs::the console page follows the frozen v10 open-source layout (F-223)"
+    },
+    "C-01.1": {
+      "answer": "On the first render there is no old nav, so the saved scroll is absent: the code then starts at 0 and only scrolls when the chosen item is out of view, instead of reading a missing value as a position. If no nav item is marked current, nothing is moved.",
+      "guard": "test/console.test.mjs::the nav keeps its scroll and the chosen item in view across a re-render (F-224)"
+    },
+    "C-01.2": {
+      "answer": "Each new check was removed by hand and the tests rerun: dropping the scroll save, the in-view step, the data-label reserve, the gutter or the tag weight rule, or adding scrollIntoView, each turns a test red; restored, they pass.",
+      "guard": "test/console.test.mjs::nav labels reserve their bold width so the items do not shift (F-224)"
+    },
+    "C-10.1": {
+      "answer": "The keep and the reserve are not left to rule text: both template tests run in npm test, the pre-push suite and CI. The rendered behaviour is still a manual browser check, recorded in F-224, because a headless browser is not a dev dependency (a decision already with the maintainer).",
+      "guard": "test/console.test.mjs::the nav keeps its scroll and the chosen item in view across a re-render (F-224)"
+    },
+    "C-10.2": {
+      "answer": "Every route that changes page goes through render(): nav clicks, go() from links and the breadcrumb, tabs, pager and the tour. The keep sits inside render() itself, so no route skips it.",
+      "guard": "test/console.test.mjs::the nav keeps its scroll and the chosen item in view across a re-render (F-224)"
+    },
+    "C-15.1": {
+      "answer": "The real path ran: the real sakk ui served the rebuilt page with its real CSP and token on the drill home, and a real browser clicked through the strip at 829 px. The tests read the real renderPage output.",
+      "guard": "test/console.test.mjs::the nav keeps its scroll and the chosen item in view across a re-render (F-224)"
+    },
+    "C-06.1": {
+      "answer": "The behaviour evidence is the browser measurement recorded in F-224 (scrollLeft and item edges before and after a click); the tests are weaker and say so: they check that the template saves and restores the nav scroll and reserves the bold width, not the rendered pixels.",
+      "guard": "test/console.test.mjs::nav labels reserve their bold width so the items do not shift (F-224)"
+    }
+  }
+}
