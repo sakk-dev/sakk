@@ -7284,6 +7284,41 @@
         "F-212": "F-212 is the range check reading history as a straight line; F-221 is that fix's tests passing even with the every-parent part taken out.",
         "F-215": "F-215 is a detector that matched one literal way of launching a test; F-221 is a gate rule with no detector at all."
       }
+    },
+    {
+      "id": "F-222",
+      "date": "2026-10-31",
+      "introduced_in": "87eb25f",
+      "found_by": "T0",
+      "class": "C-09",
+      "title": "The Spend ledger page scrolled sideways in a window narrower than about 950 px, cutting off the Remaining card",
+      "symptom": "Opened in the app browser pane at 829 px wide against the production content app drill ledger, the Spend ledger page laid out 953 px of content: the page scrolled sideways and the Remaining and Max reservable cards were cut off at the right edge.",
+      "evidence": "Measured in the browser with document.documentElement.scrollWidth / clientWidth: 953/829 on Spend ledger before the fix. After the fix every one of the 8 console pages measured 829/829 at 829 px, 700/700 at 700 px and 375/375 at 375 px. The widest items were the ledger and alerts file paths in the source lines and the gateway call ids in the entries table, none of which contain a break point.",
+      "direct_cause": "main is a flex child of the page body and kept the default min-width:auto, so its widest unbreakable text (a full file path, a call id) set its width; .src and code had no overflow-wrap, and the cards had no horizontal scroll of their own.",
+      "why": [
+        "The ledger view was checked through HTTP and JSON tests and through the CLI; nobody looked at the rendered page at a narrow width before commit, and the drill data has paths and call ids far longer than the test fixtures.",
+        "The console has no rendered-layout check at all: no test renders the page in a browser, and the repo has no headless browser, so a width bug can only be found by a person opening the page.",
+        "The C-09 answer for this branch listed ledger states, directories and file types as the environments to try, but not the window the page is read in."
+      ],
+      "root_cause": "The page layout was assumed from a wide window: the only checks of the console read its HTML and JSON as text, so how it lays out in a narrow pane was never tried before release.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "instance_fix": "this commit: src/console.mjs gives main min-width:0, lets .src lines and code break anywhere (overflow-wrap:anywhere), and gives each .card its own horizontal scroll (overflow-x:auto), so a long path or id wraps or scrolls inside its card instead of widening the page; checked by hand on all 8 pages at 829, 700 and 375 px.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)",
+      "sweep": "Swept every console page (Overview, Spend ledger, Guard rules, Secret guard, Agents, Records & export, Model prices, Enterprise · soon) at 829, 700 and 375 px against the production content app drill data: all fit with no sideways scroll. The guard checks the stylesheet text, not the rendered width; a rendered-width test needs a headless browser as a new dev dependency, which is the maintainer's call.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/console.mjs", "test/console.test.mjs"],
+      "answer_failed": {
+        "qid": "C-09.1",
+        "why": "The answer listed ledger states, directories and file types to try but not the window width the page is read in, so the narrow-pane layout was never tried before commit."
+      },
+      "mechanism_gap": "No check renders the console; every console test reads its HTML or JSON as text, so a layout that only breaks when drawn passes them all.",
+      "mechanism_upgrade": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)",
+      "distinct_from": {
+        "F-220": "F-220 is two heavy test runs assumed to have the machine to themselves; F-222 is a page layout assumed to have a wide window."
+      }
     }
   ]
 }

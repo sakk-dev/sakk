@@ -554,9 +554,9 @@ header b{font-size:15px;letter-spacing:.2px}header .ro{color:var(--acc);font-siz
 aside{width:190px;border-right:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:4px}
 .nav{text-align:left;background:none;border:0;color:var(--mut);padding:8px 10px;border-radius:7px;cursor:pointer;font:inherit}
 .nav:hover{background:var(--card);color:var(--fg)}.nav.on{background:var(--card);color:var(--fg)}
-main{flex:1;padding:22px 26px;max-width:1000px}
+main{flex:1;min-width:0;padding:22px 26px;max-width:1000px}
 h1{font-size:19px;margin:0 0 4px}.sub{color:var(--mut);margin:0 0 18px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:0 0 14px;overflow-x:auto}
 .kpi{font-size:28px;font-weight:600;font-variant-numeric:tabular-nums}
 .row{display:flex;gap:10px;flex-wrap:wrap}.row .card{flex:1;min-width:150px}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
@@ -564,10 +564,10 @@ th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertic
 th{color:var(--mut);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
 .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:12px}
 .allow{color:var(--acc)}.deny{color:var(--bad)}.require_approval{color:var(--warn)}
-code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
 input{background:#0b0d12;border:1px solid var(--line);color:var(--fg);border-radius:7px;padding:7px 9px;width:min(520px,100%)}
 button.act{background:var(--acc);color:#07110f;border:0;border-radius:7px;padding:7px 14px;cursor:pointer;font-weight:600;font:inherit}
-.label{color:var(--mut);font-size:12px}.src{color:var(--mut);font-size:12px;margin-top:6px}
+.label{color:var(--mut);font-size:12px}.src{color:var(--mut);font-size:12px;margin-top:6px;overflow-wrap:anywhere}
 .empty{color:var(--mut);padding:10px 0}
 .cs h2{margin:0 0 8px}.cs p{color:var(--mut);margin:4px 0}
 </style>
