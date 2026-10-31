@@ -1,0 +1,58 @@
+{
+  "version": 2,
+  "branch": "fix/console-narrow-layout",
+  "answers": {
+    "C-04.1": {
+      "answer": "This change is four CSS rules and adds no work on input: nothing new is read, parsed or looped over. The existing bounds on the ledger view (size refusal before read, the entries cap with entries_total and truncated, the 1 MiB alerts tail) are untouched and keep their own tests.",
+      "guard": "test/console.test.mjs::the entries list is capped and says when it is cut"
+    },
+    "C-05.1": {
+      "answer": "No sentence is added to docs, specs or packs. The only new text is the F-222 ledger entry and the commit message, and their one claim about the code (main has min-width:0, .src and code may break anywhere, cards scroll on their own) is what the new test checks.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-05.2": {
+      "answer": "No figure or exit code changes: the page shows the same numbers from the same ledgerStatus call; only how long text wraps changed. The Remaining and Max reservable cards that were cut off at 829 px are now fully visible, so the figure someone acts on is the one they can read.",
+      "guard": "test/console.test.mjs::the ledger view and sakk status --json report the same numbers"
+    },
+    "C-02.1": {
+      "answer": "The list of rules is taken from the stylesheet, not chosen by hand: the containers that can be widened are main (the flex child) and .card, and the elements that hold unbreakable text are .src lines and code/.mono. Every console page was then measured, not a chosen subset: all 8 pages at 829, 700 and 375 px.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-02.2": {
+      "answer": "The same rule applies to every console page because they share one stylesheet from renderPage; the fix is in that stylesheet, so it covers all of them. Each of the 8 pages was measured in the browser after the fix and fit the window at all three widths.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-15.1": {
+      "answer": "The real path ran: the real bin/sakk.mjs ui served the page, it was drawn by a real browser at the pane's own width, against the production content app drill ledger the LiteLLM gateway wrote on 10-30. The test reads the real renderPage output, not a copy of the stylesheet.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-09.1": {
+      "answer": "The assumed environment was a wide window. The other ones were tried: 829 px (the app pane), 700 px and 375 px (a phone), plus 1280 px to confirm the four cards still sit on one row; the data used has full file paths and gateway call ids, longer than the test fixtures.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-09.2": {
+      "answer": "It was shown where it really runs: the page was opened in the desktop app's browser pane, the place the maintainer opens it, at that pane's real width, and measured there with scrollWidth against clientWidth before and after the fix (953/829 before, 829/829 after).",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-06.1": {
+      "answer": "The width evidence comes from the browser measurement, recorded in the F-222 entry. The test is weaker evidence and says so: it checks the stylesheet text holds the four rules, not the rendered width. The ledger entry and commit message both state that a rendered check would need a headless browser, which is not added.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-01.1": {
+      "answer": "If a rule is absent the test fails and names the selector; if the style block itself is absent the match returns null and the test throws, which is a failure, not a pass. A selector that is not found returns an empty rule body, which fails the match, so a renamed selector cannot read as success.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-01.2": {
+      "answer": "Each rule was deleted by hand and the test run again: removing min-width:0 from main, overflow-wrap from .src, overflow-wrap from code,.mono, and overflow-x from .card each turned the test red (pass 0, fail 1); with the file restored it passes.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-10.1": {
+      "answer": "The layout rule is not left to rule text: the test runs in npm test, the pre-push suite and CI, so a commit that drops one of the four rules fails the gate. The narrow-window look itself is still a manual check, as stated in F-222.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    },
+    "C-10.2": {
+      "answer": "There is no other route to the page's layout: renderPage is the only place the console builds HTML, and every other route returns JSON. A page served another way would not have these rules, but no such route exists in console.mjs.",
+      "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+    }
+  }
+}

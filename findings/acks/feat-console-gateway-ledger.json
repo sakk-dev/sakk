@@ -60,7 +60,14 @@
     },
     "C-09.1": {
       "answer": "Assumed environment is macOS and Linux with a ledger on a local disk. The other cases are tested directly: no ledger set, a path that does not exist, a symlinked ledger, a fifo where the alerts file should be, and a console started from a different working directory reading the path from SAKK_HOME/config.json.",
-      "guard": "test/console.test.mjs::an alerts file that is not a regular file is skipped, never blocks"
+      "guard": "test/console.test.mjs::an alerts file that is not a regular file is skipped, never blocks",
+      "revisions": [
+        {
+          "finding": "F-222",
+          "answer": "The window the page is read in is part of the environment too: every console page is opened at 829, 700 and 375 px against data with long paths and call ids and must not scroll sideways; the stylesheet rules that keep it so are pinned by a test.",
+          "guard": "test/console.test.mjs::the stylesheet keeps long unbreakable text from widening the page (F-222)"
+        }
+      ]
     },
     "C-09.2": {
       "answer": "It is shown where it really runs: the real bin/sakk.mjs ui is spawned from another directory with SAKK_HOME set and the test reads /api/ledger from it, and after merging I start the same command against the production content app drill ledger and take a screenshot of the page showing the 11 settled calls and the refusals.",

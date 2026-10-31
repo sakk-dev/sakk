@@ -508,6 +508,26 @@ describe('sakk ui console (M4): environment', () => {
       await first.close();
     }
   });
+
+  // The rendered check (every page at 829, 700 and 375 px wide, no sideways
+  // scroll) was done in a browser; this pins the stylesheet rules that made it pass.
+  test('the stylesheet keeps long unbreakable text from widening the page (F-222)', () => {
+    const css = renderPage('n', false).match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
+    const rule = (sel) => {
+      const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const m = css.match(new RegExp('(?:^|\\})\\s*' + esc + '\\{([^}]*)\\}', 'm'));
+      return m ? m[1] : '';
+    };
+    assert.match(
+      rule('main'),
+      /min-width:0/,
+      'main is a flex child: without min-width:0 its widest unbreakable text sets its width',
+    );
+    for (const sel of ['.src', 'code,.mono']) {
+      assert.match(rule(sel), /overflow-wrap:anywhere/, sel);
+    }
+    assert.match(rule('.card'), /overflow-x:auto/, '.card');
+  });
 });
 
 describe('sakk ui console (M4): typed refusals', () => {
