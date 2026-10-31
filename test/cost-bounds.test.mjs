@@ -142,6 +142,17 @@ const BOUNDS = {
       bounded: 'arithmetic on the totals totalsOf returned; no attacker-sized input',
       guard: 'test/cost-bounds.test.mjs::max reservable is 0 when the headroom is below the floor',
     },
+    ledgerStatus: {
+      bounded:
+        'one pass over the hot entries readLedger returned (bounded by SEAL_AT + MAX_INFLIGHT) plus totalsOf; no read of its own',
+      guard:
+        'test/console.test.mjs::the ledger view and sakk status --json report the same numbers',
+    },
+    alertsPathFor: {
+      bounded: 'joins one fixed file name onto the ledger folder; no read, no attacker-sized input',
+      guard:
+        'test/console.test.mjs::refusals from the alerts log show newest first with the cap they were judged against',
+    },
     defaultLedgerPath: {
       bounded: 'reads one environment variable; no attacker-sized input',
       guard: 'test/cost-bounds.test.mjs::defaultLedgerPath reads only the environment',
@@ -262,6 +273,17 @@ const BOUNDS = {
       bounded:
         'reads at most TAIL_BYTES from the end of the log and returns scannedBytes; a 5 GB file is never loaded whole',
       guard: 'test/console.test.mjs::a huge decision log is paged, never loaded whole',
+    },
+    tailJsonl: {
+      bounded:
+        'reads at most `cap` bytes (TAIL_BYTES by default) from the end of one regular file and returns at most `limit` lines; a fifo, directory or (with noFollow) a symlink is skipped without reading',
+      guard:
+        'test/console.test.mjs::an alerts file that is not a regular file is skipped, never blocks',
+    },
+    ledgerData: {
+      bounded:
+        'refuses a ledger over LEDGER_VIEW_BYTES by lstat before reading, then one readLedger (bounded by SEAL_AT + MAX_INFLIGHT); entries cut to PAGE_LINES, alerts read through the bounded tail',
+      guard: 'test/console.test.mjs::an oversized ledger is refused before it is read',
     },
     policyInUse: {
       bounded:

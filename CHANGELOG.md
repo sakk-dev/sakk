@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the console shows the spend ledger
+
+- `sakk ui` has a new **Spend ledger** page, and the overview a ledger card:
+  each metered call (agent, status, reserved maximum, actual), the cap,
+  settled, reserved now, what is left and the most the next call may
+  reserve, plus the refusals and alerts from `sakk-alerts.jsonl` next to the
+  ledger, newest first with the cap each was judged against.
+- New read-only route `GET /api/ledger`. It shows the ledger the console was
+  started with (`--ledger`, `config.json` under `SAKK_HOME`, or
+  `SAKK_LEDGER_PATH`) and takes no query. With no ledger set it answers
+  `configured: false`; ledger refusals pass through by their own code; a
+  ledger over 32 MiB answers the new code `CONSOLE_LEDGER_TOO_BIG`.
+- `ledgerStatus` and `alertsPathFor` are now exported from `src/ledger.mjs`.
+  `sakk status --json` is built by `ledgerStatus`, so the console and the
+  CLI print the same object; its shape is unchanged.
+
+### Changed — the decisions tail skips files that are not regular files
+
+- The console's log reader opens `decisions.jsonl` without blocking and
+  skips a fifo or directory in its place instead of hanging the request (the
+  alerts log is read the same way and also refuses a symlink). `truncated` is now also true when the
+  500-line page limit cuts the list, not only when the 1 MiB tail does.
+
 ## [0.1.0] - 2026-10-29
 
 ### Fixed — a backdated log line cannot escape the daily cap (F-210, F-211)

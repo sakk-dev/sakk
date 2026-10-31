@@ -17,7 +17,7 @@ import {
   initLedger,
   readLedger,
   totalsOf,
-  maxReservableUsd,
+  ledgerStatus,
   clearReconciliation,
   forceUnlock,
   halt,
@@ -319,34 +319,12 @@ if (cmd === 'init') {
   } catch (e) {
     fail(e);
   }
+  // one function with the console's ledger page, so the two cannot drift
+  const out = ledgerStatus({ ledgerPath: p, doc });
   const t = totalsOf(doc);
-  const byStatus = { RESERVED: 0, SETTLED: 0, RECONCILIATION_REQUIRED: 0 };
-  for (const e of doc.entries) byStatus[e.status] += 1;
-  // the same two sources reserve() refuses on (review S2: status read one)
-  const reco =
-    doc.flags?.reconciliationRequired === true ||
-    doc.entries.some((x) => x.status === 'RECONCILIATION_REQUIRED');
-  const stale = Date.now() - Date.parse(doc.updatedAt) > DEFAULT_MAX_AGE_MS;
-  const blocked = Boolean(doc.halt?.global) || reco || stale;
-  const out = {
-    ledger: p,
-    cap_usd: t.capUsd,
-    settled_usd: t.settledUsd,
-    outstanding_usd: t.outstandingUsd,
-    committed_usd: t.committedUsd,
-    remaining_usd: Math.max(0, t.capUsd - t.committedUsd),
-    // the largest amount a reserve() actually accepts: the cap is a wall, and
-    // an amount below the estimate floor is refused too (F-150). review S2: a
-    // figure that does not work when acted on is wrong
-    max_reservable_usd: blocked ? 0 : maxReservableUsd(t),
-    entries: byStatus,
-    reconciliation_required: reco,
-    reconciliation_reason: doc.flags?.reason ?? null,
-    halted: doc.halt?.global ?? null,
-    halted_agents: doc.halt?.agents ?? {},
-    updated_at: doc.updatedAt,
-    stale,
-  };
+  const byStatus = out.entries;
+  const reco = out.reconciliation_required;
+  const stale = out.stale;
   if (flag('json')) {
     console.log(JSON.stringify(out, null, 1));
   } else {

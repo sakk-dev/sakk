@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "branch": "feat/console-gateway-ledger",
+  "answers": {
+    "C-01.1": {
+      "answer": "A console started with no ledger answers configured:false and a note naming --ledger and config.json; the page shows that note and never a $0 cap or $0 spent. A ledger path that does not exist answers the ledger's own LEDGER_MISSING code, a symlink answers LEDGER_PATH_NOT_CANONICAL, a file over the view limit answers CONSOLE_LEDGER_TOO_BIG, and every other readLedger refusal is passed through by code. A missing alerts file is shown as no alerts logged yet, with the path it looked at.",
+      "guard": "test/console.test.mjs::with no ledger set the ledger view says so, never $0"
+    },
+    "C-01.2": {
+      "answer": "Each refusal has its own negative test that fails if the branch is deleted: removing the no-ledger branch makes ledgerData call readLedger with a null path and the no-ledger test fails on the missing configured:false; removing the size check lets the oversized file reach the parser and the test fails on LEDGER_MALFORMED instead of CONSOLE_LEDGER_TOO_BIG; removing the error pass-through makes the missing-path test fail.",
+      "guard": "test/console.test.mjs::a ledger path that does not exist answers LEDGER_MISSING, not an empty ledger"
+    },
+    "C-02.1": {
+      "answer": "The numbers are not a second hand-written copy of the status logic: sakk status --json and the console both call one exported ledgerStatus function, so a field added to one is in the other. The entry fields shown are an explicit allow-list on purpose (an unknown future field is not shown), and the parity test compares the whole status object, not a chosen subset of fields.",
+      "guard": "test/console.test.mjs::the ledger view and sakk status --json report the same numbers"
+    },
+    "C-02.2": {
+      "answer": "The same read-only rule applies to every console endpoint and to the decisions tail: the new tailJsonl helper is shared by decisions.jsonl and sakk-alerts.jsonl, so the non-regular-file skip now covers both logs. The existing U-SEC-021 read-only test is extended to GET /api/ledger with a real ledger, and the token and Origin gate lists are extended to the new path.",
+      "guard": "test/console.test.mjs::reading the ledger view leaves the ledger and its folder untouched"
+    },
+    "C-03.1": {
+      "answer": "Before committing I will put three bugs back by hand and watch the named tests go red: a ledgerData that returns zeros when no path is set, a GET /api/ledger that touches the ledger's mtime, and an /api/ledger route placed before the Origin gate. Each must fail its test; the results go in the PR description.",
+      "guard": "test/console.test.mjs::with no ledger set the ledger view says so, never $0"
+    },
+    "C-03.2": {
+      "answer": "The tests build ledgers with the ledger's own initLedger, reserve and settle, so the fixture holds real SETTLED and RESERVED entries and real BUDGET_REFUSED alerts written by reserve, not hand-made JSON. The control for the oversized test is a malformed file: if the size check did not run first the answer would be LEDGER_MALFORMED, which the test rules out.",
+      "guard": "test/console.test.mjs::an oversized ledger is refused before it is read"
+    },
+    "C-03.3": {
+      "answer": "The tests start the real server with startConsole and hit /api/ledger over HTTP, and one test spawns the real bin/sakk.mjs ui with SAKK_HOME pointing at a config.json that names the ledger, so the path resolution the user runs is the path tested, not a direct function call.",
+      "guard": "test/console.test.mjs::sakk ui started elsewhere shows the ledger config.json points at"
+    },
+    "C-04.1": {
+      "answer": "Hostile size is bounded by refusals and counters, both asserted: a ledger over the view limit is refused by lstat size before any read; the entries list is cut to the page limit with entries_total and truncated:true reported; the alerts log is read through the existing 1 MiB tail with unreadable lines counted and truncated reported. Each bound has a test that checks the counter or the refusal code.",
+      "guard": "test/console.test.mjs::the entries list is capped and says when it is cut"
+    },
+    "C-05.1": {
+      "answer": "Each sentence added to specs/console/spec.md and contract.md names its test: the no-ledger note, the pass-through codes, the size refusal, the entries cap, the shared status object, the alerts list and the read-only promise each map to one named test in the spending ledger describe block.",
+      "guard": "test/console.test.mjs::refusals from the alerts log show newest first with the cap they were judged against"
+    },
+    "C-05.2": {
+      "answer": "The remaining and max-reservable figures shown are the ones sakk status prints, computed by the same function the reserve path uses (maxReservableUsd), and max reservable is 0 when the ledger is halted, needs reconciliation or is stale, so a figure on the page is one a reserve call would accept. The parity test pins this.",
+      "guard": "test/console.test.mjs::the ledger view and sakk status --json report the same numbers"
+    },
+    "C-06.1": {
+      "answer": "Every figure comes from the ledger file itself through readLedger and totalsOf, and alerts come from sakk-alerts.jsonl next to it; each card and table is labelled 'from the ledger' or 'from the alerts log', and nothing is taken from the gateway, from a production content app or from a model. The alerts log is labelled as shared by every ledger in the same folder.",
+      "guard": "test/console.test.mjs::refusals from the alerts log show newest first with the cap they were judged against"
+    },
+    "C-07.1": {
+      "answer": "Untrusted inputs: the ledger file and the alerts file (any process that can write the folder can put text in agent ids, call ids or reasons), the request path and query, and the Host and Origin headers. File text is returned as JSON and the page renders it only with textContent; the path and headers keep the existing token, Host and Origin gates, which run before the new route.",
+      "guard": "test/console.test.mjs::hostile ledger text is returned as data, never put into the page"
+    },
+    "C-07.2": {
+      "answer": "The new endpoint only reads; it cannot lift a halt, change the cap or clear reconciliation, so an agent that reaches the console gains nothing it could not get by reading the ledger file. The existing gates still apply: the token cookie, the Host check and the F-195 Origin gate run before dispatch, and the extended token and Origin tests cover /api/ledger.",
+      "guard": "test/console.test.mjs::reading the ledger view leaves the ledger and its folder untouched"
+    },
+    "C-08.1": {
+      "answer": "One name per thing: the JSON keys are the ones sakk status --json already publishes (cap_usd, settled_usd, outstanding_usd, committed_usd, remaining_usd, max_reservable_usd), not new aliases, and the page label is 'Spend ledger' everywhere; the ledger's own entry field names (callId, agentId, estimatedMaxUsd, actualUsd) are kept as they are in the file.",
+      "guard": "test/console.test.mjs::the ledger view and sakk status --json report the same numbers"
+    },
+    "C-09.1": {
+      "answer": "Assumed environment is macOS and Linux with a ledger on a local disk. The other cases are tested directly: no ledger set, a path that does not exist, a symlinked ledger, a fifo where the alerts file should be, and a console started from a different working directory reading the path from SAKK_HOME/config.json.",
+      "guard": "test/console.test.mjs::an alerts file that is not a regular file is skipped, never blocks"
+    },
+    "C-09.2": {
+      "answer": "It is shown where it really runs: the real bin/sakk.mjs ui is spawned from another directory with SAKK_HOME set and the test reads /api/ledger from it, and after merging I start the same command against the production content app drill ledger and take a screenshot of the page showing the 11 settled calls and the refusals.",
+      "guard": "test/console.test.mjs::sakk ui started elsewhere shows the ledger config.json points at"
+    },
+    "C-10.1": {
+      "answer": "Read-only is enforced in code, not by a rule sentence: ledgerData only calls readLedger, lstat and a read-only open of the alerts file, never reserve, settle, halt or any write; the test checks the ledger bytes, its mtime and the folder listing are unchanged after the request.",
+      "guard": "test/console.test.mjs::reading the ledger view leaves the ledger and its folder untouched"
+    },
+    "C-10.2": {
+      "answer": "The size refusal and the symlink refusal sit in the one function every route uses (ledgerData calls lstat then readLedger, which canonicalises the path), so the overview card and the ledger page cannot reach the file another way. There is no second reader of the ledger in console.mjs.",
+      "guard": "test/console.test.mjs::a symlinked ledger is refused, not read through the link"
+    },
+    "C-11.1": {
+      "answer": "The ledger path comes from the person who started the console (--ledger, SAKK_LEDGER_PATH or config.json under SAKK_HOME), never from the request: /api/ledger takes no query or body, so a page or an agent cannot point the console at another file. The alerts path is derived from the ledger path by the ledger's own exported alertsPathFor, not rebuilt in the console.",
+      "guard": "test/console.test.mjs::sakk ui started elsewhere shows the ledger config.json points at"
+    },
+    "C-15.1": {
+      "answer": "The real path runs: the tests use the real startConsole server and the real CLI, and the ledger fixtures are written by the ledger's own reserve and settle, including a BUDGET_REFUSED from a reserve over the cap. After merging, the same page is opened against the production content app drill ledger written by the LiteLLM gateway in the 10-30 drill.",
+      "guard": "test/console.test.mjs::the ledger view and sakk status --json report the same numbers"
+    }
+  }
+}
