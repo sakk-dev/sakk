@@ -428,7 +428,8 @@ describe('sakk ui console (M4): data and bounds', () => {
     const page = renderPage('n', false);
     for (const label of [
       'Overview',
-      'Spend ledger',
+      'Spend log',
+      'Blocked actions',
       'Guard rules',
       'Secret guard',
       'Agents',
@@ -511,6 +512,57 @@ describe('sakk ui console (M4): environment', () => {
 
   // The rendered check (every page at 829, 700 and 375 px wide, no sideways
   // scroll) was done in a browser; this pins the stylesheet rules that made it pass.
+  test('the console page follows the frozen v10 open-source layout (F-223)', () => {
+    const page = renderPage('n', true);
+    // the v10 shell: brand bar, side nav, main column, and the edition tag
+    for (const cls of ['"top"', '"shell"', '"side"', '"edtag oss"', '"crumb"', '"card kpi"'])
+      assert.ok(page.includes(cls), `v10 shell: ${cls}`);
+    assert.ok(page.includes('Open source · local'), 'the edition tag');
+    // the ledger is the Spend log under Overview, not a page of its own
+    assert.ok(!page.includes('Spend ledger'), 'no separate Spend ledger page');
+    assert.match(page, /calls:\s*"overview"|calls:"overview"/, 'Spend log sits under Overview');
+    assert.match(
+      page,
+      /blocks:\s*"overview"|blocks:"overview"/,
+      'Blocked actions sits under Overview',
+    );
+    // the 14-step tour, the stop wizard and the help popovers ship with the page
+    assert.ok(page.includes('sakk-tour10-oss'), 'the tour');
+    assert.ok(page.includes('Type STOP'), 'the stop wizard asks for STOP');
+    assert.ok(page.includes('data-help'), 'the ? help popovers');
+    // cells with no open-source data source say so instead of a number
+    assert.ok(page.includes('"—","Not in this version"'), 'a dash cell carries its reason');
+  });
+
+  test('the page sends the halt token from its address, not the HttpOnly cookie (F-223)', () => {
+    const page = renderPage('n', true);
+    // the cookie is HttpOnly, so script can never read it: the token must come from ?t=
+    assert.ok(
+      page.includes('new URLSearchParams(location.search).get("t")'),
+      'the token is read from the address',
+    );
+    assert.ok(!page.includes('document.cookie'), 'the page never reads cookies');
+    assert.ok(page.includes('"X-Sakk-Token":TOKEN'), 'the stop request carries the token header');
+    // without the flag the button explains how to enable it instead of failing
+    assert.ok(renderPage('n', false).includes('ALLOW_HALT=false'));
+    assert.ok(page.includes('ALLOW_HALT=true'));
+    assert.ok(
+      page.includes('sakk ui --allow-halt'),
+      'the read-only console says how to enable stop',
+    );
+  });
+
+  test('the page template has no inline style attributes, which the CSP would block (F-223)', () => {
+    const page = renderPage('n', true);
+    // style-src carries only the nonce, so a style="" attribute would be refused
+    assert.doesNotMatch(page, /\sstyle\s*=/i, 'no style="" attribute');
+    assert.ok(!page.includes('setAttribute("style"'), 'no style attribute set from script');
+    // every <style> and <script> carries the nonce
+    const tags = page.match(/<(style|script)\b[^>]*>/g) ?? [];
+    assert.ok(tags.length >= 2);
+    for (const t of tags) assert.match(t, /nonce="n"/, t);
+  });
+
   test('the stylesheet keeps long unbreakable text from widening the page (F-222)', () => {
     const css = renderPage('n', false).match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
     const rule = (sel) => {
@@ -1128,7 +1180,7 @@ describe('sakk ui console: spend ledger', () => {
     // the page only ever sets text, never markup
     const page = renderPage('n', false);
     assert.doesNotMatch(page, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
-    assert.ok(page.includes('ledger:async'), 'the ledger page is rendered by the same helpers');
+    assert.ok(page.includes('api("ledger")'), 'the ledger is read by the same page helpers');
   });
 
   test('sakk ui started elsewhere shows the ledger config.json points at', async () => {

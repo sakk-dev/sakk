@@ -7319,6 +7319,46 @@
       "distinct_from": {
         "F-220": "F-220 is two heavy test runs assumed to have the machine to themselves; F-222 is a page layout assumed to have a wide window."
       }
+    },
+    {
+      "id": "F-223",
+      "title": "The console was not built to the frozen v10 design its spec names, and its stop button always got 403",
+      "date": "2026-10-31",
+      "class": "C-05",
+      "introduced_in": "b821cf9",
+      "found_by": "human",
+      "areas": [
+        "src/console.mjs",
+        "test/console.test.mjs",
+        "specs/console/spec.md",
+        "specs/console/contract.md"
+      ],
+      "symptom": "the maintainer opened sakk ui against the production content app drill home and saw a page that did not match the frozen v10 open-source console: different shell and navigation, no Overview cards, no tour, help popovers, stop wizard or user menu, and the ledger as a page of its own. Separately, pressing the stop button with --allow-halt always failed with 403.",
+      "evidence": "Side by side in the app browser pane against sakk-console-prototype-v10/sakk-console-v10-en.html: the M4 page had none of the v10 shell (top bar, tabbed nav with Overview sub-pages, KPI cards, help popovers, 14-step tour, stop wizard, user menu). The page read the halt token from document.cookie, but the server sets sakk_t as HttpOnly, so the script read an empty string and every POST /api/halt was refused 403 by the token check.",
+      "direct_cause": "The M4 page was written from a list of pages and data in spec.md, not from the v10 file, and its halt request took the token from document.cookie, which an HttpOnly cookie never exposes to script.",
+      "root_cause": "The spec named the frozen v10 console as the target design and the contract said a click-through test verified it, but no test compared the page to v10 or pressed the stop button through the page, so a sentence about the design stood in for a check of it.",
+      "why": [
+        "Every console test read the page HTML or the JSON routes as text; none rendered the page or drove the stop button the way a person does, so the 403 and the missing v10 shell passed them all.",
+        "Contract row 2 named an adapted click-through test as its verifier, but that test was never written, and nothing checks that a contract row's verifier exists.",
+        "The halt route's own tests send the token header directly, so they prove the server accepts a correct token, not that the page can obtain one."
+      ],
+      "answer_failed": {
+        "qid": "C-05.1",
+        "why": "The spec sentence naming v10 as the target design and the contract row naming a click-through test were not read back against the code; no test failed without them."
+      },
+      "mechanism_gap": "No check ties the page to the frozen design or exercises the page's own stop request; the contract's Verified-by column is free text that is never resolved to a real test.",
+      "mechanism_upgrade": "test/console.test.mjs::the console page follows the frozen v10 open-source layout (F-223)",
+      "instance_fix": "this commit: src/console.mjs is rebuilt from the frozen v10 open-source file on real data (shell, nav with the Spend log and Blocked actions sub-pages, KPI cards, help popovers, 14-step tour, stop wizard, user menu, try box, exports, paging); cells without an open-source data source show a dash and the reason; the page sends the halt token from its address (?t=); no inline style attributes. Three tests pin the layout, the token source and the inline-style rule; each was shown to go red when its check is removed.",
+      "guard": "test/console.test.mjs::the page sends the halt token from its address, not the HttpOnly cookie (F-223)",
+      "sweep": "Clicked through every page, popover, modal, the tour, the stop wizard, the user menu, exports, search, filters and paging in the app browser pane on a fake home with the production content app drill ledger, at 829, 700 and 375 px, light and dark; then on an empty home with the console started without --allow-halt. Four smaller differences found on the way were fixed (stop tip omitted Codex, user menu was a toast, a stray separator in the try box, a doubled pager ellipsis). The layout tests read the template text; a rendered check needs a headless browser as a new dev dependency, which is the maintainer's call. Contract row 2's Verified-by text still names a test that does not exist; it is fixed in a separate small change.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-10"],
+      "es": ["ES-01"],
+      "distinct_from": {
+        "F-222": "F-222 is a layout that only broke in a narrow window; F-223 is the page not following the design at all and its stop request carrying no token."
+      }
     }
   ]
 }
