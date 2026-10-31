@@ -867,7 +867,12 @@ code{font-family:var(--font-num);font-size:12px;background:var(--sunk);border-ra
 .navsoon{margin-left:auto;font-size:10.5px;color:var(--muted);white-space:nowrap}
 .src{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
 code,.mono{font-family:var(--font-num);overflow-wrap:anywhere}.ml-auto{margin-left:auto}.mt4{margin-top:4px}.mt10{margin-top:10px}.mt14{margin-top:14px}.mb10{margin-bottom:10px}.mb14{margin-bottom:14px}.m10t{margin:10px 0 0}.m12t{margin:12px 0 0}.m0{margin:0}.m6-12{margin:6px 0 12px}.m0-10{margin:0 0 10px}.phtight{margin-top:-6px}.ink{color:var(--ink)}.v-bad{color:var(--bad)}.v-warn{color:var(--warn)}.tr{text-align:right}.bold{font-weight:600}.hide{display:none}.sw0{background:var(--m1)}.sw1{background:var(--m2)}.sw2{background:var(--m3)}.sw3{background:var(--ent)}.sw4{background:var(--faint)}.chart .f0{fill:var(--m1)}.chart .f1{fill:var(--m2)}.chart .f2{fill:var(--m3)}.chart .f3{fill:var(--ent)}.chart .f4{fill:var(--faint)}.chart text.bold{fill:var(--ink);font-weight:600}
-.wrap{white-space:normal;overflow-wrap:anywhere}</style>
+.wrap{white-space:normal;overflow-wrap:anywhere}
+/* F-224: a re-render must not move the nav: reserve the bold width of every label, and keep the page from shifting when a scrollbar appears */
+html{scrollbar-gutter:stable}
+.nav .lbl{display:inline-flex;flex-direction:column}
+.nav .lbl::after{content:attr(data-label);content:attr(data-label) / "";font-weight:500;height:0;overflow:hidden;visibility:hidden;pointer-events:none;user-select:none}
+.nav .navsoon,.nav .badge{font-weight:400}</style>
 </head>
 <body>
 <template id="icons">
@@ -1021,6 +1026,7 @@ function hookState(id){const cs=arr(S.d.agents&&S.d.agents.checks);const inst=cs
 const app=document.getElementById("app");
 function render(){
 closePop();
+const oldNav=app.querySelector("nav.side");const navX=oldNav?oldNav.scrollLeft:0,navY=oldNav?oldNav.scrollTop:0;
 app.textContent="";
 const h=D.halt;
 let state;
@@ -1037,7 +1043,7 @@ const logo=$("span",{class:"logo"},icon("logo"));
 const top=$("header",{class:"top"},$("span",{class:"brand"},logo,"Sakk",$("small",{text:"Console"})),$("span",{class:"edtag oss",text:"Open source · local"}),state,$("span",{class:"grow"}),tourb,stop,user);
 const side=$("nav",{class:"side","aria-label":"Main"});
 const cur=PARENT[S.page]||S.page;
-GROUPS.forEach(g=>{side.append($("div",{class:"grp",text:g[0]||" "}));g[1].forEach(p=>{const b=$("button",{class:"nav",type:"button","data-page":p,"aria-current":cur===p?"page":null},$("span",{class:"ic"},icon(ICON[p])),$("span",{text:TITLES[p]}));if(p==="upgrade")b.append($("span",{class:"navsoon",text:"coming soon"}));if(p==="overview"&&D.openN)b.append($("span",{class:"badge",text:String(D.openN)}));b.addEventListener("click",()=>go(p));side.append(b);});});
+GROUPS.forEach(g=>{side.append($("div",{class:"grp",text:g[0]||" "}));g[1].forEach(p=>{const b=$("button",{class:"nav",type:"button","data-page":p,"aria-current":cur===p?"page":null},$("span",{class:"ic"},icon(ICON[p])),$("span",{class:"lbl","data-label":TITLES[p],text:TITLES[p]}));if(p==="upgrade")b.append($("span",{class:"navsoon",text:"coming soon"}));if(p==="overview"&&D.openN)b.append($("span",{class:"badge",text:String(D.openN)}));b.addEventListener("click",()=>go(p));side.append(b);});});
 const main=$("main",{id:"main"});
 if(h){const v=btn("View","sm",mHalt);main.append($("div",{class:"haltbar",role:"status"},$("b",{text:"Stopped · "+h.scope}),$("span",{class:"grow",text:(h.by||"Someone")+" stopped agents at "+when(h.at)+". New requests are refused until a person runs sakk resume."}),v));}
 if(PARENT[S.page])main.append($("div",{class:"crumb"},linkish("Overview",()=>go("overview")),$("span",{text:" › "}),$("span",{text:TITLES[S.page]})));
@@ -1047,7 +1053,12 @@ main.append($("p",{class:"pagesub",text:SUBS[S.page]}));
 try{PAGES[S.page](main);}catch(e){main.append($("p",{class:"note warn",text:"This page could not be drawn: "+String(e&&e.message||e)}));}
 const fb=S.d.forbidden;if(fb&&fb.forbidden)main.append($("p",{class:"sub mt14",text:plural(fb.forbidden,"request")+" without the token were refused since the console started."}));
 app.append($("div",{class:"shell"},top,side,main));
+keepNav(side,navX,navY);
 }
+/* F-224: the whole shell is rebuilt on every action; put the nav back where it was and bring the chosen item into view by scrolling the nav only, never the page */
+function keepNav(side,x,y){side.scrollLeft=x;side.scrollTop=y;const a=side.querySelector('[aria-current="page"]');if(!a)return;const n=side.getBoundingClientRect(),r=a.getBoundingClientRect(),pad=12;
+if(side.scrollWidth>side.clientWidth){if(r.left<n.left)side.scrollLeft-=n.left-r.left+pad;else if(r.right>n.right)side.scrollLeft+=r.right-n.right+pad;}
+if(side.scrollHeight>side.clientHeight){if(r.top<n.top)side.scrollTop-=n.top-r.top+pad;else if(r.bottom>n.bottom)side.scrollTop+=r.bottom-n.bottom+pad;}}
 function go(p,opts){S.page=p;if(opts)Object.assign(S[p==="calls"?"calls":"blocks"],opts);try{history.replaceState(null,"","#"+p);}catch(_){}render();window.scrollTo(0,0);}
 
 /* ---------- overview ---------- */

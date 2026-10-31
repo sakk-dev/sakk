@@ -580,6 +580,105 @@ describe('sakk ui console (M4): environment', () => {
     }
     assert.match(rule('.card'), /overflow-x:auto/, '.card');
   });
+
+  test('the nav keeps its scroll and the chosen item in view across a re-render (F-224)', () => {
+    const page = renderPage('n', true);
+    const r0 = page.indexOf('function render(){');
+    const body = page.slice(r0, page.indexOf('\n}', r0));
+    const save = body.indexOf('scrollLeft');
+    assert.ok(
+      save > 0 && save < body.indexOf('app.textContent=""'),
+      'the old nav scroll is read before the shell is wiped',
+    );
+    assert.ok(
+      body.indexOf('keepNav(side,navX,navY)') > body.indexOf('app.append('),
+      'the nav is put back after the new shell is in the page',
+    );
+    const k0 = page.indexOf('function keepNav(');
+    const src = page.slice(k0, page.indexOf('\nfunction go(', k0));
+    assert.ok(
+      k0 > 0 && !/scrollIntoView|scrollTo\(/.test(src),
+      'keepNav moves the nav only, never the page',
+    );
+    const keepNav = new Function(src + '\nreturn keepNav;')();
+    // a 829 px strip whose items run to 1200 px; item = [from, to] in strip coordinates
+    const strip = (item) => {
+      const side = {
+        scrollLeft: 0,
+        scrollTop: 0,
+        scrollWidth: 1200,
+        clientWidth: 829,
+        scrollHeight: 40,
+        clientHeight: 40,
+      };
+      side.getBoundingClientRect = () => ({ left: 0, right: 829, top: 0, bottom: 40 });
+      const a = {
+        getBoundingClientRect: () => ({
+          left: item[0] - side.scrollLeft,
+          right: item[1] - side.scrollLeft,
+          top: 4,
+          bottom: 36,
+        }),
+      };
+      side.querySelector = () => (item ? a : null);
+      return side;
+    };
+    const kept = strip([300, 400]);
+    keepNav(kept, 157.5, 0);
+    assert.equal(
+      kept.scrollLeft,
+      157.5,
+      'an item already in view keeps the scroll the person left',
+    );
+    const right = strip([900, 980]);
+    keepNav(right, 0, 0);
+    assert.ok(right.scrollLeft + 829 >= 980, 'an item past the right edge is scrolled into view');
+    const left = strip([10, 90]);
+    keepNav(left, 300, 0);
+    assert.ok(left.scrollLeft <= 10, 'an item past the left edge is scrolled into view');
+    const none = strip(null);
+    keepNav(none, 42, 0);
+    assert.equal(none.scrollLeft, 42, 'with no chosen item the scroll is only restored');
+  });
+
+  test('nav labels reserve their bold width so the items do not shift (F-224)', () => {
+    const page = renderPage('n', false);
+    assert.ok(
+      page.includes('$("span",{class:"lbl","data-label":TITLES[p],text:TITLES[p]})'),
+      'every nav label carries its own text in data-label',
+    );
+    const css = page.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
+    const rule = (sel) => {
+      const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const m = css.match(new RegExp('(?:^|\\})\\s*' + esc + '\\{([^}]*)\\}', 'm'));
+      return m ? m[1] : '';
+    };
+    const bold = rule('.nav[aria-current="page"]').match(/font-weight:(\d+)/)[1];
+    const ghost = rule('.nav .lbl::after');
+    assert.match(ghost, /content:attr\(data-label\)/);
+    assert.match(
+      ghost,
+      new RegExp('font-weight:' + bold),
+      'the hidden copy is as bold as the chosen item',
+    );
+    assert.match(ghost, /height:0/);
+    assert.match(ghost, /visibility:hidden/);
+    assert.match(
+      rule('.nav .lbl'),
+      /flex-direction:column/,
+      'the label is as wide as its bold copy',
+    );
+    assert.match(
+      rule('html'),
+      /scrollbar-gutter:stable/,
+      'a scrollbar appearing does not shift the page',
+    );
+    assert.match(
+      rule('.nav .navsoon,.nav .badge'),
+      /font-weight:400/,
+      'the coming-soon tag and the count badge keep one weight whether or not their item is chosen',
+    );
+  });
 });
 
 describe('sakk ui console (M4): typed refusals', () => {

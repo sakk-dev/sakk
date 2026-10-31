@@ -7359,6 +7359,42 @@
       "distinct_from": {
         "F-222": "F-222 is a layout that only broke in a narrow window; F-223 is the page not following the design at all and its stop request carrying no token."
       }
+    },
+    {
+      "id": "F-224",
+      "title": "In a narrow console window every click snapped the nav strip back to its start and pushed the chosen page out of view",
+      "date": "2026-11-01",
+      "class": "C-09",
+      "introduced_in": "f7ed38b",
+      "found_by": "human",
+      "areas": ["src/console.mjs", "test/console.test.mjs"],
+      "symptom": "the maintainer said the console page shook. In the desktop app's browser pane (829 px wide) the left nav becomes a horizontal strip at the top; after scrolling the strip right and clicking Model prices or Enterprise, the whole strip jumped back to its start and the item just chosen was pushed off the right edge. Each click also moved the other nav items sideways by a fraction of a pixel.",
+      "evidence": "Measured in the pane on the drill home: strip scrollLeft 157.5 before the click, 0 after; the chosen item's right edge at 976 px against a 829 px window. Idle, page switches, typing and the pager showed no layout shift and no DOM change. The active nav item is drawn at weight 500 and the others at 400, so the item labels changed width by 0.3 to 1.5 px on every click; the frozen v10 file has the same rule.",
+      "direct_cause": "render() wipes the app and builds a new nav on every action, and a new element starts at scroll 0; nothing put the strip back or brought the chosen item into view. The bolder active label was wider than its normal-weight width, so the items after it moved.",
+      "root_cause": "The full re-render was assumed harmless because the page itself keeps its scroll, but the nav is its own scrolling box whose position lives on the element that gets thrown away; the F-223 click-through tried narrow widths only with the strip at its start, never scrolled.",
+      "why": [
+        "The F-223 sweep clicked every page at 829, 700 and 375 px, but always from a strip at scroll 0, where the reset is invisible.",
+        "No test reads the nav's scroll before and after a render, so the reset passed every check.",
+        "The weight change comes from the frozen design and was copied as is, without measuring what it does to its neighbours."
+      ],
+      "answer_failed": {
+        "qid": "C-09.1",
+        "why": "The F-223 answer listed the narrow widths tried, not the states a person reaches there; the scrolled strip was never one of them."
+      },
+      "mechanism_gap": "The console has no rendered click test, so a state that only exists after a person scrolls (the strip's own position) is checked by nothing; the tests read the template text.",
+      "mechanism_upgrade": "test/console.test.mjs::the nav keeps its scroll and the chosen item in view across a re-render (F-224)",
+      "instance_fix": "this commit: render() reads the old nav's scrollLeft and scrollTop before wiping the shell and keepNav() puts them back after, then scrolls the nav only (never the page) when the chosen item is outside it; every nav label carries a hidden bold copy of itself (data-label, ::after) so its width no longer changes when it is chosen; html gets scrollbar-gutter:stable so a page tall enough to need a scrollbar does not shift sideways; the Enterprise item's coming-soon tag and the count badges keep weight 400 so they do not widen when their item is chosen (the first re-measure caught Enterprise growing 1.27 px). Two tests: one runs keepNav against a stub strip (kept, past the right edge, past the left edge, no chosen item), one checks the label reserve, the tag weight and the gutter; dropping the save, the in-view step, data-label, the gutter or the tag weight rule, or adding scrollIntoView, each turns a test red.",
+      "guard": "test/console.test.mjs::nav labels reserve their bold width so the items do not shift (F-224)",
+      "sweep": "Every scrolling container rebuilt by render() was checked: the nav (strip below 860 px, side column above) is the only one; the page scroll is kept by the browser for in-page actions and reset on purpose by go(); popovers and the tour are rebuilt from their own state. Re-measured in the pane on every page: at 829 px with the strip scrolled, the scroll is kept and only moves to bring Overview or Enterprise into view; at 375 px the same; in the side column at 1280x400 (118 px of vertical nav scroll) the same. Item sizes were identical on all seven pages at each size, and the page never scrolled sideways. The bold label shift was fixed for every nav item by one CSS rule.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "distinct_from": {
+        "F-222": "F-222 is content wider than the window making the page scroll sideways; F-224 is the nav's own scroll being thrown away on every re-render.",
+        "F-223": "F-223 is the page not following the frozen design; F-224 is a state the rebuilt page loses between clicks."
+      }
     }
   ]
 }
