@@ -15,6 +15,18 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (f) => readFileSync(join(ROOT, f), 'utf8');
 const pkg = JSON.parse(read('package.json'));
+// The user-facing docs added for the open-source release (C-05.2): the
+// command checks that read README.md read these too.
+const RELEASE_DOCS = [
+  'README.zh-CN.md',
+  'docs/FAQ.md',
+  'docs/FAQ.zh-CN.md',
+  'docs/compare.md',
+  'docs/ROADMAP.md',
+  'docs/tutorial/en.md',
+  'docs/tutorial/zh-CN.md',
+  'llms.txt',
+];
 
 /** The real packed file list, from `npm pack --dry-run --json`. */
 function packedFiles() {
@@ -111,7 +123,8 @@ describe('release packaging (M5)', () => {
     const real = cliCommands();
     const PLANNED = new Set(['settle']); // the one command still on the roadmap (cap/spend/prices now ship)
     // scan only command contexts (backticks / fenced blocks), never prose
-    const docs = codeSpans(read('README.md')) + '\n' + codeSpans(read('CHANGELOG.md'));
+    const docFiles = ['README.md', 'CHANGELOG.md', ...RELEASE_DOCS];
+    const docs = docFiles.map((f) => codeSpans(read(f))).join('\n');
     const named = [...new Set([...docs.matchAll(/\bsakk ([a-z][a-z-]+)/g)].map((m) => m[1]))];
     const unknown = named.filter((c) => !real.has(c) && !PLANNED.has(c));
     assert.deepEqual(
@@ -124,7 +137,7 @@ describe('release packaging (M5)', () => {
     // (The first version of this test let M2's "`sakk cap set` ..." pass,
     // because PLANNED excused the name wherever it appeared.)
     const unmarked = [];
-    for (const f of ['README.md', 'CHANGELOG.md'])
+    for (const f of docFiles)
       for (const block of docBlocks(read(f)))
         for (const m of block.matchAll(/`[^`\n]*\bsakk ([a-z][a-z-]+)[^`\n]*`/g))
           if (PLANNED.has(m[1]) && !real.has(m[1]) && !NOT_SHIPPED.test(block))
@@ -492,15 +505,18 @@ describe('release honesty (V2 line D)', () => {
     // a retracted command while recording its retraction.
     const GOVERNANCE = new Set(['docs/DECISIONS.md', 'docs/V2-BACKLOG.md', 'docs/RULES.md']);
     const mdFiles = [
-      'README.md',
-      'CHANGELOG.md',
-      ...readdirSync(join(ROOT, 'docs'))
-        .filter((f) => f.endsWith('.md'))
-        .map((f) => `docs/${f}`),
-      ...readdirSync(join(ROOT, 'specs'), { recursive: true })
-        .map(String)
-        .filter((f) => f.endsWith('.md'))
-        .map((f) => `specs/${f}`),
+      ...new Set([
+        'README.md',
+        'CHANGELOG.md',
+        ...RELEASE_DOCS,
+        ...readdirSync(join(ROOT, 'docs'))
+          .filter((f) => f.endsWith('.md'))
+          .map((f) => `docs/${f}`),
+        ...readdirSync(join(ROOT, 'specs'), { recursive: true })
+          .map(String)
+          .filter((f) => f.endsWith('.md'))
+          .map((f) => `specs/${f}`),
+      ]),
     ].filter((f) => !GOVERNANCE.has(f));
     const srcFiles = [
       'bin/sakk.mjs',

@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "branch": "docs/release-bundle",
+  "answers": {
+    "C-05.1": {
+      "answer": "Every new user-facing doc (README.zh-CN, the tutorials, the FAQ, the comparison page) is added to the lists the claims tests scan, so a refusal code, file name or security word they cite that the code lacks turns those tests red; the tutorial commands were run on a fake home and copied from the real output.",
+      "guard": "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code"
+    },
+    "C-05.2": {
+      "answer": "Each command a reader is told to run is a real sakk subcommand: the README command check is extended to the Chinese README and the tutorials, and every exit code or figure quoted was taken from a run on a fake home, not written from memory.",
+      "guard": "test/release.test.mjs::every command the README shows is a real sakk subcommand"
+    },
+    "C-06.1": {
+      "answer": "The docs keep the product's own source labels: spend is from local logs, a stop is self-declared, a halt name is typed not signed; the security-word scan covers the new docs so none of them upgrades a self-declared record into a signature.",
+      "guard": "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism"
+    },
+    "C-03.1": {
+      "answer": "The extended scans are checked red first: a planted unknown code, a missing file name and the word signed in a copy of a new doc each make the matching claims test fail, and removing the plant makes it pass again.",
+      "guard": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository"
+    },
+    "C-03.2": {
+      "answer": "The control is the existing assertion that every scanned file exists and has text; the new docs are added to that same list, so a doc that went missing or empty fails rather than leaving the scan reading nothing.",
+      "guard": "test/claims-are-checked.test.mjs::every scanned file exists and has text"
+    },
+    "C-03.3": {
+      "answer": "The checks read the doc text itself and resolve each cited code against the source tree and each command against the CLI's real subcommand list, so a doc cannot pass on paperwork while naming something that does not exist.",
+      "guard": "test/release.test.mjs::every command the README shows is a real sakk subcommand"
+    },
+    "C-01.1": {
+      "answer": "A doc listed for scanning that is absent fails the scan instead of being skipped, because the scanned-file assertion reads every listed path and requires text; nothing in this branch treats a missing doc as a pass.",
+      "guard": "test/claims-are-checked.test.mjs::every scanned file exists and has text"
+    },
+    "C-01.2": {
+      "answer": "Deleting a new doc from the tree turns the scanned-file test red because it stays in the scan list; deleting it from the list instead is a visible diff to the test file that review reads, not a silent pass.",
+      "guard": "test/claims-are-checked.test.mjs::every scanned file exists and has text"
+    },
+    "C-10.1": {
+      "answer": "Doc accuracy is not left to rule text: the claims and release tests run in npm test, the commit gate and CI, and they read the new docs, so a wrong code, file name or command blocks the merge.",
+      "guard": "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code"
+    },
+    "C-10.2": {
+      "answer": "Another route is a doc added later outside the lists; the file-name scan reads every top-level docs markdown by directory listing, and the tutorial folder is added the same way, so a new file there is scanned without anyone editing a list.",
+      "guard": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository"
+    },
+    "C-02.1": {
+      "answer": "The README's codes, commands and file names are not hand-checked lists: the claims and release tests enumerate every backticked code, file name and sakk command from the doc text and resolve each against the source tree and the CLI's own subcommand table.",
+      "guard": "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code"
+    },
+    "C-02.2": {
+      "answer": "The removed regulated policy appeared in three README places (the deny-default example, the reference-policies sentence, the case-packs roadmap line); all three were changed, and the Chinese README mirrors the same three, so no copy still names it.",
+      "guard": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository"
+    },
+    "C-08.1": {
+      "answer": "The Chinese README is a second name for the same promises; it repeats the English commands and refusal codes byte for byte, and the README command check is to be extended to it so the two cannot drift into describing different commands.",
+      "guard": "test/release.test.mjs::every command the README shows is a real sakk subcommand"
+    },
+    "C-07.1": {
+      "answer": "Facts about other projects (ccusage, Claude Code's /cost, Microsoft's toolkit) are third-party input, so compare.md cites each one's public page and dates the check rather than trusting memory; nothing from those pages is run or copied as instructions.",
+      "guard": "none: facts about third-party projects cannot be checked offline; compare.md dates and links each one so a reader can recheck it"
+    },
+    "C-07.2": {
+      "answer": "Person-only steps stay person-only in the docs: lifting or raising the cap, resume, reconcile and unlock are still described as needing a person at a terminal, and the comparison says the cap is an estimate from local logs the agent can reach.",
+      "guard": "test/release.test.mjs::P-ACC-003 the README documents the five REQ-P04 limits, the confirmation limit and the five limits of the core"
+    },
+    "C-04.1": {
+      "answer": "The README, Chinese README, comparison page and llms.txt are static text; they add no code that reads input, so there is no new loop or parse to bound. The claims tests that read them walk a fixed list of files once each.",
+      "guard": "none: a docs-only change adds no code path that reads hostile input, so there is no new work to bound"
+    },
+    "C-15.1": {
+      "answer": "The commands the docs show were run through the real sakk binary on a fake home (sakk try on a force push and on cat .env both returned deny), and the release test resolves each README command against the CLI's real subcommand table, not a copy.",
+      "guard": "test/release.test.mjs::every command the README shows is a real sakk subcommand"
+    },
+    "C-11.1": {
+      "answer": "A README sentence is a promise to users, and only a person editing the docs can write it; the limits section that bounds those promises is pinned by the P-ACC-003 anchor and kept unchanged, and the enterprise roadmap boxes stay unchecked so no doc claims a shipped control.",
+      "guard": "test/release.test.mjs::P-ACC-003 the README documents the five REQ-P04 limits, the confirmation limit and the five limits of the core"
+    },
+    "C-09.1": {
+      "answer": "The docs assume a reader on GitHub or npm with links resolved from the repository top; every link is relative to that top, and the file-name scan checks each backticked file a reader is pointed to exists in the repository.",
+      "guard": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository"
+    },
+    "C-09.2": {
+      "answer": "These files are read on GitHub, on the npm package page and by AI search crawlers that fetch llms.txt from the repository top; the question-shaped headings and llms.txt only help where a crawler reads them, which cannot be shown from this machine.",
+      "guard": "none: whether a search engine or crawler picks up the headings and llms.txt can only be seen after the repository is public"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+# Sakk
+
+> Sakk stops an AI coding agent before it overspends, leaks a secret or force-pushes. It is a fail-closed pre-tool-use guard for Claude Code, Cursor and Codex, a daily spend cap for Claude Code (an estimate from local logs, not the invoice), a kill switch, a secret scanner for git, and a spend ledger for your own agent code. Local, zero dependencies, Node 20+ on macOS or Linux, Apache-2.0.
+
+Install and check it in a project: `npm install -g sakk`, then `sakk guard install claude-code` (or `cursor`, `codex`), then `sakk doctor`. Set a daily cap with `sakk cap set 5 --zone Asia/Dubai`; see today's spend with `sakk spend`. Stop every guarded agent with `sakk halt --by <name>` and lift it with `sakk resume --by <name>`.
+
+Sakk is a report-and-stop tool, not an agent platform: ccusage and Claude Code's `/cost` report spend; Sakk refuses the next call. Names given with `--by` are self-declared, and the cap stops the next call, not the one that crosses it.
+
+## Docs
+
+- [README](README.md): what Sakk does, install, the guard, the daily cap, secret scanning, the ledger API, the kill switch, MCP, the roadmap and the limits of the open core
+- [Tutorial](docs/tutorial/en.md): first run, step by step
+- [FAQ](docs/FAQ.md): common questions
+- [Comparison](docs/compare.md): Sakk next to ccusage, Claude Code's /cost and Microsoft's Agent Governance Toolkit, with sources and what Sakk does not do
+- [Agent guard](docs/GUARD.md): how the hook decides, the default policy, and what is known open in v1
+- [Spend and the daily cap](docs/SPEND.md): where the spend figure comes from, the price table, and the cap's limits
+- [Roadmap](docs/ROADMAP.md): what comes next and what each step depends on
+
+## Optional
+
+- [README in Simplified Chinese](README.zh-CN.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Auditor replay](docs/AUDITOR_REPLAY.md): what an auditor can check on a clean machine without trusting us
+- [Changelog](CHANGELOG.md)
+- [Security policy](SECURITY.md)
+- [Contributing](CONTRIBUTING.md): Apache-2.0, contributions under the Developer Certificate of Origin
