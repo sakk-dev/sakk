@@ -7741,7 +7741,7 @@
       "mechanism_gap": "No test read the version a tutorial says it ran with, the folders its blocks pack into, the provenance line in its prices output, or the sign-in facts the FAQ states, against package.json, the docs' own mkdir lines, bin/sakk.mjs, prices/snapshot.json and src/console-login.mjs.",
       "mechanism_upgrade": "test/release.test.mjs::F-234 each tutorial names the release it was run with, and the package is that release",
       "instance_fix": "this commit: both tutorials re-run on 0.3.0 and re-copied (version, tarball name, mkdir -p ~/pack before npm pack, the provenance line, new timestamps, an optional username-and-password section); both FAQs answer the sign-in question with --set-password, the read-only rule, the session limits, the lockout and --clear-password; both READMEs list --set-password and --clear-password. Three tests pin the version, the pack folder, and the prices and sign-in facts.",
-      "guard": "test/release.test.mjs::F-234 each tutorial names the release it was run with, and the package is that release",
+      "guard": "test/release.test.mjs::F-234 the FAQ login answer and the tutorial prices output match what the CLI prints",
       "sweep": "Every fenced block in README.md and the release docs was read for --pack-destination (only the two tutorials pack into a folder); every Sakk version a doc names was grepped (CHANGELOG and package.json are pinned by F-111); every FAQ answer that says not yet or planned was read against the shipped commands, and only the sign-in answer was stale; the tutorials' other recorded outputs matched the 0.3.0 run apart from timestamps.",
       "sweep_status": "done",
       "status": "fixed",
