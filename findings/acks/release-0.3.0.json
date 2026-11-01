@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "branch": "release/0.3.0",
+  "answers": {
+    "C-05.1": {
+      "answer": "Every sentence this branch changes in the tutorials, FAQ and README was read back against a real run of the packed 0.3.0 build in a throwaway home (scratchpad run.log); the new F-234 tests pin the version named, the pack folder step, the prices provenance line and the FAQ sign-in answer to the code.",
+      "guard": "test/release.test.mjs::F-234 each tutorial names the release it was run with, and the package is that release"
+    },
+    "C-05.2": {
+      "answer": "The tutorial's commands are now ones that work when a reader types them: npm pack on npm 11 needs its destination folder, so the step creates it first, and the test refuses any --pack-destination in the docs without a mkdir -p of the same folder earlier in that block.",
+      "guard": "test/release.test.mjs::F-234 every npm pack --pack-destination folder in the docs is created first"
+    },
+    "C-01.1": {
+      "answer": "If a tutorial stops naming a version, or names none in its install output, the version test fails instead of passing on nothing found; an empty match list for the run line, the tarball name or the --version output is itself an assertion failure.",
+      "guard": "test/release.test.mjs::F-234 each tutorial names the release it was run with, and the package is that release"
+    },
+    "C-01.2": {
+      "answer": "Deleting the pack-folder line or the provenance line from a tutorial makes its test red, and each test also asserts it found at least one --pack-destination and one prices block, so removing the thing it reads cannot turn it into a silent pass.",
+      "guard": "test/release.test.mjs::F-234 every npm pack --pack-destination folder in the docs is created first"
+    },
+    "C-02.1": {
+      "answer": "The repository-name check no longer trusts a four-file list: it reads every file npm packs plus the README and release docs, finds each github.com/<owner>/sakk with one pattern, and requires the owner to be sakk-dev, so a file added later is covered without editing a list.",
+      "guard": "test/release.test.mjs::F-235 every github.com/<owner>/sakk the package or docs name is the public repository"
+    },
+    "C-02.2": {
+      "answer": "The same stale-version rule applies to both tutorials, both FAQs and both manifests; all of them change together and the tests read the English and Chinese tutorial alike, so fixing only the English page would still fail on the Chinese one.",
+      "guard": "test/release.test.mjs::F-234 each tutorial names the release it was run with, and the package is that release"
+    },
+    "C-03.1": {
+      "answer": "Each new test was run against the unfixed text first and went red for its own reason: the 0.2.0 tutorial for the version test, the missing mkdir for the pack test, the missing provenance line and the old FAQ answer for the output test, the private owner for the repo test.",
+      "guard": "test/release.test.mjs::F-234 the FAQ login answer and the tutorial prices output match what the CLI prints"
+    },
+    "C-03.2": {
+      "answer": "The output test reads the provenance label from bin/sakk.mjs itself, not a copy typed into the test, so a renamed label in the CLI fails it; the control is that the same test also proves the label string is found in the CLI source before comparing.",
+      "guard": "test/release.test.mjs::F-234 the FAQ login answer and the tutorial prices output match what the CLI prints"
+    },
+    "C-03.3": {
+      "answer": "The version tests tie the docs to package.json, which release.yml checks against the pushed tag, so the docs cannot claim a run of a release the tag does not publish; a bumped package with stale docs fails the commit gate, not just a checklist.",
+      "guard": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release"
+    },
+    "C-04.1": {
+      "answer": "The new checks only read a fixed set of repository text files once with anchored patterns that cannot backtrack badly; there is no hostile input, no subprocess beyond the existing npm pack dry run and no loop that grows with anything but file length.",
+      "guard": "none: text scans of fixed repository files; the bound is the file size and npm pack --dry-run already runs in this suite"
+    },
+    "C-06.1": {
+      "answer": "The tutorial's outputs come from one real run of the packed 0.3.0 tarball in a fake home, saved in the scratchpad run log; where a timestamp or hash differs per run the page says it was masked rather than presenting it as a fixed value.",
+      "guard": "test/release.test.mjs::F-234 the FAQ login answer and the tutorial prices output match what the CLI prints"
+    },
+    "C-07.1": {
+      "answer": "No new input crosses a trust boundary in this branch: the only code change is a static text string in the console page naming the public discussions address; the tests read repository files the repository owns, never agent or operator text.",
+      "guard": "test/release.test.mjs::F-235 every github.com/<owner>/sakk the package or docs name is the public repository"
+    },
+    "C-07.2": {
+      "answer": "Publishing stays a person's step: the v0.3.0 tag push that publishes to npm and the repository going public are the maintainer's clicks, and release.yml refuses a private repository or a tag that differs from package.json, so this branch cannot clear that gate itself.",
+      "guard": "test/open-source-release.test.mjs::the release publishes only from a public repository, on a tag matching package.json, with provenance"
+    },
+    "C-08.1": {
+      "answer": "The repository has one public name after this branch: the console no longer shows the private sakk-dev address beside the sakk-dev one, and the test refuses any second owner name for the sakk repository anywhere in the package or its docs.",
+      "guard": "test/release.test.mjs::F-235 every github.com/<owner>/sakk the package or docs name is the public repository"
+    },
+    "C-09.1": {
+      "answer": "The tutorial assumed an npm that creates the pack folder; the run on npm 11.11.1 showed it does not, so the step now makes the folder itself, which works on older npm too. The tests resolve files from their own location, not the cwd.",
+      "guard": "test/release.test.mjs::F-234 every npm pack --pack-destination folder in the docs is created first"
+    },
+    "C-09.2": {
+      "answer": "The tutorial was run where a reader runs it: a fresh home, a git project folder, npm's global prefix in that home and the packed tarball, not the repository checkout, so the outputs show what an installed sakk really prints there.",
+      "guard": "test/release.test.mjs::F-234 the FAQ login answer and the tutorial prices output match what the CLI prints"
+    },
+    "C-10.1": {
+      "answer": "Re-running the tutorial before a release was only a habit; the version test now fails the commit gate whenever package.json moves past the version the tutorials say they were run with, so a release cannot ship without someone redoing the run.",
+      "guard": "test/release.test.mjs::F-234 each tutorial names the release it was run with, and the package is that release"
+    },
+    "C-10.2": {
+      "answer": "The tests run inside npm test, which the pre-commit hook, the pre-push hook and CI all run for every author and agent; release.yml runs npm test again on the tagged commit before it publishes, so no route from edit to npm skips them.",
+      "guard": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release"
+    },
+    "C-11.1": {
+      "answer": "The version written in the tutorials means the release the outputs were captured from, and only the person who reruns the tutorial should change it; the test ties it to package.json so a bump alone cannot quietly relabel old outputs as new.",
+      "guard": "test/release.test.mjs::F-234 each tutorial names the release it was run with, and the package is that release"
+    },
+    "C-15.1": {
+      "answer": "The captured outputs come from the real path: npm pack of this tree, npm install -g of that tarball into a fresh prefix, and the installed sakk binary run under expect for the terminal prompts, not the repository's bin run from the checkout.",
+      "guard": "test/release.test.mjs::F-234 the FAQ login answer and the tutorial prices output match what the CLI prints"
+    }
+  }
+}

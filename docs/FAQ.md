@@ -96,7 +96,7 @@ From your local logs, as an estimate:
 2. It multiplies the tokens by a price table. The table that ships with
    Sakk, `prices/snapshot.json`, is trimmed from LiteLLM's public price list
    (MIT, by Berri AI); its `source` block records the URL, commit, SHA-256
-   and the date it was fetched (2026-10-28 for 0.2.0). `sakk prices` shows
+   and the date it was fetched (2026-10-28 for 0.3.0). `sakk prices` shows
    the table in use.
 3. The day follows your time zone, or the one you set with
    `sakk cap set <usd> --zone <IANA>`. A log line dated in the future, or
@@ -147,6 +147,13 @@ edition.
 
 ## Does the console have a login?
 
-Not yet. Today the console is protected by a random token in the address
-`sakk ui` prints, and it listens on 127.0.0.1 only, so treat the address like
-a password. A basic password login is planned for the console.
+A basic one, and it is optional. By default the console is protected by a
+random token in the address `sakk ui` prints, and it listens on 127.0.0.1
+only, so treat the address like a password. `sakk ui --set-password` adds a
+username and a password (15 or more characters, asked at a terminal); after a
+restart of `sakk ui`, `http://127.0.0.1:<port>/` asks for them, and the token
+address still works. A password sign-in can read the console but not stop an
+agent: stopping still needs `--allow-halt` and the token address. A session
+ends after 30 minutes idle or 8 hours. After five wrong tries within 15
+minutes, sign-in refuses until that window has passed. `sakk ui --clear-password` turns it off. SSO, team accounts and
+named approvers are not in the open-source edition.

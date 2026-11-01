@@ -7709,6 +7709,84 @@
         "F-104": "F-104 is the docs promising away the ledger lock's crash windows, cross-host sharing and macOS fsync; F-233 is the halt and cap sentences about which tool calls reach the hook. No lock or ledger code is involved.",
         "F-198": "F-198 is secret-rule counts and the shipped-feature checklist disagreeing across README, spec and code; F-233 is the halt and cap sentences about which tool calls reach the hook. No rule count or checklist is involved."
       }
+    },
+    {
+      "id": "F-234",
+      "title": "The 0.3.0 docs described an older build: the tutorials named 0.2.0, their npm pack step failed on npm 11, their prices output lacked the provenance line, and the FAQ said the console has no sign-in",
+      "date": "2026-11-01",
+      "class": "C-05",
+      "introduced_in": "397723d",
+      "found_by": "T0",
+      "areas": [
+        "docs/tutorial/en.md",
+        "docs/tutorial/zh-CN.md",
+        "docs/FAQ.md",
+        "docs/FAQ.zh-CN.md",
+        "README.md",
+        "README.zh-CN.md",
+        "test/release.test.mjs"
+      ],
+      "symptom": "The English and Chinese tutorials said every command was run with Sakk 0.2.0 and showed sakk-0.2.0.tgz; on npm 11.11.1 their step 2 stopped with ENOENT because npm pack does not create the --pack-destination folder; their sakk prices output had no provenance line, which sakk prices prints since F-232; and both FAQs answered the console sign-in question with not yet, although sakk ui --set-password shipped in #48. The READMEs did not list --set-password or --clear-password.",
+      "evidence": "Found while re-running both tutorials end to end on the packed 0.3.0 build in a fake home on 2026-11-01: npm pack exited with ENOENT on the missing ~/pack folder, and the recorded output was compared line by line with the tutorial text and with the FAQ sign-in answers.",
+      "direct_cause": "The tutorials and FAQs were written against the 0.2.0 run before the sign-in and the provenance line landed, and nothing compared them with the build they ship beside.",
+      "why": [
+        "The tutorials are a copied run, so every change to a command's output or to npm's behaviour makes them stale without touching them.",
+        "The sign-in (#48) and the provenance line (F-232) changed what the CLI prints after the tutorials were recorded, and their tests covered the CLI, not the tutorials or the FAQ.",
+        "The release tests check that the commands the docs name exist, not the version a recorded run names, the folders it uses, or what it says a command prints."
+      ],
+      "root_cause": "The recorded-run docs and the FAQ sign-in answer had no test tying them to the package version, the CLI output or the sign-in limits the code enforces, so they could drift from the release without anything turning red.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "mechanism_gap": "No test read the version a tutorial says it ran with, the folders its blocks pack into, the provenance line in its prices output, or the sign-in facts the FAQ states, against package.json, the docs' own mkdir lines, bin/sakk.mjs, prices/snapshot.json and src/console-login.mjs.",
+      "mechanism_upgrade": "test/release.test.mjs::F-234 each tutorial names the release it was run with, and the package is that release",
+      "instance_fix": "this commit: both tutorials re-run on 0.3.0 and re-copied (version, tarball name, mkdir -p ~/pack before npm pack, the provenance line, new timestamps, an optional username-and-password section); both FAQs answer the sign-in question with --set-password, the read-only rule, the session limits, the lockout and --clear-password; both READMEs list --set-password and --clear-password. Three tests pin the version, the pack folder, and the prices and sign-in facts.",
+      "guard": "test/release.test.mjs::F-234 the FAQ login answer and the tutorial prices output match what the CLI prints",
+      "sweep": "Every fenced block in README.md and the release docs was read for --pack-destination (only the two tutorials pack into a folder); every Sakk version a doc names was grepped (CHANGELOG and package.json are pinned by F-111); every FAQ answer that says not yet or planned was read against the shipped commands, and only the sign-in answer was stale; the tutorials' other recorded outputs matched the 0.3.0 run apart from timestamps.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-232": "F-232 is sakk prices not printing the provenance line the README promised; F-234 is the tutorials' copied prices output missing that line after F-232 added it, plus the stale version, pack step and FAQ answer.",
+        "F-233": "F-233 is the halt and cap sentences claiming every tool call is denied; F-234 is the tutorials and FAQ describing an older build. No tool coverage claim is involved.",
+        "F-196": "F-196 is sakk init claiming a guard it never installs into the agent's config; F-234 is the tutorials and FAQ out of date with the 0.3.0 build. Both touch test/release.test.mjs, for different checks.",
+        "F-104": "F-104 is the docs promising away the ledger lock's crash windows, cross-host sharing and macOS fsync; F-234 is the tutorials' version, pack step and prices output and the FAQ sign-in answer. No lock is involved.",
+        "F-197": "F-197 is the README's plugin install command that Claude Code rejects; F-234 adds the --set-password and --clear-password lines to the README's sakk ui block. No plugin install is involved.",
+        "F-198": "F-198 is secret-rule counts disagreeing across README, spec and code; F-234 is the tutorials and FAQ describing an older build and the README's sakk ui lines. No rule count is involved."
+      }
+    },
+    {
+      "id": "F-235",
+      "title": "The repository-identity test checked a hand-picked list of four files, so the console's Enterprise panel still linked the private repository's discussions",
+      "date": "2026-11-01",
+      "class": "C-02",
+      "introduced_in": "f7ed38b",
+      "found_by": "T0",
+      "areas": ["src/console.mjs", "test/release.test.mjs"],
+      "symptom": "The console's \"Enterprise · coming soon\" panel told readers to ask at github.com/sakk-dev/sakk/discussions, the private repository, which every user of the public package would reach as a 404. The repository-identity test passed because it read only package.json, the two plugin manifests and SECURITY.md.",
+      "evidence": "Found on 2026-11-01 while grepping the 0.3.0 tree for every github.com/<owner>/sakk before the public-repository cut: src/console.mjs line 1488 was the only shipped link with an owner other than sakk-dev, and test/open-source-release.test.mjs repositoryProblems() lists four files.",
+      "direct_cause": "The v10 console rebuild (F-223) copied the panel text with the private owner, and the identity test never read src/console.mjs.",
+      "why": [
+        "The repository move to sakk-dev was checked with a test that names the files where a repository URL was expected, not every file that ships.",
+        "The console builds its pages from strings in src/console.mjs, a file nobody expected to hold a repository link.",
+        "A list of files stands in for the rule that nothing the package ships or the release docs say names the private repository."
+      ],
+      "root_cause": "The rule (no shipped or documented link names a repository other than the public one) was enforced by a list of four files, so a link in any other file was never checked.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "mechanism_gap": "The identity check enumerated files by hand instead of reading the set npm pack ships plus the release docs.",
+      "mechanism_upgrade": "test/release.test.mjs::F-235 every github.com/<owner>/sakk the package or docs name is the public repository",
+      "instance_fix": "this commit: the console panel names github.com/sakk-dev/sakk/discussions; a new test reads every file npm pack ships plus README.md and the release docs and refuses any github.com/<owner>/sakk whose owner is not sakk-dev, and checks package.json names sakk-dev.",
+      "guard": "test/release.test.mjs::F-235 every github.com/<owner>/sakk the package or docs name is the public repository",
+      "sweep": "git grep for github.com/<owner>/sakk over the whole tree outside findings/: only src/console.mjs named another owner; findings/ is not shipped and is scrubbed by the public-repository filter. The other file sets in test/open-source-release.test.mjs were read: the licence scan already reads every tracked file through git ls-files, and only the repository-identity test used a hand list.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-194": "F-194 is secrets being redacted only in a decision's command field, with paths and scopes shown raw in the console; F-235 is a static repository link in the console's Enterprise panel. No secret or redaction is involved.",
+        "F-189": "F-189 is the installed guard matcher missing Grep and Glob; F-235 is the repository-identity test's hand-picked file list. Different list, different rule.",
+        "F-122": "F-122 is a secret-scan gap in src/secret-scan.mjs; F-235 is a repository link in src/console.mjs and the test that missed it. No secret scanning is involved.",
+        "F-185": "F-185 is a command classification gap in src/classify.mjs; F-235 is a repository link and the file list that missed it. No classification is involved."
+      }
     }
   ]
 }

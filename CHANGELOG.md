@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-01
+
+### Fixed — the tutorial and FAQ match the 0.3.0 build (F-234)
+
+- Both tutorials were re-run on the packed 0.3.0 tarball in a throwaway
+  home and say so. Step 2 now creates the `--pack-destination` folder first:
+  npm 11 does not, and `npm pack` stopped with `ENOENT`. The `sakk prices`
+  output shows the provenance line, and step 9 shows the optional sign-in.
+- The FAQ no longer says the console has no sign-in; it describes
+  `--set-password`, what a password session may do and how it ends.
+- New tests in `test/release.test.mjs` tie the version each tutorial names
+  to `package.json`, require a `mkdir -p` before every `--pack-destination`
+  in the docs, and compare the tutorials' prices block and the FAQ's sign-in
+  answer with what the CLI prints.
+
+### Fixed — the console names the public repository (F-235)
+
+- The console's "Enterprise · coming soon" panel named the private repository's
+  discussions. It now names `github.com/sakk-dev/sakk/discussions`. The repository-name test
+  read four hand-picked files; it now reads every file `npm pack` ships plus
+  the README and release docs, and refuses any owner but `sakk-dev`.
+
 ### Added — optional username and password sign-in for `sakk ui`
 
 - `sakk ui --set-password` asks at a terminal, without echo, for a username
@@ -1146,5 +1168,6 @@ against the running code:
   that halts all paid calls, atomic lock + temp-rename writes, alert JSONL.
 - 23-test ledger suite including a real two-process race.
 
-[Unreleased]: https://github.com/sakk-dev/sakk/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/sakk-dev/sakk/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/sakk-dev/sakk/compare/v0.1.0...v0.3.0
 [0.1.0]: https://github.com/sakk-dev/sakk/releases/tag/v0.1.0

@@ -99,7 +99,13 @@ recent decisions, the policy with a try box, and secret blocks:
 
 ```bash
 sakk ui        # prints http://127.0.0.1:<port>/?t=… — read-only; Ctrl+C to stop
+sakk ui --set-password     # optional: a username and password for http://127.0.0.1:<port>/
+sakk ui --clear-password   # back to the token address only
 ```
+
+A password sign-in reads the console; stopping an agent still needs
+`--allow-halt` and the token address. Restart `sakk ui` after setting or
+clearing it.
 
 ## How do I stop Claude Code from spending too much?
 
