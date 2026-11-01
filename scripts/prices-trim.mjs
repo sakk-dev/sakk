@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Builds prices/snapshot.json (sakk-prices.v1) from LiteLLM's
 // model_prices_and_context_window.json (MIT). Keeps the chat models of the

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Testing standard §5 (L1 must-run: invariant fuzz) for the three L1
 // modules that only had example tests: case packs, secret scanning and the

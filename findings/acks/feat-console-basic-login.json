@@ -92,6 +92,18 @@
           "guard": "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget"
         }
       ]
+    },
+    "C-14.1": {
+      "answer": "The sign-in code adds no batch or run loop. The DCO checker and the release and scorecard workflows reach this branch only by merging main after pull request #47; there an unsigned commit is named on its own and the run carries on to the next one.",
+      "guard": "test/dco-check.test.mjs::an unsigned commit, or one signed off by someone else, fails and is named"
+    },
+    "C-13.1": {
+      "answer": "The login branch adds no detection rule of its own. The DCO and licence scans that arrive from main through #47 keep their tests on both sides there: a commit signed off by its author passes, and an unsigned or foreign sign-off fails.",
+      "guard": "test/dco-check.test.mjs::every commit signed off by its author passes"
+    },
+    "C-12.1": {
+      "answer": "The secret scanner files come from main with only their SPDX header line changed by #47; no pattern or exemption changes on this branch, so a fiction token beside a real secret still leaves the real one reported.",
+      "guard": "test/secret-guard.test.mjs::a fiction token does not exempt a real secret beside it"
     }
   }
 }

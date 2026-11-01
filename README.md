@@ -468,7 +468,7 @@ planned for it.
 
 ## License
 
-AGPL-3.0-only. Shipped third-party notices are in [NOTICE](NOTICE). Commercial licenses (closed-source embedding, enterprise features) are available — open an issue or contact the author. Contributions require a CLA (see CONTRIBUTING.md).
+Apache-2.0 — see [LICENSE](LICENSE). Shipped third-party notices are in [NOTICE](NOTICE). Contributions are taken under the same licence with a DCO sign-off (`git commit -s`), no CLA — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Enterprise edition — team console, SSO, named approvers, hash-chained ledger: coming soon (the unchecked roadmap items above).
 

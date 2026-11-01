@@ -31,6 +31,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An unknown argument or flag of `sakk ui` is no longer echoed back in the
   error, so a password typed on the command line does not land on the screen.
 
+### Changed — open-source release: Apache-2.0, DCO and fork-safe CI
+
+- **Licence: Apache-2.0** (was AGPL-3.0-only). `LICENSE` is the verbatim
+  Apache License 2.0; `NOTICE` names the copyright holder, "The Sakk
+  authors", and keeps the MIT notices of the derived material; every SPDX
+  header, `package.json` and the plugin manifest say `Apache-2.0`.
+- Contributions are taken under the Developer Certificate of Origin 1.1 —
+  a `git commit -s` sign-off on every commit — instead of a CLA. CI checks
+  each pull request commit with the base branch's copy of
+  `scripts/dco-check.mjs` and names any commit without its author's
+  sign-off.
+- `npm install` runs no lifecycle script: the `prepare` hook is gone.
+  `npm run hooks` opts a clone in to the git hooks and the repository's
+  Claude Code hooks (`.claude/settings.json` now runs them only in a clone
+  that opted in).
+- A pull request from a fork skips only the self-evolution and
+  base-checker jobs; tests, format, the DCO check and the drill still run.
+  The adversarial review never runs for a fork and shows as skipped.
+- The repository moves to `github.com/sakk-dev/sakk` (`package.json`,
+  plugin manifest, `SECURITY.md`).
+
+### Added — release and supply-chain workflows
+
+- `release.yml`: a pushed `v*` tag publishes to npm by trusted publishing
+  (OIDC, no stored token) with provenance; it refuses on a private
+  repository, a tag that is not `v` + the package version, or an npm older
+  than 11.5.1.
+- `scorecard.yml`: a weekly OpenSSF Scorecard run, skipped while the
+  repository is private.
+- `.claude-plugin/marketplace.json`: the repository is its own Claude Code
+  plugin marketplace (`/plugin marketplace add sakk-dev/sakk`).
+- `SECURITY.md` points to GitHub private vulnerability reporting and lists
+  the supported versions.
+
 ### Changed — regulator-specific packs and policy leave the public repository
 
 - Two example case packs written for a fictional authority,

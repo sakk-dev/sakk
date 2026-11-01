@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // `sakk guard install|uninstall <agent>` and `sakk doctor` (specs/guard/spec.md,
 // "Install" and "Doctor"). Install merges into the agent's own hook config:

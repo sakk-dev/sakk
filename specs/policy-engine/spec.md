@@ -95,7 +95,7 @@ as cases/traces. Shape (illustrative, the schema is the contract):
 
 ## Open kernel / closed packs
 
-Kernel (this repo, AGPL): loader+validator+hasher, `decide`, `logDecision`,
+Kernel (this repo, Apache-2.0): loader+validator+hasher, `decide`, `logDecision`,
 schema, reference policies (`permissive-dev`, `guard-default` as
 examples). Enterprise (closed): regulator-specific policy packs, approval
 service behind `require_approval`, pack update subscription. The seam is the

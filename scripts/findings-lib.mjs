@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Shared by `npm run brief`, the git hooks, the Claude Code edit hook and
 // the CI check (docs/SELF_EVOLUTION.md): which questions a change must

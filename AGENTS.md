@@ -12,7 +12,7 @@ non-negotiables live in CONSTITUTION.md; the full rulebook in docs/RULES.md.
    each one (40+ characters, no copy-paste between answers). Until then a
    Claude Code edit of those files — or a shell command that may write — is
    blocked (PreToolUse hook), a commit is
-   refused (git pre-commit hook, installed by `npm install`), and CI fails
+   refused (git pre-commit hook, turned on by `npm run hooks`), and CI fails
    the branch. Codex and people meet the same git hooks and CI.
 3. Every problem you see goes to the ledger: `npm run inbox -- add "<what>"`
    (a red `npm run audit` step does this itself), then log it in

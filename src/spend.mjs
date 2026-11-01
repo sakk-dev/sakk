@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Spend from local logs (specs/spend/spec.md). Reads what Claude Code already
 // writes — ~/.claude/projects/**/*.jsonl — incrementally, and prices it.

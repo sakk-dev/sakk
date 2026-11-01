@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // T3 — MCP protocol torture. K `sakk mcp` servers share ONE ledger (and a
 // policy); each is driven by a seeded hostile client mixing valid tool

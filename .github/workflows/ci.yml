@@ -4,6 +4,11 @@ name: ci
 # pull request is checked by the pre-push hook only. A newer push to a pull
 # request cancels its older run; a run on main has its own group (run_id) and
 # is never cancelled. test/ci-cost.test.mjs holds the budget.
+#
+# A pull request from a fork skips only the self-evolution and base-checker
+# jobs, which judge this repository's own findings-ledger answers (opt-in for
+# outside contributors, CONTRIBUTING.md); tests, format, the DCO check and the
+# drill run for every pull request.
 on:
   push:
     branches: [main]
@@ -32,8 +37,8 @@ jobs:
     # fix names its finding — re-checked here so --no-verify does not get past.
     # Pull requests only: the range starts at the PR's own base. A push has no
     # base, and main charged a stacked branch with its parents' files (F-128);
-    # a push to main was an empty range anyway.
-    if: github.event_name == 'pull_request'
+    # a push to main was an empty range anyway. Not for a fork's pull request.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -63,8 +68,9 @@ jobs:
     # is a SEPARATE job (F-158): run in the self-evolution job after the PR's
     # own checker, the PR's checker could move HEAD or write $GITHUB_ENV first
     # and leave the base checker an empty range to pass. A fresh runner has no
-    # PR code run in it, so its checkout and HEAD are untampered.
-    if: github.event_name == 'pull_request'
+    # PR code run in it, so its checkout and HEAD are untampered. Not for a
+    # fork's pull request.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       pull-requests: read
@@ -126,11 +132,33 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the DCO step reads every commit of the pull request
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - run: npm run format:check
       - run: npm run lint
+      # every commit of a pull request, a fork's too, is signed off by its
+      # author (DCO 1.1, CONTRIBUTING.md). A step in this job, not a job of
+      # its own, so it adds no runner-minutes. The base's copy of the script
+      # judges, so a branch cannot loosen it; the commits are read as data.
+      - name: every commit is signed off by its author (DCO; the base's check judges)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          base="${BASE_REF:?the DCO check needs the pull request base}"
+          git fetch -q origin "$base"
+          dco="$RUNNER_TEMP/dco-check.mjs"
+          if git cat-file -e "origin/$base:scripts/dco-check.mjs" 2>/dev/null; then
+            git show "origin/$base:scripts/dco-check.mjs" > "$dco"
+          else
+            echo "::notice::the base predates the DCO check; this branch's own scripts/dco-check.mjs judges"
+            cp scripts/dco-check.mjs "$dco"
+          fi
+          node "$dco" --range "origin/$base..${HEAD_SHA:?the DCO check needs the pull request head}"
   drill:
     runs-on: ubuntu-latest
     timeout-minutes: 30

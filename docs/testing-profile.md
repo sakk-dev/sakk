@@ -92,8 +92,8 @@ secret-scan context matrix and the ledger-write classification.
 
 Enforced at three points (standard §15.6): the Claude Code edit hook
 blocks an edit until `findings/acks/<branch>.json` answers the questions
-for that file; the git pre-commit and commit-msg hooks (installed by
-`npm install`) refuse unanswered changes, an untriaged inbox and fix
+for that file; the git pre-commit and commit-msg hooks (turned on by
+`npm run hooks`) refuse unanswered changes, an untriaged inbox and fix
 commits that name no finding; the CI `self-evolution` job re-checks the
 whole branch. Every finding belongs to one class in `findings/classes.json`
 (§15.7). Design: `docs/SELF_EVOLUTION.md`.

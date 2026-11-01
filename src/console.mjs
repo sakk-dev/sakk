@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // `sakk ui` — a local, read-only console (open-source v1, M4; specs/console/).
 // It listens on loopback only, gates every request on a fresh 128-bit token,
