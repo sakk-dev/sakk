@@ -997,11 +997,22 @@ if (cmd === 'init') {
     process.exit(1);
   }
   const models = Object.entries(loaded.table.models ?? loaded.table);
+  // The table's own claim about where its prices came from; an operator's
+  // prices.json can say anything here, so it is shown, never trusted.
+  const src = loaded.table.source;
+  let provenance = null;
+  if (src !== null && typeof src === 'object' && !Array.isArray(src)) {
+    const kept = {};
+    for (const k of ['url', 'commit', 'sha256', 'fetchedAt', 'license'])
+      if (typeof src[k] === 'string') kept[k] = src[k];
+    if (Object.keys(kept).length) provenance = kept;
+  }
   if (flag('json'))
     console.log(
       JSON.stringify(
         {
           source: loaded.path,
+          provenance,
           approximate: Boolean(loaded.table.approximate),
           models: Object.fromEntries(models),
         },
@@ -1013,6 +1024,17 @@ if (cmd === 'init') {
     console.log(
       `prices: ${models.length} model(s) from ${loaded.path}${loaded.table.approximate ? ' (approximate)' : ''}`,
     );
+    if (provenance) {
+      const p = provenance;
+      const parts = [
+        p.url && display(p.url),
+        p.commit && `at commit ${display(p.commit)}`,
+        p.sha256 && `sha256 ${display(p.sha256)}`,
+        p.fetchedAt && `fetched ${display(p.fetchedAt)}`,
+        p.license && display(p.license),
+      ].filter(Boolean);
+      console.log(`  provenance (as recorded in the table): ${parts.join(', ')}`);
+    } else console.log('  provenance: not recorded in this table');
     for (const [id, m] of models) console.log(`  ${display(id)}  in ${m.input} / out ${m.output}`);
   }
 } else if (cmd === 'ui') {

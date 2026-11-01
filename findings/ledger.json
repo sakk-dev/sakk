@@ -7633,6 +7633,41 @@
       "distinct_from": {
         "F-195": "F-195 is the console writing the index on a GET; its fix made the page read-only, and F-231 is the uncounted day that read-only page then showed as $0."
       }
+    },
+    {
+      "id": "F-232",
+      "title": "The README said sakk prices prints the price table's provenance; it printed only the file path",
+      "date": "2026-11-01",
+      "class": "C-05",
+      "introduced_in": "1868d79",
+      "found_by": "T0",
+      "areas": ["bin/sakk.mjs", "test/spend-cli.test.mjs", "README.md"],
+      "symptom": "README promises that the snapshot's source block records the exact commit and SHA-256 it was built from and that sakk prices prints that provenance; sakk prices printed the model count and the path of prices/snapshot.json, and --json gave source as that path, with no commit, sha256 or fetch date.",
+      "evidence": "Found while writing the 2026-11-01 tutorials on a fake home: sakk prices and sakk prices --json were run and compared with the README sentence; neither output carried any field of the snapshot's source block.",
+      "direct_cause": "The prices subcommand in bin/sakk.mjs printed loaded.path and the model list and never read loaded.table.source.",
+      "why": [
+        "F-169 added the source block to the snapshot and, in the same change, the README sentence that sakk prices prints it.",
+        "The CLI was not changed in that commit, and the existing prices test asserted only the model list and that source names snapshot.json.",
+        "The claims tests check that codes, file names and commands the docs cite exist, not what a command is said to print."
+      ],
+      "root_cause": "A doc sentence about a command's output had no test behind it, so the promise and the output could differ without anything turning red.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "mechanism_gap": "The claims tests resolve cited names against the code but cannot read a sentence about what a command prints; such a sentence needs its own test, and none was written for this one.",
+      "mechanism_upgrade": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date",
+      "instance_fix": "this commit: sakk prices prints a provenance line (url, commit, sha256, fetch date, licence, each through display()) marked as recorded in the table, or says it is not recorded; --json keeps source as the path and adds provenance (string fields only, or null). A malformed source block does not fail the command.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date",
+      "sweep": "Every README and docs/SPEND.md sentence about what sakk spend, sakk cap or sakk prices prints was grepped and matched to a test: the sakk spend 'says how many' sentences (backdated, future-dated, unreadable) are pinned by the F-204/F-205 tests in test/spend-cli.test.mjs, and the cap confirm and refusal by the F-161 tests; only the prices provenance sentence had none. The console's /api/prices reports the path only and no doc promises more there.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-169": "F-169 is the stale snapshot itself and its regeneration; F-232 is the README sentence that change added about the CLI output, which the CLI never kept.",
+        "F-104": "F-104 is the spend lock's crash windows, cross-host sharing and fsync promises; F-232 is a read-only CLI line about the price table's recorded source, with no lock, write or durability involved.",
+        "F-196": "F-196 is sakk init claiming a guard it never installs into the agent's config; F-232 is sakk prices omitting a provenance line the README promised. Different command, different output, no install step.",
+        "F-197": "F-197 is the README's plugin install command that Claude Code rejects; F-232 is the README's sentence about sakk prices output, which the CLI did not print. Different sentence, different command.",
+        "F-198": "F-198 is secret-rule counts that disagree across README, spec and code; F-232 is the price-table provenance line. No rule counts or secret rules are involved."
+      }
     }
   ]
 }

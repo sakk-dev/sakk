@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Agents page says when the Claude Code hook was installed fail-open
   (F-227).
 - Open items counts the rows it links to; a halt no longer adds one (F-228).
+- `sakk prices` prints the provenance its price table records (source URL,
+  commit, SHA-256, fetch date, licence), or says none is recorded, as the
+  README already promised; `--json` adds a `provenance` object (or `null`)
+  and keeps `source` as the table's path (F-232).
+- A deny by a policy rule reads "A person changes the policy." as its own
+  sentence before the dispute line.
 - `sakk ledger export --out` says "entry" or "entries" instead of printing
   `entr(y|ies)` (F-225).
 - The overview's Today card shows "—" and "run sakk spend to count it" for
