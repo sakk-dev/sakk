@@ -733,6 +733,8 @@ describe('the hook as an agent runs it', () => {
     const why = reasonOf('claude-code', r.out);
     assert.match(why, /rule shell-destructive/);
     assert.match(why, /A person changes the policy/);
+    // two sentences, not a comma splice before the dispute line
+    assert.match(why, /A person changes the policy\. If this is wrong/);
     assert.match(why, /do not route around it/);
   });
   test('each agent gets its own answer shape', () => {
