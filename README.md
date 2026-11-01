@@ -9,9 +9,7 @@ force-pushes: a fail-closed guard for Claude Code, Cursor and Codex, a daily
 spend cap for Claude Code, a kill switch, and a spend ledger for your own agent
 code. Local, zero dependencies, Apache-2.0.
 
-![Sakk refusing a guarded agent's force push](docs/media/sakk-block.gif)
-
-Demo: [English video (MP4)](docs/media/sakk-demo-en.mp4) · 中文演示视频（即将上传 B 站）
+![Sakk's policy check allowing ls -la and denying rm -rf ~](docs/media/sakk-block.gif)
 
 ```bash
 npm install -g sakk && sakk guard install claude-code && sakk doctor   # run in your project
@@ -78,13 +76,23 @@ command by what it spells out — see the limits at the end of this page and
 [docs/GUARD.md](docs/GUARD.md).
 
 Or load Sakk into Claude Code as a **plugin** — it bundles the same hook,
-fail-closed (`onFailure: block`). In v1 this loads it for one session; a
-persistent `/plugin install` needs a marketplace file, planned for v2:
+fail-closed (`onFailure: block`), and sees every tool. The repository is its
+own plugin marketplace, so inside Claude Code:
+
+```text
+/plugin marketplace add sakk-dev/sakk
+/plugin install sakk@sakk
+```
+
+To load it for one session from the npm package instead:
 
 ```bash
 npm install -g sakk
 claude --plugin-dir "$(npm root -g)/sakk"
 ```
+
+No automated test can drive Claude Code, so both routes are checked by hand
+(owner run P-INS-008 in [docs/V2-BACKLOG.md](docs/V2-BACKLOG.md)).
 
 See what the guard did in a local, read-only console — today's spend and cap,
 recent decisions, the policy with a try box, and secret blocks:
@@ -341,7 +349,11 @@ npx sakk resume --by alice                          # lift it (named)
 
 `sakk init` records the ledger's absolute path in `~/.sakk/config.json`,
 so a halt also stops an agent behind the installed guard: every tool call
-except reading the repository is denied until `sakk resume`. Running `init`
+the guard sees, except reading the repository, is denied until `sakk resume`.
+For Claude Code, `sakk guard install claude-code` routes shell commands, file
+reads and edits, Monitor and MCP tools through the guard; Glob, Grep,
+WebFetch, WebSearch and subagents (Task) do not pass through it. Loaded as a
+plugin, the guard sees every tool. Running `init`
 again wires an existing ledger without touching it, and never replaces a
 different recorded path — it says which ledger the hook still reads.
 Because it decides where the hook reads halts from, the guard denies the

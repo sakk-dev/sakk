@@ -7668,6 +7668,47 @@
         "F-197": "F-197 is the README's plugin install command that Claude Code rejects; F-232 is the README's sentence about sakk prices output, which the CLI did not print. Different sentence, different command.",
         "F-198": "F-198 is secret-rule counts that disagree across README, spec and code; F-232 is the price-table provenance line. No rule counts or secret rules are involved."
       }
+    },
+    {
+      "id": "F-233",
+      "title": "The docs said a halt or a reached cap denies every tool call; the installed Claude Code guard never sees Glob, Grep, WebFetch, WebSearch or Task",
+      "date": "2026-11-01",
+      "class": "C-05",
+      "introduced_in": "unknown",
+      "found_by": "review",
+      "areas": [
+        "README.md",
+        "README.zh-CN.md",
+        "docs/GUARD.md",
+        "docs/SPEND.md",
+        "test/claims-are-checked.test.mjs"
+      ],
+      "symptom": "README, docs/GUARD.md and docs/SPEND.md said that once halted, or at the spend cap, every tool call except reading the repository is denied. The matcher sakk guard install claude-code writes routes only Bash, PowerShell, Monitor, Read, Edit, Write, MultiEdit, NotebookEdit and mcp tools to the hook, so Glob, Grep, WebFetch, WebSearch and Task still ran during a halt; only the plugin's '*' matcher matched the sentence.",
+      "evidence": "Found while checking the README claims for the 2026-11-01 release bundle: CLAUDE_MATCHER in src/guard-install.mjs was compared with the halt sentence and with the matcher in .claude-plugin/plugin.json; the tools outside CLAUDE_MATCHER never reach src/hook.mjs, where the halt check runs.",
+      "direct_cause": "The halt and cap sentences described what src/hook.mjs does with a call it receives and did not say which calls each install route sends it.",
+      "why": [
+        "The halt check in src/hook.mjs denies every call it sees except a repository read, and the sentence was written from that code.",
+        "Which tools reach the hook is set separately, by the matcher in src/guard-install.mjs or plugin.json, and that list is shorter for the installed route (F-189).",
+        "The claims tests check that codes, file names and commands exist, not that a sentence about coverage matches the matcher."
+      ],
+      "root_cause": "A coverage claim in the docs had no test tying it to the matcher that decides coverage, so the two could differ without anything turning red.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "mechanism_gap": "No check compared a doc sentence about which tool calls are denied with CLAUDE_MATCHER or the plugin matcher.",
+      "mechanism_upgrade": "test/claims-are-checked.test.mjs::tools the docs say skip the installed guard are outside its matcher; the plugin matches every tool",
+      "instance_fix": "this commit: the README (English and Chinese), docs/GUARD.md and docs/SPEND.md say every tool call the guard sees is denied, and name the tools the installed Claude Code route does not send it; a second test refuses the unqualified sentence coming back.",
+      "guard": "test/claims-are-checked.test.mjs::tools the docs say skip the installed guard are outside its matcher; the plugin matches every tool",
+      "sweep": "Every user-facing doc was grepped for every, each or all tool call(s) and the Chinese equivalents: README halt line, docs/GUARD.md intro and halt line, docs/SPEND.md cap line fixed; docs/FAQ.md and FAQ.zh-CN describe the plugin's '*' matcher, which is accurate; docs/adr/0004 and specs/guard/spec.md describe the hook's entry point for calls it receives, and specs/spend/spec.md states the hook's rule for a call it receives, which is what the code does. Widening the installed matcher is F-189's fix, deferred to V2.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-189": "F-189 is the installed matcher missing Grep and Glob so a search reads secret files, deferred to V2; F-233 is the halt and cap sentences claiming every tool call is denied, a doc claim fixed now without changing the matcher.",
+        "F-232": "F-232 is the README promising a provenance line sakk prices never printed; F-233 is the halt and cap coverage sentences, about which tools reach the hook. Different sentence, different code path.",
+        "F-197": "F-197 is the README's plugin install command that Claude Code rejects; F-233 is the halt and cap sentences about tool coverage. No install command is involved.",
+        "F-104": "F-104 is the docs promising away the ledger lock's crash windows, cross-host sharing and macOS fsync; F-233 is the halt and cap sentences about which tool calls reach the hook. No lock or ledger code is involved.",
+        "F-198": "F-198 is secret-rule counts and the shipped-feature checklist disagreeing across README, spec and code; F-233 is the halt and cap sentences about which tool calls reach the hook. No rule count or checklist is involved."
+      }
     }
   ]
 }

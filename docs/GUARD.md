@@ -1,7 +1,10 @@
 # The agent guard
 
-Sakk checks every tool call your coding agent makes — Claude Code, Cursor or
-Codex — before it runs. Destructive commands are denied, risky ones ask you
+Sakk checks the tool calls your coding agent routes to it — Claude Code, Cursor
+or Codex — before they run. For Claude Code, `sakk guard install claude-code`
+routes shell commands, file reads and edits, Monitor and MCP tools; Glob, Grep,
+WebFetch, WebSearch and subagents (Task) do not pass through it (F-189). Loaded
+as a plugin, the guard sees every tool. Destructive commands are denied, risky ones ask you
 first, and everything else runs as before. Each decision is written to a log
 you can read and export.
 
@@ -92,8 +95,8 @@ are. The agent name is what the installed config passes — self-declared.
 
 `sakk init` records the ledger's absolute path in `~/.sakk/config.json`
 (`{"ledgerPath": "…"}`); the hook reads it, then `SAKK_LEDGER_PATH`. Once
-someone runs `sakk halt`, every tool call is denied except reading the
-repository, until a person runs `sakk resume`. The CLI resolves the ledger
+someone runs `sakk halt`, every tool call the guard sees is denied except
+reading the repository, until a person runs `sakk resume`. The CLI resolves the ledger
 by the same rule, so the halt lands where the hook looks. The guard denies
 the agent `sakk init`: run by an agent, it could point the hook at a ledger
 the agent writes, and a halt held elsewhere would stop applying.

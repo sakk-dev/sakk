@@ -95,7 +95,8 @@ provider outage block every merge; a core change is set to auto-merge
 only after its review has been read. Cost: $0, no new plan or service.
 
 To apply a changed file, update the live ruleset with
-`gh api -X PUT repos/sakk-dev/sakk/rulesets/26185740 --input .github/rulesets/main.json`.
+`gh api -X PUT repos/sakk-dev/sakk/rulesets/<id> --input .github/rulesets/main.json`,
+with `<id>` from `gh api repos/sakk-dev/sakk/rulesets`.
 Changing the setting stays the owner's call (GitHub, "About rulesets",
 https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets).
 

@@ -41,6 +41,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SECURITY.md` points to GitHub private vulnerability reporting and lists
   the supported versions.
 
+### Added — documentation for the open-source release
+
+- `README.zh-CN.md`, a Chinese README kept in step with `README.md`.
+- `docs/FAQ.md` and `docs/FAQ.zh-CN.md`; `docs/tutorial/en.md` and
+  `docs/tutorial/zh-CN.md`, a first-run tutorial in each language.
+- `docs/ROADMAP.md`, the public form of `docs/V2-BACKLOG.md`, and
+  `docs/compare.md`, how Sakk sits beside neighbouring tools.
+- Architecture decision records 0001–0014 under `docs/adr/`, and
+  retrospectives under `docs/retros/`.
+- `llms.txt`, a plain index of the docs for AI search tools.
+- `docs/media/sakk-block.gif`: the console's guard page allowing a listing
+  and denying a home-folder delete.
+- The README names both plugin routes: the repository's own marketplace,
+  and `--plugin-dir` from the npm package.
+- GUARD.md, SPEND.md and the README no longer say a halt or a reached cap
+  denies every tool call: the Claude Code install routes shell, file,
+  Monitor and MCP tools, not Glob, Grep, WebFetch, WebSearch or Task
+  (F-189); loaded as a plugin, the guard sees every tool (F-233).
+
 ### Changed — regulator-specific packs and policy leave the public repository
 
 - Two example case packs written for a fictional authority,

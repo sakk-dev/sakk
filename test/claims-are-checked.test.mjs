@@ -379,3 +379,52 @@ describe('a stopwatch never stands in for a work bound (findings F-62)', () => {
     assert.ok(checked >= 6, `detector saw only ${checked} wall-clock bounds — pattern drifted?`);
   });
 });
+
+describe('the halt and cap sentences match the installed matcher (F-233)', () => {
+  // README said a halt denies "every tool call except reading the repository";
+  // the matcher `sakk guard install claude-code` writes never routes Glob, Grep,
+  // WebFetch, WebSearch or Task to the hook, so those ran during a halt.
+  const OUTSIDE = ['Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task'];
+  const INSIDE = ['Bash', 'Read', 'Edit', 'Write', 'Monitor', 'mcp__server__tool'];
+  const PARAS = [
+    ['README.md', /every tool call\s+the guard sees[\s\S]*?Running `init`/],
+    ['README.zh-CN.md', /守卫能看到的每一次工具调用[\s\S]*?再次运行 `init`/],
+    ['docs/GUARD.md', /routes to it[\s\S]*?sees every tool\./],
+  ];
+
+  test('tools the docs say skip the installed guard are outside its matcher; the plugin matches every tool', async () => {
+    const { CLAUDE_MATCHER } = await import('../src/guard-install.mjs');
+    const seen = new RegExp(`^(?:${CLAUDE_MATCHER})$`);
+    for (const t of OUTSIDE)
+      assert.equal(
+        seen.test(t),
+        false,
+        `${t} is now in CLAUDE_MATCHER — update the halt sentences`,
+      );
+    for (const t of INSIDE) assert.equal(seen.test(t), true, `${t} left CLAUDE_MATCHER`);
+    for (const [doc, re] of PARAS) {
+      const text = read(doc).match(re)?.[0];
+      assert.ok(text, `${doc}: the qualified halt sentence is gone`);
+      for (const t of OUTSIDE) assert.ok(text.includes(t), `${doc}: the halt sentence omits ${t}`);
+    }
+    const plugin = JSON.parse(read('.claude-plugin/plugin.json'));
+    assert.deepEqual(
+      plugin.hooks.PreToolUse.map((h) => h.matcher),
+      ['*'],
+    );
+  });
+
+  test('no user-facing doc goes back to the unqualified "every tool call" halt or cap claim', () => {
+    const bad = [];
+    for (const f of ['README.md', 'docs/GUARD.md', 'docs/SPEND.md', ...RELEASE_DOCS])
+      read(f)
+        .split('\n')
+        .forEach((line, i, all) => {
+          const two = `${line} ${all[i + 1] ?? ''}`;
+          if (/\bevery tool call (?:is denied|except)/i.test(two)) bad.push(`${f}:${i + 1}`);
+        });
+    // control: the old README sentence is caught
+    assert.ok(/\bevery tool call (?:is denied|except)/i.test('every tool call except reading'));
+    assert.deepEqual(bad, []);
+  });
+});

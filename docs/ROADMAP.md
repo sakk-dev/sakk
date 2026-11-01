@@ -67,8 +67,8 @@ precision only (C-13), a benign corpus as a precision row (F-75), and one
 finding per secret when two rules match it (F-122).
 
 **Package and README.** Every count in README and spec generated or tested
-from the rules file (F-198); a marketplace file so plugin install works
-(F-197); refusal codes collected from every source form (F-200); a pack-time
+from the rules file (F-198); every README shell line run by a check (F-197 —
+the marketplace file itself ships in 0.3.0); refusal codes collected from every source form (F-200); a pack-time
 stray-file check and secret scan of the packed files; a clear refusal on Node
 older than 20; each README figure backed by a linked measurement.
 

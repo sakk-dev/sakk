@@ -9,9 +9,7 @@ Claude Code、Cursor 和 Codex 的失败即拒绝（fail-closed）守卫，一�
 Claude Code 的每日花费上限，一个急停开关，以及一本给你自己的智能体代码用的花费账本。
 本地运行，零依赖，Apache-2.0 许可。
 
-![Sakk 拒绝一个受守卫智能体的 force push](docs/media/sakk-block.gif)
-
-演示：[英文视频（MP4）](docs/media/sakk-demo-en.mp4) · 中文演示视频（即将上传 B 站）
+![Sakk 的策略检查放行 ls -la、拒绝 rm -rf ~](docs/media/sakk-block.gif)
 
 ```bash
 npm install -g sakk && sakk guard install claude-code && sakk doctor   # 在你的项目目录里运行
@@ -75,14 +73,23 @@ force push、项目外的删除、读取密钥和部署，会按一份你能阅�
 内容是密钥的写入、或会打印出密钥的命令，同样会被拒绝。守卫按命令字面写出的内容来判断——
 见本页末尾的局限说明和 [docs/GUARD.md](docs/GUARD.md)。
 
-也可以把 Sakk 作为**插件**加载进 Claude Code——它打包了同一个钩子，并且失败即拒绝
-（`onFailure: block`）。在 v1 中，这只对一个会话生效；持久的 `/plugin install`
-需要一个 marketplace 文件，计划在 v2 提供：
+也可以把 Sakk 作为**插件**加载进 Claude Code——它打包了同一个钩子，失败即拒绝
+（`onFailure: block`），并且能看到每一个工具。这个仓库本身就是一个插件市场，所以在 Claude Code 里：
+
+```text
+/plugin marketplace add sakk-dev/sakk
+/plugin install sakk@sakk
+```
+
+如果只想在一个会话里从 npm 包加载：
 
 ```bash
 npm install -g sakk
 claude --plugin-dir "$(npm root -g)/sakk"
 ```
+
+没有自动化测试能驱动 Claude Code，所以这两种方式都靠人手动核对
+（[docs/V2-BACKLOG.md](docs/V2-BACKLOG.md) 中由所有者手动跑的 P-INS-008）。
 
 在一个本地、只读的控制台里查看守卫做了什么——今天的花费和上限、最近的决策、带试判框的策略，以及密钥拦截记录：
 
@@ -301,8 +308,10 @@ npx sakk resume --by alice                          # 解除（具名）
 ```
 
 `sakk init` 把账本的绝对路径记录在 `~/.sakk/config.json` 里，
-所以一次停机也会停住装了守卫的智能体：除了读取仓库之外，每一次工具调用都会被拒绝，
-直到 `sakk resume`。再次运行 `init` 会接上一本已有的账本而不改动它，并且绝不替换
+所以一次停机也会停住装了守卫的智能体：守卫能看到的每一次工具调用（读取仓库除外）都会被拒绝，
+直到 `sakk resume`。对 Claude Code，`sakk guard install claude-code` 把 shell 命令、
+文件读取与编辑、Monitor 和 MCP 工具交给守卫；Glob、Grep、WebFetch、WebSearch
+和子智能体（Task）不经过它。以插件方式加载时，守卫能看到每一个工具。再次运行 `init` 会接上一本已有的账本而不改动它，并且绝不替换
 一个已记录的不同路径——它会告诉你钩子仍在读哪本账。
 因为它决定了钩子从哪里读取停机状态，守卫会拒绝智能体执行
 `sakk init`，就像拒绝 `sakk cap` 一样；由一个人来运行它。
@@ -477,7 +486,7 @@ wired”，但并不安装守卫：在它之后运行 `sakk guard install`。
 
 Apache-2.0——见 [LICENSE](LICENSE)。随包附带的第三方声明在
 [NOTICE](NOTICE)。贡献按开发者原创证书（Developer Certificate of Origin，DCO）接受：
-用 `git commit -s` 给每个提交加上 sign-off 行——见
+用 `git commit -s` 给每个提交加上 sign-off 行，不需要签 CLA——见
 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 企业版——团队控制台、SSO、具名审批人、带哈希链的账本：即将推出（即上面未勾选的路线图条目）。
