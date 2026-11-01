@@ -11,6 +11,8 @@ import {
   realpathSync,
   symlinkSync,
   appendFileSync,
+  utimesSync,
+  rmSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
@@ -428,6 +430,85 @@ describe('sakk ui console (M4): data and bounds', () => {
     } finally {
       await c.close();
     }
+  });
+
+  test('an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)', async () => {
+    // a spent call today, but no cap: the hook never counts it, so only sakk spend does
+    const w = world();
+    writeFileSync(
+      join(w.home, 'config.json'),
+      JSON.stringify({ claudeLogDir: join(w.base, 'emptylogs'), timeZone: 'UTC' }),
+    );
+    writeFileSync(
+      join(w.base, 'emptylogs', 'session.jsonl'),
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: new Date().toISOString(),
+        requestId: 'req_1',
+        message: {
+          id: 'msg_1',
+          model: 'deepseek-chat',
+          usage: { input_tokens: 1000, output_tokens: 100 },
+        },
+      }) + '\n',
+    );
+    const c = await startConsole({ ...w });
+    const overview = async () => {
+      const r = await hit(c.port, {
+        path: '/api/overview',
+        headers: { Host: `127.0.0.1:${c.port}`, Cookie: cookie(c.token) },
+      });
+      assert.equal(r.status, 200);
+      return JSON.parse(r.body);
+    };
+    const filesJson = join(w.home, 'spend', 'files.json');
+    try {
+      // never counted: no index at all, so the $0 in the data is not a figure
+      let o = await overview();
+      assert.equal(o.indexed_at, null);
+      assert.equal(o.counted_today, false);
+
+      // the real CLI counts the real fixture log
+      const cli = JSON.parse(
+        execFileSync(process.execPath, [join(ROOT, 'bin', 'sakk.mjs'), 'spend', '--json'], {
+          cwd: w.cwd,
+          env: w.env,
+          encoding: 'utf8',
+        }),
+      );
+      assert.ok(cli.spend_usd > 0, 'the fixture call is priced');
+      o = await overview();
+      assert.equal(o.counted_today, true);
+      assert.equal(typeof o.indexed_at, 'string');
+      assert.equal(o.spend_usd, cli.spend_usd);
+
+      // counted, but on an earlier day: not today's figure either
+      // whole seconds: file times do not keep every millisecond
+      const twoDaysAgo = new Date(Math.floor(Date.now() / 1000 - 48 * 3600) * 1000);
+      utimesSync(filesJson, twoDaysAgo, twoDaysAgo);
+      o = await overview();
+      assert.equal(o.counted_today, false);
+      assert.equal(o.indexed_at, twoDaysAgo.toISOString());
+
+      // the index removed again reads as never counted, not as $0 counted
+      rmSync(filesJson);
+      o = await overview();
+      assert.equal(o.indexed_at, null);
+      assert.equal(o.counted_today, false);
+    } finally {
+      await c.close();
+    }
+  });
+
+  test('the Today card names sakk spend when today is not counted (F-231)', () => {
+    const page = renderPage('n', false);
+    // the figure is gated on counted_today, and the uncounted card says how to count
+    assert.ok(page.includes('ov.counted_today===true'), 'the card reads counted_today');
+    assert.ok(page.includes('counted?usd(ov.spend_usd):"—"'), 'an uncounted day shows a dash');
+    assert.ok(page.includes('cap&&counted'), 'no cap bar for an uncounted day');
+    assert.ok(page.includes('run sakk spend to count it'), 'the hint names sakk spend');
+    assert.ok(page.includes('Not counted yet'), 'never counted');
+    assert.ok(page.includes('Not counted today'), 'counted on an earlier day');
   });
 
   test('the console and the CLI report the same numbers', () => {
