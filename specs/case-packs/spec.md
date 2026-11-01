@@ -1,4 +1,4 @@
-# Case packs by regulation — three tables + contract
+# Case packs — three tables + contract
 
 Plan item ①, L1 (it changes what an evaluation report claims). Written after
 implementation: the testing standard's audit found this L1 change had no

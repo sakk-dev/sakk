@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -566,9 +566,41 @@ describe('adversarial-review round: load-side attacks (F4/F7/F10/F11)', () => {
   });
 });
 
-describe('reference policies: load, hash stably, and express the three tiers', () => {
+// A deny-default policy with three approval tiers. A fixture, not a shipped
+// reference: regulator-specific profiles live in the enterprise edition.
+const TIERED = base({
+  rules: [
+    {
+      id: 'low-risk-docs-write',
+      match: { action: 'file_write', scope: ['docs/'], max_estimated_usd: 0.5 },
+      verdict: 'allow',
+    },
+    {
+      id: 'low-risk-test-write',
+      match: { action: 'file_write', scope: ['test/'], max_estimated_usd: 0.5 },
+      verdict: 'allow',
+    },
+    {
+      id: 'medium-model-call-sampled',
+      match: { action: 'model_call', max_estimated_usd: 5 },
+      verdict: 'require_approval',
+      approvers_min: 1,
+    },
+    {
+      id: 'high-risk-deploy-four-eyes',
+      match: { action: 'deploy' },
+      verdict: 'require_approval',
+      approvers_min: 2,
+    },
+  ],
+});
+
+describe('reference policies load and hash stably; a deny-default policy expresses three tiers', () => {
   test('both references load; hashes are stable across loads', () => {
-    for (const f of ['permissive-dev.json', 'regulated-strict.json']) {
+    // The shipped set is pinned: a policy added to policies/ ships in the npm
+    // package, so it must be added here on purpose.
+    assert.deepEqual(readdirSync(POLICIES).sort(), ['guard-default.json', 'permissive-dev.json']);
+    for (const f of readdirSync(POLICIES)) {
       const p = join(POLICIES, f);
       const a = loadPolicy({ policyPath: p });
       const b = loadPolicy({ policyPath: p });
@@ -587,8 +619,8 @@ describe('reference policies: load, hash stably, and express the three tiers', (
     assert.equal(big.verdict, 'require_approval');
     assert.equal(big.approversMin, 1);
   });
-  test('regulated-strict: CBUAE three tiers — low auto, medium sampled, high four-eyes, rest deny', () => {
-    const l = loadPolicy({ policyPath: join(POLICIES, 'regulated-strict.json') });
+  test('three tiers under deny default — low auto, medium sampled, high four-eyes, rest deny', () => {
+    const l = loadPolicy({ policyPath: writePolicy(TIERED) });
     const d = (c) => decide({ ...l, context: c });
     assert.equal(d(ctx({ estimatedUsd: 0.3 })).verdict, 'allow');
     assert.equal(d(ctx({ estimatedUsd: 0.6 })).verdict, 'deny'); // over the low tier → default
@@ -631,7 +663,7 @@ describe('integration demo: an enforcer composes kernel + ledger (ledger touched
     initLedger({ ledgerPath, capUsd: 10 });
     return { ledgerPath, logPath: join(d, 'decisions.jsonl') };
   };
-  const loaded = loadPolicy({ policyPath: join(POLICIES, 'regulated-strict.json') });
+  const loaded = loadPolicy({ policyPath: writePolicy(TIERED) });
 
   test('allow → exactly one ledger entry; deny → zero; the kernel itself never spends', () => {
     const { ledgerPath, logPath } = setup();

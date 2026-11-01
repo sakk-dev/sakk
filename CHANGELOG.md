@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — regulator-specific packs and policy leave the public repository
+
+- Two example case packs written for a fictional authority,
+  `example-agent-oversight` and `example-change-control`, replace the
+  CBUAE, DORA and DIFC packs. They keep the same format and back the same
+  9 of the 12 gold cases; packs for specific regulations are not in this
+  repository.
+- The regulated-strict reference policy is removed: `policies/` ships
+  `permissive-dev.json` and `guard-default.json` only, and a test pins
+  that list because `policies/` is in the npm package.
+- The reviewer label gate is renamed `eval/05_LABEL_REVIEW.md`.
+
 ### Changed — `sakk ui` follows the frozen v10 open-source design
 
 - The console is rebuilt page by page to the frozen v10 open-source

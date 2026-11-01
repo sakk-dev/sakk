@@ -22,7 +22,7 @@ test('a FAKE pack run bundles and verifies; its report reads HARNESS_ONLY and na
       join(ROOT, 'eval', 'bin', 'gold-runner.mjs'),
       '--fake-executor',
       '--pack',
-      'dora-ict-change',
+      'example-change-control',
       '--out',
       run,
     ],

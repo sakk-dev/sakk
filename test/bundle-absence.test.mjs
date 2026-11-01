@@ -94,7 +94,7 @@ before(() => {
       join(ROOT, 'eval', 'bin', 'gold-runner.mjs'),
       '--fake-executor',
       '--pack',
-      'cbuae-ai-oversight',
+      'example-agent-oversight',
       '--out',
       run,
     ],
