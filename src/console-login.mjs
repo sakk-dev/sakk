@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Basic username + password sign-in for `sakk ui` (the maintainer, 2026-11-01: the most
 // basic login, account and password; anything more is V2). Opt-in: with no

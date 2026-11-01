@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Optional username + password sign-in for `sakk ui` (the maintainer, 2026-11-01). Every
 // test drives the real console over real HTTP on loopback with a fake HOME,
