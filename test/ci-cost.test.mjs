@@ -12,6 +12,9 @@ import { fileURLToPath } from 'node:url';
  *  2. cancel an older run of the same pull request, never a run on main;
  *  3. keep the worst case of one pull request commit and of one merge to main
  *     under a fixed runner-minute ceiling (timeout x matrix size, summed).
+ * Two runs belong to no commit and are priced apart, each under its own
+ * ceiling: a release on a pushed v* tag, and a scheduled run no more often
+ * than weekly. A tag workflow never counts as a merge to main.
  * Before F-218 every pull request commit ran twice (branch push + pull_request)
  * and October cost about 11,959 runner-minutes against 3,000 included.
  */
@@ -23,12 +26,23 @@ const DIR = join(ROOT, '.github', 'workflows');
 // https://docs.github.com/en/billing/reference/actions-runner-pricing
 const LINUX_USD_PER_MIN = 0.006;
 // Worst case today: ci.yml test 2x30 + self-evolution 10 + base-checker 10 +
-// format 10 + drill 2x30 (F-219), plus pr-review 2 + 20. Raising a ceiling is a cost
-// decision: say the new figure in the pull request.
-const CEILING = { pull_request: 172, push: 130 };
+// format 10 + drill 2x30 (F-219), plus pr-review 2 + 20; the DCO check is a
+// step in the format job, so it adds nothing. A tag release (release.yml, 30)
+// and a weekly run (scorecard.yml, 10, skipped while the repository is
+// private) bill per tag and per week, not per commit. Raising a ceiling is a
+// cost decision: say the new figure in the pull request.
+const CEILING = { pull_request: 172, push: 130, release: 30, schedule: 10 };
+const WHAT = {
+  pull_request: 'pull request commit',
+  push: 'merge to main',
+  release: 'tag release',
+  schedule: 'scheduled run',
+};
 
 const GROUP = '${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}';
-const EVENTS = new Set(['push', 'pull_request']);
+const EVENTS = new Set(['push', 'pull_request', 'release', 'schedule']);
+/** Weekly or rarer: a fixed minute, hour and weekday, every week. */
+const WEEKLY = /^\d{1,2} \d{1,2} \* \* [0-6]$/;
 
 /** Lines of the top-level key `key` (indented children only), or null when absent. */
 function block(text, key) {
@@ -51,7 +65,10 @@ const list = (s) =>
     .map((x) => x.trim().replace(/^['"]|['"]$/g, ''))
     .filter(Boolean);
 
-/** Triggers as {event: {filter: values}}; problems for anything it cannot read. */
+/**
+ * Triggers as {event: {filter: values}}; problems for anything it cannot read.
+ * A push filtered only by tags is a `release`, priced apart from a commit.
+ */
 function triggers(text) {
   const b = block(text, 'on');
   if (!b) return { on: null, problems: ['no on: block'] };
@@ -64,13 +81,19 @@ function triggers(text) {
     for (const l of b.body) {
       const m2 = l.match(/^ {2}([a-z_]+):\s*(.*)$/);
       const m4 = l.match(/^ {4}([a-z_-]+):\s*(.*)$/);
+      const cron = l.match(/^ {4}- cron:\s*(['"])([^'"]*)\1\s*$/);
       if (m2) {
         ev = m2[1];
         on[ev] = {};
         if (m2[2]) problems.push(`${ev}: an inline value it cannot read (${m2[2]})`);
-      } else if (m4 && ev) on[ev][m4[1]] = m4[2].startsWith('[') ? list(m4[2]) : null;
+      } else if (cron && ev === 'schedule') (on.schedule.cron ??= []).push(cron[2]);
+      else if (m4 && ev) on[ev][m4[1]] = m4[2].startsWith('[') ? list(m4[2]) : null;
       else problems.push(`a trigger line it cannot read: ${l.trim()}`);
     }
+  }
+  if (on.push && Object.keys(on.push).join() === 'tags') {
+    on.release = on.push;
+    delete on.push;
   }
   if (!Object.keys(on).length) problems.push('on: names no event');
   return { on, problems };
@@ -91,6 +114,21 @@ function triggerProblems(text) {
         problems.push(
           'push must be limited to branches: [main] — a branch push also runs on its pull request',
         );
+    } else if (ev === 'release') {
+      const tags = filters.tags ?? [];
+      if (!tags.length || tags.some((t) => !/^v/.test(t)))
+        problems.push(
+          `a tag release must be limited to v* tags (got ${tags.join(', ') || 'none'}) — any other tag publishes too`,
+        );
+    } else if (ev === 'schedule') {
+      const crons = filters.cron ?? [];
+      if (keys.join() !== 'cron' || !crons.length)
+        problems.push('schedule: no cron line it can read');
+      for (const c of crons)
+        if (!WEEKLY.test(c.trim()))
+          problems.push(
+            `schedule: ${c} runs more often than weekly — pin minute, hour and weekday`,
+          );
     } else if (keys.some((k) => k !== 'types'))
       problems.push(`pull_request: a filter this test does not know (${keys.join(', ')})`);
   }
@@ -237,13 +275,13 @@ describe('CI cost per commit (F-218)', () => {
 
   test('one pull request commit and one merge to main stay inside the runner-minute budget', () => {
     for (const { file, text } of workflows) assert.deepEqual(jobs(text).problems, [], file);
-    for (const event of ['pull_request', 'push']) {
+    for (const event of Object.keys(CEILING)) {
       const { total, parts } = worstCase(workflows, event);
       assert.ok(total > 0, `${event}: no job counted — the reader is broken`);
       const usd = (n) => `$${(n * LINUX_USD_PER_MIN).toFixed(2)}`;
       assert.ok(
         total <= CEILING[event],
-        `one ${event === 'push' ? 'merge to main' : 'pull request commit'} can bill ${total} runner-minutes ` +
+        `one ${WHAT[event]} can bill ${total} runner-minutes ` +
           `(${usd(total)}), over the ${CEILING[event]} ceiling (${usd(CEILING[event])}): ${parts.join(', ')}. ` +
           'Cut a job, or raise the ceiling in this diff and state the cost in the pull request.',
       );
@@ -254,6 +292,56 @@ describe('CI cost per commit (F-218)', () => {
       '    timeout-minutes: 75\n    strategy:\n      matrix:\n        node: [20, 22, 24]\n',
     );
     assert.equal(worstCase([{ file: 'x', text: more }], 'pull_request').total, 225);
+  });
+
+  test('a tag release and the weekly schedule are priced under their own ceilings, never under a commit', () => {
+    const tagged = workflows.filter(({ text }) => triggers(text).on?.release);
+    const scheduled = workflows.filter(({ text }) => triggers(text).on?.schedule);
+    assert.deepEqual(
+      tagged.map((w) => w.file),
+      ['release.yml'],
+    );
+    assert.deepEqual(
+      scheduled.map((w) => w.file),
+      ['scorecard.yml'],
+    );
+    for (const w of [...tagged, ...scheduled]) {
+      assert.equal(worstCase([w], 'push').total, 0, `${w.file} is billed to a merge to main`);
+      assert.equal(
+        worstCase([w], 'pull_request').total,
+        0,
+        `${w.file} is billed to a pull request`,
+      );
+    }
+    assert.ok(worstCase(tagged, 'release').total > 0, 'the release job was not counted');
+    assert.ok(worstCase(scheduled, 'schedule').total > 0, 'the scheduled job was not counted');
+    // controls: a tag workflow is a release, not a push; other tags and a
+    // daily cron are refused; a weekly cron is priced as one scheduled run
+    const TAG = GOOD.replace(
+      '  push:\n    branches: [main]\n  pull_request:\n',
+      "  push:\n    tags: ['v*']\n",
+    );
+    assert.deepEqual(triggerProblems(TAG), []);
+    assert.equal(worstCase([{ file: 't', text: TAG }], 'push').total, 0);
+    assert.equal(worstCase([{ file: 't', text: TAG }], 'release').total, 5);
+    assert.match(triggerProblems(TAG.replace("'v*'", "'*'")).join(), /limited to v\* tags/);
+    const both = TAG.replace("    tags: ['v*']\n", "    branches: [main]\n    tags: ['v*']\n");
+    assert.match(triggerProblems(both).join(), /push must be limited/);
+    const WEEK = GOOD.replace(
+      '  push:\n    branches: [main]\n  pull_request:\n',
+      "  schedule:\n    - cron: '23 4 * * 1'\n",
+    );
+    assert.deepEqual(triggerProblems(WEEK), []);
+    assert.equal(worstCase([{ file: 'w', text: WEEK }], 'schedule').total, 5);
+    assert.equal(worstCase([{ file: 'w', text: WEEK }], 'push').total, 0);
+    assert.match(
+      triggerProblems(WEEK.replace("'23 4 * * 1'", "'0 3 * * *'")).join(),
+      /more often than weekly/,
+    );
+    assert.match(
+      triggerProblems(WEEK.replace("'23 4 * * 1'", "'*/5 * * * *'")).join(),
+      /more often than weekly/,
+    );
   });
 
   test('a workflow without triggers, a job without a timeout or an unreadable matrix refuses', () => {

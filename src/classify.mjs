@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // The guard's classifier (specs/guard/spec.md, "Actions"): what a tool call
 // will do, named in a fixed vocabulary the policy matches on. Action names are

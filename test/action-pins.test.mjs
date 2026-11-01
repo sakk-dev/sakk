@@ -21,8 +21,16 @@ const DIR = join(ROOT, '.github', 'workflows');
 // First major that runs on Node 24, from each action's release notes:
 // https://github.com/actions/checkout/releases/tag/v5.0.0
 // https://github.com/actions/setup-node/releases/tag/v5.0.0
+// github/codeql-action: upload-sarif/action.yml says `using: node24` from v4
+// (v3 is node20). ossf/scorecard-action says `using: "docker"` at v2.5.0: no
+// Node runtime to retire, so its current major stands.
 // A new action must be added here before a workflow may use it.
-const NODE24_FROM = { 'actions/checkout': 5, 'actions/setup-node': 5 };
+const NODE24_FROM = {
+  'actions/checkout': 5,
+  'actions/setup-node': 5,
+  'github/codeql-action/upload-sarif': 4,
+  'ossf/scorecard-action': 2,
+};
 
 const PIN = /^(['"]?)([\w.-]+\/[\w.-]+(?:\/[\w./-]+)?)@([0-9a-f]{40})\1\s+#\s*(v(\d+)\.\d+\.\d+)$/;
 

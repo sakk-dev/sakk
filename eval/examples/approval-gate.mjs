@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Reference approval gate for case G06 — a minimal, side-effect-free
  * permission check. The point under test: an unauthorized caller must be

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // One heavy run at a time on this machine (findings F-220). The gate, the
 // mutation drill, the audit, the gate certificate and the pre-push suite each

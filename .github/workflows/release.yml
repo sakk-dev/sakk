@@ -1,0 +1,57 @@
+name: release
+# A v* tag a maintainer pushes publishes that version to npm — from this
+# workflow only. npm trusted publishing (https://docs.npmjs.com/trusted-publishers):
+# npm trusts this repository's release.yml through GitHub's OIDC token, so no
+# npm token is stored here, and every publish carries a provenance
+# attestation of the commit and workflow that built it.
+#
+# It refuses, and publishes nothing, when the repository is private
+# (provenance needs a public source), when the tag is not v + package.json's
+# version, when npm is older than 11.5.1 (the first with trusted publishing),
+# or when the tests fail. test/ci-cost.test.mjs prices a tag release under its
+# own ceiling, apart from any commit.
+on:
+  push:
+    tags: ['v*']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: a public repository, a tag that is v + package.json's version, an npm that publishes by OIDC
+        env:
+          PRIVATE: ${{ github.event.repository.private }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$PRIVATE" != false ]; then
+            echo "::error::the repository is not public (private=$PRIVATE): npm provenance needs a public source, so nothing is published"
+            exit 1
+          fi
+          version=$(node -p 'require("./package.json").version')
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::the tag $TAG is not v$version, the version in package.json: nothing is published"
+            exit 1
+          fi
+          npm_version=$(npm --version)
+          if ! node -e 'const [a, b, c] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)' "$npm_version"; then
+            echo "::error::npm $npm_version is older than 11.5.1 and cannot publish by OIDC: nothing is published"
+            exit 1
+          fi
+      - run: npm test
+      - name: publish with provenance (trusted publishing, no token)
+        run: npm publish --provenance --access public

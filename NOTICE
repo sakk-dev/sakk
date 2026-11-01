@@ -1,8 +1,14 @@
-Sakk — NOTICE of third-party material
-=====================================
+Sakk
+Copyright 2026 The Sakk authors
 
-Sakk is licensed under AGPL-3.0-only (see LICENSE). The package also ships
-material derived from the following MIT-licensed projects. The MIT license
+This product is licensed under the Apache License, Version 2.0 (see
+LICENSE).
+
+Third-party material
+====================
+
+The package also ships material derived from the following MIT-licensed
+projects. The MIT license
 requires that its copyright and permission notice be included in all copies
 or substantial portions of the material; this file carries those notices.
 

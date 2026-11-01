@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Policy kernel (sakk-policy.v1) — the deterministic, auditable answer to
 // "may this agent do this action at this cost?", decided BEFORE any
