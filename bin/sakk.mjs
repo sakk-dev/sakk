@@ -824,7 +824,9 @@ if (cmd === 'init') {
         );
         process.exit(1);
       }
-      console.log(`ledger export: ${entries.length} entr(y|ies) written to ${resolve(dest)}`);
+      console.log(
+        `ledger export: ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} written to ${resolve(dest)}`,
+      );
     } else process.stdout.write(out);
     process.exit(0);
   } else if (sub === 'reindex') {

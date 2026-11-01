@@ -10,7 +10,15 @@ import { openSync, fstatSync, readSync, closeSync, lstatSync, constants as FS } 
 import { userInfo, homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { sakkHome, readConfig, repoRootOf, choosePolicy, evaluate, normalize } from './hook.mjs';
+import {
+  DOCTOR_BY,
+  sakkHome,
+  readConfig,
+  repoRootOf,
+  choosePolicy,
+  evaluate,
+  normalize,
+} from './hook.mjs';
 import { loadPrices } from './prices.mjs';
 import { daySpend, systemZone, dayOf, SpendError } from './spend.mjs';
 import { doctor } from './guard-install.mjs';
@@ -65,11 +73,17 @@ function parseCookie(header) {
  * `scannedBytes` (<= TAIL_BYTES however big the file) and `unreadable`.
  */
 export function tailDecisions({ home, limit = PAGE_LINES, cap = TAIL_BYTES }) {
-  const { entries, scannedBytes, unreadable, truncated } = tailJsonl(
-    join(home, 'decisions.jsonl'),
-    { limit, cap },
+  const tail = tailJsonl(join(home, 'decisions.jsonl'), { limit, cap });
+  // a line that parses but is not a record (null, a number, a list) is unreadable, as in the alerts log
+  const entries = tail.entries.filter(
+    (d) => d !== null && typeof d === 'object' && !Array.isArray(d),
   );
-  return { entries, scannedBytes, unreadable, truncated };
+  return {
+    entries,
+    scannedBytes: tail.scannedBytes,
+    unreadable: tail.unreadable + tail.entries.length - entries.length,
+    truncated: tail.truncated,
+  };
 }
 
 /**
@@ -274,8 +288,10 @@ export function overviewData({ home, now = Date.now() }) {
     spend = { day, usd: 0, calls: 0, unpriced: {}, unreadable: 0, byModel: {}, error: e.code };
   }
   const recent = tailDecisions({ home, limit: 50 });
+  // the doctor's own probe is no agent's action: kept in records, left out of the feed (F-229)
+  const agentRows = recent.entries.filter((d) => d && d.by !== DOCTOR_BY);
   const counts = { allow: 0, deny: 0, require_approval: 0 };
-  for (const d of recent.entries) if (d.verdict in counts) counts[d.verdict] += 1;
+  for (const d of agentRows) if (d.verdict in counts) counts[d.verdict] += 1;
   return {
     source: 'from local logs', // never billed (F-126 / evidence label)
     day,
@@ -286,18 +302,24 @@ export function overviewData({ home, now = Date.now() }) {
     by_model: spend.byModel,
     unpriced: spend.unpriced,
     unreadable_spend: spend.unreadable,
-    recent: recent.entries.slice(0, 20),
+    recent: agentRows.slice(0, 20),
     recent_counts: counts,
   };
 }
 
 export function secretData({ home }) {
   const tail = tailDecisions({ home, limit: PAGE_LINES });
+  // a secret found in what an agent wrote, and a secret file an agent tried to read (F-226)
   const cards = tail.entries
-    .filter((d) => d.ruleId === 'secret')
+    .filter(
+      (d) =>
+        d?.by !== DOCTOR_BY &&
+        (d?.ruleId === 'secret' || (d?.verdict === 'deny' && d?.context?.action === 'secret.read')),
+    )
     .map((d) => ({
       at: d.at ?? null,
       agent: d.by ?? null,
+      rule: d.ruleId ?? null,
       action: d.context?.action ?? null,
       scope: d.context?.scope ?? null,
     }));
@@ -893,7 +915,8 @@ const ALLOW_HALT=${allowHalt ? 'true' : 'false'};
 const TOKEN=new URLSearchParams(location.search).get("t")||"";
 const AGENTS=["claude-code","cursor","codex"];
 const NAMES={"claude-code":"Claude Code","cursor":"Cursor","codex":"Codex","sakk-mcp":"MCP gate"};
-const VIA={"claude-code":"Claude Code hook","cursor":"Cursor hook","codex":"Codex hook","sakk-mcp":"MCP gate"};
+const DOCTOR_BY=${JSON.stringify(DOCTOR_BY)};
+const VIA={"claude-code":"Claude Code hook","cursor":"Cursor hook","codex":"Codex hook","sakk-mcp":"MCP gate",[DOCTOR_BY]:"Doctor self-test"};
 const TITLES={overview:"Overview",calls:"Spend log",blocks:"Blocked actions",agents:"Agents",policy:"Guard rules",dlp:"Secret guard",data:"Records & export",prices:"Model prices",upgrade:"Enterprise"};
 const PARENT={calls:"overview",blocks:"overview"};
 const GROUPS=[["Monitor",["overview"]],["Guard",["policy","dlp","agents"]],["Records",["data"]],["Settings",["prices"]],["",["upgrade"]]];
@@ -992,7 +1015,7 @@ const ov=S.d.overview||{};setZone(ov.zone);TODAY=ov.day||FMT_K.format(new Date()
 const led=S.d.ledger||{};const ledOk=Boolean(led.configured&&!led.error&&led.status);
 const st=ledOk?led.status:null;const entries=ledOk?arr(led.entries):[];
 const alerts=led.alerts&&!led.alerts.skipped?arr(led.alerts.entries):[];
-const decs=arr(S.d.records&&S.d.records.decisions);
+const decs=arr(S.d.records&&S.d.records.decisions).filter(d=>d&&d.by!==DOCTOR_BY);
 const days=days7();
 let halt=null;
 if(st&&st.halted)halt={scope:"all",by:st.halted.by,reason:st.halted.reason,at:st.halted.at||st.updated_at,agents:[]};
@@ -1009,7 +1032,7 @@ if(st&&st.reconciliation_required)blocks.push({id:"ledger",at:st.updated_at,type
 const unp=ov.unpriced&&typeof ov.unpriced==="object"?ov.unpriced:{};
 Object.keys(unp).forEach(m=>blocks.push({id:m,at:null,type:"price",who:"—",via:"Local logs",action:"Calls to "+m,why:"No price for this model; "+plural(unp[m],"call")+" today not counted",rule:"unpriced",open:true,src:null}));
 blocks.sort((a,b)=>(b.at?Date.parse(b.at):Infinity)-(a.at?Date.parse(a.at):Infinity));
-const openN=blocks.filter(b=>b.open).length+(halt?1:0);
+const openN=blocks.filter(b=>b.open).length;
 /* spend by day and agent, from the ledger */
 const byDay={};const agentsSeen=[];
 entries.forEach(e=>{const k=dayKey(e.settledAt||e.createdAt);if(days.indexOf(k)<0)return;const a=e.agentId||"unknown";if(agentsSeen.indexOf(a)<0)agentsSeen.push(a);const v=typeof e.actualUsd==="number"?e.actualUsd:0;byDay[k]=byDay[k]||{};byDay[k][a]=(byDay[k][a]||0)+v;});
@@ -1020,7 +1043,7 @@ D={ov:ov,led:led,ledOk:ledOk,st:st,entries:entries,alerts:alerts,decs:decs,days:
 }
 function in7x(s,days){const k=dayKey(s);return k!==""&&k>=days[0]&&k<=days[6];}
 function agentHalted(id){const h=D.halt;if(!h)return false;return h.scope==="all"||h.agents.indexOf(id)>=0;}
-function hookState(id){const cs=arr(S.d.agents&&S.d.agents.checks);const inst=cs.filter(c=>c.name.indexOf(id+" (")===0);if(inst.length)return {on:true,detail:inst.map(c=>c.detail).join("; "),where:inst.map(c=>c.name.slice(id.length+2,-1)).join(", ")};const off=cs.find(c=>c.name===id);return {on:false,detail:off?off.detail:"Not checked",where:""};}
+function hookState(id){const cs=arr(S.d.agents&&S.d.agents.checks);const inst=cs.filter(c=>c.name.indexOf(id+" (")===0);const fo=cs.find(c=>c.name===id+" fail-open"&&c.warn);if(inst.length)return {on:true,detail:inst.map(c=>c.detail).join("; "),where:inst.map(c=>c.name.slice(id.length+2,-1)).join(", "),failOpen:fo?fo.detail:null};const off=cs.find(c=>c.name===id);return {on:false,detail:off?off.detail:"Not checked",where:""};}
 
 /* ---------- shell ---------- */
 const app=document.getElementById("app");
@@ -1224,7 +1247,7 @@ function check(label,value,sub,vcls){return $("div",{class:"check"},$("span",{cl
 
 /* ---------- secret guard ---------- */
 PAGES.dlp=function(m){
-const sd=S.d.secret||{};const cards=arr(sd.cards);const n7=cards.filter(c=>in7(c.at)).length;
+const sd=S.d.secret||{};const cards=arr(sd.cards);const n7=cards.filter(c=>c&&c.rule==="secret"&&in7(c.at)).length;
 const c=$("div",{class:"card"});c.append($("h2",{text:"Pre-commit secret scan"}));
 const blocked=$("span",{class:"v v-bad",text:String(n7)});
 c.append($("div",{class:"checks"},check("Pre-commit hook","—","The console does not read your repository’s git hooks"),check("Detection rules","—","Taken from gitleaks; not counted here"),$("div",{class:"check"},$("span",{class:"sub",text:"Blocked, 7 days"}),blocked,linkish("See records",()=>go("blocks",{tab:"all",type:"secret",pg:0}))),check("What’s stored","Fingerprints only","The secret itself is never written","ink")));
@@ -1242,14 +1265,14 @@ PAGES.agents=function(m){
 const A=S.d.agents||{};
 const cc=$("div",{class:"card mb14",id:"conncard"});cc.append($("h2",{text:"Connections"}));
 if(A.error)cc.append(errNote(A,"the agent checks"));
-[["claude-code","Claude Code","npx sakk guard install claude-code"],["cursor","Cursor","npx sakk guard install cursor"],["codex","Codex","npx sakk guard install codex"]].forEach(r=>{const h=hookState(r[0]);cc.append($("div",{class:"conn"},$("div",{},$("b",{text:r[1]}),$("div",{class:"sub",text:h.on?"Hook installed ("+h.where+")":h.detail})),code(r[2]),h.on?pill("Connected","p-ok"):pill("Not connected","p-mute")));});
+[["claude-code","Claude Code","npx sakk guard install claude-code"],["cursor","Cursor","npx sakk guard install cursor"],["codex","Codex","npx sakk guard install codex"]].forEach(r=>{const h=hookState(r[0]);cc.append($("div",{class:"conn"},$("div",{},$("b",{text:r[1]}),$("div",{class:"sub",text:h.on?"Hook installed ("+h.where+")"+(h.failOpen?" · "+h.failOpen:""):h.detail})),code(r[2]),h.on?(h.failOpen?pill("Connected · fails open","p-warn"):pill("Connected","p-ok")):pill("Not connected","p-mute")));});
 cc.append($("div",{class:"conn"},$("div",{},$("b",{text:"MCP gate "}),$("span",{class:"tag",text:"Experimental"}),$("div",{class:"sub",text:"For agents you wire up in code. The console cannot see whether one is running."})),code("npx sakk mcp"),pill("Not checked","p-mute")));
 const warn=arr(A.checks).filter(x=>!x.ok);if(warn.length)cc.append($("p",{class:"note warn",text:warn.map(x=>x.name+": "+x.detail).join(" · ")}));
 m.append(cc);
 const rows=[];
 AGENTS.forEach(id=>{const h=hookState(id);const mine=D.decs.filter(d=>d.by===id);const last=mine.length?mine[0].at:null;const blk=mine.filter(d=>d.verdict==="deny"&&in7(d.at)).length;rows.push({id:id,name:NAMES[id],via:VIA[id],last:last,calls:"—",blocked:blk,status:agentHalted(id)?"stopped":h.on?"on":"off",kind:"hook",hook:h});});
 Object.keys(D.ledAgents).forEach(id=>{if(AGENTS.indexOf(id)>=0)return;const o=D.ledAgents[id];rows.push({id:id,name:id,via:"Gateway ledger",last:o.last,calls:o.calls7+" · "+usd(o.usd7),blocked:o.blocked,status:agentHalted(id)?"stopped":"on",kind:"ledger"});});
-m.append(table("wide",["Agent","Last seen","7-day calls · spend","Blocked, 7 days","Status"],rows.map(r=>clickRow($("tr",{},$("td",{},$("b",{text:r.name}),$("div",{class:"sub",text:r.via})),td(r.last?when(r.last):"—","nw"),td(r.calls,"num"),td(String(r.blocked),"num"+(r.blocked?" v-bad":"")),$("td",{},r.status==="stopped"?pill("Stopped","p-bad"):r.status==="on"?pill("Running","p-ok"):pill("Not connected","p-mute"))),()=>mAgent(r)))));
+m.append(table("wide",["Agent","Last seen","7-day calls · spend","Blocked, 7 days","Status"],rows.map(r=>clickRow($("tr",{},$("td",{},$("b",{text:r.name}),$("div",{class:"sub",text:r.via})),td(r.last?when(r.last):"—","nw"),td(r.calls,"num"),td(String(r.blocked),"num"+(r.blocked?" v-bad":"")),$("td",{},r.status==="stopped"?pill("Stopped","p-bad"):r.status==="on"?(r.hook&&r.hook.failOpen?pill("Running · fails open","p-warn"):pill("Running","p-ok")):pill("Not connected","p-mute"))),()=>mAgent(r)))));
 m.append($("p",{class:"sub",text:"Click a row to see how it connects and how to stop just this one. Hook agents’ spend is on Overview (local logs); gateway agents’ spend is from the ledger."}));};
 
 /* ---------- records & export ---------- */
@@ -1327,12 +1350,12 @@ else steps.append($("li",{class:"now"},$("div",{},$("b",{text:"In flight"}),$("d
 openModal("Call "+short(e.callId||"",40),[kv([["Task",e.taskId,"mono"],["Run",e.runId,"mono"],["Agent",e.agentId,"mono"],["Model","— (not in the ledger)"],["Cost",e.status==="SETTLED"?usd(e.actualUsd):e.status==="RESERVED"?"≤ "+usd(e.estimatedMaxUsd):"Needs reconciling"],["Status",statusPill(e.status)],["Call ID",e.callId,"mono"]]),$("div",{class:"sec"},$("h4",{text:"Trail"}),steps)],[btn("Close","pri",closeModal)],{pill:statusPill(e.status)});}
 function mAgent(r){
 const h=r.hook;const recent=r.kind==="hook"?D.blocks.filter(b=>b.src&&b.src.by===r.id).slice(0,5):D.blocks.filter(b=>b.via==="Gateway ledger"&&b.who===r.id).slice(0,5);
-const body=[kv([["Connects via",r.via],["Name source",r.kind==="hook"?"The hook reports itself as "+r.id:"The agent ID the gateway sent"],["Status",r.status==="stopped"?"Stopped":r.status==="on"?"Running":"Not connected"],["Last seen",r.last?fullWhen(r.last):"—"],h?["Hook",h.on?h.detail:h.detail]:null])];
+const body=[kv([["Connects via",r.via],["Name source",r.kind==="hook"?"The hook reports itself as "+r.id:"The agent ID the gateway sent"],["Status",r.status==="stopped"?"Stopped":r.status==="on"?(h&&h.failOpen?"Running · fails open":"Running"):"Not connected"],["Last seen",r.last?fullWhen(r.last):"—"],h?["Hook",h.detail]:null,h&&h.failOpen?["Fails open",h.failOpen]:null])];
 body.push($("div",{class:"sec"},$("h4",{text:"Recently blocked"}),recent.length?$("div",{},...recent.map(b=>$("div",{class:"minirow"},$("span",{class:"mono sub",text:b.at?when(b.at):"Today"}),$("span",{text:short(b.action,60)}),pill(TYPES[b.type][0],TYPES[b.type][1])))):empty("Nothing blocked recently.")));
 body.push($("p",{class:"note",text:"To stop it with your name and a reason, run sakk halt --agent "+r.id+" --by <your name> --reason “…”. A person resumes with sakk resume --by <your name> --agent "+r.id+"."}));
 const foot=[btn("Close","",closeModal)];
 if(r.status!=="stopped"&&!(D.halt&&D.halt.scope==="all")){const s=btn("Stop "+r.id+" only","danger",()=>{if(!ALLOW_HALT){toast("Read-only console: start it with sakk ui --allow-halt to use the stop button.");return;}mHaltWizard(r.id);});if(!ALLOW_HALT)s.setAttribute("aria-disabled","true");foot.push(s);}
-openModal(r.name,body,foot,{pill:r.status==="stopped"?pill("Stopped","p-bad"):r.status==="on"?pill("Running","p-ok"):pill("Not connected","p-mute")});}
+openModal(r.name,body,foot,{pill:r.status==="stopped"?pill("Stopped","p-bad"):r.status==="on"?(h&&h.failOpen?pill("Running · fails open","p-warn"):pill("Running","p-ok")):pill("Not connected","p-mute")});}
 function mHalt(){const h=D.halt;if(!h)return;
 openModal("Stopped: "+h.scope,[kv([["Stopped by",(h.by||"—")+" (self-declared)"],["Time",fullWhen(h.at)],["Reason",h.reason||"—"],["Scope",h.scope==="all"?"All agents":h.agents.join(", ")]]),
 $("div",{class:"cols mt10"},$("div",{class:"box stop"},$("b",{text:"Being denied"}),$("ul",{},$("li",{text:"New model calls through the gateway"}),$("li",{text:"Commands through the guard hooks (reading the project still works)"}),$("li",{text:"New budget reservations"}))),$("div",{class:"box keep"},$("b",{text:"Not affected"}),$("ul",{},$("li",{text:"A call that was already in flight"}),$("li",{text:"Actions outside Sakk"}),$("li",{text:"Anything already done"})))),

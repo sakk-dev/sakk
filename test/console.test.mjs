@@ -31,8 +31,13 @@ import {
   LEDGER_VIEW_BYTES,
 } from '../src/console.mjs';
 import { initLedger, readLedger, reserve, settle, alertsPathFor } from '../src/ledger.mjs';
-import { normalize, evaluate } from '../src/hook.mjs';
+import * as hook from '../src/hook.mjs';
 import { install } from '../src/guard-install.mjs';
+
+// literals, not imports: the guards for F-226..F-229 must load on the code
+// before the fix, where hook.mjs has no DOCTOR_BY (findings-proof)
+const { normalize, evaluate } = hook;
+const DOCTOR_BY = 'sakk-doctor';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -89,6 +94,25 @@ function hit(port, { path = '/', method = 'GET', headers = {}, body } = {}) {
   });
 }
 const cookie = (tok) => `sakk_t=${tok}`;
+
+/**
+ * The page's own data logic (its constants, helpers, derive and hookState),
+ * cut from the rendered page and run on stub data. No DOM is needed: derive
+ * only reads S.d and hookState only reads the doctor's checks.
+ */
+function pageLogic() {
+  const page = renderPage('n', true);
+  // the page before F-229 starts its constants at VIA
+  const doc = page.indexOf('const DOCTOR_BY=');
+  const a = doc >= 0 ? doc : page.indexOf('const VIA=');
+  const h = page.indexOf('function hookState(');
+  assert.ok(a > 0 && h > a, 'the page defines its constants before hookState');
+  const src = page.slice(a, page.indexOf('\n', h));
+  return new Function(
+    'document',
+    src + '\nreturn {S, VIA, derive, hookState, in7, get D() { return D; }};',
+  )({ getElementById: () => null });
+}
 
 describe('sakk ui console (M4): security', () => {
   test('a request without the token gets nothing', async () => {
@@ -1368,5 +1392,188 @@ describe('sakk ui console: spend ledger', () => {
     const w = world();
     execFileSync('mkfifo', [join(w.home, 'decisions.jsonl')]);
     assert.deepEqual(tailDecisions({ home: w.home }).entries, []);
+  });
+});
+
+describe('sakk ui console: UAT 2026-11-01 fixes', () => {
+  const ON = '2026-10-22T10:00:00.000Z';
+  const ctx = (over = {}) => ({
+    agent: 'claude-code',
+    action: 'shell.run',
+    callId: 'c1',
+    estimatedUsd: 0,
+    ...over,
+  });
+  const stage = (L, d) => {
+    L.S.d = { overview: { zone: 'UTC', day: '2026-10-22' }, ...d };
+    L.derive();
+    return L.D;
+  };
+
+  test("the doctor's self-test is not counted as a blocked action (F-229)", () => {
+    assert.equal(hook.DOCTOR_BY, DOCTOR_BY, "the hook's label");
+    const page = renderPage('n', true);
+    assert.ok(
+      page.includes(`const DOCTOR_BY=${JSON.stringify(DOCTOR_BY)};`),
+      "the page uses the hook's label",
+    );
+    const w = world({
+      decisions: [
+        dec({
+          by: DOCTOR_BY,
+          verdict: 'deny',
+          ruleId: 'shell-destructive',
+          context: ctx({ callId: 'doctor-fire' }),
+        }),
+        dec({ verdict: 'deny', ruleId: 'shell-destructive', context: ctx({ callId: 'c2' }) }),
+        { at: ON, by: 'cursor', verdict: 'allow', ruleId: null, policyHash: H }, // no context
+        {
+          at: ON,
+          verdict: 'deny',
+          ruleId: 'shell-destructive',
+          policyHash: H,
+          context: { action: 'shell.run', callId: 'c4' },
+        }, // no by
+        null, // parses, but is not a record
+      ],
+    });
+    // the server: counts and feed leave the probe out; a non-record line is unreadable, not a row
+    const o = overviewData({ home: w.home, env: w.env });
+    assert.deepEqual(o.recent_counts, { allow: 1, deny: 2, require_approval: 0 });
+    assert.equal(o.recent.length, 3);
+    assert.ok(o.recent.every((d) => d.by !== DOCTOR_BY));
+    const tail = tailDecisions({ home: w.home });
+    assert.equal(tail.unreadable, 1);
+    assert.equal(tail.entries.length, 4);
+    assert.ok(
+      tail.entries.some((d) => d.by === DOCTOR_BY),
+      'records still list the probe',
+    );
+    // the page: blocks, agents and counts leave it out; records and export keep it
+    const D = stage(pageLogic(), { records: { decisions: tail.entries } });
+    assert.equal(D.decs.length, 3);
+    assert.ok(D.decs.every((d) => d.by !== DOCTOR_BY));
+    assert.deepEqual(D.blocks.map((b) => b.id).sort(), ['c2', 'c4']);
+    assert.equal(pageLogic().VIA[DOCTOR_BY], 'Doctor self-test');
+    assert.ok(
+      page.includes('const recs=arr(S.d.records&&S.d.records.decisions);'),
+      'export writes every record',
+    );
+    // a stray null that reaches the page anyway is skipped, not a crash
+    assert.equal(
+      stage(pageLogic(), { records: { decisions: [null, ...tail.entries] } }).decs.length,
+      3,
+    );
+  });
+
+  test('the Open items count is the number of open rows it links to (F-228)', () => {
+    const D = stage(pageLogic(), {
+      overview: { zone: 'UTC', day: '2026-10-22', unpriced: { 'm-x': 2 } },
+      ledger: {
+        configured: true,
+        status: {
+          halted: { by: 'uat', reason: 'drill', at: ON },
+          reconciliation_required: true,
+          updated_at: ON,
+        },
+        entries: [],
+        alerts: { entries: [] },
+      },
+      records: {
+        decisions: [
+          dec({
+            verdict: 'deny',
+            ruleId: 'secret',
+            context: ctx({ action: 'file.write', callId: 's-today' }),
+          }),
+          dec({
+            at: '2026-09-01T10:00:00.000Z',
+            verdict: 'deny',
+            ruleId: 'secret',
+            context: ctx({ callId: 's-old' }),
+          }),
+          dec({ verdict: 'deny', ruleId: 'shell-destructive', context: ctx({ callId: 'd1' }) }),
+        ],
+      },
+    });
+    assert.ok(D.halt, 'the halt is shown');
+    const open = D.blocks.filter((b) => b.open);
+    assert.deepEqual(open.map((b) => b.id).sort(), ['ledger', 'm-x', 's-today']);
+    assert.equal(
+      D.openN,
+      open.length,
+      'the count is the rows See what to do lists, with no extra one for the halt',
+    );
+  });
+
+  test('the secret view counts every secret read the guard blocked (F-226)', () => {
+    const rows = [
+      dec({
+        verdict: 'deny',
+        ruleId: 'secret',
+        context: ctx({ action: 'file.write', callId: 'find', scope: ['/p/app.py'] }),
+      }),
+      dec({
+        verdict: 'deny',
+        ruleId: 'protect-secret-files',
+        context: ctx({ action: 'secret.read', callId: 'read', scope: ['/p/.env'] }),
+      }),
+      dec({
+        verdict: 'allow',
+        ruleId: null,
+        context: ctx({ action: 'secret.read', callId: 'read-ok' }),
+      }),
+      dec({
+        by: DOCTOR_BY,
+        verdict: 'deny',
+        ruleId: 'protect-secret-files',
+        context: ctx({ action: 'secret.read', callId: 'doc' }),
+      }),
+      dec({ verdict: 'deny', ruleId: 'shell-destructive', context: ctx({ callId: 'shell' }) }),
+      { at: ON, by: 'cursor', verdict: 'deny', ruleId: 'shell-destructive', policyHash: H }, // no context
+    ];
+    const w = world({ decisions: rows });
+    const { cards } = secretData({ home: w.home });
+    assert.deepEqual(cards.map((c) => [c.rule, c.action, c.scope]).sort(), [
+      ['protect-secret-files', 'secret.read', ['/p/.env']],
+      ['secret', 'file.write', ['/p/app.py']],
+    ]);
+    // the page keeps v10's meaning: only a Secret found row is type secret and open;
+    // a blocked read is a Policy denied record with nothing to do
+    const L = pageLogic();
+    const D = stage(L, {
+      records: { decisions: tailDecisions({ home: w.home }).entries },
+      secret: { cards },
+    });
+    const byId = Object.fromEntries(D.blocks.map((b) => [b.id, b]));
+    assert.equal(byId.find.type, 'secret');
+    assert.equal(byId.find.open, true);
+    assert.equal(byId.read.type, 'deny');
+    assert.equal(byId.read.open, false);
+    // and the 7-day count counts the finds, the rows its See records link opens
+    const expr = renderPage('n', true).match(/const n7=(cards\.filter\(.*?\)\.length);/);
+    assert.ok(expr, 'the secret view counts its cards');
+    assert.equal(new Function('cards', 'in7', `return ${expr[1]};`)(cards, L.in7), 1);
+  });
+
+  test('the agents page says when a hook fails open (F-227)', () => {
+    const L = pageLogic();
+    const inst = { name: 'claude-code (project)', ok: true, detail: 'installed' };
+    L.S.d = {
+      agents: {
+        checks: [inst, { name: 'claude-code fail-open', ok: true, warn: true, detail: 'fo' }],
+      },
+    };
+    assert.equal(L.hookState('claude-code').failOpen, 'fo');
+    L.S.d = {
+      agents: { checks: [inst, { name: 'claude-code fail-open', ok: true, detail: 'fo' }] },
+    };
+    assert.equal(
+      L.hookState('claude-code').failOpen,
+      null,
+      'a check that is not a warning is not shown as one',
+    );
+    L.S.d = {};
+    assert.deepEqual(L.hookState('claude-code'), { on: false, detail: 'Not checked', where: '' });
   });
 });

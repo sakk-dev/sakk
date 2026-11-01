@@ -341,6 +341,9 @@ describe('F-105 the hot/cold split: settled entries seal into a bounded, verifia
     const out = join(mkdtempSync(join(tmpdir(), 'export-')), 'flat.json');
     const ex = sakk(['ledger', 'export', '--ledger', q, '--out', out]);
     assert.equal(ex.status, 0, ex.stderr);
+    // the line reads as a sentence, not the raw "entr(y|ies)" pattern (F-225)
+    assert.match(ex.stdout, new RegExp(`^ledger export: ${SEAL_AT + 20} entries written to `, 'm'));
+    assert.doesNotMatch(ex.stdout, /entr\(y\|ies\)/);
     const flat = readLedger({ ledgerPath: out, maxAgeMs: Infinity });
     assert.equal(flat.entries.length, SEAL_AT + 20);
     assert.ok(Math.abs(totalsOf(flat).settledUsd - exp2) < 1e-9);

@@ -5714,7 +5714,8 @@
         "F-161": "F-161 fixed one instance of this phantom — the M2 CHANGELOG line — marked the spend/cap/prices CLI not-shipped there, and is the detector this finding escaped past; its sweep was scoped to README/CHANGELOG. F-175 is the same RC-10 class recurring on the surfaces that sweep and detector do not cover: the command's later tokens, the two runtime hint strings an operator actually reads, docs/SPEND.md, and specs/. Same class, different surfaces; filing it keeps the escape visible rather than re-opening F-161.",
         "F-195": "F-195 is the console writing files on a GET and missing response headers it claims; F-175 is the prices update/add commands named in hints but not built.",
         "F-196": "F-196 is init printing 'hook wired' without installing the guard; F-175 is the prices commands that are named but missing.",
-        "F-198": "F-198 is secret-rule counts and checklist ticks that disagree with code and package; F-175 is the missing prices commands named in hints."
+        "F-198": "F-198 is secret-rule counts and checklist ticks that disagree with code and package; F-175 is the missing prices commands named in hints.",
+        "F-230": "F-175 is a prices command named in docs but never built; F-230 is two doctor warnings the Agents page does not show."
       }
     },
     {
@@ -6379,7 +6380,8 @@
       "mechanism_gap": "The statement detectors (claims-are-checked: documented codes and file names exist, no 'signed/immutable' claims) check words against code; 'read-only' is not on their list, and no test compares the state tree before and after a GET.",
       "mechanism_upgrade": "test/console.test.mjs::F-195 a cross-site Origin is refused on every route, not just the write",
       "distinct_from": {
-        "F-175": "F-175 is a prices command the docs and hints name but nobody built; F-195 is the console's read-only claim and its response headers, which the console does not keep."
+        "F-175": "F-175 is a prices command the docs and hints name but nobody built; F-195 is the console's read-only claim and its response headers, which the console does not keep.",
+        "F-230": "F-195 is the console writing on a GET and missing headers; F-230 is two doctor warnings the Agents page does not show."
       },
       "corrections": [
         {
@@ -7357,7 +7359,8 @@
       "rc": ["RC-10"],
       "es": ["ES-01"],
       "distinct_from": {
-        "F-222": "F-222 is a layout that only broke in a narrow window; F-223 is the page not following the design at all and its stop request carrying no token."
+        "F-222": "F-222 is a layout that only broke in a narrow window; F-223 is the page not following the design at all and its stop request carrying no token.",
+        "F-230": "F-223 is the console not built to the frozen v10 design; F-230 is two doctor warnings that design has no place for."
       }
     },
     {
@@ -7394,6 +7397,209 @@
       "distinct_from": {
         "F-222": "F-222 is content wider than the window making the page scroll sideways; F-224 is the nav's own scroll being thrown away on every re-render.",
         "F-223": "F-223 is the page not following the frozen design; F-224 is a state the rebuilt page loses between clicks."
+      }
+    },
+    {
+      "id": "F-225",
+      "title": "sakk ledger export --out printed the raw pattern \"entr(y|ies)\" instead of a word",
+      "date": "2026-11-01",
+      "class": "C-05",
+      "introduced_in": "b4df6c8",
+      "found_by": "T0",
+      "areas": ["bin/sakk.mjs", "test/ledger-archive.test.mjs"],
+      "symptom": "sakk ledger export --out <file> on the uat16 home printed \"ledger export: 13 entr(y|ies) written to …\": a regular-expression fragment where the word should be.",
+      "evidence": "Found in the full UAT walk of 2026-11-01 on the uat16 fake home: the real bin/sakk.mjs ui, hook, doctor, scan and ledger commands, read in the desktop browser pane and the terminal. The line was copied from the terminal; the test for export checked the exit code, the file and its totals, never the line a person reads.",
+      "direct_cause": "The message was written as a template string with \"entr(y|ies)\" in it, a pattern meant for a test, not a word chosen from the count.",
+      "root_cause": "The export test read the file it wrote and ignored stdout, so the only sentence a person sees was checked by nothing.",
+      "why": [
+        "The F-105 tests were about the sealed ledger: totals, verify exit codes and the hot/cold split.",
+        "The confirmation line was treated as decoration, so no assert read it.",
+        "Nobody ran the command by hand before this UAT."
+      ],
+      "mechanism_gap": "CLI confirmation lines are not read by the tests that run the command.",
+      "mechanism_upgrade": "test/ledger-archive.test.mjs::export rebuilds one valid ledger with the same totals; verify's exit code is acted on",
+      "instance_fix": "this commit: the line says \"entry\" for one and \"entries\" otherwise. The export test now matches the whole line with the real count and fails if the raw pattern comes back; putting the old line back turns it red.",
+      "guard": "test/ledger-archive.test.mjs::export rebuilds one valid ledger with the same totals; verify's exit code is acted on",
+      "sweep": "Every output line in bin/ and src/ was grepped for regex fragments such as \"(y|ies)\": this was the only one. Lines that write \"file(s)\" or \"approver(s)\" are ordinary English and were left.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-07"],
+      "es": ["ES-01"],
+      "distinct_from": {
+        "F-105": "F-105 is how settled entries seal and verify; F-225 is only the wording of the export confirmation.",
+        "F-196": "F-196 is init claiming a guard it never installed; F-225 is only the wording of the export confirmation, which printed a regex fragment."
+      }
+    },
+    {
+      "id": "F-226",
+      "title": "The Secret guard page left out every secret read the guard blocked",
+      "date": "2026-11-01",
+      "class": "C-02",
+      "introduced_in": "b821cf9",
+      "found_by": "T0",
+      "areas": ["src/console.mjs", "test/console.test.mjs"],
+      "symptom": "After an agent was denied reading a .env file and an SSH key on the uat16 home, the Secret guard page listed only the key written into a file; the two blocked reads appeared under Blocked actions but not where a person looks for agents reaching for secrets.",
+      "evidence": "Found in the full UAT walk of 2026-11-01 on the uat16 fake home: the real bin/sakk.mjs ui, hook, doctor, scan and ledger commands, read in the desktop browser pane and the terminal. decisions.jsonl held three denies: the reads carried context.action \"secret.read\" and the protect-secret-files rule, the written key the secret rule; /api/secret returned only the written key.",
+      "direct_cause": "secretData() kept only decisions with ruleId === 'secret', the rule that finds a secret in content; a blocked read carries the protect-secret-files rule and the action secret.read, so it never matched.",
+      "root_cause": "The secret view was defined by one rule id, a hand-picked list of one, instead of by what the guard records about the action (secret.read), so a second rule that guards secrets was outside it from the start.",
+      "why": [
+        "The M4 console was built when the secret rule was the only one that showed secrets.",
+        "The protect-secret-files rule landed later and logs its own rule id.",
+        "The secret view test fed it only secret-rule rows."
+      ],
+      "mechanism_gap": "No test fed the secret view a blocked secret read.",
+      "mechanism_upgrade": "test/console.test.mjs::the secret view counts every secret read the guard blocked (F-226)",
+      "instance_fix": "this commit: the secret list takes secret finds and every deny whose action is secret.read. The 7-day count, the record type and the open items stay as the frozen v10 design has them: only a Secret found row is type secret and open; a blocked read is a Policy denied record with nothing to do. The test feeds both kinds and a doctor row; dropping the secret.read match or widening the 7-day count each turns it red.",
+      "guard": "test/console.test.mjs::the secret view counts every secret read the guard blocked (F-226)",
+      "sweep": "Every reader of decisions in src/console.mjs was checked for a ruleId-only secret test: secretData was the only one; the client blocks, records and export already read every row.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-04"],
+      "es": ["ES-02"],
+      "distinct_from": {
+        "F-228": "F-228 is the Open items count; F-226 is which rows the secret view lists.",
+        "F-194": "F-194 is secrets left raw in a decision path and scope fields; F-226 is the Secret guard page leaving blocked secret reads out of its list."
+      }
+    },
+    {
+      "id": "F-227",
+      "title": "The Agents page showed a fail-open hook install as healthy",
+      "date": "2026-11-01",
+      "class": "C-05",
+      "introduced_in": "f7ed38b",
+      "found_by": "T0",
+      "areas": ["src/console.mjs", "test/console.test.mjs"],
+      "symptom": "sakk doctor warned that the Claude Code hook on the uat16 home was installed fail-open (an old agent version runs the agent if the hook errors), but the Agents page showed the hook as On with no warning.",
+      "evidence": "Found in the full UAT walk of 2026-11-01 on the uat16 fake home: the real bin/sakk.mjs ui, hook, doctor, scan and ledger commands, read in the desktop browser pane and the terminal. /api/agents returned a \"claude-code fail-open\" check with warn: true; the v10 page read only the install checks and dropped it.",
+      "direct_cause": "hookState() built the row from the \"<agent> (<where>)\" checks only; the fail-open check, added by F-174 and F-206, has a different name and was never looked up.",
+      "root_cause": "The v10 rebuild ported the page from the frozen design, which predates the fail-open check, so a warning the CLI gives had no place on the page and nothing compared the two.",
+      "why": [
+        "The frozen v10 design has no fail-open state.",
+        "The rebuild matched the design, not the checks the server returns.",
+        "No test fed the Agents page a warned check."
+      ],
+      "answer_failed": {
+        "qid": "C-05.2",
+        "why": "The v10 port answered that every figure comes from an /api route compared to the CLI, but the agents checks were not compared: the CLI warning had no counterpart on the page."
+      },
+      "mechanism_gap": "No test compares the warnings sakk doctor gives with what the Agents page shows.",
+      "mechanism_upgrade": "test/console.test.mjs::the agents page says when a hook fails open (F-227)",
+      "instance_fix": "this commit: hookState() returns the fail-open detail when that check carries the warn flag, and the Agents row shows it. This is a change from the frozen v10 design, reported for the maintainer to accept. The test covers warned, not warned and no checks; dropping the warn branch turns it red.",
+      "guard": "test/console.test.mjs::the agents page says when a hook fails open (F-227)",
+      "sweep": "Every check the doctor returns with warn: true was listed against the page. Not installed and decision log will be created already show. Two others still do not: claude-code start folder (a session started in a parent folder skips a project hook) and cursor double run (harmless). They are logged as F-230 for the maintainer to decide, since showing them is another change from the frozen v10 design.",
+      "sweep_status": "partial",
+      "status": "fixed",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "distinct_from": {
+        "F-174": "F-174 added the fail-open check to the doctor; F-227 is the console not showing it.",
+        "F-206": "F-206 is the install path that may fall back to fail-open; F-227 is only the page.",
+        "F-230": "F-227 is the fail-open warning, which the page now shows; F-230 is the two other doctor warnings it still hides."
+      }
+    },
+    {
+      "id": "F-228",
+      "title": "Open items counted one more than the rows it links to while agents were halted",
+      "date": "2026-11-01",
+      "class": "C-05",
+      "introduced_in": "f7ed38b",
+      "found_by": "T0",
+      "areas": ["src/console.mjs", "test/console.test.mjs"],
+      "symptom": "With agents halted on the uat16 home, the Overview said 3 open items, and See what to do listed 2.",
+      "evidence": "Found in the full UAT walk of 2026-11-01 on the uat16 fake home: the real bin/sakk.mjs ui, hook, doctor, scan and ledger commands, read in the desktop browser pane and the terminal. The count was blocks.filter(open).length + (halt ? 1 : 0); the halt banner is already shown above and is not a row in the list.",
+      "direct_cause": "The count added 1 for the halt, which is not one of the rows the link opens.",
+      "root_cause": "A figure a person acts on was computed separately from the list it opens, so the two could disagree; the frozen v10 design counts the rows only.",
+      "why": [
+        "The halt was meant to be visible in the count.",
+        "It was added to the number, not to the list.",
+        "No test compared the number with the list."
+      ],
+      "answer_failed": {
+        "qid": "C-05.2",
+        "why": "The v10 port answered that each figure comes from an /api route the tests compare to the CLI; the Open items count is computed on the page and was compared to nothing."
+      },
+      "mechanism_gap": "No test checks that a count equals the rows its link opens.",
+      "mechanism_upgrade": "test/console.test.mjs::the Open items count is the number of open rows it links to (F-228)",
+      "instance_fix": "this commit: the count is the number of open rows, as v10 has it. The test stages a halted home with a recon row, an unpriced model and three secret rows and checks the count against the open ids; putting the +1 back turns it red.",
+      "guard": "test/console.test.mjs::the Open items count is the number of open rows it links to (F-228)",
+      "sweep": "The other counts that open a list were read in the code and in the UAT walk: the blocked and 7-day secret counts are filters of the same rows their lists show; Open items was the only one that added a value from outside its list.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-04"],
+      "es": ["ES-05"],
+      "distinct_from": {
+        "F-226": "F-226 is which rows the secret view lists; F-228 is a count that did not match its list.",
+        "F-230": "F-228 is the Open items count not matching its list; F-230 is two doctor warnings the Agents page does not show."
+      }
+    },
+    {
+      "id": "F-229",
+      "title": "The doctor's own self-test was logged and counted as a blocked action by Claude Code",
+      "date": "2026-11-01",
+      "class": "C-11",
+      "introduced_in": "294f391",
+      "found_by": "T0",
+      "areas": [
+        "src/hook.mjs",
+        "src/guard-install.mjs",
+        "src/console.mjs",
+        "test/guard.test.mjs",
+        "test/console.test.mjs"
+      ],
+      "symptom": "After sakk doctor on the uat16 home fired its probe (a forced push) through the installed hook, the console showed it as a blocked action by claude-code, in the blocked counts, the agents page and the feed, though no agent had sent it.",
+      "evidence": "Found in the full UAT walk of 2026-11-01 on the uat16 fake home: the real bin/sakk.mjs ui, hook, doctor, scan and ledger commands, read in the desktop browser pane and the terminal. decisions.jsonl had a deny with by \"claude-code\" carrying the doctor's fixed command and session id. A code review of the same readers then found that a line holding null reached the records and export lists.",
+      "direct_cause": "evaluate() logged every decision under the agent named in the payload, and the doctor's probe is a Claude Code payload, so the self-test was recorded as the agent's own action.",
+      "root_cause": "The by field meant \"who sent this\" in the hook but was read as \"an agent did this\" by the console; the doctor reused the agent payload without a label of its own, so one value carried two meanings.",
+      "why": [
+        "The M1 doctor fires a real payload so the test is end to end.",
+        "The hook had no way to tell that payload from an agent.",
+        "The console counts every deny by its by field."
+      ],
+      "mechanism_gap": "No test runs the doctor probe through the real hook and reads who the decision is logged under.",
+      "mechanism_upgrade": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)",
+      "instance_fix": "this commit: the hook logs the decision as sakk-doctor only when SAKK_DOCTOR=1 and every probe field matches the one DOCTOR_COMMAND the doctor sends; anything else keeps the agent's name, and the verdict is still deny. The console leaves sakk-doctor rows out of counts, blocks, agents and the feed, and keeps them in records and export as Doctor self-test. The decisions reader now counts a line that parses but is not a record (null, a number, a list) as unreadable, as the alerts reader does. Eight hook mutations (each probe field, the variable, the label) and the console filters each turn a test red.",
+      "guard": "test/console.test.mjs::the doctor's self-test is not counted as a blocked action (F-229)",
+      "sweep": "Every writer of by (only evaluate) and every reader (only src/console.mjs, checked with grep over src and bin) was checked; the spend ledger, alerts and CLI do not read it. Every decisions reader in the console was checked for non-record lines.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "distinct_from": {
+        "F-226": "F-226 is the secret view missing blocked reads; F-229 is a self-test logged as an agent."
+      }
+    },
+    {
+      "id": "F-230",
+      "title": "The Agents page still hides two doctor warnings: start folder and Cursor double run",
+      "date": "2026-11-01",
+      "class": "C-05",
+      "introduced_in": "f7ed38b",
+      "found_by": "T0",
+      "areas": ["src/console.mjs"],
+      "symptom": "sakk doctor warns when a Claude Code session started in a parent folder would skip the project hook (claude-code start folder) and when Cursor would decide each call twice (cursor double run). The Agents page shows neither.",
+      "evidence": "Found in the F-227 sweep during the 2026-11-01 UAT on the uat16 fake home: src/guard-install.mjs returns both checks with ok true and warn true, and the Agents note in src/console.mjs lists only checks with ok false.",
+      "direct_cause": "The Agents note filters doctor checks on ok being false; warnings come back ok with a warn flag, and only the fail-open one is read since F-227.",
+      "why": [
+        "The frozen v10 design has no place for doctor warnings.",
+        "Showing them changes that design, so the F-227 fix left them for the owner to decide.",
+        "Each warning the page shows is looked up by name, so a warning the doctor adds stays CLI-only until it is ported by hand."
+      ],
+      "root_cause": "The page has no rule for which doctor warnings it shows; each one is matched by name, so the CLI and the page drift apart whenever the doctor gains a warning.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-04"],
+      "es": ["ES-01"],
+      "mechanism_gap": "No test compares every warning sakk doctor returns with what the Agents page shows.",
+      "mechanism_upgrade": "none: open — waiting on the maintainer to decide whether the page shows these warnings, which changes the frozen v10 design",
+      "sweep": "Not swept — open until the maintainer decides. If accepted, the fix and sweep are: show every check that carries warn on the Agents page, and add a test that feeds each doctor warning to the page.",
+      "sweep_status": "not_done",
+      "status": "open",
+      "distinct_from": {
+        "F-227": "F-227 is the fail-open warning, which the page now shows; F-230 is the two other doctor warnings it still hides."
       }
     }
   ]
