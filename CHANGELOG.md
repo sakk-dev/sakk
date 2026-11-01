@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open items counts the rows it links to; a halt no longer adds one (F-228).
 - `sakk ledger export --out` says "entry" or "entries" instead of printing
   `entr(y|ies)` (F-225).
+- The overview's Today card shows "—" and "run sakk spend to count it" for
+  a day the spend index has not counted, instead of $0.00. `/api/overview`
+  gains `indexed_at` (when the index was last counted, or null) and
+  `counted_today`; the console still writes nothing on a GET (F-231).
 
 ### Added — the console shows the spend ledger
 

@@ -7601,6 +7601,38 @@
       "distinct_from": {
         "F-227": "F-227 is the fail-open warning, which the page now shows; F-230 is the two other doctor warnings it still hides."
       }
+    },
+    {
+      "id": "F-231",
+      "title": "The console showed $0.00 for a day of spend it had never counted",
+      "date": "2026-11-01",
+      "class": "C-01",
+      "introduced_in": "7126ad2",
+      "found_by": "T0",
+      "areas": ["src/console.mjs", "test/console.test.mjs", "specs/console/spec.md"],
+      "symptom": "On a fresh install with no cap set, sakk ui showed Today $0.00 / no cap and 0 calls although Claude Code had spent money that day; the figure appeared only after sakk spend had been run once.",
+      "evidence": "Found in the 2026-11-01 UAT on a fake home: the console's first open showed $0.00 with a session log holding priced calls; sakk spend --json on the same home then reported the spend and the console showed it too.",
+      "direct_cause": "overviewData reads the day file under spend/days; a day the index never counted has no file, and daySpend returns 0 for a missing file, so the card printed $0.00.",
+      "why": [
+        "F-195 made the console read-only, so a GET no longer refreshes the spend index.",
+        "The index is refreshed only by the hook when a cap is set, or by sakk spend.",
+        "With no cap and no sakk spend run, nothing counts the day, and the missing day file reads as zero.",
+        "The bare-home test asserted spend_usd 0 as the expected answer, so the gap looked correct."
+      ],
+      "root_cause": "The card had no way to tell \"counted and zero\" from \"never counted\": the index records when it was last counted (files.json is rewritten on every count) but the console never read it, so absence of a count read as a $0 figure.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-05", "ES-07"],
+      "mechanism_gap": "No test opened the console on a home where spend existed but had not been counted; the only no-data test treated $0 as the right answer.",
+      "mechanism_upgrade": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)",
+      "instance_fix": "this commit: /api/overview returns indexed_at (the mtime of spend/files.json, null when absent) and counted_today (indexed_at falls on today in the configured zone). The Today card shows a dash and \"run sakk spend to count it\" until today is counted, hides the cap bar meanwhile, and once counted shows \"counted HH:MM\". The console still writes nothing on a GET.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)",
+      "sweep": "Every console reader of local-log spend was checked with grep over src/console.mjs: only overviewData and the Today card read it; the Calls page reads the gateway ledger, which has its own no-ledger state. sakk spend and the hook's cap check both refresh the index before reading, so neither can show an uncounted day.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-195": "F-195 is the console writing the index on a GET; its fix made the page read-only, and F-231 is the uncounted day that read-only page then showed as $0."
+      }
     }
   ]
 }

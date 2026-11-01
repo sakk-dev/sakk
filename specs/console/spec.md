@@ -76,6 +76,10 @@ img-src 'self' data:; frame-ancestors 'none'`
    the installed state of each hook without firing it (`doctor({probe:false})`),
    so a read-only request never runs a subprocess or blocks on one. A 5 GB log
    never loads whole.
+   - The index is counted by the hook when a cap is set, or by `sakk spend`.
+     A day it has not counted has no figure, so the Today card shows "—" and
+     "run sakk spend" until the index was counted today, never $0
+     (`test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)`).
 9. **The spend ledger.** The Spend log sub-page under Overview reads
    `GET /api/ledger`, which shows the ledger the console was
    started with (`--ledger`, `config.json` under `SAKK_HOME`, or
