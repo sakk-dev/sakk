@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — optional username and password sign-in for `sakk ui`
+
+- `sakk ui --set-password` asks at a terminal, without echo, for a username
+  and a password of 15 or more characters, and stores a scrypt hash with a
+  random salt in `console-login.json` under `SAKK_HOME` (mode 0600).
+  `sakk ui --clear-password` removes it. Neither takes the password on the
+  command line or from a pipe (`UI_PASSWORD_NEEDS_TTY`).
+- With a password set, `http://127.0.0.1:<port>/` shows a sign-in page; the
+  address `sakk ui` prints still opens the console. A sign-in sets an
+  `HttpOnly`, `SameSite=Strict` session cookie that ends after 30 minutes
+  idle or 8 hours, or at Sign out. A password session reads; stopping an
+  agent still needs `--allow-halt` and the start token.
+- New routes `POST /login` and `POST /logout`, and new codes
+  `CONSOLE_LOGIN_FAILED` (wrong username or password, one answer for both),
+  `CONSOLE_LOGIN_LOCKED` (five failures in 15 minutes, with `Retry-After`),
+  `CONSOLE_LOGIN_BUSY`, `CONSOLE_LOGIN_BAD_BODY`, `CONSOLE_LOGIN_BAD_TYPE`
+  and `CONSOLE_LOGIN_TOO_BIG`. A credential file that is a link, readable by
+  others or malformed stops `sakk ui` with `CONSOLE_LOGIN_UNSAFE` or
+  `CONSOLE_LOGIN_INVALID` and exit 2.
+- With no password set, `sakk ui` is unchanged. SSO, team accounts and named
+  approvers stay out of the open-source edition.
+- An unknown argument or flag of `sakk ui` is no longer echoed back in the
+  error, so a password typed on the command line does not land on the screen.
+
 ### Changed — regulator-specific packs and policy leave the public repository
 
 - Two example case packs written for a fictional authority,

@@ -344,7 +344,10 @@ describe('P0 UAT backfill — install & accuracy (P-INS / P-ACC)', () => {
     assert.ok(/voluntary|never calls/i.test(section), 'documents that gating is voluntary');
   });
 
-  test('P-ACC-005 enterprise / login / regulatory features are an honest stub, never claimed shipped', () => {
+  test('P-ACC-005 enterprise / SSO / regulatory features are an honest stub, never claimed shipped', () => {
+    // the maintainer, 2026-11-01: a basic username + password sign-in for sakk ui ships in
+    // the open-source edition (specs/console/spec.md, Security item 10). SSO,
+    // team accounts and named approvers stay stubs, so every check below holds.
     // the enterprise console page is a coming-soon stub that says so
     const console_ = read('src/console.mjs');
     assert.match(

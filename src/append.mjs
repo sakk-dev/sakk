@@ -39,10 +39,10 @@ export function appendNoFollow(path, text) {
  * rename, then a best-effort directory fsync so the rename itself survives
  * power loss. Throws a plain Error (callers wrap it in their own typed code).
  */
-export function writeFileAtomic(path, text) {
+export function writeFileAtomic(path, text, mode = 0o666) {
   const tmp = `${path}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
   try {
-    const fd = openSync(tmp, 'wx');
+    const fd = openSync(tmp, 'wx', mode); // the umask can only narrow it
     try {
       const buf = Buffer.from(text);
       let written = 0;

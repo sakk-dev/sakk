@@ -9,6 +9,8 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { openSync, fstatSync, readSync, closeSync, lstatSync, constants as FS } from 'node:fs';
 import { userInfo, homedir } from 'node:os';
 import { join } from 'node:path';
+import { URLSearchParams } from 'node:url';
+import { PASSWORD_MAX, USERNAME_MAX, createLoginGate, loadConsoleLogin } from './console-login.mjs';
 
 import {
   DOCTOR_BY,
@@ -37,6 +39,7 @@ export class ConsoleError extends Error {
 export const TAIL_BYTES = 1024 * 1024; // read at most this from the end
 export const PAGE_LINES = 500; // show at most this many, newest first
 export const MAX_QUERY = 8 * 1024; // a request line over this is refused (input-space)
+export const LOGIN_BODY_CAP = 2048; // a sign-in body over this is refused before it is read
 // The hot ledger holds at most SEAL_AT settled plus MAX_INFLIGHT outstanding
 // entries (a few MB); a file far past that is refused before it is read.
 export const LEDGER_VIEW_BYTES = 32 * 1024 * 1024;
@@ -382,9 +385,20 @@ export function startConsole({
   home = sakkHome(),
   ledgerPath = process.env.SAKK_LEDGER_PATH || null,
   env = process.env,
+  now = Date.now,
+  log = (line) => process.stderr.write(`sakk ui: ${line}\n`),
 } = {}) {
   const tok = token();
   const state = { forbidden: 0 };
+  // opt-in sign-in: no credential file, no sign-in, the console is token-only as before;
+  // a file that cannot be trusted refuses the start (CONSOLE_LOGIN_UNSAFE / _INVALID)
+  let gate = null;
+  try {
+    const rec = loadConsoleLogin({ home });
+    if (rec) gate = createLoginGate({ rec, now, log });
+  } catch (e) {
+    return Promise.reject(e);
+  }
   let bound = port;
   const headers = (nonce) => ({
     // non-HTML responses carry no script/style, so their CSP allows none at all
@@ -417,12 +431,23 @@ export function startConsole({
       // below still requires the Origin to be present.
       if (req.headers.origin !== undefined && !originOk(req.headers.origin, bound))
         return forbid(res);
-      // 3. the token, from the first-load query or the cookie after that
-      const fromQuery = url.searchParams.get('t');
-      const cookie = parseCookie(req.headers.cookie).sakk_t;
-      if (!tokenOk(fromQuery, tok) && !tokenOk(cookie, tok)) return forbid(res);
-
+      // 3. the token, from the first-load query or the cookie after that — or,
+      // when a password is set, a live session from POST /login
       const path = url.pathname;
+      const fromQuery = url.searchParams.get('t');
+      const cookies = parseCookie(req.headers.cookie);
+      const cookie = cookies.sakk_t;
+      if (gate && req.method === 'POST' && (path === '/login' || path === '/logout'))
+        return signInOut(req, res, path, cookies.sakk_s);
+      if (!tokenOk(fromQuery, tok) && !tokenOk(cookie, tok) && !gate?.sessionOk(cookies.sakk_s)) {
+        // the sign-in page is a GET: it writes nothing and sets no cookie
+        if (gate && req.method === 'GET' && path === '/') {
+          const nonce = randomBytes(16).toString('base64');
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...headers(nonce) });
+          return res.end(renderLoginPage(nonce));
+        }
+        return forbid(res);
+      }
       if (req.method === 'GET' && path === '/') {
         const nonce = randomBytes(16).toString('base64');
         const extra = {};
@@ -434,7 +459,7 @@ export function startConsole({
           ...headers(nonce),
           ...extra,
         });
-        return res.end(renderPage(nonce, allowHalt));
+        return res.end(renderPage(nonce, allowHalt, Boolean(gate)));
       }
       if (req.method === 'GET' && path.startsWith('/api/')) {
         const name = path.slice(5);
@@ -521,6 +546,83 @@ export function startConsole({
     }
   });
 
+  const JSON_TYPE = 'application/json; charset=utf-8';
+  /** POST /login and /logout: our own Origin, a capped body, one generic refusal. */
+  function signInOut(req, res, path, sid) {
+    // a write: the Origin must be present and ours, as for the stop route
+    if (!originOk(req.headers.origin, bound)) return forbid(res);
+    if (path === '/logout') {
+      gate.end(sid);
+      return send(res, 200, JSON_TYPE, JSON.stringify({ signedOut: true }), {
+        'Set-Cookie': [
+          'sakk_s=; Path=/; SameSite=Strict; HttpOnly; Max-Age=0',
+          'sakk_t=; Path=/; SameSite=Strict; HttpOnly; Max-Age=0',
+        ],
+      });
+    }
+    const len = Number(req.headers['content-length'] ?? 0);
+    if (!(len <= LOGIN_BODY_CAP))
+      return json(res, { error: 'CONSOLE_LOGIN_TOO_BIG', message: 'sign-in body too large' }, 413);
+    const type = String(req.headers['content-type'] ?? '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+    if (type !== 'application/json' && type !== 'application/x-www-form-urlencoded')
+      return json(res, { error: 'CONSOLE_LOGIN_BAD_TYPE', message: 'send JSON or a form' }, 415);
+    return readBody(req, LOGIN_BODY_CAP, (body) => {
+      let u;
+      let p;
+      try {
+        if (type === 'application/json') ({ username: u, password: p } = JSON.parse(body) ?? {});
+        else {
+          const f = new URLSearchParams(body);
+          u = f.get('username');
+          p = f.get('password');
+        }
+      } catch {
+        u = undefined;
+      }
+      if (typeof u !== 'string' || typeof p !== 'string')
+        return json(
+          res,
+          { error: 'CONSOLE_LOGIN_BAD_BODY', message: 'username and password' },
+          400,
+        );
+      gate.signIn(u, p).then(
+        (r) => {
+          if (r.locked)
+            return send(
+              res,
+              429,
+              JSON_TYPE,
+              JSON.stringify({
+                error: 'CONSOLE_LOGIN_LOCKED',
+                retryAfter: r.retryAfter,
+                message: `Too many failed sign-ins. Try again in ${Math.ceil(r.retryAfter / 60)} min, or open the address sakk ui printed.`,
+              }),
+              { 'Retry-After': String(r.retryAfter) },
+            );
+          if (r.busy)
+            return json(
+              res,
+              { error: 'CONSOLE_LOGIN_BUSY', message: 'A sign-in is being checked. Try again.' },
+              429,
+            );
+          if (!r.ok)
+            return json(
+              res,
+              { error: 'CONSOLE_LOGIN_FAILED', message: 'Wrong username or password.' },
+              401,
+            );
+          return send(res, 200, JSON_TYPE, JSON.stringify({ signedIn: true }), {
+            'Set-Cookie': `sakk_s=${r.id}; Path=/; SameSite=Strict; HttpOnly`,
+          });
+        },
+        () => send(res, 500, 'text/plain', 'error'),
+      );
+    });
+  }
+
   server.listen(port, '127.0.0.1'); // never 0.0.0.0
   return new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -533,6 +635,7 @@ export function startConsole({
         url: `http://127.0.0.1:${bound}/?t=${tok}`,
         address: server.address().address,
         state,
+        login: gate,
         close: () => new Promise((r) => server.close(r)),
       });
     });
@@ -554,19 +657,8 @@ function readBody(req, cap, cb) {
   });
 }
 
-/**
- * The page: one HTML file, inline script and style under a nonce, no other
- * origin. It fetches /api/* (connect-src 'self') with the strict cookie and
- * renders every value with textContent, so no log string is ever HTML.
- */
-export function renderPage(nonce, allowHalt) {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sakk console</title>
-<style nonce="${nonce}">:root{--ground:#f2f4f6;--surface:#ffffff;--sunk:#eef1f4;--ink:#17212b;--muted:#5a6673;--faint:#8a95a1;--rule:#dde2e8;--accent:#0d6b57;--accent-ink:#ffffff;--accent-soft:#e2f2ed;--ok:#1d7a3e;--ok-soft:#e5f3e9;--warn:#9a5a06;--warn-soft:#fbf0dc;--bad:#b3261e;--bad-soft:#fbe9e7;--info:#2f5f9e;--info-soft:#e7eef8;--m1:#0d6b57;--m2:#2f5f9e;--m3:#b27a12;--ent:#6b3fb3;--ent-soft:#f0e9fb;--scrim:rgba(15,22,30,.42);--shadow:0 10px 30px rgba(15,22,30,.16);--font-ui:system-ui,-apple-system,"Segoe UI",sans-serif;--font-num:ui-monospace,"SF Mono",Menlo,monospace}
+// the console's one stylesheet: the tokens and classes both pages use
+const PAGE_CSS = `:root{--ground:#f2f4f6;--surface:#ffffff;--sunk:#eef1f4;--ink:#17212b;--muted:#5a6673;--faint:#8a95a1;--rule:#dde2e8;--accent:#0d6b57;--accent-ink:#ffffff;--accent-soft:#e2f2ed;--ok:#1d7a3e;--ok-soft:#e5f3e9;--warn:#9a5a06;--warn-soft:#fbf0dc;--bad:#b3261e;--bad-soft:#fbe9e7;--info:#2f5f9e;--info-soft:#e7eef8;--m1:#0d6b57;--m2:#2f5f9e;--m3:#b27a12;--ent:#6b3fb3;--ent-soft:#f0e9fb;--scrim:rgba(15,22,30,.42);--shadow:0 10px 30px rgba(15,22,30,.16);--font-ui:system-ui,-apple-system,"Segoe UI",sans-serif;--font-num:ui-monospace,"SF Mono",Menlo,monospace}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ground:#0f1419;--surface:#161d24;--sunk:#1c242c;--ink:#e5eaef;--muted:#9aa6b2;--faint:#6f7b87;--rule:#2a333c;--accent:#4cc3a4;--accent-ink:#0b1a16;--accent-soft:#15322b;--ok:#5cc27e;--ok-soft:#163020;--warn:#e2a64a;--warn-soft:#33270f;--bad:#f08a80;--bad-soft:#3a1c1a;--info:#8db4ea;--info-soft:#1b2a3f;--m1:#4cc3a4;--m2:#8db4ea;--m3:#e2b04a;--ent:#c3a6f2;--ent-soft:#2a2140;--scrim:rgba(0,0,0,.55);--shadow:0 10px 30px rgba(0,0,0,.5);color-scheme:dark}
 }
 :root[data-theme="dark"]{--ground:#0f1419;--surface:#161d24;--sunk:#1c242c;--ink:#e5eaef;--muted:#9aa6b2;--faint:#6f7b87;--rule:#2a333c;--accent:#4cc3a4;--accent-ink:#0b1a16;--accent-soft:#15322b;--ok:#5cc27e;--ok-soft:#163020;--warn:#e2a64a;--warn-soft:#33270f;--bad:#f08a80;--bad-soft:#3a1c1a;--info:#8db4ea;--info-soft:#1b2a3f;--m1:#4cc3a4;--m2:#8db4ea;--m3:#e2b04a;--ent:#c3a6f2;--ent-soft:#2a2140;--scrim:rgba(0,0,0,.55);--shadow:0 10px 30px rgba(0,0,0,.5);color-scheme:dark}
@@ -905,7 +997,64 @@ code,.mono{font-family:var(--font-num);overflow-wrap:anywhere}.ml-auto{margin-le
 html{scrollbar-gutter:stable}
 .nav .lbl{display:inline-flex;flex-direction:column}
 .nav .lbl::after{content:attr(data-label);content:attr(data-label) / "";font-weight:500;height:0;overflow:hidden;visibility:hidden;pointer-events:none;user-select:none}
-.nav .navsoon,.nav .badge{font-weight:400}</style>
+.nav .navsoon,.nav .badge{font-weight:400}`;
+
+/**
+ * The sign-in page, shown only when a password is set and the request has no
+ * token and no live session. Static markup under the same nonce CSP as the
+ * console; the one script posts to /login (same origin, so the browser sends
+ * our Origin) and shows the answer with textContent.
+ */
+export function renderLoginPage(nonce) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Sakk console</title>
+<style nonce="${nonce}">${PAGE_CSS}
+.login label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.login .lbox .btn{align-self:flex-start}</style>
+</head>
+<body>
+<main class="login">
+<form class="lbox" id="signin" method="post" action="/login" novalidate>
+<h2>Sign in to the Sakk console</h2>
+<p class="note">Open source · local. The address <code>sakk ui</code> printed also opens the console: it carries the token for this run.</p>
+<label>Username<input name="username" id="u" autocomplete="username" required maxlength="${USERNAME_MAX}"></label>
+<label>Password<input name="password" id="p" type="password" autocomplete="current-password" required maxlength="${PASSWORD_MAX}"></label>
+<p class="note warn" id="err" role="alert" hidden></p>
+<button class="btn pri" type="submit">Sign in</button>
+</form>
+</main>
+<script nonce="${nonce}">"use strict";
+(function(){
+const f=document.getElementById("signin"),e=document.getElementById("err"),b=f.querySelector("button");
+const show=(t)=>{e.textContent=t;e.hidden=false;b.disabled=false;};
+f.addEventListener("submit",(ev)=>{ev.preventDefault();b.disabled=true;e.hidden=true;
+fetch("/login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:f.username.value,password:f.password.value})})
+.then((r)=>r.json().catch(()=>({error:"HTTP_"+r.status})).then((j)=>{if(r.ok&&j.signedIn){location.replace("/");return;}f.password.value="";show(j.message||("Sign-in failed ("+(j.error||r.status)+")."));}))
+.catch((x)=>show("The console did not answer: "+String(x&&x.message||x)));});
+})();
+</script>
+</body>
+</html>
+`;
+}
+
+/**
+ * The page: one HTML file, inline script and style under a nonce, no other
+ * origin. It fetches /api/* (connect-src 'self') with the strict cookie and
+ * renders every value with textContent, so no log string is ever HTML.
+ */
+export function renderPage(nonce, allowHalt, signIn = false) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sakk console</title>
+<style nonce="${nonce}">${PAGE_CSS}</style>
 </head>
 <body>
 <template id="icons">
@@ -923,6 +1072,7 @@ html{scrollbar-gutter:stable}
 <script nonce="${nonce}">"use strict";
 (function(){
 const ALLOW_HALT=${allowHalt ? 'true' : 'false'};
+const SIGN_IN=${signIn ? 'true' : 'false'};
 const TOKEN=new URLSearchParams(location.search).get("t")||"";
 const AGENTS=["claude-code","cursor","codex"];
 const NAMES={"claude-code":"Claude Code","cursor":"Cursor","codex":"Codex","sakk-mcp":"MCP gate"};
@@ -1404,7 +1554,9 @@ function place(p,el){const r=el.getBoundingClientRect();const w=p.offsetWidth;p.
 document.addEventListener("click",e=>{const b=e.target.closest&&e.target.closest("[data-help]");if(b){e.stopPropagation();const key=b.getAttribute("data-help");if(S.pop&&S.pop.dataset.k===key){closePop();return;}closePop();const p=$("div",{class:"pop",role:"tooltip","data-k":key},$("span",{text:HELP[key]||""}));document.body.append(p);place(p,b);S.pop=p;return;}if(S.pop&&!(e.target.closest&&e.target.closest(".pop,.menu,.userchip")))closePop();},true);
 function userMenu(anchor){if(S.pop&&S.pop.classList.contains("menu")){closePop();return;}closePop();
 const r=anchor.getBoundingClientRect();const b=$("button",{type:"button",role:"menuitem",text:"Replay the tour"});b.addEventListener("click",()=>{closePop();startTour(0);});
-const m=$("div",{class:"menu",role:"menu","aria-label":"Local user"},b);m.style.right=Math.max(8,innerWidth-r.right)+"px";m.style.top=(r.bottom+6)+"px";document.body.append(m);S.pop=m;b.focus();}
+const m=$("div",{class:"menu",role:"menu","aria-label":"Local user"},b);
+if(SIGN_IN){const o=$("button",{type:"button",role:"menuitem",text:"Sign out"});o.addEventListener("click",()=>{closePop();fetch("/logout",{method:"POST",credentials:"same-origin"}).then(()=>location.replace("/"),()=>toast("The console did not answer."));});m.append(o);}
+m.style.right=Math.max(8,innerWidth-r.right)+"px";m.style.top=(r.bottom+6)+"px";document.body.append(m);S.pop=m;b.focus();}
 function tipBody(){const h=D.halt;const p=$("div",{class:"pop tip",role:"tooltip"});
 if(h){p.append($("b",{text:"Stopped ("+h.scope+")"}),$("div",{text:(h.by||"Someone")+" stopped agents at "+when(h.at)+". Reason: "+(h.reason||"—")+"."}),$("b",{text:"How to resume"}),$("div",{text:"Run sakk resume --by <your name> in a terminal."}));return p;}
 p.append($("b",{text:"Why stop"}),$("div",{text:"Cut losses first when an agent misbehaves, then investigate."}),$("b",{text:"What happens"}),$("ul",{},$("li",{text:"Every new request through Sakk on this machine is refused"}),$("li",{text:"Agents connected through Claude Code, Cursor or Codex hooks can’t run commands"}),$("li",{text:"A call already in flight finishes and is billed"})),$("b",{text:"How to resume"}),$("div",{text:"Run sakk resume --by <your name> in a terminal."}));

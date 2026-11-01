@@ -26,6 +26,7 @@ const CORE = {
   'src/classify.mjs': 'specs/guard/spec.md',
   'src/hook.mjs': 'specs/guard/spec.md',
   'src/console.mjs': 'specs/console/spec.md',
+  'src/console-login.mjs': 'specs/console/spec.md',
   'src/guard-install.mjs': 'specs/guard/spec.md',
   'eval/lib/scorer.mjs': 'eval/02_SCORING_POLICY.md',
   'eval/lib/paid-step.mjs': 'eval/03_COST_POLICY.md',

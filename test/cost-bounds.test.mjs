@@ -44,6 +44,7 @@ const ledger = await import(pathToFileURL(join(ROOT, 'src', 'ledger.mjs')));
 const policy = await import(pathToFileURL(join(ROOT, 'src', 'policy.mjs')));
 const classify = await import(pathToFileURL(join(ROOT, 'src', 'classify.mjs')));
 const hookMod = await import(pathToFileURL(join(ROOT, 'src', 'hook.mjs')));
+const login = await import(pathToFileURL(join(ROOT, 'src', 'console-login.mjs')));
 const { LIMITS } = ledger;
 const FINDINGS = JSON.parse(readFileSync(join(ROOT, 'findings', 'ledger.json'), 'utf8')).findings;
 const fresh = () => {
@@ -319,6 +320,71 @@ const BOUNDS = {
         'returns a constant HTML template with one nonce interpolated; no attacker-sized input',
       guard:
         'test/console.test.mjs::every open-source page is in the nav and the coming-soon window is present',
+    },
+    renderLoginPage: {
+      bounded:
+        'returns a constant HTML template with one nonce interpolated; no attacker-sized input',
+      guard:
+        'test/console-login.test.mjs::the right username and password open a session cookie that is HttpOnly and SameSite=Strict',
+    },
+  },
+  'console-login.mjs': {
+    loginPath: {
+      bounded: 'one path join of the Sakk home and a constant file name; no input-sized work',
+      guard:
+        'test/console-login.test.mjs::the credential file is mode 0600 and holds a scrypt hash, never the password',
+    },
+    checkUsername: {
+      refuses: () => code(() => login.checkUsername(long(10000))),
+      expect: 'UI_USERNAME_INVALID',
+    },
+    checkPassword: {
+      refuses: () => code(() => login.checkPassword(long(100000))),
+      expect: 'UI_PASSWORD_INVALID',
+    },
+    setConsoleLogin: {
+      bounded:
+        'checkUsername and checkPassword refuse past 64 and 1024 characters before one scrypt at fixed N 2^17 with a 256 MiB maxmem; writes one small file',
+      guard:
+        'test/console-login.test.mjs::the credential file is mode 0600 and holds a scrypt hash, never the password',
+    },
+    clearConsoleLogin: {
+      bounded:
+        'one lstat and one unlink of a fixed path; a file that is not a regular file is refused, never followed',
+      guard:
+        'test/console-login.test.mjs::a credential file that is a symlink, a hard link or readable by others stops the console from starting',
+    },
+    loadConsoleLogin: {
+      refuses: () => {
+        const home = tmp();
+        writeFileSync(login.loginPath(home), long(5000), { mode: 0o600 });
+        return code(() => login.loadConsoleLogin({ home }));
+      },
+      expect: 'CONSOLE_LOGIN_UNSAFE',
+    },
+    verifyConsoleLogin: {
+      bounded:
+        'one scrypt at the stored fixed parameters over a password the 2 KiB sign-in body caps; usernames compared as fixed-length digests',
+      guard:
+        'test/console-login.test.mjs::a wrong password and a wrong username get the same refusal and no cookie',
+    },
+    createLoginGate: {
+      bounded:
+        'keeps at most 16 sessions and the failures of one 15-minute window, locks after 5, and runs one scrypt at a time (a second gets CONSOLE_LOGIN_BUSY)',
+      guard:
+        'test/console-login.test.mjs::five failed sign-ins lock sign-in out with a clear message, while the token link still works',
+    },
+    askConsoleLogin: {
+      bounded:
+        'the username line is cut at 65 characters and the password at 1024 before the checks refuse them; without a terminal it refuses before reading',
+      guard:
+        'test/console-login.test.mjs::sakk ui refuses a password on the command line and a password prompt without a terminal',
+    },
+    promptHidden: {
+      bounded:
+        'keeps at most 1024 characters of one line from a terminal; a non-terminal input is refused before reading',
+      guard:
+        'test/console-login.test.mjs::sakk ui refuses a password on the command line and a password prompt without a terminal',
     },
   },
   'guard-install.mjs': {

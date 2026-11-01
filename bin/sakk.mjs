@@ -49,6 +49,7 @@ import {
 import { doctor, install, uninstall } from '../src/guard-install.mjs';
 import { readSegment, reindex, segmentsOnDisk, verifyChain } from '../src/archive.mjs';
 import { startConsole } from '../src/console.mjs';
+import { ConsoleLoginError, askConsoleLogin, clearConsoleLogin } from '../src/console-login.mjs';
 
 /**
  * sakk CLI — the smallest useful surface over the ledger.
@@ -199,6 +200,7 @@ The agent guard:
   sakk doctor [--json]                                    check the guard really fires where you work
   sakk hook --agent <agent>                               the hook itself: payload on stdin (installed for you)
   sakk ui [--port N] [--allow-halt] [--ledger <path>]     a local, read-only console on 127.0.0.1 (token in the URL)
+  sakk ui --set-password | --clear-password             add or remove an optional sign-in (asked at a terminal)
 
 Spend and the daily cap (from Claude Code's local logs; an estimate, not the invoice):
   sakk cap set <usd> [--zone <IANA>]                      a daily cap the hook enforces at the next call (raising it asks you to confirm)
@@ -239,7 +241,7 @@ const COMMANDS = {
   try: { values: ['read'], bools: ['json'], positional: true },
   guard: { values: [], bools: ['user'], positional: true },
   doctor: { values: [], bools: ['json'] },
-  ui: { values: ['port', 'ledger'], bools: ['allow-halt'] },
+  ui: { values: ['port', 'ledger'], bools: ['allow-halt', 'set-password', 'clear-password'] },
   cap: { values: ['zone'], bools: [], positional: true },
   spend: { values: ['day'], bools: ['json'] },
   prices: { values: [], bools: ['json'] },
@@ -253,14 +255,31 @@ if (Object.hasOwn(COMMANDS, cmd)) {
   };
   for (let i = 1; i < argv.length; i += 1) {
     const a = argv[i];
-    if (/^--[^=]+=/.test(a)) usage('USAGE_EQUALS_FORM', `write "${a.replace('=', ' ')}"`);
+    // `sakk ui` never echoes an argument back: it may be a password typed on argv
+    const hide = cmd === 'ui';
+    if (/^--[^=]+=/.test(a))
+      usage(
+        'USAGE_EQUALS_FORM',
+        hide ? 'write the value after a space' : `write "${a.replace('=', ' ')}"`,
+      );
     if (!a.startsWith('--')) {
-      if (!spec.positional) usage('USAGE_UNKNOWN_ARGUMENT', `"${a}" is not an argument of ${cmd}`);
+      if (!spec.positional)
+        usage(
+          'USAGE_UNKNOWN_ARGUMENT',
+          hide
+            ? 'sakk ui takes no positional argument (not shown, in case it is a password); sakk ui --set-password asks for a password at the terminal'
+            : `"${a}" is not an argument of ${cmd}`,
+        );
       continue;
     }
     const name = a.slice(2);
     if (!spec.values.includes(name) && !spec.bools.includes(name))
-      usage('USAGE_UNKNOWN_ARGUMENT', `${a} is not a flag of ${cmd}`);
+      usage(
+        'USAGE_UNKNOWN_ARGUMENT',
+        hide
+          ? `that is not a flag of ui (not shown; the flags are ${[...spec.values, ...spec.bools].map((f) => `--${f}`).join(', ')})`
+          : `${a} is not a flag of ${cmd}`,
+      );
     if (seen.has(name)) usage('USAGE_REPEATED_FLAG', `${a} given more than once`);
     seen.add(name);
     if (spec.values.includes(name)) i += 1; // val() refuses a missing value
@@ -1015,6 +1034,35 @@ if (cmd === 'init') {
     );
     for (const [id, m] of models) console.log(`  ${display(id)}  in ${m.input} / out ${m.output}`);
   }
+} else if (cmd === 'ui' && (flag('set-password') || flag('clear-password'))) {
+  if (argv.length !== 2) {
+    console.error(
+      'UI_PASSWORD_ALONE: --set-password and --clear-password take no other argument; start sakk ui after',
+    );
+    process.exit(2);
+  }
+  const home = sakkHome();
+  if (flag('clear-password')) {
+    const r = clearConsoleLogin({ home });
+    console.log(
+      r.removed
+        ? `Console sign-in removed (${r.path}). Restart sakk ui: it is token-only again.`
+        : 'No console sign-in was set; sakk ui is token-only.',
+    );
+  } else {
+    // a person at a terminal sets it: never a pipe, argv or an environment variable
+    askConsoleLogin({ home }).then(
+      (r) => {
+        console.log(
+          `Console sign-in set for ${r.username} (${r.path}, owner-only). Restart sakk ui for it to take effect.`,
+        );
+      },
+      (e) => {
+        console.error(`${e.code ?? 'UI_FAILED'}: ${String(e.message ?? e)}`);
+        process.exit(e instanceof ConsoleLoginError ? 2 : 1);
+      },
+    );
+  }
 } else if (cmd === 'ui') {
   const portArg = val('port');
   let port = 0;
@@ -1040,11 +1088,19 @@ if (cmd === 'init') {
       console.log(
         `Sakk console: ${c.url}  (read-only${allowHalt ? '; stop enabled' : ''}; Ctrl+C to stop)`,
       );
+      if (c.login)
+        console.log(
+          `Sign-in is on: http://127.0.0.1:${c.port}/ asks for the username and password; the address above works too. sakk ui --clear-password turns it off.`,
+        );
       process.on('SIGINT', () => c.close().then(() => process.exit(0)));
     },
     (e) => {
       if (e && e.code === 'EADDRINUSE') {
         console.error(`UI_PORT_IN_USE: port ${port} is already in use — choose another --port`);
+        process.exit(2);
+      }
+      if (e instanceof ConsoleLoginError) {
+        console.error(`${e.code}: ${e.message}`);
         process.exit(2);
       }
       const uiCode = 'UI_FAILED';
