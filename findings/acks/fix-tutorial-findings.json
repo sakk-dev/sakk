@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "branch": "fix/tutorial-findings",
+  "answers": {
+    "C-01.1": {
+      "answer": "A table with no source block, or one whose source is not an object, prints 'provenance: not recorded in this table' and gives provenance null in --json; a field that is not a string is left out. Absence is stated, never shown as a source.",
+      "guard": "test/spend-cli.test.mjs::sakk prices says when a table records no provenance, and escapes a hostile one"
+    },
+    "C-01.2": {
+      "answer": "Deleting the provenance lines makes the new prices test fail, because it asserts the commit, sha256 and fetch date read from the shipped snapshot; putting the semicolon back in the policy refusal makes the refusal test fail.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    },
+    "C-02.1": {
+      "answer": "The printed fields are read by name from the table's own source block — url, commit, sha256, fetchedAt, license — the five the sakk-prices.v1 shape in src/prices.mjs defines; no other list of fields is kept.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    },
+    "C-02.2": {
+      "answer": "The console's /api/prices also reports only the path; no doc promises provenance there, so it is left as is. The refusal fix is in reasonOf, the only builder of the policy-rule sentence; the other builders already end with a full stop before the dispute line.",
+      "guard": "test/guard.test.mjs::each refusal names its rule and a way forward"
+    },
+    "C-03.1": {
+      "answer": "Both new assertions were run red first: with the provenance output removed from bin/sakk.mjs the prices test fails, and with the semicolon restored the refusal test fails; each passes again once the fix is back.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    },
+    "C-03.2": {
+      "answer": "The prices tests run the real bin/sakk.mjs as a child process against the shipped snapshot and against a planted prices.json in a throwaway SAKK_HOME, so they see the output a person sees, not a helper's return value.",
+      "guard": "test/spend-cli.test.mjs::sakk prices says when a table records no provenance, and escapes a hostile one"
+    },
+    "C-03.3": {
+      "answer": "The test compares the printed commit and sha256 with the values it reads from prices/snapshot.json itself, so it fails if the output names another table or a stale literal; a hard-coded string cannot pass it.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    },
+    "C-04.1": {
+      "answer": "The strings come from a table loadPrices already refuses above MAX_PRICES_BYTES; the change reads five fields once and passes each through display(). No loop or parse over hostile input is added.",
+      "guard": "none: the size bound is the existing MAX_PRICES_BYTES refusal in loadPrices, which this change does not touch"
+    },
+    "C-05.1": {
+      "answer": "The README sentence that sakk prices prints the snapshot's provenance is now backed by the prices test, which fails without the new output; the CHANGELOG line states only what that test pins.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    },
+    "C-05.2": {
+      "answer": "The printed commit and sha256 are the ones the snapshot file records, so a person can check them against LiteLLM's repository at that commit; the test asserts they equal the file's values.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    },
+    "C-07.1": {
+      "answer": "SAKK_HOME/prices.json is hand-edited operator input: only string fields are printed, each through display(), which escapes control characters and redacts secret-shaped text, and the line says the record is the table's own claim.",
+      "guard": "test/spend-cli.test.mjs::sakk prices says when a table records no provenance, and escapes a hostile one"
+    },
+    "C-07.2": {
+      "answer": "Nothing here is a gate: sakk prices only reads and prints, and the refusal change alters punctuation, not who can clear a refusal; a person still changes the policy.",
+      "guard": "none: this change adds no gate and moves no step between the agent and a person"
+    },
+    "C-08.1": {
+      "answer": "The JSON keeps source as the table's path, as before, and adds provenance for the upstream record, so the two never share a name; the text output uses the same word, provenance, for the same record.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    },
+    "C-09.1": {
+      "answer": "One test runs with a throwaway HOME and no prices.json, the state of a fresh install that reads the shipped snapshot; the other plants a prices.json, the override state loadPrices can also reach.",
+      "guard": "test/spend-cli.test.mjs::sakk prices says when a table records no provenance, and escapes a hostile one"
+    },
+    "C-09.2": {
+      "answer": "It runs where an operator runs it, the sakk CLI in a terminal; the test spawns that same entry file with node, as the npm bin link does, in text and --json.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    },
+    "C-10.1": {
+      "answer": "The README promise was rule text only; it is now pinned by a test in npm test, which the commit gate and CI run, so dropping the output blocks the merge.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    },
+    "C-10.2": {
+      "answer": "There is one route to this output, the prices subcommand of bin/sakk.mjs, in text and --json; the test asserts both, so neither can drop the provenance while the other keeps it.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    },
+    "C-11.1": {
+      "answer": "The provenance is printed as the table records it and never decides anything; an operator's prices.json can claim any source, so the line says 'as recorded in the table' rather than presenting it as a verified origin.",
+      "guard": "test/spend-cli.test.mjs::sakk prices says when a table records no provenance, and escapes a hostile one"
+    },
+    "C-14.1": {
+      "answer": "A malformed source block does not fail the command: it prints as not recorded and the model list still prints; an unreadable or invalid table still refuses with its existing code, as before.",
+      "guard": "test/spend-cli.test.mjs::sakk prices says when a table records no provenance, and escapes a hostile one"
+    },
+    "C-15.1": {
+      "answer": "The tests run the real CLI against the real shipped snapshot for the default case and a real file in SAKK_HOME for the override, not a stand-in table passed to a function.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date"
+    }
+  }
+}
