@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // The one path-matching implementation shared by the eval scorer and the
 // policy kernel (spec: specs/policy-engine/ — "one implementation, already

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
-// `npm install` (prepare) and `npm run hooks`: point git at scripts/hooks so
-// the self-evolution gate runs for every clone. Outside a git checkout (a
-// package installed from the registry) this does nothing.
+// `npm run hooks` (opt-in; `npm install` runs no lifecycle script): point git
+// at scripts/hooks so the self-evolution gate runs in this clone. The same
+// setting turns on the repository's Claude Code hooks (.claude/settings.json
+// runs them only when core.hooksPath is scripts/hooks). Outside a git
+// checkout (a package installed from the registry) this does nothing.
 
 import { execFileSync } from 'node:child_process';
 import { chmodSync } from 'node:fs';
@@ -27,4 +29,6 @@ if (top !== ROOT && git('rev-parse', '--show-prefix') !== '') process.exit(0); /
 for (const h of ['pre-commit', 'commit-msg', 'pre-push'])
   chmodSync(join(ROOT, 'scripts', 'hooks', h), 0o755);
 git('config', 'core.hooksPath', 'scripts/hooks');
-console.log('self-evolution: git hooks active (core.hooksPath = scripts/hooks)');
+console.log(
+  'self-evolution: git hooks and Claude Code hooks active (core.hooksPath = scripts/hooks)',
+);

@@ -25,7 +25,6 @@
     "fuzz:l1": "node scripts/l1-fuzz.mjs",
     "brief": "node scripts/findings-brief.mjs",
     "hooks": "node scripts/hooks/install.mjs",
-    "prepare": "node scripts/hooks/install.mjs",
     "findings:check": "node scripts/findings-check.mjs",
     "inbox": "node scripts/findings-inbox.mjs",
     "campaigns": "node scripts/campaign/fault-injection.mjs && node scripts/campaign/soak-ledger.mjs --minutes 0.2 --workers 4 && node scripts/campaign/mcp-torture.mjs --minutes 0.25 --servers 2",
@@ -51,13 +50,21 @@
     "fail-closed",
     "governance",
     "llm",
-    "agent-ops"
+    "agent-ops",
+    "claude-code",
+    "claude-code-plugin",
+    "ai-agent-security",
+    "guardrails",
+    "spend-cap",
+    "kill-switch",
+    "secret-scanning",
+    "mcp"
   ],
-  "author": "the Sakk authors",
-  "license": "AGPL-3.0-only",
+  "author": "The Sakk authors",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sakk-dev/sakk.git"
+    "url": "git+https://github.com/sakk-dev/sakk.git"
   },
   "bugs": {
     "url": "https://github.com/sakk-dev/sakk/issues"

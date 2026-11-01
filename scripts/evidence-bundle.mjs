@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Evidence bundle (audit gap G5): turn a gold-runner out-dir into ONE
 // self-contained .tgz an auditor can verify on any machine with Node ≥ 20 —

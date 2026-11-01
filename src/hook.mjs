@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // The guard hook (specs/guard/spec.md): every tool call an agent makes passes
 // through here before it runs.

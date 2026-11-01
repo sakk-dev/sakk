@@ -3,10 +3,10 @@
   "version": "0.2.0",
   "displayName": "Sakk",
   "description": "A fail-closed guard for Claude Code: a daily spend cap, a secret guard, and policy rules — no proof, no pass.",
-  "author": { "name": "sakk-dev", "url": "https://github.com/sakk-dev" },
+  "author": { "name": "The Sakk authors", "url": "https://github.com/sakk-dev" },
   "homepage": "https://github.com/sakk-dev/sakk#readme",
   "repository": "https://github.com/sakk-dev/sakk.git",
-  "license": "AGPL-3.0-only",
+  "license": "Apache-2.0",
   "keywords": ["security", "spend-cap", "secret-guard", "fail-closed", "ai-agents"],
   "hooks": {
     "PreToolUse": [

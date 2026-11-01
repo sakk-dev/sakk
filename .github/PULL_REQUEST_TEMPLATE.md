@@ -21,7 +21,7 @@ and any finding it logged or attached to a class. -->
 - [ ] A judgement on a command, path or tool call is made on the target it reaches, or asks / refuses / declares the gap where it cannot resolve it (R-23)
 - [ ] A new subcommand, flag or file that changes a control is declared in `test/kill-switch.test.mjs`, and the agent it binds cannot loosen it (R-24)
 - [ ] Every problem found while building is in `findings/ledger.json` (areas, root cause, guard; escape fields if its class had a detector)
-- [ ] CLA signed (collected by the maintainer before your first merge)
+- [ ] Every commit is signed off (`git commit -s`, DCO — see CONTRIBUTING.md)
 
 ## Money semantics
 

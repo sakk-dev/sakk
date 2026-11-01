@@ -21,11 +21,15 @@ section 15 of the internal AI-agent testing standard.
 | A fix names the finding it fixes                             | —                                                       | commit-msg hook: `F-nn` in the ledger, or `No-finding: <why>` | every commit made since the rule existed         |
 | A known problem is an occurrence of its class, not a new one | —                                                       | the ledger gate runs in pre-commit                            | the ledger gate runs in `npm test`               |
 
-`npm install` installs the git hooks (`prepare` sets `core.hooksPath` to
-`scripts/hooks`), so every clone has them. Codex and people meet the git
-hooks and CI. Claude Code sessions also meet the edit hook
-(`.claude/settings.json`), but Claude Code loads that file only from the
-folder a session **starts** in. A session started in a parent folder meets
+The local hooks are opt-in: `npm install` runs no lifecycle script, and
+`npm run hooks` sets `core.hooksPath` to `scripts/hooks`. That one setting
+turns on both the git hooks and the Claude Code hooks in
+`.claude/settings.json`, whose commands exit 0 in a clone that has not
+opted in. Maintainers' clones opt in; CI checks every branch either way
+(fork pull requests skip only the self-evolution and base-checker jobs).
+Codex and people meet the git hooks and CI. Claude Code sessions also meet
+the edit hook, but Claude Code loads that file only from the folder a
+session **starts** in. A session started in a parent folder meets
 the hook only if the parent's own settings route tool calls to it (F-132).
 `--no-verify` skips the local hooks, not CI.
 

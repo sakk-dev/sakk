@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Self-evolution, step 1 (docs/SELF_EVOLUTION.md): before changing code,
 // read what the findings ledger already learned about it — and answer it.

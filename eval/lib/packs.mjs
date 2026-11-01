@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Case packs: the gold cases grouped by regulatory requirement, so an
 // auditor can ask "show me the evidence for this requirement" and get a run

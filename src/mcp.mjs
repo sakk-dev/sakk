@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // MCP enforcer (specs/mcp-server/): the thinnest possible surface putting
 // the ledger — and, when configured, the policy kernel — in front of any

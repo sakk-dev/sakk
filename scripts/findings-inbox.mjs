@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // The inbox guarantees that a problem someone saw ends up in the ledger
 // (docs/SELF_EVOLUTION.md). `npm run audit` adds an item for every red step;

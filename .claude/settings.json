@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh scripts/stop-gate.sh"
+            "command": "[ \"$(git -C \"$CLAUDE_PROJECT_DIR\" config core.hooksPath)\" = scripts/hooks ] || exit 0; sh \"$CLAUDE_PROJECT_DIR/scripts/stop-gate.sh\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/findings-check.mjs\" --edit"
+            "command": "[ \"$(git -C \"$CLAUDE_PROJECT_DIR\" config core.hooksPath)\" = scripts/hooks ] || exit 0; node \"$CLAUDE_PROJECT_DIR/scripts/findings-check.mjs\" --edit"
           }
         ]
       }

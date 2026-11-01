@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Gate non-regression certificate (blueprint P3). This script is a WITNESS,
 // not a reporter: it runs every gate itself, verifies the mutation-drill

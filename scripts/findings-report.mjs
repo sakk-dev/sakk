@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Testing standard §14.6: the five evolution indicators from
 // findings/ledger.json, with the counting rule printed next to each number

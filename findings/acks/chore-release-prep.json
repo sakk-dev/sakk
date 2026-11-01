@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "branch": "chore/release-prep",
+  "answers": {
+    "C-01.1": {
+      "answer": "Each new check refuses on absence instead of passing: the DCO script exits 2 on an empty or unknown range and 1 on a commit with no sign-off trailer; the release job fails (never skips) when npm is older than 11.5.1, the tag does not match package.json or the repository is private; a clone that never ran npm run hooks is declared opted out in CONTRIBUTING, not silently half-gated.",
+      "guard": "test/dco-check.test.mjs::a merge commit is skipped, an empty or unknown range refuses"
+    },
+    "C-01.2": {
+      "answer": "Removing a piece turns a test red: NOTICE dropped from files[] or disk fails the packaging test (NOTICE joins its must-ship list), a fork condition dropped from ci.yml fails the fork-PR test, a deleted sign-off fails the DCO test, and a removed SPDX swap fails the licence scan.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    },
+    "C-02.1": {
+      "answer": "No hand list stands in for all: the licence scan reads every file git ls-files tracks, the pin scan reads every uses: line of every workflow found by readdir, and ci-cost already enumerates every workflow; the only named files are the manifests that state a licence by definition.",
+      "guard": "test/open-source-release.test.mjs::the licence is Apache-2.0 in LICENSE, NOTICE, both manifests and every SPDX header"
+    },
+    "C-02.2": {
+      "answer": "The licence is stated in LICENSE, NOTICE, package.json, plugin.json, the new marketplace.json, 51 SPDX headers, the header string scripts/gitleaks-port.mjs writes into generated rules, specs/policy-engine/spec.md and CONTRIBUTING; all change here. README:471 belongs to the docs lane and CHANGELOG history keeps the old fact, both reported back.",
+      "guard": "test/open-source-release.test.mjs::the licence is Apache-2.0 in LICENSE, NOTICE, both manifests and every SPDX header"
+    },
+    "C-03.1": {
+      "answer": "Every new test carries a planted control that must go red for the named reason: an AGPL SPDX line, a non-Apache LICENSE body, a tag ref like @v4 in uses:, a prepare script, a ci.yml copy with the fork condition removed, a daily cron, and an unsigned commit.",
+      "guard": "test/open-source-release.test.mjs::a planted AGPL header or a non-Apache LICENSE is caught by the licence scan"
+    },
+    "C-03.2": {
+      "answer": "The opt-in test does not read the settings text and trust it: it runs each committed .claude/settings.json command string in sh against a temp repo whose stand-in checker writes a marker and exits 2, proving the command reaches the checker when opted in and never when not.",
+      "guard": "test/open-source-release.test.mjs::the repository Claude Code hooks run only in a clone that opted in, and then still block"
+    },
+    "C-03.3": {
+      "answer": "The checks resolve to things that run: the DCO test makes real commits with git commit -s and runs the real script over them, the LICENSE body is compared by sha256 with the canonical Apache 2.0 text, and the packaging test reads real npm pack output.",
+      "guard": "test/dco-check.test.mjs::an unsigned commit, or one signed off by someone else, fails and is named"
+    },
+    "C-04.1": {
+      "answer": "CI cost stays bounded by counted ceilings: the pull request (172) and main-push (130) ceilings are unchanged, the DCO check is a step in the existing format job so it adds no job minutes, a tag release is priced under its own 30-minute ceiling and the scorecard under a 10-minute one with its cron asserted weekly or rarer; the DCO git log read has a byte cap that refuses past it.",
+      "guard": "test/ci-cost.test.mjs::a tag release and the weekly schedule are priced under their own ceilings, never under a commit"
+    },
+    "C-05.1": {
+      "answer": "Each sentence added to CONTRIBUTING, SECURITY and NOTICE is tied to a test: the DCO and opt-in rules to the DCO and opt-in tests, the fork-PR sentence to the ci.yml fork test, the advisory link and repository to one test that derives them from package.json, and the licence to the licence scan.",
+      "guard": "test/open-source-release.test.mjs::the marketplace, SECURITY.md and package.json all name the same repository"
+    },
+    "C-05.2": {
+      "answer": "The DCO script's exit codes (0 all signed off, 1 some not, 2 cannot check) and each printed commit sha are asserted against the real repo it ran on, and the printed remedy is the git command that adds the trailer (git rebase --signoff), so acting on the output fixes it.",
+      "guard": "test/dco-check.test.mjs::an unsigned commit, or one signed off by someone else, fails and is named"
+    },
+    "C-06.1": {
+      "answer": "A DCO sign-off is the contributor's own statement, not a verified identity or a cryptographic signature; CONTRIBUTING says so and the script reports sign-off lines, not verification. Provenance is npm's Sigstore attestation, named as such, and SECURITY.md avoids the scanned security words.",
+      "guard": "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism"
+    },
+    "C-07.1": {
+      "answer": "Fork pull requests are untrusted: their commits and messages are read only as data by the base branch's copy of the DCO script, the review job never checks out the head and never runs for a fork, no workflow uses pull_request_target, and release runs only on a tag a maintainer pushes.",
+      "guard": "test/open-source-release.test.mjs::no workflow runs on pull_request_target, and the review never runs for a fork or without its key"
+    },
+    "C-07.2": {
+      "answer": "A fork author cannot clear what constrains them: head.repo.full_name is set by GitHub, the DCO script that judges is the base's copy, secrets never reach a fork run, and merging stays a maintainer action; the fork skip covers only the self-evolution and base-checker jobs while tests, format, drill and DCO still run.",
+      "guard": "test/open-source-release.test.mjs::fork pull requests skip only the self-evolution and base-checker jobs; tests, format and DCO still run"
+    },
+    "C-08.1": {
+      "answer": "The repository goes by one name, sakk-dev/sakk, in package.json repository, bugs and homepage, the plugin manifest, the marketplace and the SECURITY advisory link, asserted equal by one test; the licence by one SPDX id, Apache-2.0; the opt-in by one setting that both the git hooks and the Claude Code hooks read.",
+      "guard": "test/open-source-release.test.mjs::the marketplace, SECURITY.md and package.json all name the same repository"
+    },
+    "C-09.1": {
+      "answer": "The opt-in assumes git on PATH and CLAUDE_PROJECT_DIR set by Claude Code or the dispatcher; the test runs both states in a temp repo, and a worktree reads the shared config. The release assumes npm 11.5.1 or newer for trusted publishing and checks the running version before it publishes.",
+      "guard": "test/open-source-release.test.mjs::the repository Claude Code hooks run only in a clone that opted in, and then still block"
+    },
+    "C-09.2": {
+      "answer": "Our sessions start in the parent folder; its dispatcher finds this repository by the presence of .claude/settings.json and runs the gate-files.json hooks from a HEAD copy. The settings file stays in place and gate-files.json is untouched, so discovery and the copy-run gate keep working; the committed self-test proves the copy path.",
+      "guard": "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it"
+    },
+    "C-10.1": {
+      "answer": "DCO is enforced by a CI step on every pull request, not only by CONTRIBUTING text; the no-install-script rule, the licence, the SHA pins and the fork scope are tests in npm test; the release preconditions are steps that fail the job, and the test asserts each step is present.",
+      "guard": "test/open-source-release.test.mjs::fork pull requests skip only the self-evolution and base-checker jobs; tests, format and DCO still run"
+    },
+    "C-10.2": {
+      "answer": "The only route that skips the self-evolution gate is a fork PR, declared and limited to two jobs; DCO runs for forks from the base copy; a direct push to main or a publish from a laptop are closed by branch protection and npm's token setting, both reported to the maintainer as clicks rather than claimed done.",
+      "guard": "test/open-source-release.test.mjs::the release publishes only from a public repository, on a tag matching package.json, with provenance"
+    },
+    "C-11.1": {
+      "answer": "core.hooksPath = scripts/hooks now also means opted in to the Claude Code hooks; its only writer is a person running npm run hooks, and the agent gate already refuses commands that change it. A v* tag now means publish to npm; only maintainers with push rights can create one, and tag protection is a the maintainer click.",
+      "guard": "test/open-source-release.test.mjs::the repository Claude Code hooks run only in a clone that opted in, and then still block"
+    },
+    "C-12.1": {
+      "answer": "No matching logic changes here: in the secret scanner the only edit is the SPDX licence line, in scripts/gitleaks-port.mjs's header string and the regenerated src/secret-rules.generated.mjs it writes, so every match is still judged in context as before; the port's byte-for-byte determinism test proves the two agree and the fiction-token test still holds.",
+      "guard": "test/secret-guard.test.mjs::a fiction token does not exempt a real secret beside it"
+    },
+    "C-13.1": {
+      "answer": "The DCO detector is measured on both sides: a sign-off by the author, one with a differently cased email and a merge commit pass; an unsigned commit and one signed off by another email fail. The licence scan passes Apache headers and catches AGPL; the pin scan passes full SHAs and catches tags.",
+      "guard": "test/dco-check.test.mjs::every commit signed off by its author passes"
+    },
+    "C-14.1": {
+      "answer": "One bad commit does not hide the others: the DCO script checks every commit in the range and lists each one without a sign-off, and a commit with an odd message is reported, not a crash; scorecard and release are separate workflows, so their failure never blocks pull request CI.",
+      "guard": "test/dco-check.test.mjs::an unsigned commit, or one signed off by someone else, fails and is named"
+    },
+    "C-15.1": {
+      "answer": "The real paths run in tests: the real DCO script over real git commits, the real settings.json command strings in a real sh, and real npm pack output. The GitHub workflows cannot run locally; their first real run is on sakk-dev/sakk after the move, which the report says rather than claims.",
+      "guard": "test/open-source-release.test.mjs::the repository Claude Code hooks run only in a clone that opted in, and then still block"
+    },
+    "C-16.1": {
+      "answer": "The judge is not the writer: CI's DCO step runs the base branch's copy of scripts/dco-check.mjs read with git show, the same pattern as the wip-limit cap, so a pull request cannot loosen the check that judges it; base-checker stays as it was, and the branch goes to an independent review before merge.",
+      "guard": "test/open-source-release.test.mjs::fork pull requests skip only the self-evolution and base-checker jobs; tests, format and DCO still run"
+    }
+  }
+}

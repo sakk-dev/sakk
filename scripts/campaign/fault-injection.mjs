@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // T2 — fault injection. Every way the WORLD can break must surface as a
 // NAMED refusal, never a crash, never a silent success:
