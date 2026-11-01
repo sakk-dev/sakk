@@ -95,7 +95,11 @@ claude --plugin-dir "$(npm root -g)/sakk"
 
 ```bash
 sakk ui        # 打印 http://127.0.0.1:<port>/?t=… ——只读；Ctrl+C 停止
+sakk ui --set-password     # 可选：为 http://127.0.0.1:<port>/ 设一个用户名和密码
+sakk ui --clear-password   # 恢复成只用带令牌的地址
 ```
+
+用密码登录只能查看控制台；叫停智能体仍然需要 `--allow-halt` 和带令牌的地址。设置或清除之后要重启 `sakk ui`。
 
 ## 如何防止 Claude Code 花钱过多？
 

@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as login from '../src/console-login.mjs';
 
 /**
  * Release packaging (open-source v1, M5): the npm package and the Claude Code
@@ -648,5 +649,160 @@ describe('release honesty (V2 line D)', () => {
     // cc-safety-net: studied, not copied — the acknowledgment stays on the record
     assert.match(notice, /cc-safety-net/, 'NOTICE records the cc-safety-net acknowledgment');
     assert.match(notice, /No code was copied/, 'and says no code was copied');
+  });
+
+  // F-234: the tutorials are a recorded run, so they must name the build they
+  // were run with — and that build is the one this package is.
+  test('F-234 each tutorial names the release it was run with, and the package is that release', () => {
+    const tutorials = {
+      'docs/tutorial/en.md': /\bwith Sakk (\d+\.\d+\.\d+)\b/,
+      'docs/tutorial/zh-CN.md': /用 Sakk (\d+\.\d+\.\d+)、/,
+    };
+    for (const [f, said] of Object.entries(tutorials)) {
+      const md = read(f);
+      const m = md.match(said);
+      assert.ok(m, `${f} names the Sakk version the run used`);
+      assert.equal(m[1], pkg.version, `${f} was run with ${m[1]}; the package is ${pkg.version}`);
+      const out = codeSpans(md);
+      assert.match(
+        out,
+        new RegExp(`^sakk-${pkg.version.replace(/\./g, '\\.')}\\.tgz$`, 'm'),
+        `${f} shows npm pack producing sakk-${pkg.version}.tgz`,
+      );
+      assert.match(
+        out,
+        new RegExp(`^${pkg.version.replace(/\./g, '\\.')}$`, 'm'),
+        `${f} shows sakk --version printing ${pkg.version}`,
+      );
+    }
+  });
+
+  // F-234: npm 11 does not create the --pack-destination folder, so a block
+  // that packs into one must create it first.
+  test('F-234 every npm pack --pack-destination folder in the docs is created first', () => {
+    let seen = 0;
+    for (const f of ['README.md', ...RELEASE_DOCS]) {
+      for (const [, block] of read(f).matchAll(/```[a-z]*\n([\s\S]*?)```/g)) {
+        for (const m of block.matchAll(/--pack-destination\s+(\S+)/g)) {
+          seen++;
+          const before = block.slice(0, m.index);
+          const dir = m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          assert.match(
+            before,
+            new RegExp(`(?:^|[;&|]\\s*)mkdir -p (?:\\S+ )*${dir}(?=\\s|$)`, 'm'),
+            `${f}: a block packs into ${m[1]} without creating it first (npm pack stops with ENOENT)`,
+          );
+        }
+      }
+    }
+    assert.ok(seen > 0, 'the docs show at least one npm pack --pack-destination');
+  });
+
+  // F-234: the prices output in the tutorials and the FAQ sign-in answer are
+  // read against the code that prints and enforces them, not a hand copy.
+  test('F-234 the FAQ login answer and the tutorial prices output match what the CLI prints', () => {
+    const label = '  provenance (as recorded in the table): ';
+    assert.ok(
+      read('bin/sakk.mjs').includes(label.trim()),
+      'sakk prices prints the provenance label',
+    );
+    const src = JSON.parse(read('prices/snapshot.json')).source;
+    const line = [
+      src.url,
+      `at commit ${src.commit}`,
+      `sha256 ${src.sha256}`,
+      `fetched ${src.fetchedAt}`,
+      src.license,
+    ].join(', ');
+    for (const f of ['docs/tutorial/en.md', 'docs/tutorial/zh-CN.md']) {
+      const block = [...read(f).matchAll(/```text\n(prices: [\s\S]*?)```/g)].map((m) => m[1]);
+      assert.equal(block.length, 1, `${f} shows one sakk prices output`);
+      assert.ok(
+        block[0].split('\n')[1] === label + line,
+        `${f}: the line after "prices:" is the provenance line sakk prices prints for the shipped snapshot`,
+      );
+    }
+
+    const facts = {
+      min: login.PASSWORD_MIN,
+      idleMin: login.SESSION_IDLE_MS / 60000,
+      maxHours: login.SESSION_MAX_MS / 3600000,
+      windowMin: login.LOGIN_WINDOW_MS / 60000,
+      tries: login.LOGIN_MAX_FAILURES,
+    };
+    for (const [k, v] of Object.entries(facts))
+      assert.ok(Number.isInteger(v) && v > 0, `console-login exports ${k} as a whole number`);
+    const uiFlags = read('bin/sakk.mjs').match(/^ {2}ui: \{ values: [^\n]*bools: \[([^\]]*)\]/m)[1];
+    for (const flag of ['set-password', 'clear-password'])
+      assert.ok(uiFlags.includes(`'${flag}'`), `sakk ui accepts --${flag}`);
+    const sections = {
+      'docs/FAQ.md': {
+        head: '## Does the console have a login?',
+        stale: /\bNot yet\b|\bplanned\b/,
+        says: [
+          `${facts.min} or more characters`,
+          `${facts.idleMin} minutes idle`,
+          `${facts.maxHours} hours`,
+          `${['', 'one', 'two', 'three', 'four', 'five', 'six'][facts.tries]} wrong tries within ${facts.windowMin}`,
+        ],
+      },
+      'docs/FAQ.zh-CN.md': {
+        head: '## 控制台有登录吗？',
+        stale: /还没有|计划/,
+        says: [
+          `${facts.min} 个字符`,
+          `空闲 ${facts.idleMin} 分钟`,
+          `满 ${facts.maxHours} 小时`,
+          `${facts.windowMin} 分钟内输错${['', '一', '两', '三', '四', '五', '六'][facts.tries]}次`,
+        ],
+      },
+    };
+    for (const [f, s] of Object.entries(sections)) {
+      const md = read(f);
+      const at = md.indexOf(s.head);
+      assert.ok(at >= 0, `${f} has the sign-in question`);
+      const next = md.indexOf('\n## ', at + s.head.length);
+      const answer = md.slice(at, next < 0 ? undefined : next).replace(/\s+/g, ' ');
+      assert.doesNotMatch(
+        answer,
+        s.stale,
+        `${f}: the sign-in answer still says it is not there yet`,
+      );
+      for (const flag of ['--set-password', '--clear-password'])
+        assert.ok(answer.includes(flag), `${f}: the sign-in answer names ${flag}`);
+      for (const fact of s.says)
+        assert.ok(
+          answer.includes(fact),
+          `${f}: the sign-in answer says "${fact}", as the code enforces`,
+        );
+    }
+  });
+
+  // F-235: a link to the private repository anywhere in what ships or in the
+  // release docs is a broken link for every user.
+  test('F-235 every github.com/<owner>/sakk the package or docs name is the public repository', () => {
+    const publicOwner = 'sakk-dev';
+    const declared = pkg.repository?.url?.match(/github\.com[/:]([\w.-]+)\/sakk\b/)?.[1];
+    assert.equal(declared, publicOwner, 'package.json names the public repository');
+    const files = new Set([...packedFiles(), 'README.md', ...RELEASE_DOCS]);
+    let seen = 0;
+    for (const f of files) {
+      let text;
+      try {
+        text = read(f);
+      } catch {
+        continue;
+      }
+      if (text.includes('\u0000')) continue; // binary
+      for (const m of text.matchAll(/github\.com\/([\w.-]+)\/sakk(?![\w-])/g)) {
+        seen++;
+        assert.equal(
+          m[1],
+          publicOwner,
+          `${f} links github.com/${m[1]}/sakk, not the public repository`,
+        );
+      }
+    }
+    assert.ok(seen > 0, 'the package and docs link the repository at least once');
   });
 });

@@ -3,13 +3,14 @@
 **English** | [简体中文](zh-CN.md)
 
 This walks through Sakk from a local checkout to a clean uninstall, in about
-15 minutes. Every command below was run on macOS with Sakk 0.2.0 in a
+15 minutes. Every command below was run on macOS with Sakk 0.3.0 in a
 throwaway home folder, and the output is copied from that run. Paths are
 shortened to `~`, the console token is replaced by `<tok>`, and your dates,
 time zone and figures will differ.
 
-> **The npm name is not published yet.** `npm install -g sakk` does not work
-> today. Build a package from a checkout of the repository instead (step 2).
+> This run installs from a checkout of the repository (step 2), so the output
+> matches the exact code you are reading. Once `sakk` is on npm,
+> `npm install -g sakk` can replace step 2.
 
 ## 0. What you need
 
@@ -39,18 +40,21 @@ Close the shell when you are done and the experiment is gone.
 In your checkout of the repository:
 
 ```bash
+mkdir -p ~/pack
 npm pack --ignore-scripts --pack-destination ~/pack
 npm install -g --prefix ~/.npm-global ~/pack/sakk-*.tgz
 sakk --version
 ```
 
 ```text
-sakk-0.2.0.tgz
+sakk-0.3.0.tgz
 
-added 1 package in 169ms
-0.2.0
+added 1 package in 153ms
+0.3.0
 ```
 
+- `mkdir -p ~/pack` comes first because npm 11 does not create the
+  `--pack-destination` folder; without it `npm pack` stops with `ENOENT`.
 - `--ignore-scripts` matters in a git checkout: without it, `npm pack` runs
   the project's `prepare` script, which points that checkout's git hooks at
   the contributor checks (`core.hooksPath`). You do not need them to try Sakk.
@@ -224,6 +228,7 @@ sakk prices
 
 ```text
 prices: 170 model(s) from ~/.npm-global/lib/node_modules/sakk/prices/snapshot.json
+  provenance (as recorded in the table): https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json, at commit 34c10829b1f2aba5ee44887a413bac12d77e2bc0, sha256 7989a84f15ba56025650ed850c1b1a262d95a42680746d7ec5b1c956dd012121, fetched 2026-10-28, LiteLLM (MIT, (c) Berri AI)
   claude-haiku-4-5-20251001  in 0.000001 / out 0.000005
   claude-haiku-4-5  in 0.000001 / out 0.000005
   claude-sonnet-4-5  in 0.000003 / out 0.000015
@@ -231,8 +236,9 @@ prices: 170 model(s) from ~/.npm-global/lib/node_modules/sakk/prices/snapshot.js
 ```
 
 Rates are US dollars per token. The table is built from LiteLLM's public
-price list; the `source` block inside `prices/snapshot.json` records the URL,
-commit, SHA-256 and date it was built from.
+price list; the `provenance` line repeats what the `source` block inside
+`prices/snapshot.json` records: the URL, commit, SHA-256 and date it was
+built from.
 
 ## 9. The console
 
@@ -262,6 +268,51 @@ ledger exists (step 10) and you start the console with
 `sakk ui --allow-halt`; you then type STOP to confirm. It never resumes
 agents; resuming is done at a terminal (step 10). Press Ctrl+C to stop the
 console.
+
+### Optional: a username and password
+
+The token address is enough on your own machine. To sign in with a username
+and password instead, set them at a terminal:
+
+```bash
+sakk ui --set-password
+```
+
+```text
+Console username: oncall
+Password (15 or more characters, not shown):
+The same password again:
+Console sign-in set for oncall (~/.sakk/console-login.json, owner-only). Restart sakk ui for it to take effect.
+```
+
+With no terminal (an agent's tool call, a script) it refuses and exits 2:
+
+```text
+UI_PASSWORD_NEEDS_TTY: set the password at a terminal: sakk ui --set-password asks for it and does not echo it
+```
+
+Restart the console and it says sign-in is on:
+
+```text
+Sakk console: http://127.0.0.1:8790/?t=<tok>  (read-only; Ctrl+C to stop)
+Sign-in is on: http://127.0.0.1:8790/ asks for the username and password; the address above works too. sakk ui --clear-password turns it off.
+```
+
+A password sign-in reads the console; the Emergency stop still needs
+`--allow-halt` and the token address. A session ends after 30 minutes idle or
+8 hours, and after five wrong tries within 15 minutes sign-in refuses until
+that window has passed. To go back to the token address only:
+
+```bash
+sakk ui --clear-password
+```
+
+```text
+Console sign-in removed (~/.sakk/console-login.json). Restart sakk ui: it is token-only again.
+```
+
+Run it again when nothing is set and it says
+`No console sign-in was set; sakk ui is token-only.`
 
 ## 10. Halt and resume
 
@@ -293,14 +344,14 @@ settled     $0
 outstanding $0
 committed   $0  (remaining $20, max reservable $0)
 entries     0 (reserved 0, settled 0, reconciliation 0)
-updated     2026-11-01T13:09:26.372Z
-⛔ HALTED by oncall at 2026-11-01T13:09:26.683Z — runaway loop (all new spending refused)
+updated     2026-11-01T15:02:53.755Z
+⛔ HALTED by oncall at 2026-11-01T15:02:53.821Z — runaway loop (all new spending refused)
 ```
 
 `sakk status` exits 4 while a halt is on. The hook now refuses with the halt:
 
 ```text
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — halted (global) by oncall at 2026-11-01T13:09:26.683Z — runaway loop; a person resumes with: sakk resume --by <name>. If this is wrong, tell the person you work for and stop; do not route around it."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — halted (global) by oncall at 2026-11-01T15:02:53.821Z — runaway loop; a person resumes with: sakk resume --by <name>. If this is wrong, tell the person you work for and stop; do not route around it."}}
 ```
 
 `--by` is a name you type. Sakk records it as given and does not check who

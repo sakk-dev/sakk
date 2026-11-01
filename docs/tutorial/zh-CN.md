@@ -3,10 +3,11 @@
 [English](en.md) | **简体中文**
 
 本教程从本地仓库副本装上 Sakk，一路走到干净卸载，大约 15 分钟。下面每条命令都在
-macOS 上用 Sakk 0.2.0、在一个一次性的主目录里真跑过，输出照抄那次运行。路径缩写成
+macOS 上用 Sakk 0.3.0、在一个一次性的主目录里真跑过，输出照抄那次运行。路径缩写成
 `~`，控制台令牌换成 `<tok>`；你看到的日期、时区和金额会不一样。
 
-> **npm 上还没有发布这个包名。** 现在 `npm install -g sakk` 装不上。请从仓库副本自己打包（第 2 步）。
+> 这次运行是从仓库副本安装的（第 2 步），所以输出和你正在读的代码完全对应。`sakk` 上了 npm 之后，
+> 可以用 `npm install -g sakk` 代替第 2 步。
 
 ## 0. 准备
 
@@ -34,18 +35,21 @@ mkdir -p ~/work/demo && cd ~/work/demo && git init -q .
 在你的仓库副本里运行：
 
 ```bash
+mkdir -p ~/pack
 npm pack --ignore-scripts --pack-destination ~/pack
 npm install -g --prefix ~/.npm-global ~/pack/sakk-*.tgz
 sakk --version
 ```
 
 ```text
-sakk-0.2.0.tgz
+sakk-0.3.0.tgz
 
-added 1 package in 169ms
-0.2.0
+added 1 package in 153ms
+0.3.0
 ```
 
+- 先 `mkdir -p ~/pack`，因为 npm 11 不会自己建 `--pack-destination` 指定的文件夹，没有它
+  `npm pack` 会以 `ENOENT` 停下。
 - 在 git 仓库副本里一定要带 `--ignore-scripts`：不带的话，`npm pack` 会跑项目的
   `prepare` 脚本，把这份副本的 git 钩子指向贡献者检查（`core.hooksPath`）。只是试用 Sakk 用不到这些。
 - `--prefix ~/.npm-global` 让安装留在一次性主目录里。正常全局安装就去掉它（以及第 1 步里那行 `PATH`）。
@@ -207,14 +211,15 @@ sakk prices
 
 ```text
 prices: 170 model(s) from ~/.npm-global/lib/node_modules/sakk/prices/snapshot.json
+  provenance (as recorded in the table): https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json, at commit 34c10829b1f2aba5ee44887a413bac12d77e2bc0, sha256 7989a84f15ba56025650ed850c1b1a262d95a42680746d7ec5b1c956dd012121, fetched 2026-10-28, LiteLLM (MIT, (c) Berri AI)
   claude-haiku-4-5-20251001  in 0.000001 / out 0.000005
   claude-haiku-4-5  in 0.000001 / out 0.000005
   claude-sonnet-4-5  in 0.000003 / out 0.000015
   …
 ```
 
-单价是每个 token 多少美元。这张表由 LiteLLM 公开的价格清单生成；`prices/snapshot.json`
-里的 `source` 一段记着它取自哪个网址、哪次提交、SHA-256 和日期。
+单价是每个 token 多少美元。这张表由 LiteLLM 公开的价格清单生成；`provenance` 那一行照抄
+`prices/snapshot.json` 里 `source` 一段记的内容：它取自哪个网址、哪次提交、SHA-256 和日期。
 
 ## 9. 控制台
 
@@ -239,6 +244,47 @@ UI_PORT_IN_USE: port 8790 is already in use — choose another --port
 控制台是只读的。只有在已有账本（第 10 步）、并用 `sakk ui --allow-halt` 启动时，它的
 Emergency stop（急停）按钮才能用，按下后要敲 STOP 确认。控制台从不解除急停，解除要在终端里做（第 10 步）。
 按 Ctrl+C 关掉控制台。
+
+### 可选：用户名和密码
+
+在你自己的机器上，带令牌的地址就够了。想改用用户名和密码登录，在终端里设置：
+
+```bash
+sakk ui --set-password
+```
+
+```text
+Console username: oncall
+Password (15 or more characters, not shown):
+The same password again:
+Console sign-in set for oncall (~/.sakk/console-login.json, owner-only). Restart sakk ui for it to take effect.
+```
+
+没有终端时（agent 的工具调用、脚本），它拒绝并以 2 退出：
+
+```text
+UI_PASSWORD_NEEDS_TTY: set the password at a terminal: sakk ui --set-password asks for it and does not echo it
+```
+
+重启控制台，它会说登录已开启：
+
+```text
+Sakk console: http://127.0.0.1:8790/?t=<tok>  (read-only; Ctrl+C to stop)
+Sign-in is on: http://127.0.0.1:8790/ asks for the username and password; the address above works too. sakk ui --clear-password turns it off.
+```
+
+用密码登录只能查看控制台；Emergency stop 仍然需要 `--allow-halt` 和带令牌的地址。会话空闲 30 分钟或满
+8 小时就结束；15 分钟内输错五次后，登录会一直拒绝，直到那 15 分钟过去。想回到只用令牌地址：
+
+```bash
+sakk ui --clear-password
+```
+
+```text
+Console sign-in removed (~/.sakk/console-login.json). Restart sakk ui: it is token-only again.
+```
+
+什么都没设时再运行一次，它会说 `No console sign-in was set; sakk ui is token-only.`
 
 ## 10. 急停与解除
 
@@ -268,14 +314,14 @@ settled     $0
 outstanding $0
 committed   $0  (remaining $20, max reservable $0)
 entries     0 (reserved 0, settled 0, reconciliation 0)
-updated     2026-11-01T13:09:26.372Z
-⛔ HALTED by oncall at 2026-11-01T13:09:26.683Z — runaway loop (all new spending refused)
+updated     2026-11-01T15:02:53.755Z
+⛔ HALTED by oncall at 2026-11-01T15:02:53.821Z — runaway loop (all new spending refused)
 ```
 
 急停期间 `sakk status` 以 4 退出。钩子现在按急停拒绝：
 
 ```text
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — halted (global) by oncall at 2026-11-01T13:09:26.683Z — runaway loop; a person resumes with: sakk resume --by <name>. If this is wrong, tell the person you work for and stop; do not route around it."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — halted (global) by oncall at 2026-11-01T15:02:53.821Z — runaway loop; a person resumes with: sakk resume --by <name>. If this is wrong, tell the person you work for and stop; do not route around it."}}
 ```
 
 `--by` 是你自己敲的名字。Sakk 原样记下，不核验你是谁。用 `--agent <id>` 只停一个 agent，不停全部。
