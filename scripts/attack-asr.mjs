@@ -342,10 +342,10 @@ row(
   'run every case through a selector the runner ignores',
   'CLAIMED',
   [
-    ['--packs', 'dora-ict-change'],
+    ['--packs', 'example-change-control'],
     ['--Pack', 'x'],
     ['-pack=x'],
-    ['dora-ict-change'],
+    ['example-change-control'],
     ['--pack', 'a', '--pack', 'b'],
   ].map((a) => [
     a.join(' '),

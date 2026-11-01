@@ -1,0 +1,74 @@
+{
+  "version": 2,
+  "branch": "chore/enterprise-split",
+  "answers": {
+    "C-16.1": {
+      "answer": "No, not yet: this lane wrote the split and ran its own tests and mutations. The label review file is only renamed, its gate logic and labels are untouched. Independent judgement comes after this commit: the parent session reviews the diff before any pull request, and CI's review by a different model (MiniMax) plus the base branch's checker judge the pull request.",
+      "guard": "test/self-evolution.test.mjs::the base branch's checker judges the pull request too"
+    },
+    "C-05.1": {
+      "answer": "Every sentence changed in eval/README, specs and docs names only what the two fictional example packs and the remaining policies really hold; the README count sentence is recomputed by the pack-count test from the packs themselves, and each backticked file name left in the docs is checked against the tree, so a sentence that still cites a removed pack or file turns a test red.",
+      "guard": "eval/__tests__/case-packs.test.mjs::eval/README states the true number of cases that appear in packs"
+    },
+    "C-05.2": {
+      "answer": "The figures a reader acts on are the README case count, the pack ids in the run command and the --validate line; the count is asserted against the union of shipped pack cases, the --validate line is asserted to list exactly the shipped ids, and the README command uses a shipped id, so following the doc runs a real pack instead of refusing PACK_UNKNOWN.",
+      "guard": "eval/__tests__/case-packs.test.mjs::--validate checks every shipped pack and reports packs_ok"
+    },
+    "C-01.1": {
+      "answer": "After the split an absent pack id (an old regulated id like dora-ict-change, or a typo) refuses PACK_UNKNOWN with exit 2 instead of running every case; the regulated policy file is absent from policies/, and no test or code path loads it any more, so its absence cannot be read as a passing default.",
+      "guard": "eval/__tests__/case-packs.test.mjs::unknown --pack exits 2; --case with --pack exits 2; --pack=x exits 2 instead of running everything"
+    },
+    "C-01.2": {
+      "answer": "Deleting either example pack makes --validate list fewer ids than the test pins, shrinks the case union below the README sentence, and makes every pack-selected run refuse PACK_UNKNOWN; deleting a reference policy breaks the pinned policies listing. Each of these was planted and watched go red before the commit.",
+      "guard": "eval/__tests__/case-packs.test.mjs::--validate checks every shipped pack and reports packs_ok"
+    },
+    "C-03.1": {
+      "answer": "Each test whose pack id changed is mutated once on a scratch copy: corrupt the example pack, drop a case from it, change the README count, re-add the removed policy file, and break the runner selector check; each mutation must fail exactly the test that names it and pass again once reverted, recorded in the commit message.",
+      "guard": "eval/__tests__/case-packs.test.mjs::a misspelled selector exits 2 instead of running every case"
+    },
+    "C-03.2": {
+      "answer": "The pack-run tests drive the real gold-runner binary in FAKE mode over the example pack and compare the cases that ran with the pack's own case list, and the bundle tests build and verify a real bundle from that run, so the control is a real run that reaches the verifier, not a stub reading its own output.",
+      "guard": "test/pack-bundle-integration.test.mjs::a FAKE pack run bundles and verifies; its report reads HARNESS_ONLY and names no model"
+    },
+    "C-03.3": {
+      "answer": "The checks read the shipped pack files and the policies directory themselves: --validate parses every pack, the count test recomputes the union, and the policy test lists the directory, so they fail when the content is wrong or missing, not merely when a record about it is missing.",
+      "guard": "eval/__tests__/case-packs.test.mjs::loadAllPacks reports EVERY broken pack, including unparsable JSON with its file name"
+    },
+    "C-04.1": {
+      "answer": "The example packs keep the case counts of the packs they replace in each test (five cases where the oversight pack ran, eight where the change pack ran), so no test runs more fake cases than before; the per-commit runner budget is a counter-based check, not a stopwatch.",
+      "guard": "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget"
+    },
+    "C-06.1": {
+      "answer": "The example packs name a fictional authority and say so in title, regulator and clause_status, and a FAKE run of them still reads HARNESS_ONLY for every requirement, so no reader can take the public packs as evidence about any real regulation or any model.",
+      "guard": "eval/__tests__/case-packs.test.mjs::FAKE mode → HARNESS_ONLY for every requirement, even when every case passed"
+    },
+    "C-07.1": {
+      "answer": "The pack files are hand-edited repository input: the loader validates schema, unknown keys, id-to-file match and non-empty gaps and not_covered before use, and the selector accepts only shipped ids, so the new pack content crosses the same validation as the packs it replaces.",
+      "guard": "eval/__tests__/case-packs.test.mjs::unknown keys, wrong schema, id/file mismatch, duplicate requirement ids"
+    },
+    "C-07.2": {
+      "answer": "The agent under test cannot clear the pack gate by editing a pack: a change under eval/ marks the harness dirty and a REAL report on a dirty tree never reads COVERED; this branch only swaps pack content and keeps that rule untouched.",
+      "guard": "eval/__tests__/case-packs.test.mjs::harness_dirty: false on a clean tree, true after an eval/ or src/ change, the out dir inside the repo excluded"
+    },
+    "C-09.1": {
+      "answer": "The private copy goes to a separate local repository outside the public tree, so the public tests never read it; the public suite runs from a linked worktree with the clean-git-env loader, and the npm package contents are checked with npm pack --dry-run from that worktree, not assumed from the files list.",
+      "guard": "test/pre-push.test.mjs::a push from a linked worktree: the suite gets no GIT_ variables, so a fixture cannot write into the repository (F-214)"
+    },
+    "C-09.2": {
+      "answer": "The packs really run through eval/bin/gold-runner.mjs as npm run test:eval launches it, and policies/ really ships in the npm tarball; both are exercised where they run: the runner tests spawn the real binary, and the shipped policies listing is pinned by a test plus an npm pack dry run.",
+      "guard": "test/pack-bundle-integration.test.mjs::a FAKE pack run bundles and verifies; its report reads HARNESS_ONLY and names no model"
+    },
+    "C-10.1": {
+      "answer": "Keeping regulated content out of the public tree is not left to rule text: the --validate test pins the exact shipped pack ids and the reference-policy test pins the exact files in policies/, so re-adding a regulated pack or policy fails npm test, the commit gate and CI until a reviewer edits the test.",
+      "guard": "eval/__tests__/case-packs.test.mjs::--validate checks every shipped pack and reports packs_ok"
+    },
+    "C-10.2": {
+      "answer": "Another route is putting a regulated pack or policy back under another name; both pinned listings read the directory itself, so any new file there fails regardless of its name, and the private copies live in a separate repository that the public package never includes.",
+      "guard": "test/policy.test.mjs::both references load; hashes are stable across loads"
+    },
+    "C-15.1": {
+      "answer": "The real path for packs here is the real runner in FAKE mode plus a real bundle verified by its own verifier; REAL model runs stay blocked on approved gold labels (F-90 debt, unchanged by this branch), and the reports keep saying HARNESS_ONLY for that reason.",
+      "guard": "test/pack-bundle-integration.test.mjs::a FAKE pack run bundles and verifies; its report reads HARNESS_ONLY and names no model"
+    }
+  }
+}

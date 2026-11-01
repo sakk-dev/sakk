@@ -279,11 +279,11 @@ describe('selection is a whitelist', () => {
     for (const id of [
       '../cases/G01',
       '',
-      'dora-ict-change.json',
+      'example-change-control.json',
       '--x',
       '__proto__',
       'constructor',
-      ' dora-ict-change',
+      ' example-change-control',
     ])
       expectCode(() => loadPack(id, CASES), 'PACK_UNKNOWN');
   });
@@ -292,7 +292,7 @@ describe('selection is a whitelist', () => {
 describe('runner CLI', () => {
   test('--pack runs exactly the pack cases; a fake run reports HARNESS_ONLY with its mode', () => {
     const out = join(tdir(), 'o');
-    const r = run(['--fake-executor', '--pack', 'dora-ict-change', '--out', out]);
+    const r = run(['--fake-executor', '--pack', 'example-change-control', '--out', out]);
     assert.equal(r.status, 0, r.stderr);
     const report = JSON.parse(readFileSync(join(out, 'pack-report.json'), 'utf8'));
     assert.equal(report.executor_mode, 'FAKE');
@@ -303,24 +303,21 @@ describe('runner CLI', () => {
       .match(/^G\d\d:/gm)
       .map((x) => x.slice(0, 3))
       .sort();
-    assert.deepEqual(ran, packCaseIds(loadPack('dora-ict-change', CASES)));
+    assert.deepEqual(ran, packCaseIds(loadPack('example-change-control', CASES)));
   });
   test('unknown --pack exits 2; --case with --pack exits 2; --pack=x exits 2 instead of running everything', () => {
     assert.match(run(['--dry-run', '--pack', 'typo-pack']).stderr, /PACK_UNKNOWN/);
-    const both = run(['--dry-run', '--case', 'G01', '--pack', 'dora-ict-change']);
+    const both = run(['--dry-run', '--case', 'G01', '--pack', 'example-change-control']);
     assert.equal(both.status, 2);
     assert.match(both.stderr, /SELECTOR_CONFLICT/);
-    const eq = run(['--dry-run', '--pack=dora-ict-change']);
+    const eq = run(['--dry-run', '--pack=example-change-control']);
     assert.equal(eq.status, 2);
     assert.match(eq.stderr, /USAGE_EQUALS_FORM/);
   });
   test('--validate checks every shipped pack and reports packs_ok', () => {
     const r = run(['--validate']);
     assert.equal(r.status, 0, r.stdout);
-    assert.match(
-      r.stdout,
-      /packs: OK \(cbuae-ai-oversight, difc-data-protection, dora-ict-change\)/,
-    );
+    assert.match(r.stdout, /packs: OK \(example-agent-oversight, example-change-control\)/);
     assert.match(r.stdout, /"packs_ok":true/);
   });
 });
@@ -328,10 +325,10 @@ describe('runner CLI', () => {
 describe('review N-4: the runner refuses arguments it does not know', () => {
   test('checkArgv: unknown, single-dash, positional, repeated, missing value, two modes', () => {
     for (const [args, code] of [
-      [['--fake-executor', '--packs', 'dora-ict-change'], 'USAGE_UNKNOWN_ARGUMENT'],
+      [['--fake-executor', '--packs', 'example-change-control'], 'USAGE_UNKNOWN_ARGUMENT'],
       [['--dry-run', '--Pack', 'x'], 'USAGE_UNKNOWN_ARGUMENT'],
       [['--dry-run', '-pack=x'], 'USAGE_UNKNOWN_ARGUMENT'],
-      [['--dry-run', 'dora-ict-change'], 'USAGE_UNKNOWN_ARGUMENT'],
+      [['--dry-run', 'example-change-control'], 'USAGE_UNKNOWN_ARGUMENT'],
       [['--dry-run', '--pack', 'a', '--pack', 'b'], 'USAGE_REPEATED_FLAG'],
       [['--dry-run', '--pack'], 'USAGE_MISSING_VALUE'],
       [['--dry-run', '--case', '--pack', 'x'], 'USAGE_MISSING_VALUE'],
@@ -347,10 +344,16 @@ describe('review N-4: the runner refuses arguments it does not know', () => {
         (e) => e.message.startsWith(code),
         args.join(' '),
       );
-    checkArgv(['--fake-executor', '--pack', 'dora-ict-change', '--out', '/tmp/x']);
+    checkArgv(['--fake-executor', '--pack', 'example-change-control', '--out', '/tmp/x']);
   });
   test('a misspelled selector exits 2 instead of running every case', () => {
-    const r = run(['--fake-executor', '--packs', 'cbuae-ai-oversight', '--out', join(tdir(), 'o')]);
+    const r = run([
+      '--fake-executor',
+      '--packs',
+      'example-agent-oversight',
+      '--out',
+      join(tdir(), 'o'),
+    ]);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /USAGE_UNKNOWN_ARGUMENT/);
     assert.doesNotMatch(r.stdout, /^G\d\d:/m, 'no case ran');
@@ -373,6 +376,15 @@ describe('review N-5: documented pack coverage matches the packs', () => {
         new RegExp(`\\b${id}\\b`),
         `${id} named as absent in the count sentence`,
       );
+  });
+
+  test('every shipped pack names a fictional authority, as eval/README says', () => {
+    const readme = readFileSync(join(HERE, '..', 'README.md'), 'utf8');
+    assert.match(readme, /packs written for a fictional authority/);
+    for (const p of loadAllPacks(CASES)) {
+      assert.match(p.regulator, /\bfictional\b/, `${p.id}: regulator is marked fictional`);
+      assert.match(p.clause_status, /cite no clauses/, `${p.id}: clause_status says no clauses`);
+    }
   });
 });
 
