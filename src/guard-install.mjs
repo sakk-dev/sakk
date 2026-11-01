@@ -25,7 +25,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPolicy } from './policy.mjs';
-import { AGENTS, SHIPPED_POLICY, repoRootOf, sakkHome } from './hook.mjs';
+import { AGENTS, DOCTOR_COMMAND, SHIPPED_POLICY, repoRootOf, sakkHome } from './hook.mjs';
 import { AGENT_CONFIG } from './classify.mjs';
 
 export const BIN = realpathSync(
@@ -226,7 +226,7 @@ function installedCommands(agent, path) {
 
 /** A synthetic forced push in each agent's shape: the installed hook must deny it. */
 export function firePayload(agent, cwd) {
-  const command = 'git push --force origin main';
+  const command = DOCTOR_COMMAND;
   if (agent === 'cursor')
     return {
       hook_event_name: 'beforeShellExecution',

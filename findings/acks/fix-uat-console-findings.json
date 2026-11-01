@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "branch": "fix/uat-console-findings",
+  "answers": {
+    "C-05.1": {
+      "answer": "No spec sentence is added. The contract's row 6 (every decision is logged) is kept, not changed. The only new prose is the doctor probe's attribution in the CHANGELOG and the ledger entries, and each of them has a test: the hook test fails if the probe is logged under the agent's name, and the console tests fail if a doctor row is counted or a blocked secret read is missing from the secret view.",
+      "guard": "test/console.test.mjs::the doctor's self-test is not counted as a blocked action (F-229)"
+    },
+    "C-05.2": {
+      "answer": "Each figure fixed here is one a person acts on, and each now matches the list it opens. The Open items count equals the rows that See what to do lists. The 7-day secret count counts the Secret found rows, which are the rows its See records link opens; the agents-reaching-for-secrets list also shows the blocked secret reads, as the frozen v10 design does. The blocked counts leave out the doctor's own probe, which no agent ever sent. The ledger export line says 'entry' or 'entries' instead of the raw pattern. No exit code changes.",
+      "guard": "test/console.test.mjs::the Open items count is the number of open rows it links to (F-228)"
+    },
+    "C-01.1": {
+      "answer": "When the doctor variable is absent or the payload differs in any field, the hook logs under the agent's own name, which is what it did before. A payload cannot be relabelled by setting the variable alone. A decision with no context.action is not read as a secret read: only an explicit secret.read deny, or the secret rule, enters the secret list. When a checks entry has no warn flag, the agents page treats it as not warned, which is what it showed before.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-01.2": {
+      "answer": "Each new check was removed by hand and the tests rerun. Dropping the doctor-row filter, the secret.read match, the warn branch, the open-count fix, or any one probe field, turns a test red. Restored, they pass.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-10.1": {
+      "answer": "Nothing here relies on rule text. The attribution is code in the hook. The console filters are code in the page. Each one has a test that runs in npm test, the pre-push suite and CI.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-10.2": {
+      "answer": "The sakk-doctor label is set only inside evaluate(), and only from the doctor's exact probe. Any other route keeps the agent's name: a real agent, the try box, or a hand-made payload without the variable. A payload with the variable but not the exact fields is also logged as the agent. A forged probe gains nothing, since the decision is still a deny, is still logged and is still exported. Only the console's counts leave it out, and the records page still lists it.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-09.1": {
+      "answer": "Several states were tried in the UAT on a fake home, not only the first one: halted and not halted, a fail-open install next to a clean one, secret reads of a .env and of an SSH key as well as a written key, and a doctor run before any agent call. Each fix was checked again in the same states.",
+      "guard": "test/console.test.mjs::the secret view counts every secret read the guard blocked (F-226)"
+    },
+    "C-09.2": {
+      "answer": "It ran where a person would see it. The real bin/sakk.mjs ui served the page on the uat16 fake home in the desktop browser pane, after the hook, doctor and scan commands had been run for real on that home.",
+      "guard": "test/console.test.mjs::the secret view counts every secret read the guard blocked (F-226)"
+    },
+    "C-02.1": {
+      "answer": "Nothing is a hand-written list. Secret reads are found by the action the policy writes (secret.read) on a deny, and secret finds by the secret rule. Doctor rows are found by one by value, a constant exported from the hook. A future secret rule that writes secret.read is caught without a change here.",
+      "guard": "test/console.test.mjs::the secret view counts every secret read the guard blocked (F-226)"
+    },
+    "C-02.2": {
+      "answer": "Every place that reads decisions was swept: the server's secretData and overview, the client's block list, recordFromDecision, the overview counts, the agents page, the feed, rule hits, records and export. The secret list takes secret.read denies as well as secret finds, while the 7-day count, the record type and the open items stay as the frozen v10 design has them: only a Secret found row is type secret and open; a blocked read is a Policy denied record with nothing to do, as in v10's B-100. A doctor row is left out of counts, blocks, agents and the feed, and kept in records and export.",
+      "guard": "test/console.test.mjs::the doctor's self-test is not counted as a blocked action (F-229)"
+    },
+    "C-04.1": {
+      "answer": "Nothing new is read. The filters run over the same capped decision tail the page already loads.",
+      "guard": "test/console.test.mjs::the entries list is capped and says when it is cut"
+    },
+    "C-15.1": {
+      "answer": "The real path ran. The real sakk doctor fired the real installed hook command, and the real sakk ui read the decisions it wrote. The tests spawn the real bin/sakk.mjs hook as an agent does and render the real page template.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-06.1": {
+      "answer": "The evidence is the UAT walk on the fake home, with the counts read before and after. The page tests check the template's logic against stub data, not rendered pixels, and the ledger entries say so.",
+      "guard": "test/console.test.mjs::the Open items count is the number of open rows it links to (F-228)"
+    },
+    "C-07.1": {
+      "answer": "The only new input from others is the hook payload, which an agent writes. The doctor label needs SAKK_DOCTOR=1 in the hook process's own environment and every probe field to match exactly. A real agent call carries the agent's own session id and tool call id, so it cannot match by accident. Whatever the label, the verdict is still deny, and the row is still logged and exported. The console shows the label and every other field with textContent, never as markup.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-07.2": {
+      "answer": "The constrained party is the agent. It cannot set the environment of the hook process its host starts, so it cannot turn the label on. Even a perfect forgery gains nothing: the forced push is still denied, still logged and still exported; only the console's blocked counts leave that one row out, and the records page still lists it under its label.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-11.1": {
+      "answer": "The only writer of the new value is evaluate(), on the exact doctor probe. The only reader of the by field is src/console.mjs (checked with grep over src and bin). The spend ledger, the alerts log and the CLI do not read it. The value is one exported constant, DOCTOR_BY, and the page test checks the page uses the same string.",
+      "guard": "test/console.test.mjs::the doctor's self-test is not counted as a blocked action (F-229)"
+    },
+    "C-03.1": {
+      "answer": "The hook test spawns the real bin/sakk.mjs hook in a temp home, as an agent does, and reads the decisions.jsonl it wrote. It is not a mock of logDecision.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-03.2": {
+      "answer": "The test has controls: the same probe without the variable, and the probe with the variable and each field changed in turn (command, session id, tool call id, tool name, and the Cursor event). Every control is logged under the agent's name, and every one is still a deny.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-03.3": {
+      "answer": "The bug was put back (the hook logging ev.agent for every call) and the hook test went red on the doctor's row; the console tests went red with the filter, the open-count fix and the secret.read match each removed. Restored, all pass.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-08.1": {
+      "answer": "The match is exact string equality on fixed values. Any variant of the command (extra spaces, a different remote, a quoted form) or of the ids is logged as the agent, which is the safe default and the old behaviour. The probe command is one constant, DOCTOR_COMMAND, used by both the doctor and the hook, so they cannot drift apart.",
+      "guard": "test/guard.test.mjs::the doctor probe is logged as sakk-doctor only when every field matches (F-229)"
+    },
+    "C-14.1": {
+      "answer": "A row with no context or no by field is kept and shown as before rather than breaking the page. A line that parses but is not a record (null, a number, a list) is now counted as unreadable and dropped by the decisions reader, as the alerts reader already does, so it reaches no count, list or export; the page filters still skip one if it ever arrives. The fail-open lookup falls back to no warning when the checks list is missing.",
+      "guard": "test/console.test.mjs::the doctor's self-test is not counted as a blocked action (F-229)"
+    }
+  }
+}

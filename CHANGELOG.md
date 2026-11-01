@@ -16,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its scroll and brings the chosen page into view, and nav items keep their
   width when chosen (F-224).
 
+### Fixed — what the console and CLI report after the 2026-11-01 UAT
+
+- `sakk doctor`'s self-test is logged as `sakk-doctor`, not as Claude Code,
+  when it fires its fixed probe through the installed hook. The console
+  leaves it out of blocked counts, agents and the feed, and keeps it in
+  records and export as "Doctor self-test". A decisions line that is not a
+  record is counted as unreadable (F-229).
+- The Secret guard page lists secret reads the guard blocked, not only
+  secrets found in content (F-226).
+- The Agents page says when the Claude Code hook was installed fail-open
+  (F-227).
+- Open items counts the rows it links to; a halt no longer adds one (F-228).
+- `sakk ledger export --out` says "entry" or "entries" instead of printing
+  `entr(y|ies)` (F-225).
+
 ### Added — the console shows the spend ledger
 
 - `sakk ui` has a new **Spend ledger** page, and the overview a ledger card:

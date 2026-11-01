@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WRAPPERS, shellActions, toDecisions } from '../src/classify.mjs';
-import { runHook } from '../src/hook.mjs';
+import { DOCTOR_BY, DOCTOR_COMMAND, runHook } from '../src/hook.mjs';
 import {
   doctor,
   install,
@@ -22,6 +22,7 @@ import {
   withoutGuard,
   hookCommand,
   claudeSupportsOnFailure,
+  firePayload,
 } from '../src/guard-install.mjs';
 import { initLedger, halt } from '../src/ledger.mjs';
 
@@ -616,6 +617,87 @@ describe('the hook as an agent runs it', () => {
       'the agent name as the installed config passes it (self-declared)',
     );
     assert.match(lines.at(-1).policyHash, /^[0-9a-f]{64}$/);
+  });
+  test('the doctor probe is logged as sakk-doctor only when every field matches (F-229)', () => {
+    // sakk doctor proves the installed hook denies by firing a forced push
+    // through it. That row is the doctor's, not the agent's: logged as
+    // claude-code, the console counted it as a blocked action the agent tried.
+    // The label needs SAKK_DOCTOR=1 on the hook process AND the exact probe in
+    // every field; anything else keeps the agent's name. Either way it is a deny.
+    const w = world();
+    const log = join(w.sakkHome, 'decisions.jsonl');
+    const lines = () =>
+      readFileSync(log, 'utf8')
+        .trim()
+        .split('\n')
+        .map((l) => JSON.parse(l));
+    // the real doctor firing the real installed command
+    install('claude-code', { cwd: w.repo, home: w.home, supportsOnFailure: false });
+    const checks = doctor({
+      cwd: w.repo,
+      home: w.home,
+      env: w.env,
+      managed: join(w.base, 'none.json'),
+    });
+    assert.ok(
+      checks.every((c) => c.ok),
+      JSON.stringify(checks.filter((c) => !c.ok)),
+    );
+    const fired = lines();
+    assert.ok(fired.length > 0, 'the probe is still logged (contract row 6)');
+    for (const d of fired) {
+      assert.equal(d.by, DOCTOR_BY, 'the doctor row carries the doctor label');
+      assert.equal(d.verdict, 'deny');
+    }
+    const D = { SAKK_DOCTOR: '1' };
+    const cc = firePayload('claude-code', w.repo);
+    const cu = firePayload('cursor', w.repo);
+    assert.equal(cc.tool_input.command, DOCTOR_COMMAND, 'doctor and hook share one command');
+    const cases = [
+      ['claude-code', cc, D, DOCTOR_BY],
+      ['codex', firePayload('codex', w.repo), D, DOCTOR_BY],
+      ['cursor', cu, D, DOCTOR_BY],
+      // controls: each one is logged under the agent's own name
+      ['claude-code', cc, {}, 'claude-code'],
+      ['claude-code', cc, { SAKK_DOCTOR: 'true' }, 'claude-code'],
+      ['claude-code', { ...cc, tool_input: { command: `${DOCTOR_COMMAND} ` } }, D, 'claude-code'],
+      [
+        'claude-code',
+        { ...cc, tool_input: { command: 'git push --force origin dev' } },
+        D,
+        'claude-code',
+      ],
+      ['claude-code', { ...cc, session_id: 's1' }, D, 'claude-code'],
+      ['claude-code', { ...cc, tool_use_id: 't-1' }, D, 'claude-code'],
+      ['claude-code', { ...cc, tool_name: 'PowerShell' }, D, 'claude-code'],
+      ['codex', { ...firePayload('codex', w.repo), session_id: 's1' }, D, 'codex'],
+      ['cursor', cu, {}, 'cursor'],
+      ['cursor', { ...cu, conversation_id: 'c1' }, D, 'cursor'],
+      ['cursor', { ...cu, generation_id: 'g1' }, D, 'cursor'],
+      [
+        'cursor',
+        {
+          hook_event_name: 'preToolUse',
+          tool_name: 'Shell',
+          tool_input: { command: DOCTOR_COMMAND },
+          cwd: w.repo,
+          conversation_id: 'doctor',
+          generation_id: 'doctor',
+        },
+        D,
+        'cursor',
+      ],
+    ];
+    for (const [agent, payload, env, by] of cases) {
+      const label = `${agent} ${JSON.stringify(env)} ${JSON.stringify(payload)}`;
+      const before = lines().length;
+      const r = hook(w, agent, payload, env);
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(verdict(agent, r.stdout), 'deny', label);
+      const added = lines().slice(before);
+      assert.ok(added.length > 0, `logged: ${label}`);
+      for (const d of added) assert.equal(d.by, by, label);
+    }
   });
   test('a halt set between two calls stops the second', () => {
     const w = world();

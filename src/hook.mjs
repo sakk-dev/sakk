@@ -84,6 +84,18 @@ import { patchActions, shellActions, toDecisions } from './classify.mjs';
 
 export const AGENTS = Object.freeze(['claude-code', 'cursor', 'codex']);
 export const MAX_PAYLOAD = 1024 * 1024;
+// sakk doctor's own probe: logged like any decision (contract row 6), but under
+// its own name, so the console never counts it as something an agent tried (F-229)
+export const DOCTOR_BY = 'sakk-doctor';
+export const DOCTOR_COMMAND = 'git push --force origin main';
+const isDoctorProbe = (ev, env) =>
+  env.SAKK_DOCTOR === '1' &&
+  ev.kind === 'shell' &&
+  ev.command === DOCTOR_COMMAND &&
+  ev.sessionId === 'doctor' &&
+  (ev.agent === 'cursor'
+    ? ev.cursorEvent === 'beforeShellExecution' && ev.callId === 'doctor'
+    : ev.tool === 'Bash' && ev.callId === 'doctor-fire');
 export const DEADLINE_MS = 2000;
 export const SHIPPED_POLICY = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -574,11 +586,12 @@ export function evaluate(
     } catch (e) {
       throw new HookError('DECISION_UNLOGGABLE', `${home}: ${e.code ?? e.message}`);
     }
+    const by = isDoctorProbe(ev, env) ? DOCTOR_BY : ev.agent;
     for (const d of decisions) {
       // the log line keeps decide()'s shape, which is public API: the reason text stays out
       const decision = Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'why'));
       try {
-        logDecision({ decisionLogPath, decision, by: ev.agent });
+        logDecision({ decisionLogPath, decision, by });
       } catch (e) {
         throw new HookError('DECISION_UNLOGGABLE', e.message);
       }
