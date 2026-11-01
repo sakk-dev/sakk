@@ -31,8 +31,13 @@ import {
   LEDGER_VIEW_BYTES,
 } from '../src/console.mjs';
 import { initLedger, readLedger, reserve, settle, alertsPathFor } from '../src/ledger.mjs';
-import { DOCTOR_BY, normalize, evaluate } from '../src/hook.mjs';
+import * as hook from '../src/hook.mjs';
 import { install } from '../src/guard-install.mjs';
+
+// literals, not imports: the guards for F-226..F-229 must load on the code
+// before the fix, where hook.mjs has no DOCTOR_BY (findings-proof)
+const { normalize, evaluate } = hook;
+const DOCTOR_BY = 'sakk-doctor';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -97,7 +102,9 @@ const cookie = (tok) => `sakk_t=${tok}`;
  */
 function pageLogic() {
   const page = renderPage('n', true);
-  const a = page.indexOf('const DOCTOR_BY=');
+  // the page before F-229 starts its constants at VIA
+  const doc = page.indexOf('const DOCTOR_BY=');
+  const a = doc >= 0 ? doc : page.indexOf('const VIA=');
   const h = page.indexOf('function hookState(');
   assert.ok(a > 0 && h > a, 'the page defines its constants before hookState');
   const src = page.slice(a, page.indexOf('\n', h));
@@ -1404,7 +1411,7 @@ describe('sakk ui console: UAT 2026-11-01 fixes', () => {
   };
 
   test("the doctor's self-test is not counted as a blocked action (F-229)", () => {
-    assert.equal(DOCTOR_BY, 'sakk-doctor');
+    assert.equal(hook.DOCTOR_BY, DOCTOR_BY, "the hook's label");
     const page = renderPage('n', true);
     assert.ok(
       page.includes(`const DOCTOR_BY=${JSON.stringify(DOCTOR_BY)};`),

@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WRAPPERS, shellActions, toDecisions } from '../src/classify.mjs';
-import { DOCTOR_BY, DOCTOR_COMMAND, runHook } from '../src/hook.mjs';
+import * as hookMod from '../src/hook.mjs';
 import {
   doctor,
   install,
@@ -25,6 +25,12 @@ import {
   firePayload,
 } from '../src/guard-install.mjs';
 import { initLedger, halt } from '../src/ledger.mjs';
+
+// literals, not imports: the F-229 guard must load on the code before the fix,
+// where hook.mjs has no DOCTOR_BY / DOCTOR_COMMAND (findings-proof)
+const { runHook } = hookMod;
+const DOCTOR_BY = 'sakk-doctor';
+const DOCTOR_COMMAND = 'git push --force origin main';
 
 /**
  * The guard (specs/guard/spec.md). Each test names the adversary-table row or
@@ -653,6 +659,8 @@ describe('the hook as an agent runs it', () => {
     const cc = firePayload('claude-code', w.repo);
     const cu = firePayload('cursor', w.repo);
     assert.equal(cc.tool_input.command, DOCTOR_COMMAND, 'doctor and hook share one command');
+    assert.equal(hookMod.DOCTOR_COMMAND, DOCTOR_COMMAND, "the hook's probe command");
+    assert.equal(hookMod.DOCTOR_BY, DOCTOR_BY, "the hook's label");
     const cases = [
       ['claude-code', cc, D, DOCTOR_BY],
       ['codex', firePayload('codex', w.repo), D, DOCTOR_BY],
