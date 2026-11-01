@@ -1,0 +1,109 @@
+{
+  "version": 2,
+  "branch": "feat/console-basic-login",
+  "answers": {
+    "C-04.1": {
+      "answer": "Every sign-in cost is capped by a refusal, not a clock: a body over 2 KiB is refused by Content-Length (413) or cut off while streaming, one scrypt runs at a time (a second gets CONSOLE_LOGIN_BUSY), five failures in fifteen minutes lock sign-in (CONSOLE_LOGIN_LOCKED), at most 16 sessions are kept and the credential file is read only up to 4 KiB.",
+      "guard": "test/console-login.test.mjs::five failed sign-ins lock sign-in out with a clear message, while the token link still works"
+    },
+    "C-05.1": {
+      "answer": "Each sentence the spec gains about sign-in names the test that holds it, and the tests drive the real server: the cookie flags, the lockout count, the expiry limits and the 0600 mode are read back from responses and the file, not from the intent.",
+      "guard": "test/console-login.test.mjs::the right username and password open a session cookie that is HttpOnly and SameSite=Strict"
+    },
+    "C-05.2": {
+      "answer": "The lockout message tells the person to open the address sakk ui printed, and the same test opens that address during the lockout and gets the page; the CLI refusal codes exit 2 and name the next step, and a test runs the real binary to see them.",
+      "guard": "test/console-login.test.mjs::sakk ui refuses a password on the command line and a password prompt without a terminal"
+    },
+    "C-02.1": {
+      "answer": "The sign-in gate is one check before dispatch, not a list of protected routes: with a password set, every API route name is read out of src/console.mjs by the test and each must answer 403 without the token or a live session.",
+      "guard": "test/console-login.test.mjs::with a password set every API route still needs the token or a session"
+    },
+    "C-02.2": {
+      "answer": "The rule that a write must carry our own Origin already held for the stop route; sign-in and sign-out are writes too, so both require the Origin present and local and the Host check as well, and one test covers foreign, missing and rebinding cases on sign-in.",
+      "guard": "test/console-login.test.mjs::sign-in refuses a foreign Origin, a missing Origin and a foreign Host"
+    },
+    "C-15.1": {
+      "answer": "The tests start the real console over real HTTP on loopback, hash with the shipped scrypt parameters (N 2^17, r 8, p 1), and spawn the real bin/sakk.mjs for the command-line refusals; no stand-in writes the evidence.",
+      "guard": "test/console-login.test.mjs::the right username and password open a session cookie that is HttpOnly and SameSite=Strict"
+    },
+    "C-09.1": {
+      "answer": "Setting a password assumes a person at a terminal; with no TTY (CI, a pipe, an agent shell) the command refuses with UI_PASSWORD_NEEDS_TTY, the Sakk home is created 0700 if absent, and the file mode is set to 0600 explicitly rather than trusting the umask.",
+      "guard": "test/console-login.test.mjs::sakk ui refuses a password on the command line and a password prompt without a terminal"
+    },
+    "C-09.2": {
+      "answer": "It runs as sakk ui from bin/sakk.mjs; the test spawns that binary with a fake HOME and an unsafe credential file and sees it refuse to start with CONSOLE_LOGIN_UNSAFE, so the check fires from the real entry point, not only from the library call.",
+      "guard": "test/console-login.test.mjs::a credential file that is a symlink, a hard link or readable by others stops the console from starting"
+    },
+    "C-11.1": {
+      "answer": "A password session grants what the cookie token grants for reading, and no more: stopping an agent still needs the start token in the X-Sakk-Token header, and the halt record keeps the OS account name labelled self-declared, so a sign-in never reads as a verified approver.",
+      "guard": "test/console-login.test.mjs::a password session cannot stop an agent without the start token"
+    },
+    "C-01.1": {
+      "answer": "No credential file means sign-in is off and the console behaves exactly as before (no token is 403, /login and /logout are 404); a missing cookie, Origin, field or body is a refusal, and a credential file that exists but cannot be trusted stops the start instead of falling back.",
+      "guard": "test/console-login.test.mjs::with no password set the console is unchanged: no token is 403 and /login is 404"
+    },
+    "C-01.2": {
+      "answer": "Each check has a test that fails when it is taken out: dropping the mode or link check lets an unsafe file start the console and the start-refusal test goes red; dropping either expiry keeps a stale session alive and the expiry test goes red.",
+      "guard": "test/console-login.test.mjs::a session ends after the idle limit and after the absolute limit"
+    },
+    "C-10.1": {
+      "answer": "Nothing here rests on rule text: the Origin, Host, rate limit, expiry and file checks are code paths in the server and the CLI, and their tests run in npm test, the commit gate and CI, so removing one turns a test red.",
+      "guard": "test/console-login.test.mjs::sign-in refuses a foreign Origin, a missing Origin and a foreign Host"
+    },
+    "C-10.2": {
+      "answer": "Other routes in: a GET never signs anyone in, form and JSON bodies go through the same verifier, a session id the server did not issue is refused, and the stop route still demands the start token header, so no second door skips the password or the token.",
+      "guard": "test/console-login.test.mjs::a session cookie the server did not issue is refused"
+    },
+    "C-03.1": {
+      "answer": "The refusal test sends a wrong password and a wrong username and asserts both get the same status and body with no cookie, and in the same test the right pair succeeds, so a red result means the comparison changed, not that the server was down.",
+      "guard": "test/console-login.test.mjs::a wrong password and a wrong username get the same refusal and no cookie"
+    },
+    "C-03.2": {
+      "answer": "The lockout test sends the right password after five failures and expects the lock, so it observes the lockout rather than another wrong password; its control is the token link opening the page during the same lock.",
+      "guard": "test/console-login.test.mjs::five failed sign-ins lock sign-in out with a clear message, while the token link still works"
+    },
+    "C-03.3": {
+      "answer": "The storage test reads the file from disk, checks its mode bits, re-derives the scrypt hash from the password and salt it holds, and asserts the password text is nowhere in it, so it fails when the storage is wrong, not when a field is missing.",
+      "guard": "test/console-login.test.mjs::the credential file is mode 0600 and holds a scrypt hash, never the password"
+    },
+    "C-06.1": {
+      "answer": "The sign-in proves only that someone knew the console password; the stop record still names the OS account and says self-declared, and the console never shows the sign-in name as a verified identity.",
+      "guard": "test/console-login.test.mjs::a password session cannot stop an agent without the start token"
+    },
+    "C-07.1": {
+      "answer": "Untrusted inputs: the sign-in body (size-capped, type-checked, never echoed into HTML or the log), the cookie (format-checked, looked up by its hash) and the hand-editable credential file (no symlink, one link, owner-only mode, owner uid, 4 KiB cap, exact scrypt parameters).",
+      "guard": "test/console-login.test.mjs::a credential file that is a symlink, a hard link or readable by others stops the console from starting"
+    },
+    "C-07.2": {
+      "answer": "An agent cannot set the password: the prompt needs a terminal and refuses a password on argv, so only a person at the keyboard sets it; clearing it only returns the console to token-only, and a lockout is lifted by time or by the token link the person holds.",
+      "guard": "test/console-login.test.mjs::sakk ui refuses a password on the command line and a password prompt without a terminal"
+    },
+    "C-08.1": {
+      "answer": "The credential has one name: it is opened with O_NOFOLLOW, must be a regular file with one link and owned by the user, so a symlink or hard link to another file is refused rather than read through.",
+      "guard": "test/console-login.test.mjs::a credential file that is a symlink, a hard link or readable by others stops the console from starting"
+    },
+    "C-16.1": {
+      "answer": "The only CI change is one more minute on the drill job, which the F-166 check demands for 46 mutants at 40 s each; no checker, gate script or test is loosened, and CI judges the branch with main's checker, not this branch's copy.",
+      "guard": "test/claims-are-checked.test.mjs::the drill job has time for every mutant it runs (F-166)",
+      "revisions": [
+        {
+          "finding": "F-218",
+          "answer": "No CI setting changes after all: the extra drill minute broke the F-218 runner-minute ceiling, a cost decision for the owner, so the lockout mutant was dropped and 45 mutants at 40 s fit the unchanged 30-minute job; CI still judges with main's checker.",
+          "guard": "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget"
+        }
+      ]
+    },
+    "C-14.1": {
+      "answer": "The sign-in code adds no batch or run loop. The DCO checker and the release and scorecard workflows reach this branch only by merging main after pull request #47; there an unsigned commit is named on its own and the run carries on to the next one.",
+      "guard": "test/dco-check.test.mjs::an unsigned commit, or one signed off by someone else, fails and is named"
+    },
+    "C-13.1": {
+      "answer": "The login branch adds no detection rule of its own. The DCO and licence scans that arrive from main through #47 keep their tests on both sides there: a commit signed off by its author passes, and an unsigned or foreign sign-off fails.",
+      "guard": "test/dco-check.test.mjs::every commit signed off by its author passes"
+    },
+    "C-12.1": {
+      "answer": "The secret scanner files come from main with only their SPDX header line changed by #47; no pattern or exemption changes on this branch, so a fiction token beside a real secret still leaves the real one reported.",
+      "guard": "test/secret-guard.test.mjs::a fiction token does not exempt a real secret beside it"
+    }
+  }
+}

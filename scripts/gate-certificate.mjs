@@ -52,13 +52,13 @@ export function parseSuiteSummary(out) {
   return { tests: pick('tests'), pass: pick('pass'), fail: pick('fail') };
 }
 
-/** The drill defines exactly this many mutants (MUT-A…MUT-AR). It is a
+/** The drill defines exactly this many mutants (MUT-A…MUT-AS). It is a
  * CONSCIOUS tripwire, deliberately NOT derived from the drill: adding a
  * mutant without bumping this must fail a test, never silently shrink the
  * witness. `test/certificate.test.mjs` links it to the drill's real count
  * and to the freshness parser's reach — the latter caught the MUT-AA
  * two-letter regex gap that made 12 mutants' hashes invisible (F-167). */
-export const EXPECTED_MUTANTS = 44;
+export const EXPECTED_MUTANTS = 45;
 
 /** F8, machine-enforced: every `sha256 before=` the drill report testifies
  * about must equal the file's CURRENT hash — a drill that ran on different

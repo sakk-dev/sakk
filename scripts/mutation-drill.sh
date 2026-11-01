@@ -373,8 +373,8 @@ run_drill MUT-AK src/hook.mjs \
 
 # MUT-AL: drop the console's token gate → a request without the token must die red
 run_drill MUT-AL src/console.mjs \
-  "if (!tokenOk(fromQuery, tok) && !tokenOk(cookie, tok)) return forbid(res);" \
-  "if (false) return forbid(res);" \
+  "if (!tokenOk(fromQuery, tok) && !tokenOk(cookie, tok) && !gate?.sessionOk(cookies.sakk_s)) {" \
+  "if (false) {" \
   "a request without the token gets nothing" \
   "test"
 
@@ -418,6 +418,13 @@ run_drill MUT-AR scripts/hooks/pre-push.mjs \
   "  if (t.status !== 0) {" \
   "  if (false) {" \
   "a push runs the range check and the full suite, and refuses when either fails" \
+  "test"
+
+# MUT-AS: read a credential file others can read → the unsafe-file test must die red
+run_drill MUT-AS src/console-login.mjs \
+  "    if ((f.mode & 0o077) !== 0) throw unsafe(path, 'is readable or writable by others (want 0600)');" \
+  "    if (false) throw unsafe(path, 'is readable or writable by others (want 0600)');" \
+  "a credential file that is a symlink, a hard link or readable by others stops the console from starting" \
   "test"
 
 # Pristine control: an unmutated copy must be fully green on BOTH suites
