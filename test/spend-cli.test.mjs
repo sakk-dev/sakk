@@ -174,6 +174,56 @@ describe('spend / cap / prices CLI (F-161)', () => {
     assert.match(j.source, /snapshot\.json$/);
   });
 
+  test('sakk prices prints the provenance its table records: url, commit, sha256, fetch date', () => {
+    const w = world();
+    const shipped = JSON.parse(readFileSync(join(ROOT, 'prices', 'snapshot.json'), 'utf8')).source;
+    const text = sakk(w, ['prices']).stdout;
+    const line = text.split('\n').find((l) => l.includes('provenance'));
+    assert.ok(line, 'a provenance line is printed');
+    assert.match(line, /as recorded in the table/);
+    for (const k of ['url', 'commit', 'sha256', 'fetchedAt']) {
+      assert.equal(typeof shipped[k], 'string', `the snapshot records ${k}`);
+      assert.ok(line.includes(shipped[k]), `the printed provenance carries ${k}`);
+    }
+    const j = JSON.parse(sakk(w, ['prices', '--json']).stdout);
+    assert.match(j.source, /snapshot\.json$/, 'source stays the path of the table in use');
+    for (const k of ['url', 'commit', 'sha256', 'fetchedAt'])
+      assert.equal(j.provenance[k], shipped[k]);
+  });
+
+  test('sakk prices says when a table records no provenance, and escapes a hostile one', () => {
+    const w = world();
+    const model = { input: 1e-6, output: 2e-6, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0 };
+    const plant = (source) =>
+      writeFileSync(
+        join(w.home, 'prices.json'),
+        JSON.stringify({
+          schema: 'sakk-prices.v1',
+          ...(source && { source }),
+          models: { m1: model },
+        }),
+      );
+
+    plant(undefined);
+    let text = sakk(w, ['prices']).stdout;
+    assert.match(text, /provenance: not recorded in this table/);
+    assert.match(text, /m1 {2}in /, 'the model list still prints');
+    assert.equal(JSON.parse(sakk(w, ['prices', '--json']).stdout).provenance, null);
+
+    plant('not an object');
+    assert.match(sakk(w, ['prices']).stdout, /provenance: not recorded in this table/);
+
+    plant({ url: 'https://example.test/p\u001b[31m.json', commit: 42, sha256: ['x'] });
+    const r = sakk(w, ['prices']);
+    assert.equal(r.status, 0, 'a malformed source block does not fail the command');
+    assert.ok(!r.stdout.includes('\u001b'), 'no raw escape byte reaches the terminal');
+    assert.match(r.stdout, /p\\x1b\[31m\.json/, 'the escape byte is shown escaped');
+    assert.doesNotMatch(r.stdout, /at commit|sha256/, 'fields that are not strings are left out');
+    assert.match(r.stdout, /m1 {2}in /);
+    const j = JSON.parse(sakk(w, ['prices', '--json']).stdout);
+    assert.deepEqual(Object.keys(j.provenance), ['url']);
+  });
+
   test('sakk spend refuses a malformed or impossible --day', () => {
     const w = world();
     for (const bad of ['10-22-2026', '2026-13-40', '2026-02-30', 'abcd-ef-gh']) {

@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "branch": "fix/f231-empty-spend-index",
+  "answers": {
+    "C-01.1": {
+      "answer": "An absent spend index (no spend/files.json) is the case this branch fixes: the overview now returns indexed_at null and the card shows a dash with the sakk spend hint, never $0.00 read from a day file that was never written.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)"
+    },
+    "C-01.2": {
+      "answer": "Deleting files.json, or backdating its mtime to yesterday, flips the new overview test from counted to not counted; the guard asserts both states, so removing the check turns the test red rather than leaving it PASS.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)"
+    },
+    "C-02.1": {
+      "answer": "No hand list: the rule is one predicate on the index's own last-count time (files.json mtime, rewritten on every count) compared with today in the configured zone, applied to the only reader that shows today's figure.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)"
+    },
+    "C-02.2": {
+      "answer": "Other readers of today's total: sakk spend refreshes the index itself before reading, and the hook's cap check also refreshes before deciding, so the console's Today card is the only reader that showed an uncounted day as zero; the stale-index case (counted yesterday, no cap set) is covered too.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)"
+    },
+    "C-04.1": {
+      "answer": "The added work is one stat of a fixed path per overview request; nothing scales with log size or hostile input, and the existing per-request bounds (query length cap, page line limits) are unchanged.",
+      "guard": "none: one lstat of a fixed path per request, no loop or input-sized work is added"
+    },
+    "C-05.1": {
+      "answer": "The one spec sentence added (the Today card shows a dash until spend is counted today) is backed by the overview test reading indexed_at and counted_today, and by the template test that the hint text names sakk spend.",
+      "guard": "test/console.test.mjs::the Today card names sakk spend when today is not counted (F-231)"
+    },
+    "C-05.2": {
+      "answer": "The hint names a real command: sakk spend exists, refreshes the same index the card reads, and the test runs the CLI against the fixture home to show the card's state turns counted after it.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)"
+    },
+    "C-06.1": {
+      "answer": "The figure's source is the local-log index; the card keeps the from local logs label and now adds when it was counted, so a reader never takes an old count, or no count, for today's live total.",
+      "guard": "test/console.test.mjs::the Today card names sakk spend when today is not counted (F-231)"
+    },
+    "C-09.1": {
+      "answer": "The assumed state is a fresh install where neither the hook nor sakk spend has run, plus the no-cap install where only sakk spend counts; the tests build both on a fake home and a backdated index, not the developer's own.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)"
+    },
+    "C-09.2": {
+      "answer": "It runs in the sakk ui server started from any folder; the test starts the real console server on a fake home and reads /api/overview over HTTP, the same route the page fetches.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)"
+    },
+    "C-10.1": {
+      "answer": "Counting is not left to rule text: the card itself refuses to show a figure until the index records a count today, and a test fails if the overview stops reporting that state.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)"
+    },
+    "C-10.2": {
+      "answer": "Another route to the number is sakk spend --json, which refreshes before reading and so cannot show an uncounted day; the console has no other place that prints today's local-log total.",
+      "guard": "test/console.test.mjs::the console and the CLI report the same numbers"
+    },
+    "C-11.1": {
+      "answer": "files.json mtime is written only by updateIndex after a whole count (hook cap check or sakk spend); the console reads it as last counted at and nothing else, so the value keeps one meaning.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)"
+    },
+    "C-15.1": {
+      "answer": "The test runs the real path: the real console server, the real updateIndex via the real sakk spend CLI on a fixture log, and the HTTP route, not a stub that writes its own counted flag.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)"
+    }
+  }
+}

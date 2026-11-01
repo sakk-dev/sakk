@@ -96,7 +96,9 @@ describe('release packaging (M5)', () => {
       'bin/sakk.mjs',
       'src/console.mjs',
       '.claude-plugin/plugin.json',
+      '.claude-plugin/marketplace.json',
       'LICENSE',
+      'NOTICE',
     ])
       assert.ok(packed.includes(need), `missing from the package: ${need}`);
   });

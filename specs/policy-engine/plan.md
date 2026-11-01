@@ -5,7 +5,7 @@
 ```
 src/policy.mjs            # kernel: loadPolicy / decide / logDecision / PolicyError
 eval/schemas/policy.json  # sakk-policy.v1 JSON Schema (own validator, like cases)
-policies/                 # reference policies: permissive-dev.json, regulated-strict.json
+policies/                 # reference policies: permissive-dev.json, guard-default.json
 test/policy.test.mjs      # behavior suite incl. every refusal path
 scripts/policy-fuzz.mjs   # seeded invariant fuzz (same pattern as invariant-fuzz)
 ```

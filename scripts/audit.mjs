@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // One-command audit against the AI-agent testing standard (v1.3), following
 // its reference implementation. Every step's exit code is taken by this

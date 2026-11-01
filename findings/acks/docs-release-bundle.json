@@ -81,6 +81,22 @@
     "C-09.2": {
       "answer": "These files are read on GitHub, on the npm package page and by AI search crawlers that fetch llms.txt from the repository top; the question-shaped headings and llms.txt only help where a crawler reads them, which cannot be shown from this machine.",
       "guard": "none: whether a search engine or crawler picks up the headings and llms.txt can only be seen after the repository is public"
+    },
+    "C-16.1": {
+      "answer": "This branch does not edit the CI, DCO or plugin files: they arrive unchanged from main by merging pull request #47, whose answers in findings/acks/chore-release-prep.json cover them. The DCO step still runs the base branch's copy of the checker, and this branch goes to the same independent review before merge.",
+      "guard": "test/open-source-release.test.mjs::fork pull requests skip only the self-evolution and base-checker jobs; tests, format and DCO still run"
+    },
+    "C-14.1": {
+      "answer": "No run logic changes on this branch; the DCO script and the release workflows come unchanged from main via pull request #47. One unsigned commit is still named on its own rather than crashing the check, and the scorecard and release workflows stay separate from pull request CI.",
+      "guard": "test/dco-check.test.mjs::an unsigned commit, or one signed off by someone else, fails and is named"
+    },
+    "C-13.1": {
+      "answer": "The detection rules this branch touches are the claims and command scans, which now also read the new docs; a planted fake code, file name, security word and sakk command in a new doc each turned the tests red before being removed. The DCO and licence scans arrive unchanged from main and keep their two-sided tests there.",
+      "guard": "test/dco-check.test.mjs::every commit signed off by its author passes"
+    },
+    "C-12.1": {
+      "answer": "No matching logic changes here: the secret scanner files arrive from main with only the licence header line changed in pull request #47, so every match is still judged in context as before, and the fiction-token test still holds.",
+      "guard": "test/secret-guard.test.mjs::a fiction token does not exempt a real secret beside it"
     }
   }
 }

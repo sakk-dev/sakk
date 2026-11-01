@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Testing standard T3 (adversarial): an attack list over every external
 // input of plan items 1–4, each payload in ≥5 variants, and the attack
@@ -342,10 +342,10 @@ row(
   'run every case through a selector the runner ignores',
   'CLAIMED',
   [
-    ['--packs', 'dora-ict-change'],
+    ['--packs', 'example-change-control'],
     ['--Pack', 'x'],
     ['-pack=x'],
-    ['dora-ict-change'],
+    ['example-change-control'],
     ['--pack', 'a', '--pack', 'b'],
   ].map((a) => [
     a.join(' '),

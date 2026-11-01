@@ -257,7 +257,11 @@ describe('in CI: the whole branch, so --no-verify does not get past', () => {
     const start = ci.indexOf('\n  self-evolution:\n');
     assert.ok(start > 0, 'self-evolution job not found');
     const job = ci.slice(start + 1).split(/\n {2}[a-z][\w-]*:\n/)[0];
-    assert.match(job, /\n {4}if: github\.event_name == 'pull_request'\n/);
+    // every pull request from this repository; a fork's shows as skipped (CONTRIBUTING.md)
+    assert.match(
+      job,
+      /\n {4}if: github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name == github\.repository\n/,
+    );
     assert.match(job, /BASE_REF: \$\{\{ github\.base_ref \}\}/);
     assert.doesNotMatch(
       job,
@@ -1115,7 +1119,11 @@ describe('R6: the data the gate reads only moves forward', () => {
     const start = ci.indexOf('\n  base-checker:\n');
     assert.ok(start > 0, 'base-checker job not found');
     const job = ci.slice(start + 1).split(/\n {2}[a-z][\w-]*:\n/)[0];
-    assert.match(job, /\n {4}if: github\.event_name == 'pull_request'\n/);
+    // every pull request from this repository; a fork's shows as skipped (CONTRIBUTING.md)
+    assert.match(
+      job,
+      /\n {4}if: github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name == github\.repository\n/,
+    );
     assert.match(
       job,
       /git show "origin\/\$base:\$f"/,

@@ -1,0 +1,19 @@
+{
+  "name": "sakk",
+  "owner": { "name": "The Sakk authors", "url": "https://github.com/sakk-dev" },
+  "metadata": {
+    "description": "Sakk: a fail-closed guard for Claude Code — a daily spend cap, a secret guard and policy rules."
+  },
+  "plugins": [
+    {
+      "name": "sakk",
+      "source": "./",
+      "description": "A fail-closed guard for Claude Code: a daily spend cap, a secret guard, and policy rules — no proof, no pass.",
+      "homepage": "https://github.com/sakk-dev/sakk#readme",
+      "repository": "https://github.com/sakk-dev/sakk.git",
+      "license": "Apache-2.0",
+      "category": "security",
+      "keywords": ["security", "spend-cap", "secret-guard", "fail-closed", "ai-agents"]
+    }
+  ]
+}

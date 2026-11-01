@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Testing standard T2 (reliability): every gold case k times (key cases
 // k_key times) through the runner, pass@1 with a Wilson 95% interval,

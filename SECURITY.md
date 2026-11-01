@@ -6,15 +6,19 @@ with priority.
 
 ## Supported versions
 
+Fixes land on the latest minor release only.
+
 | Version | Supported |
 | ------- | --------- |
-| 0.1.x   | ✅        |
+| 0.3.x   | ✅        |
+| < 0.3   | ❌        |
 
 ## Reporting a vulnerability
 
 **Do not open a public issue.** Instead, use
 [GitHub private vulnerability reporting](https://github.com/sakk-dev/sakk/security/advisories/new)
-on this repository.
+on this repository (Security → Advisories → Report a vulnerability). The
+report stays private between you and the maintainers until a fix ships.
 
 Please include:
 
@@ -28,7 +32,8 @@ Please include:
 - Acknowledgement within **48 hours**.
 - An assessment (accepted / not a vulnerability / needs info) within **7 days**.
 - A fix or documented mitigation before public disclosure; coordinated
-  disclosure timing is agreed with the reporter.
+  disclosure timing is agreed with the reporter, and the advisory credits
+  you unless you ask otherwise.
 
 Anything that lets an agent spend without a successful reservation, settle a
 fabricated cost, or clear reconciliation without a named human is in scope —

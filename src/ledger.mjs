@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: AGPL-3.0-only
-// Copyright (c) 2026 the Sakk authors. Commercial licensing available — see README.
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 The Sakk authors
 import {
   existsSync,
   lstatSync,

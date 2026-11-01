@@ -1,7 +1,7 @@
 #!/bin/sh
-# Self-evolution gate (docs/SELF_EVOLUTION.md), installed for every clone by
-# `npm install` (prepare → core.hooksPath=scripts/hooks). CI re-checks the
-# same rules over the whole branch, so --no-verify does not get past them.
+# Self-evolution gate (docs/SELF_EVOLUTION.md), turned on per clone by
+# `npm run hooks` (core.hooksPath=scripts/hooks). CI re-checks the same
+# rules over the whole branch, so --no-verify does not get past them.
 set -e
 node scripts/findings-check.mjs --staged
 node --import ./test/clean-git-env.mjs --test --import ./test/bounded-spawn.mjs --test-timeout=120000 test/findings-ledger.test.mjs >/dev/null 2>&1 || {

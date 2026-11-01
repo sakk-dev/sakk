@@ -40,7 +40,7 @@ audit artifact; its line format is semver-bound public API.
 - [ ] Every refusal code above has a negative test asserting code + message
 - [ ] Fuzz leg green on 3 fresh seeds + any previously failing seed replayed
 - [ ] MUT-E / MUT-F drill anchors added and both mutants die by their named tests; control stays green
-- [ ] Reference policies `permissive-dev` + `regulated-strict` load, hash stably, and drive the integration demo (ledger touched only on allow)
+- [ ] Reference policy `permissive-dev` loads and hashes stably; a deny-default three-tier fixture drives the integration demo (ledger touched only on allow)
 - [ ] Zero new runtime dependencies; `src/ledger.mjs` diff is EMPTY
 - [ ] Error codes + log line format listed in CHANGELOG as public API
 - [ ] eval/AGENTS.md note if any eval surface touched (expected: none)

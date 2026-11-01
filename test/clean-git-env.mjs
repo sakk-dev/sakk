@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // Loaded first by every `node --test` run in package.json (`--import`). A suite started
 // from a git hook inherits GIT_DIR, GIT_INDEX_FILE and friends; a fixture's git in a

@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — open-source release: Apache-2.0, DCO and fork-safe CI
+
+- **Licence: Apache-2.0** (was AGPL-3.0-only). `LICENSE` is the verbatim
+  Apache License 2.0; `NOTICE` names the copyright holder, "The Sakk
+  authors", and keeps the MIT notices of the derived material; every SPDX
+  header, `package.json` and the plugin manifest say `Apache-2.0`.
+- Contributions are taken under the Developer Certificate of Origin 1.1 —
+  a `git commit -s` sign-off on every commit — instead of a CLA. CI checks
+  each pull request commit with the base branch's copy of
+  `scripts/dco-check.mjs` and names any commit without its author's
+  sign-off.
+- `npm install` runs no lifecycle script: the `prepare` hook is gone.
+  `npm run hooks` opts a clone in to the git hooks and the repository's
+  Claude Code hooks (`.claude/settings.json` now runs them only in a clone
+  that opted in).
+- A pull request from a fork skips only the self-evolution and
+  base-checker jobs; tests, format, the DCO check and the drill still run.
+  The adversarial review never runs for a fork and shows as skipped.
+- The repository moves to `github.com/sakk-dev/sakk` (`package.json`,
+  plugin manifest, `SECURITY.md`).
+
+### Added — release and supply-chain workflows
+
+- `release.yml`: a pushed `v*` tag publishes to npm by trusted publishing
+  (OIDC, no stored token) with provenance; it refuses on a private
+  repository, a tag that is not `v` + the package version, or an npm older
+  than 11.5.1.
+- `scorecard.yml`: a weekly OpenSSF Scorecard run, skipped while the
+  repository is private.
+- `.claude-plugin/marketplace.json`: the repository is its own Claude Code
+  plugin marketplace (`/plugin marketplace add sakk-dev/sakk`).
+- `SECURITY.md` points to GitHub private vulnerability reporting and lists
+  the supported versions.
+
+### Changed — regulator-specific packs and policy leave the public repository
+
+- Two example case packs written for a fictional authority,
+  `example-agent-oversight` and `example-change-control`, replace the
+  CBUAE, DORA and DIFC packs. They keep the same format and back the same
+  9 of the 12 gold cases; packs for specific regulations are not in this
+  repository.
+- The regulated-strict reference policy is removed: `policies/` ships
+  `permissive-dev.json` and `guard-default.json` only, and a test pins
+  that list because `policies/` is in the npm package.
+- The reviewer label gate is renamed `eval/05_LABEL_REVIEW.md`.
+
 ### Changed — `sakk ui` follows the frozen v10 open-source design
 
 - The console is rebuilt page by page to the frozen v10 open-source
@@ -28,8 +74,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Agents page says when the Claude Code hook was installed fail-open
   (F-227).
 - Open items counts the rows it links to; a halt no longer adds one (F-228).
+- `sakk prices` prints the provenance its price table records (source URL,
+  commit, SHA-256, fetch date, licence), or says none is recorded, as the
+  README already promised; `--json` adds a `provenance` object (or `null`)
+  and keeps `source` as the table's path (F-232).
+- A deny by a policy rule reads "A person changes the policy." as its own
+  sentence before the dispute line.
 - `sakk ledger export --out` says "entry" or "entries" instead of printing
   `entr(y|ies)` (F-225).
+- The overview's Today card shows "—" and "run sakk spend to count it" for
+  a day the spend index has not counted, instead of $0.00. `/api/overview`
+  gains `indexed_at` (when the index was last counted, or null) and
+  `counted_today`; the console still writes nothing on a GET (F-231).
 
 ### Added — the console shows the spend ledger
 

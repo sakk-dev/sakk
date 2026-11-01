@@ -14,7 +14,7 @@ sakk/
 │   ├── secret-scan.mjs     #   secret scanner (paths, --staged, commit hooks)
 │   └── append.mjs          #   append-only writes that never follow a symlink
 ├── bin/sakk.mjs            # CLI: init/status/reconcile/halt/resume/unlock/scan/mcp
-├── policies/               # reference policies (permissive-dev, regulated-strict)
+├── policies/               # reference policies (permissive-dev, guard-default)
 ├── eval/                   # trust root 2: gold eval harness
 │   ├── bin/gold-runner.mjs #   orchestrates: validate / dry-run / fake / real (+ --pack)
 │   ├── lib/                #   scorer, trace, paid-step gate, child env, schema validator,
@@ -23,7 +23,7 @@ sakk/
 │   ├── fixtures/           #   what the agent SEES (one micro-repo per case)
 │   ├── gold/               #   how the agent is JUDGED (never enters fixtures;
 │   │                       #   SHA-256 manifest verified in every execution mode)
-│   ├── packs/              #   regulatory case packs (requirement themes → cases, with gaps)
+│   ├── packs/              #   case packs (requirement themes → cases, with gaps; fictional examples)
 │   ├── fake/agents/        #   scripted well-behaved agents (harness validation)
 │   ├── examples/           #   injectable reference modules (approval gate)
 │   └── schemas/            #   case / trace / metrics JSON Schemas
@@ -71,9 +71,10 @@ Each has a three-tables spec in `specs/`:
   `specs/mcp-server`).
 - **Secret scanning** — paths and the staged index, with pre-commit and
   pre-merge-commit hooks (`specs/secret-scan`).
-- **Case packs and evidence bundles** — regulatory themes mapped to gold
-  cases, and a self-verifying archive of a run an auditor checks with the
-  current verifier (`specs/case-packs`, `specs/evidence-bundle`).
+- **Case packs and evidence bundles** — requirement themes mapped to gold
+  cases (the shipped packs are fictional examples), and a self-verifying
+  archive of a run an auditor checks with the current verifier
+  (`specs/case-packs`, `specs/evidence-bundle`).
 
 ## The seams (how the two first versions coexist)
 

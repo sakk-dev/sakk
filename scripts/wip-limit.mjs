@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // The open pull request cap (owner's rule, 2026-10-29): merge as you go, at most
 // three pull requests in flight, drafts included. CI runs the base branch's copy

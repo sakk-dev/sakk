@@ -1,0 +1,42 @@
+name: scorecard
+# OpenSSF Scorecard (https://github.com/ossf/scorecard-action): a weekly
+# supply-chain check of this repository — pinned actions, token permissions,
+# branch protection, a security policy. Results go to the Security tab as
+# SARIF and to the public Scorecard API (publish_results), which is what the
+# README badge reads. The job runs only on a public repository: while the
+# repository is private it shows as skipped and bills nothing.
+#
+# Weekly on a schedule only, not on every merge to main: test/ci-cost.test.mjs
+# prices a scheduled run under its own ceiling and refuses a cron more often
+# than weekly. publish_results limits what this workflow may hold: no
+# top-level env or defaults, no write permission at the top, and only the
+# approved actions as steps.
+on:
+  schedule:
+    - cron: '23 4 * * 1'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+permissions: read-all
+jobs:
+  analysis:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      security-events: write # upload the SARIF to code scanning
+      id-token: write # publish_results: proves the results came from this workflow
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: results.sarif

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // The guard hook (specs/guard/spec.md): every tool call an agent makes passes
 // through here before it runs.
@@ -624,7 +624,7 @@ function reasonOf(d, policyPath, fallback) {
     return `${reasonOf(d, policyPath)} The project policy ${fallback.local} is not in effect (${fallback.broken.message}); Sakk is using the last policy that loaded, kept ${fallback.savedAt}.`;
   const rule = d.ruleId ?? 'the default';
   return d.verdict === 'deny'
-    ? `Sakk: ${what} is denied by rule ${rule} (${policyPath}). A person changes the policy; ${DISPUTE}`
+    ? `Sakk: ${what} is denied by rule ${rule} (${policyPath}). A person changes the policy. ${DISPUTE}`
     : `Sakk: ${what} needs a person's approval (rule ${rule}, ${policyPath}).`;
 }
 

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // `sakk ui` — a local, read-only console (open-source v1, M4; specs/console/).
 // It listens on loopback only, gates every request on a fresh 128-bit token,
@@ -287,6 +287,15 @@ export function overviewData({ home, now = Date.now() }) {
     if (!(e instanceof SpendError)) throw e;
     spend = { day, usd: 0, calls: 0, unpriced: {}, unreadable: 0, byModel: {}, error: e.code };
   }
+  // when the index was last counted: updateIndex rewrites files.json on every
+  // count. A day never counted has no day file, which reads as $0 — so the
+  // page shows today's figure only once it has been counted today (F-231)
+  let indexedAt = null;
+  try {
+    indexedAt = lstatSync(join(home, 'spend', 'files.json')).mtimeMs;
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+  }
   const recent = tailDecisions({ home, limit: 50 });
   // the doctor's own probe is no agent's action: kept in records, left out of the feed (F-229)
   const agentRows = recent.entries.filter((d) => d && d.by !== DOCTOR_BY);
@@ -302,6 +311,8 @@ export function overviewData({ home, now = Date.now() }) {
     by_model: spend.byModel,
     unpriced: spend.unpriced,
     unreadable_spend: spend.unreadable,
+    indexed_at: indexedAt === null ? null : new Date(indexedAt).toISOString(),
+    counted_today: indexedAt !== null && dayOf(indexedAt, zone) === day,
     recent: agentRows.slice(0, 20),
     recent_counts: counts,
   };
@@ -955,7 +966,7 @@ deny:"Nothing to do unless the rule is wrong. To change it, edit the policy file
 budget:"Raise the cap or wait for the next day; the refused call never started.",
 halted:"Agents are stopped. A person resumes with sakk resume --by <your name> in a terminal."};
 const TOUR=[
-["overview",".kpis .card:first-child","Today’s spend and daily cap","Keep daily spend in check so an agent can’t burn the budget overnight.","Spend is read from the logs Claude Code keeps on this machine; nothing to wire up. Set a daily cap in Sakk’s config; once it’s reached, the agent’s next call is blocked. The Gateway ledger card next to it counts calls made through the gateway."],
+["overview",".kpis .card:first-child","Today’s spend and daily cap","Keep daily spend in check so an agent can’t burn the budget overnight.","Spend is read from the logs Claude Code keeps on this machine; nothing to wire up. It is counted when an agent calls a tool with a cap set, or when you run sakk spend; until today is counted the card shows a dash. Set a daily cap in Sakk’s config; once it’s reached, the agent’s next call is blocked. The Gateway ledger card next to it counts calls made through the gateway."],
 ["overview","#timeline","What your agents did lately","See the outcome of every agent action, so after an incident you know exactly what it did.","Green ✓ allowed, red ✕ blocked, amber ? asked you first. Click a row for the rule and the reason; All blocked actions opens the full, searchable list."],
 ["overview",".kpis .card:last-child","Open items","A few things need you personally: reconciling a cost, a secret alert, pricing a new model.","Click See what to do; each item tells you the command to run."],
 ["overview","#spendcard","Where the money went","See which model and which agent the money went to.","Click an agent to see each of its calls; View details lists every call with search, filters and pages."],
@@ -1091,9 +1102,11 @@ const ov=D.ov;const k=$("div",{class:"grid kpis"});
 /* 1: today / cap */
 {const c=$("div",{class:"card kpi"});const lab=$("div",{class:"l"},"Today / daily cap ",q("spend"));c.append(lab);
 if(ov.error&&!ov.day){c.append($("div",{class:"v",text:"—"}),$("div",{class:"s",text:errText(ov)}));}
-else{const cap=ov.cap_usd;c.append($("div",{class:"v",text:usd(ov.spend_usd)+" / "+(cap==null?"no cap":usd(cap))}));
-if(cap){const i=$("i");i.style.width=Math.min(100,Math.max(0,(ov.spend_usd||0)/cap*100)).toFixed(1)+"%";c.append($("div",{class:"bar"},i));}
-c.append($("div",{class:"s",text:plural(ov.calls||0,"call")+" · from local logs"+(ov.error?" · "+ov.error:"")+(ov.unreadable_spend?" · "+ov.unreadable_spend+" unreadable":"")}));
+else{const cap=ov.cap_usd;const counted=ov.counted_today===true;const tail=" · from local logs"+(ov.error?" · "+ov.error:"")+(ov.unreadable_spend?" · "+ov.unreadable_spend+" unreadable":"");
+/* a day not counted yet has no figure: a dash, never $0 (F-231) */
+c.append($("div",{class:"v",text:(counted?usd(ov.spend_usd):"—")+" / "+(cap==null?"no cap":usd(cap))}));
+if(cap&&counted){const i=$("i");i.style.width=Math.min(100,Math.max(0,(ov.spend_usd||0)/cap*100)).toFixed(1)+"%";c.append($("div",{class:"bar"},i));}
+c.append($("div",{class:"s",text:counted?plural(ov.calls||0,"call")+" · counted "+when(ov.indexed_at)+tail:(ov.indexed_at?"Not counted today":"Not counted yet")+" · run sakk spend to count it"+tail}));
 c.append(linkish("See every call",()=>go("calls")));}
 k.append(c);}
 /* 2: gateway ledger */

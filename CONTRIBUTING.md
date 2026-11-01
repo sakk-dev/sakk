@@ -2,10 +2,16 @@
 
 Thanks for your interest! Two ground rules keep this project sustainable:
 
-1. **CLA required.** Sakk is dual-licensed (AGPL-3.0 + commercial). To keep
-   that possible, all contributions must be covered by a Contributor License
-   Agreement. Until a CLA bot is installed, the maintainer collects the
-   signed CLA by hand before merging your first pull request.
+1. **Sign off every commit (DCO).** Sakk is licensed under Apache-2.0 and
+   takes contributions under the same licence, with no CLA. Each commit
+   carries a `Signed-off-by: Your Name <you@example.com>` trailer stating
+   that you may submit it under the
+   [Developer Certificate of Origin 1.1](https://developercertificate.org/).
+   `git commit -s` adds it; the email must be the commit's author email.
+   CI checks every commit of a pull request with the base branch's copy of
+   `scripts/dco-check.mjs`, and names each commit that lacks one —
+   `git rebase --signoff <base>` fixes them all. A sign-off is your
+   statement, not a verified identity or a cryptographic signature.
 2. **Tests carry the contract.** Every behavioral change needs a test, and
    every guard needs a negative test. If you weaken a fail-closed path, the
    mutation drills must catch you — that is by design.
@@ -28,6 +34,22 @@ Thanks for your interest! Two ground rules keep this project sustainable:
   without a pull request gets no CI run; the pre-push hook checks it. The
   worst-case runner-minutes of one commit are capped by
   `test/ci-cost.test.mjs` — raising the cap states the cost in the PR.
+
+## Opt-in gates and hooks
+
+This repository runs its own self-evolution gate: a findings ledger whose
+questions a change must answer before it lands (`docs/SELF_EVOLUTION.md`).
+Locally it is **opt-in**. `npm install` runs no lifecycle script;
+`npm run hooks` sets `core.hooksPath` to `scripts/hooks`, and that one
+setting turns on both the git hooks (pre-commit, commit-msg, pre-push) and
+the Claude Code hooks in `.claude/settings.json`. In a clone that has not
+run it, those Claude Code hooks exit 0 and do nothing. Maintainers run it.
+
+In CI, a pull request from a fork skips only the `self-evolution` and
+`base-checker` jobs, which judge the ledger answers; tests, format, the DCO
+check and the mutation drill still run, and a maintainer handles the ledger
+side when merging. A pull request from a branch of this repository runs
+every job.
 
 ## Commit messages
 

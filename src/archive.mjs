@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 //
 // The ledger's cold trail (F-105, specs/ledger "The hot/cold split"). Settled
 // entries are sealed into append-only, hash-chained segments so the live

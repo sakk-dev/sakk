@@ -530,10 +530,7 @@ planned for it.
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE). Shipped third-party notices are in
-[NOTICE](NOTICE). Contributions are accepted under the Developer Certificate of
-Origin (DCO): add a sign-off line to each commit with `git commit -s` — see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Apache-2.0 — see [LICENSE](LICENSE). Shipped third-party notices are in [NOTICE](NOTICE). Contributions are taken under the same licence with a DCO sign-off (`git commit -s`), no CLA — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Enterprise edition — team console, SSO, named approvers, hash-chained ledger: coming soon (the unchecked roadmap items above).
 

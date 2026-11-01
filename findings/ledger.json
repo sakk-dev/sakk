@@ -7601,6 +7601,73 @@
       "distinct_from": {
         "F-227": "F-227 is the fail-open warning, which the page now shows; F-230 is the two other doctor warnings it still hides."
       }
+    },
+    {
+      "id": "F-231",
+      "title": "The console showed $0.00 for a day of spend it had never counted",
+      "date": "2026-11-01",
+      "class": "C-01",
+      "introduced_in": "7126ad2",
+      "found_by": "T0",
+      "areas": ["src/console.mjs", "test/console.test.mjs", "specs/console/spec.md"],
+      "symptom": "On a fresh install with no cap set, sakk ui showed Today $0.00 / no cap and 0 calls although Claude Code had spent money that day; the figure appeared only after sakk spend had been run once.",
+      "evidence": "Found in the 2026-11-01 UAT on a fake home: the console's first open showed $0.00 with a session log holding priced calls; sakk spend --json on the same home then reported the spend and the console showed it too.",
+      "direct_cause": "overviewData reads the day file under spend/days; a day the index never counted has no file, and daySpend returns 0 for a missing file, so the card printed $0.00.",
+      "why": [
+        "F-195 made the console read-only, so a GET no longer refreshes the spend index.",
+        "The index is refreshed only by the hook when a cap is set, or by sakk spend.",
+        "With no cap and no sakk spend run, nothing counts the day, and the missing day file reads as zero.",
+        "The bare-home test asserted spend_usd 0 as the expected answer, so the gap looked correct."
+      ],
+      "root_cause": "The card had no way to tell \"counted and zero\" from \"never counted\": the index records when it was last counted (files.json is rewritten on every count) but the console never read it, so absence of a count read as a $0 figure.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-05", "ES-07"],
+      "mechanism_gap": "No test opened the console on a home where spend existed but had not been counted; the only no-data test treated $0 as the right answer.",
+      "mechanism_upgrade": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)",
+      "instance_fix": "this commit: /api/overview returns indexed_at (the mtime of spend/files.json, null when absent) and counted_today (indexed_at falls on today in the configured zone). The Today card shows a dash and \"run sakk spend to count it\" until today is counted, hides the cap bar meanwhile, and once counted shows \"counted HH:MM\". The console still writes nothing on a GET.",
+      "guard": "test/console.test.mjs::an uncounted day shows a dash, not $0, until sakk spend counts it (F-231)",
+      "sweep": "Every console reader of local-log spend was checked with grep over src/console.mjs: only overviewData and the Today card read it; the Calls page reads the gateway ledger, which has its own no-ledger state. sakk spend and the hook's cap check both refresh the index before reading, so neither can show an uncounted day.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-195": "F-195 is the console writing the index on a GET; its fix made the page read-only, and F-231 is the uncounted day that read-only page then showed as $0."
+      }
+    },
+    {
+      "id": "F-232",
+      "title": "The README said sakk prices prints the price table's provenance; it printed only the file path",
+      "date": "2026-11-01",
+      "class": "C-05",
+      "introduced_in": "1868d79",
+      "found_by": "T0",
+      "areas": ["bin/sakk.mjs", "test/spend-cli.test.mjs", "README.md"],
+      "symptom": "README promises that the snapshot's source block records the exact commit and SHA-256 it was built from and that sakk prices prints that provenance; sakk prices printed the model count and the path of prices/snapshot.json, and --json gave source as that path, with no commit, sha256 or fetch date.",
+      "evidence": "Found while writing the 2026-11-01 tutorials on a fake home: sakk prices and sakk prices --json were run and compared with the README sentence; neither output carried any field of the snapshot's source block.",
+      "direct_cause": "The prices subcommand in bin/sakk.mjs printed loaded.path and the model list and never read loaded.table.source.",
+      "why": [
+        "F-169 added the source block to the snapshot and, in the same change, the README sentence that sakk prices prints it.",
+        "The CLI was not changed in that commit, and the existing prices test asserted only the model list and that source names snapshot.json.",
+        "The claims tests check that codes, file names and commands the docs cite exist, not what a command is said to print."
+      ],
+      "root_cause": "A doc sentence about a command's output had no test behind it, so the promise and the output could differ without anything turning red.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "mechanism_gap": "The claims tests resolve cited names against the code but cannot read a sentence about what a command prints; such a sentence needs its own test, and none was written for this one.",
+      "mechanism_upgrade": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date",
+      "instance_fix": "this commit: sakk prices prints a provenance line (url, commit, sha256, fetch date, licence, each through display()) marked as recorded in the table, or says it is not recorded; --json keeps source as the path and adds provenance (string fields only, or null). A malformed source block does not fail the command.",
+      "guard": "test/spend-cli.test.mjs::sakk prices prints the provenance its table records: url, commit, sha256, fetch date",
+      "sweep": "Every README and docs/SPEND.md sentence about what sakk spend, sakk cap or sakk prices prints was grepped and matched to a test: the sakk spend 'says how many' sentences (backdated, future-dated, unreadable) are pinned by the F-204/F-205 tests in test/spend-cli.test.mjs, and the cap confirm and refusal by the F-161 tests; only the prices provenance sentence had none. The console's /api/prices reports the path only and no doc promises more there.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-169": "F-169 is the stale snapshot itself and its regeneration; F-232 is the README sentence that change added about the CLI output, which the CLI never kept.",
+        "F-104": "F-104 is the spend lock's crash windows, cross-host sharing and fsync promises; F-232 is a read-only CLI line about the price table's recorded source, with no lock, write or durability involved.",
+        "F-196": "F-196 is sakk init claiming a guard it never installs into the agent's config; F-232 is sakk prices omitting a provenance line the README promised. Different command, different output, no install step.",
+        "F-197": "F-197 is the README's plugin install command that Claude Code rejects; F-232 is the README's sentence about sakk prices output, which the CLI did not print. Different sentence, different command.",
+        "F-198": "F-198 is secret-rule counts that disagree across README, spec and code; F-232 is the price-table provenance line. No rule counts or secret rules are involved."
+      }
     }
   ]
 }

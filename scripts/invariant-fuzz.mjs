@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: Apache-2.0
 /*
  * Ledger invariant fuzz (property-testing idea, zero-dep): random operation
  * sequences against one ledger; after EVERY step the invariants must hold.
