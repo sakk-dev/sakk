@@ -1,12 +1,37 @@
 # Sakk
 
+**English** | [简体中文](README.zh-CN.md)
+
 > **The original check, rebuilt for AI agents.**
+
+Sakk stops a coding agent **before** it overspends, leaks a secret or
+force-pushes: a fail-closed guard for Claude Code, Cursor and Codex, a daily
+spend cap for Claude Code, a kill switch, and a spend ledger for your own agent
+code. Local, zero dependencies, Apache-2.0.
+
+![Sakk's policy check allowing ls -la and denying rm -rf ~](docs/media/sakk-block.gif)
+
+```bash
+npm install -g sakk && sakk guard install claude-code && sakk doctor   # run in your project
+```
 
 In medieval Arab commerce, a **ṣakk** (صك) was a written order of payment — a merchant's promise backed by real funds, honored across the trade routes. The word traveled through Persian and Latin into English as _cheque / check_. Its plural, _sukuk_, still names the Gulf's financial instruments today.
 
 English kept both meanings: a **check** you write (money) and a **check** you run (verification). AI agents need exactly those two things, welded together. That is Sakk:
 
 **a fail-closed spend ledger for AI agents — no reservation, no spawn; no proof, no pass.**
+
+Questions this page answers:
+
+- [How do I block dangerous commands like force-push from an AI coding agent?](#how-do-i-block-dangerous-commands-like-force-push-from-an-ai-coding-agent)
+- [How do I stop Claude Code from spending too much?](#how-do-i-stop-claude-code-from-spending-too-much)
+- [How do I stop an AI agent from leaking secrets?](#how-do-i-stop-an-ai-agent-from-leaking-secrets)
+- [How do I give my own agent code a hard budget?](#quickstart-how-do-i-give-my-own-agent-code-a-hard-budget)
+- [How do I stop a runaway AI agent?](#kill-switch-how-do-i-stop-a-runaway-ai-agent)
+- [How do I put a budget gate in front of any agent?](#mcp-how-do-i-put-a-budget-gate-in-front-of-any-agent)
+- [How is Sakk different from ccusage or Claude Code's /cost?](#how-is-sakk-different-from-ccusage-or-claude-codes-cost)
+
+New here? Start with the [tutorial](docs/tutorial/en.md) or the [FAQ](docs/FAQ.md).
 
 ## Why
 
@@ -35,7 +60,7 @@ Two concurrent agents cannot jointly overspend: read-modify-write runs under an 
 npm install sakk        # or call the CLI without installing: npx sakk …
 ```
 
-## Guard a coding agent
+## How do I block dangerous commands like force-push from an AI coding agent?
 
 ```bash
 sakk guard install claude-code   # or: cursor, codex
@@ -51,13 +76,23 @@ command by what it spells out — see the limits at the end of this page and
 [docs/GUARD.md](docs/GUARD.md).
 
 Or load Sakk into Claude Code as a **plugin** — it bundles the same hook,
-fail-closed (`onFailure: block`). In v1 this loads it for one session; a
-persistent `/plugin install` needs a marketplace file, planned for v2:
+fail-closed (`onFailure: block`), and sees every tool. The repository is its
+own plugin marketplace, so inside Claude Code:
+
+```text
+/plugin marketplace add sakk-dev/sakk
+/plugin install sakk@sakk
+```
+
+To load it for one session from the npm package instead:
 
 ```bash
 npm install -g sakk
 claude --plugin-dir "$(npm root -g)/sakk"
 ```
+
+No automated test can drive Claude Code, so both routes are checked by hand
+(owner run P-INS-008 in [docs/V2-BACKLOG.md](docs/V2-BACKLOG.md)).
 
 See what the guard did in a local, read-only console — today's spend and cap,
 recent decisions, the policy with a try box, and secret blocks:
@@ -65,6 +100,8 @@ recent decisions, the policy with a try box, and secret blocks:
 ```bash
 sakk ui        # prints http://127.0.0.1:<port>/?t=… — read-only; Ctrl+C to stop
 ```
+
+## How do I stop Claude Code from spending too much?
 
 Cap the day's spend (read from Claude Code's local logs — an estimate, not the invoice). A person sets it. The guard denies the agent a `sakk cap` command and a write to `~/.sakk`, and a one-command symlink chain that would reach it needs a person's approval. At the terminal, lifting the cap, raising it or moving its day asks you to retype a word; with no terminal it refuses with `HUMAN_CONFIRMATION_REQUIRED` and changes nothing. A path held in a shell variable is not caught yet — see the limits at the end of this page:
 
@@ -87,7 +124,75 @@ override a rate or add a model, drop a `sakk-prices.v1` table at
 one is refused, never silently ignored); maintainers refresh the shipped
 snapshot by re-running `scripts/prices-trim.mjs` against the LiteLLM table.
 
-## Quickstart
+## How do I stop an AI agent from leaking secrets?
+
+Two layers, with the same rules:
+
+- **In the agent's hook.** With the guard installed, a write whose content is
+  a secret, or a command that prints one, is denied before it runs, and the
+  default policy refuses reading secret files such as `.env`. The console's
+  secret-blocks panel shows what was stopped.
+- **In git.** `sakk scan` checks files and staged commits, and
+  `--install-hook` refuses a commit that contains a secret.
+
+### Secret scanning
+
+```bash
+npm install --save-dev sakk     # the hook runs THIS installed copy — not npx
+npx sakk scan src config        # scan paths; exit 1 if anything is found
+npx sakk scan --install-hook    # refuse commits and merge commits that contain secrets
+```
+
+It recognizes eight formats: database URLs with a password (`postgres`,
+`postgresql`, `mysql`, `mariadb`, `mongodb`, `mongodb+srv`, `redis`, `rediss`,
+`amqp`, `amqps`, `mssql`, `sqlserver`), URL-encoded passwords in any URL,
+AWS access keys, API keys shaped `sk_live_…`/`sk_test_…`/`rk_live_…`/`rk_test_…`,
+`sk-`/`sk_`/`rk-`/`rk_` followed by at least 20 characters that include a
+digit, or `sk-` followed by at least 40 (so `sk_set_flags` does not match,
+but a long identifier that starts `sk_` and contains a digit does), GitHub
+tokens (classic and fine-grained), private-key blocks (PEM and PGP), bearer tokens, and
+quoted `password = "…"` assignments. It does NOT catch secrets in any other
+shape — an unquoted `.env` line such as `PASSWORD=hunter2hunter2`, other URL
+schemes, a bare random string, personal data. A reference to a secret in
+the secret's place (`${REDIS_PASSWORD}`, `$PW`, `%(pw)s`, `{{ pw }}`) is not
+reported. A clean scan means "none of these formats", not "no secrets".
+
+Findings print the rule, path, line and a 12-character keyed fingerprint —
+never the secret. The key is random per run; set `SAKK_SCAN_KEY` (and keep
+it private) when you need to compare fingerprints across runs. A file name
+that itself contains a secret is printed redacted and counted as a finding;
+control characters in names are printed escaped. The only exemption is a
+secret that declares itself fake by containing
+`TEST_ONLY_FAKE_SECRET_DO_NOT_USE` with nothing secret-shaped beside it;
+there is no localhost exception.
+
+Exit codes: 0 clean, 1 findings, 2 the scan could not do its job — a path
+that does not exist (`SCAN_PATH_MISSING`), a file it could not read, a fifo
+or device, or anything over 256 MB (`SCAN_UNREADABLE`), not a git repository,
+git missing, an existing or unwritable hook, `--staged` combined with paths
+(`SCAN_USAGE`). Paths you name are always scanned (even `dist/`, even
+through a symlink); inside them, `node_modules`, `.git`, `.next`, `dist`,
+symlinks, binary files and files named like media or archives (`.png`,
+`.jpg`, `.gif`, `.zip`, `.gz`, `.tgz`, `.woff`, `.ico`, `.mp4`, `.bundle` —
+by name, not content) are skipped and the skips are counted in the
+summary. UTF-16 and UTF-32 files (with a byte-order mark) are scanned as
+text.
+
+`--staged` scans exactly what the commit would record — every added,
+modified or type-changed blob in the index, wherever you run it from;
+a staged symlink's target counts as content (replace refs are ignored: the
+bytes scanned are the bytes the commit records). `--install-hook` writes
+pre-commit and pre-merge-commit hooks (git 2.24+) that run the installed
+sakk by absolute path. No git hook sees fast-forward merges, rebases,
+cherry-picks or `--no-verify` — run `sakk scan .` in CI as well. It
+refuses if either hook already exists (even a dangling symlink) and then
+installs neither, and it refuses to install from a temporary `npx`,
+`bunx` or `pnpm dlx` cache (`SCAN_HOOK_EPHEMERAL`) — that copy disappears
+when the cache is cleaned. The hook pins node's real path: after a node
+upgrade (Homebrew, nvm) or moving sakk, commits refuse with
+`SCAN_HOOK_STALE` until you re-run `--install-hook`.
+
+## Quickstart: how do I give my own agent code a hard budget?
 
 ```bash
 npx sakk init --cap 25          # create ~/.sakk/sakk-ledger.json (refuses to overwrite) and wire it to the guard
@@ -221,19 +326,20 @@ Two limits to know before relying on a deny:
 - **Under `default_verdict: allow`, a deny constrains only what the caller
   declares.** A rule on `scope` or `action` does not match a request that
   omits that field, so the request falls through to the allow default. Use
-  a deny default (like `policies/regulated-strict.json`) when the caller is
-  the party being constrained.
+  a deny default (like `policies/guard-default.json`, the guard's own
+  policy) when the caller is the party being constrained.
 - **Paths are compared byte for byte.** The kernel and the MCP enforcer do
   not fold case, resolve symlinks or normalize unicode: on a
   case-insensitive volume (the macOS default) `Prod/api` is `prod/api` on
   disk but not to the policy. Normalize before calling `decide()`, or use a
   deny default. Two reference policies ship in
-  [`policies/`](policies/) — a permissive dev profile and a regulated
-  three-tier profile. The kernel never imports the ledger and never performs
+  [`policies/`](policies/) — a permissive dev profile and the guard's
+  deny-default profile; regulated profiles and case packs are kept for the
+  enterprise edition (coming soon). The kernel never imports the ledger and never performs
   actions; an enforcer composes the two: `decide()` → on `allow` only →
   `reserve()`.
 
-## Kill switch
+## Kill switch: how do I stop a runaway AI agent?
 
 ```bash
 npx sakk halt --by alice --reason "runaway agent"   # every new reservation refuses
@@ -243,7 +349,11 @@ npx sakk resume --by alice                          # lift it (named)
 
 `sakk init` records the ledger's absolute path in `~/.sakk/config.json`,
 so a halt also stops an agent behind the installed guard: every tool call
-except reading the repository is denied until `sakk resume`. Running `init`
+the guard sees, except reading the repository, is denied until `sakk resume`.
+For Claude Code, `sakk guard install claude-code` routes shell commands, file
+reads and edits, Monitor and MCP tools through the guard; Glob, Grep,
+WebFetch, WebSearch and subagents (Task) do not pass through it. Loaded as a
+plugin, the guard sees every tool. Running `init`
 again wires an existing ledger without touching it, and never replaces a
 different recorded path — it says which ledger the hook still reads.
 Because it decides where the hook reads halts from, the guard denies the
@@ -266,64 +376,7 @@ halt; the global halt is the hard stop. The first halt upgrades the ledger
 file to schema `sakk-ledger.v2`, which earlier sakk versions refuse to read:
 an old binary can never spend through a stop it does not understand.
 
-## Secret scanning
-
-```bash
-npm install --save-dev sakk     # the hook runs THIS installed copy — not npx
-npx sakk scan src config        # scan paths; exit 1 if anything is found
-npx sakk scan --install-hook    # refuse commits and merge commits that contain secrets
-```
-
-It recognizes eight formats: database URLs with a password (`postgres`,
-`postgresql`, `mysql`, `mariadb`, `mongodb`, `mongodb+srv`, `redis`, `rediss`,
-`amqp`, `amqps`, `mssql`, `sqlserver`), URL-encoded passwords in any URL,
-AWS access keys, API keys shaped `sk_live_…`/`sk_test_…`/`rk_live_…`/`rk_test_…`,
-`sk-`/`sk_`/`rk-`/`rk_` followed by at least 20 characters that include a
-digit, or `sk-` followed by at least 40 (so `sk_set_flags` does not match,
-but a long identifier that starts `sk_` and contains a digit does), GitHub
-tokens (classic and fine-grained), private-key blocks (PEM and PGP), bearer tokens, and
-quoted `password = "…"` assignments. It does NOT catch secrets in any other
-shape — an unquoted `.env` line such as `PASSWORD=hunter2hunter2`, other URL
-schemes, a bare random string, personal data. A reference to a secret in
-the secret's place (`${REDIS_PASSWORD}`, `$PW`, `%(pw)s`, `{{ pw }}`) is not
-reported. A clean scan means "none of these formats", not "no secrets".
-
-Findings print the rule, path, line and a 12-character keyed fingerprint —
-never the secret. The key is random per run; set `SAKK_SCAN_KEY` (and keep
-it private) when you need to compare fingerprints across runs. A file name
-that itself contains a secret is printed redacted and counted as a finding;
-control characters in names are printed escaped. The only exemption is a
-secret that declares itself fake by containing
-`TEST_ONLY_FAKE_SECRET_DO_NOT_USE` with nothing secret-shaped beside it;
-there is no localhost exception.
-
-Exit codes: 0 clean, 1 findings, 2 the scan could not do its job — a path
-that does not exist (`SCAN_PATH_MISSING`), a file it could not read, a fifo
-or device, or anything over 256 MB (`SCAN_UNREADABLE`), not a git repository,
-git missing, an existing or unwritable hook, `--staged` combined with paths
-(`SCAN_USAGE`). Paths you name are always scanned (even `dist/`, even
-through a symlink); inside them, `node_modules`, `.git`, `.next`, `dist`,
-symlinks, binary files and files named like media or archives (`.png`,
-`.jpg`, `.gif`, `.zip`, `.gz`, `.tgz`, `.woff`, `.ico`, `.mp4`, `.bundle` —
-by name, not content) are skipped and the skips are counted in the
-summary. UTF-16 and UTF-32 files (with a byte-order mark) are scanned as
-text.
-
-`--staged` scans exactly what the commit would record — every added,
-modified or type-changed blob in the index, wherever you run it from;
-a staged symlink's target counts as content (replace refs are ignored: the
-bytes scanned are the bytes the commit records). `--install-hook` writes
-pre-commit and pre-merge-commit hooks (git 2.24+) that run the installed
-sakk by absolute path. No git hook sees fast-forward merges, rebases,
-cherry-picks or `--no-verify` — run `sakk scan .` in CI as well. It
-refuses if either hook already exists (even a dangling symlink) and then
-installs neither, and it refuses to install from a temporary `npx`,
-`bunx` or `pnpm dlx` cache (`SCAN_HOOK_EPHEMERAL`) — that copy disappears
-when the cache is cleaned. The hook pins node's real path: after a node
-upgrade (Homebrew, nvm) or moving sakk, commits refuse with
-`SCAN_HOOK_STALE` until you re-run `--install-hook`.
-
-## MCP: put the gate in front of any agent
+## MCP: how do I put a budget gate in front of any agent?
 
 `sakk mcp` speaks the Model Context Protocol over stdio — the same three
 operations as the library, as tools an agent must call. Claude Code
@@ -360,7 +413,28 @@ the test suite proves it. A policy `allow` is a decision, not a
 reservation: the ledger can still refuse it (a zero estimate, for one), so
 count reservations from the books, not allows from the decision log.
 
+## How is Sakk different from ccusage or Claude Code's /cost?
+
+ccusage tells you, Sakk stops you. ccusage and Claude Code's `/cost` report
+what an agent has spent; neither refuses a call. Sakk sits in the agent's hook
+and refuses the next tool call once the day's estimated spend reaches your cap,
+and refuses force pushes and secret leaks whatever the spend. Use them
+together: a report for where the money went, a guard for the stop. Microsoft's
+Agent Governance Toolkit covers a wider governance surface for agents built on
+the frameworks it adapts. The fair, sourced comparison, including what Sakk
+does not do: [docs/compare.md](docs/compare.md).
+
+## Docs
+
+- [Tutorial](docs/tutorial/en.md) — first run, step by step
+- [FAQ](docs/FAQ.md)
+- [Comparison with ccusage, `/cost` and the Agent Governance Toolkit](docs/compare.md)
+- [The agent guard](docs/GUARD.md) · [Spend and the daily cap](docs/SPEND.md) · [Architecture](docs/ARCHITECTURE.md)
+- [Auditor replay](docs/AUDITOR_REPLAY.md) · [Roadmap](docs/ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+
 ## Roadmap — honest edition
+
+The longer view, with what each next step depends on: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 - [x] CLI (`sakk init / status / reconcile / unlock / halt / resume / scan / mcp`)
 - [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — in the repository's [`eval/`](eval/), not in the npm package
@@ -373,13 +447,13 @@ count reservations from the books, not allows from the decision log.
 - [x] Local, read-only console `sakk ui`: spend, decisions, policy, secret blocks (open-source v1 M4)
 - [x] Ships as a Claude Code plugin (`.claude-plugin/`) (open-source v1 M5)
 - [x] `sakk cap set/off`, `sakk spend`, `sakk prices` — set the cap, see the day's spend, show the price table (F-161)
-- [x] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts — repository only, not in the npm package
+- [ ] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts — enterprise edition (moved out of the open core)
 - [ ] `sakk settle` CLI command (late settlement without writing code)
 - [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6); built from the repository, not in the npm package
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
 - [ ] Named-approver identity, SSO — enterprise
 - [ ] Team console: approvals, roles, audit export, outbound metering — enterprise (the local read-only `sakk ui` above is the open-source edition)
-- [ ] README demo: a one-line install at the top and a screenshot or GIF of a deny — not in this release (v2)
+- [x] README demo: a one-line install at the top and a GIF of a deny
 - [ ] Sourced figures: each accuracy number in this README backed by a linked measurement — not in this release (v2)
 - [ ] Packaging sweep at pack time: a stray-file check plus a secret scan over the packed files — not in this release (v2)
 - [ ] A clear startup refusal on Node older than 20, instead of a raw syntax error — not in this release (v2)

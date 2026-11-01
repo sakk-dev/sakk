@@ -35,7 +35,8 @@ Your provider's own spend limits remain the backstop.
 
 ## When the cap is reached
 
-Every tool call is denied with `SPEND_CAP_REACHED` until midnight in your
+Every tool call the guard sees (see [GUARD.md](GUARD.md) for which tools
+each install routes) is denied with `SPEND_CAP_REACHED` until midnight in your
 time zone, or until a person raises the cap with `sakk cap set`, which asks
 them to retype the new cap at the terminal. The guard denies the agent a
 `sakk cap` command and any command that names a file in `~/.sakk/`, so the

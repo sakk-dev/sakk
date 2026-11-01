@@ -16,6 +16,19 @@ import { fileURLToPath } from 'node:url';
  */
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// The user-facing docs added for the open-source release (C-05.1): every scan
+// below that reads README.md reads these too, so a code, file name or security
+// word they cite is held to the same check.
+const RELEASE_DOCS = [
+  'README.zh-CN.md',
+  'docs/FAQ.md',
+  'docs/FAQ.zh-CN.md',
+  'docs/compare.md',
+  'docs/ROADMAP.md',
+  'docs/tutorial/en.md',
+  'docs/tutorial/zh-CN.md',
+  'llms.txt',
+];
 const SKIP = new Set([
   'node_modules',
   '.git',
@@ -91,7 +104,13 @@ describe('claims are checked', () => {
       .map(read)
       .join('\n');
     const missing = [];
-    for (const doc of ['README.md', 'docs/AUDITOR_REPLAY.md', 'eval/README.md', 'SECURITY.md'])
+    for (const doc of [
+      'README.md',
+      'docs/AUDITOR_REPLAY.md',
+      'eval/README.md',
+      'SECURITY.md',
+      ...RELEASE_DOCS,
+    ])
       for (const m of read(doc).matchAll(/`([A-Z][A-Z0-9_]{5,})`/g))
         if (!code.includes(m[1])) missing.push(`${doc}: ${m[1]}`);
     assert.deepEqual([...new Set(missing)], []);
@@ -103,12 +122,15 @@ describe('every file name the docs cite exists (F-83, RC-10 detector upgrade)', 
   // the README (the decision log) was wrong for two releases of review.
   test('each backticked file name in the docs appears in the code or the repository', () => {
     const docs = [
-      'README.md',
-      'CHANGELOG.md',
-      'eval/README.md',
-      ...readdirSync(join(ROOT, 'docs'))
-        .filter((f) => f.endsWith('.md'))
-        .map((f) => `docs/${f}`),
+      ...new Set([
+        'README.md',
+        'CHANGELOG.md',
+        'eval/README.md',
+        ...readdirSync(join(ROOT, 'docs'))
+          .filter((f) => f.endsWith('.md'))
+          .map((f) => `docs/${f}`),
+        ...RELEASE_DOCS,
+      ]),
     ];
     const code = [
       ...walk('src'),
@@ -155,8 +177,12 @@ describe('a security word is backed by a mechanism (F-126, C-05 detector upgrade
     'docs/AUDITOR_REPLAY.md',
     'specs/kill-switch/spec.md',
     'bin/sakk.mjs',
+    ...RELEASE_DOCS,
   ];
-  const WORD = /\b(?:signed|signatures?|tamper-proof|immutable|cryptographically)\b/gi;
+  // the Chinese docs get the same words in Chinese: 签名 (signed), 防篡改 /
+  // 不可篡改 (tamper-proof), 不可变 (immutable)
+  const WORD =
+    /\b(?:signed|signatures?|tamper-proof|immutable|cryptographically)\b|签名|防篡改|不可篡改|不可变/gi;
   // Each permitted use is a person who really signs something, or a mechanism
   // that exists in the code. Adding one is a reviewed choice.
   const ALLOWED = [
@@ -351,5 +377,54 @@ describe('a stopwatch never stands in for a work bound (findings F-62)', () => {
     }
     assert.deepEqual(bad, []);
     assert.ok(checked >= 6, `detector saw only ${checked} wall-clock bounds — pattern drifted?`);
+  });
+});
+
+describe('the halt and cap sentences match the installed matcher (F-233)', () => {
+  // README said a halt denies "every tool call except reading the repository";
+  // the matcher `sakk guard install claude-code` writes never routes Glob, Grep,
+  // WebFetch, WebSearch or Task to the hook, so those ran during a halt.
+  const OUTSIDE = ['Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task'];
+  const INSIDE = ['Bash', 'Read', 'Edit', 'Write', 'Monitor', 'mcp__server__tool'];
+  const PARAS = [
+    ['README.md', /every tool call\s+the guard sees[\s\S]*?Running `init`/],
+    ['README.zh-CN.md', /守卫能看到的每一次工具调用[\s\S]*?再次运行 `init`/],
+    ['docs/GUARD.md', /routes to it[\s\S]*?sees every tool\./],
+  ];
+
+  test('tools the docs say skip the installed guard are outside its matcher; the plugin matches every tool', async () => {
+    const { CLAUDE_MATCHER } = await import('../src/guard-install.mjs');
+    const seen = new RegExp(`^(?:${CLAUDE_MATCHER})$`);
+    for (const t of OUTSIDE)
+      assert.equal(
+        seen.test(t),
+        false,
+        `${t} is now in CLAUDE_MATCHER — update the halt sentences`,
+      );
+    for (const t of INSIDE) assert.equal(seen.test(t), true, `${t} left CLAUDE_MATCHER`);
+    for (const [doc, re] of PARAS) {
+      const text = read(doc).match(re)?.[0];
+      assert.ok(text, `${doc}: the qualified halt sentence is gone`);
+      for (const t of OUTSIDE) assert.ok(text.includes(t), `${doc}: the halt sentence omits ${t}`);
+    }
+    const plugin = JSON.parse(read('.claude-plugin/plugin.json'));
+    assert.deepEqual(
+      plugin.hooks.PreToolUse.map((h) => h.matcher),
+      ['*'],
+    );
+  });
+
+  test('no user-facing doc goes back to the unqualified "every tool call" halt or cap claim', () => {
+    const bad = [];
+    for (const f of ['README.md', 'docs/GUARD.md', 'docs/SPEND.md', ...RELEASE_DOCS])
+      read(f)
+        .split('\n')
+        .forEach((line, i, all) => {
+          const two = `${line} ${all[i + 1] ?? ''}`;
+          if (/\bevery tool call (?:is denied|except)/i.test(two)) bad.push(`${f}:${i + 1}`);
+        });
+    // control: the old README sentence is caught
+    assert.ok(/\bevery tool call (?:is denied|except)/i.test('every tool call except reading'));
+    assert.deepEqual(bad, []);
   });
 });
