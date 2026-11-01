@@ -28,7 +28,7 @@ it measures discipline, with machine evidence only.
 | `gold/manifest.sha256`                | per-file SHA-256 inventory, verified at every runner start                             |
 | `schemas/`                            | case / trace / result / metrics JSON Schemas (draft-07 subset)                         |
 | `lib/`                                | validate / trace / paid-step gate / env scrub / scorer / case packs / bundle verifier  |
-| `packs/`                              | regulatory case packs: requirement themes mapped to cases, with gaps                   |
+| `packs/`                              | case packs: requirement themes mapped to cases, with gaps (fictional examples)         |
 | `bin/gold-runner.mjs`                 | the single entry point: `--validate` / `--dry-run` / `--fake-executor` / `--real`      |
 | `fake/agents/`                        | scripted well-behaved agents (harness validation only)                                 |
 | `examples/approval-gate.mjs`          | reference approval gate (injectable via `GOLD_GATE_MODULE`)                            |
@@ -45,17 +45,17 @@ npm run test:eval                               # harness self-tests
 npm run drill                                   # mutation drill: prove the judge can fail
 ```
 
-### Case packs (by regulation)
+### Case packs (by requirement)
 
-`eval/packs/` groups gold cases by regulatory requirement — currently
-`cbuae-ai-oversight`, `dora-ict-change` and `difc-data-protection` (9 of the
-12 cases appear: G04 and G09 map to no requirement in these packs, and the
-control-plane budget case G12 cannot run against a model, so it is in no
-pack). Run one and get a per-requirement verdict beside
-the metrics (`pack-report.json`):
+`eval/packs/` groups gold cases by requirement — currently two example
+packs written for a fictional authority, `example-agent-oversight` and
+`example-change-control` (9 of the 12 cases appear: G04 and G09 map to no
+requirement in these packs, and the control-plane budget case G12 cannot
+run against a model, so it is in no pack). Run one and get a
+per-requirement verdict beside the metrics (`pack-report.json`):
 
 ```bash
-node eval/bin/gold-runner.mjs --fake-executor --pack cbuae-ai-oversight
+node eval/bin/gold-runner.mjs --fake-executor --pack example-agent-oversight
 ```
 
 What the verdict means depends on the run:
@@ -71,10 +71,11 @@ What the verdict means depends on the run:
   that model. A REAL batch that stops early exits 1.
 
 Every requirement lists its `gaps` (what its cases do not show) and every
-pack lists `not_covered` regulatory themes that no case exercises — a
-starting list, not an exhaustive one. Themes
-are paraphrased; clause numbers must be verified against the official text
-before a pack is cited as compliance evidence.
+pack lists `not_covered` themes that no case exercises — a starting list,
+not an exhaustive one. The example packs cite no clauses: a pack written for
+a real regulation must quote its clauses and verify them against the
+official text before it is cited as compliance evidence. Packs for specific
+regulations are not in this repository.
 
 Execution modes need a **git clone**: every run records the harness commit as
 provenance, so a ZIP/tarball download refuses with `HARNESS_GIT_REQUIRED`
@@ -115,6 +116,6 @@ and no session management.
 `01_GOLD_CASE_CATALOG.md` (the 12 cases) · `02_SCORING_POLICY.md` (how
 scoring works) · `03_COST_POLICY.md` (money discipline) ·
 `04_FAILURE_TAXONOMY.md` (what each failure means) ·
-`05_MAINTAINER_LABEL_REVIEW.md` (the reviewer label gate) ·
+`05_LABEL_REVIEW.md` (the reviewer label gate) ·
 `06_REAL_RUN_INSTRUCTIONS.md` (real runs, fail-closed) ·
 `07_MULTI_AGENT_TRAJECTORY_DESIGN.md` (design only)

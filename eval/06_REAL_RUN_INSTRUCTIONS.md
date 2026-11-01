@@ -34,7 +34,7 @@ itself.
 ## Authorization flow (a future round)
 
 1. Independent acceptance closes → the verifier writes `eval/CLOSURE_ATTESTATION.json`.
-2. The reviewer approves all 12 gold labels (`05_MAINTAINER_LABEL_REVIEW.md`).
+2. The reviewer approves all 12 gold labels (`05_LABEL_REVIEW.md`).
 3. Copy `GOLD_RUN_AUTHORIZATION.example.json` → a real authorization file,
    filled in by the approver personally: `approved: true`,
    `allow_real_model: true`, `approved_by`, `model_provider/model_id` (the
