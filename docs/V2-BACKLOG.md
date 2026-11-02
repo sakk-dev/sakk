@@ -140,12 +140,12 @@ which has the evidence and line numbers. None needs a paid call.
 
 ### Test gaps at 0.4.0
 
-| Gap                                                                                                                                   | Why it is open                                                     |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| No test holds the ledger lock past the gateway timeout, so P0-2 is inferred from the code, not reproduced                             | Lands with the P0-2 fix                                            |
-| The gateway has run only against a mock provider, never a real model                                                                  | A real run is a paid call and needs the owner's approval           |
-| In one full gate on PR #51 the 1 MiB hook payload test hung until its bound, as in F-220, and passed on rerun; the cause is not found | F-220's machine-wide lock was in place; needs a repro before a fix |
-| The fail-open gateway tests are timing-sensitive on a cold macOS start (F-239); the stand-in is now run once before it is timed       | The same cold start on a slow production host is part of P0-2      |
+| Gap                                                                                                                                                                                                                               | Why it is open                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| No test holds the ledger lock past the gateway timeout, so P0-2 is inferred from the code, not reproduced                                                                                                                         | Lands with the P0-2 fix                                                                                                 |
+| The gateway has run only against a mock provider, never a real model                                                                                                                                                              | A real run is a paid call and needs the owner's approval                                                                |
+| The malformed-payload hook test (`test/guard.test.mjs`) hung until its 240 s spawn bound in two full gates, as in F-220: PR #51, and the gateway-entry branch on 2026-11-03. Alone it passes in under 1 s; the cause is not found | F-220's machine-wide lock was in place both times; needs a repro before a fix. A third time stops the line for a review |
+| The fail-open gateway tests are timing-sensitive on a cold macOS start (F-239); the stand-in is now run once before it is timed                                                                                                   | The same cold start on a slow production host is part of P0-2                                                           |
 
 ### Console (`sakk ui`)
 
