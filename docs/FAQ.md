@@ -79,6 +79,43 @@ agents too. The spend figure does not cover them yet: `sakk spend` reads only
 Claude Code's logs. The cap is still checked on every guarded call, but
 tokens spent through Cursor or Codex are not in the total.
 
+## How do I connect my own app, not a coding agent?
+
+Through the LiteLLM proxy, which speaks the OpenAI API, so any language with
+an OpenAI client works. Install LiteLLM 1.106.2 from a hash-locked file
+(`sakk gateway init` prints the steps when it cannot find `litellm`), then:
+
+```bash
+sakk init --cap 5        # the ledger the gateway charges
+sakk gateway init        # writes the gateway files and start.sh under ~/.sakk/gateway
+LITELLM_MASTER_KEY=<a long random key> DEEPSEEK_API_KEY=<your key> ~/.sakk/gateway/start.sh
+```
+
+In the app, change one line and send `LITELLM_MASTER_KEY` as the API key:
+
+```bash
+OPENAI_BASE_URL=http://127.0.0.1:4000/v1
+```
+
+`sakk gateway init` refuses to overwrite its files unless you pass
+`--force`, and takes `--dir`, `--ledger`, `--port` and `--litellm`. Prices,
+refusals and limits are in
+[integrations/litellm/README.md](../integrations/litellm/README.md). A call
+the app sends straight to the provider, with a real provider key, does not
+go through the gateway; keep provider keys out of the app.
+
+## What happens to my app's calls if Sakk is down?
+
+If the gateway cannot get an answer from the spend ledger, it lets the call
+through by default and says so: a WARNING in the proxy's log, an
+`x-sakk-status: unmetered` header on the response, a red banner in `sakk ui`
+and a line in `sakk status`. Those calls are not recorded in the ledger and
+not held to the cap. Start the gateway with `SAKK_ON_UNAVAILABLE=deny` to
+refuse them instead. A deliberate refusal is always a refusal: 402 when the
+budget is exceeded, 403 for a model with no price, 400 for a malformed request. Only the gateway behaves
+this way; the coding-agent guard and the spend ledger for your own code stay
+fail-closed (see the first answer above).
+
 ## What does it cost to run?
 
 Nothing. Sakk is free, open source and runs locally on Node with no runtime

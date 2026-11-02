@@ -11,9 +11,59 @@ Claude Code 的每日花费上限，一个急停开关，以及一本给你自�
 
 ![Sakk 的策略检查放行 ls -la、拒绝 rm -rf ~](docs/media/sakk-block.gif)
 
+**我用 Claude Code、Cursor 或 Codex：**
+
 ```bash
 npm install -g sakk && sakk guard install claude-code && sakk doctor   # 在你的项目目录里运行
 ```
+
+**我自己的 AI 应用，任何语言：** Sakk 的花费闸门跑在 LiteLLM 代理里，你的应用只改一行。
+`sakk gateway init` 需要先装好 LiteLLM（固定版本 1.106.2）；没装时它打印带哈希锁定的安装步骤，
+不写任何文件。
+
+```bash
+npm install -g sakk && sakk init --cap 5   # 网关记账用的账本，上限 5 美元
+sakk gateway init                         # 把 sakk_gateway.py、config.yaml 和 start.sh 写到 ~/.sakk/gateway
+LITELLM_MASTER_KEY=<一个够长的随机密钥> DEEPSEEK_API_KEY=<你的密钥> ~/.sakk/gateway/start.sh
+```
+
+然后让应用指向网关，并把 `LITELLM_MASTER_KEY` 当作它的 API 密钥发送。Python 和 Node 的
+OpenAI SDK 都会读这个环境变量：
+
+```bash
+OPENAI_BASE_URL=http://127.0.0.1:4000/v1
+```
+
+或者写在代码里：
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(base_url="http://127.0.0.1:4000/v1", api_key=os.environ["LITELLM_MASTER_KEY"])
+```
+
+```js
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'http://127.0.0.1:4000/v1',
+  apiKey: process.env.LITELLM_MASTER_KEY,
+});
+```
+
+```bash
+curl -s http://127.0.0.1:4000/v1/chat/completions \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-chat","max_tokens":512,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+如果网关从花费账本拿不到答复，默认放行这次调用，并明说：代理日志里一条 WARNING、响应上一个
+`x-sakk-status: unmetered`（不计量）响应头、`sakk ui` 里一条红色横幅、`sakk status` 里一行提示。
+这样放行的调用不记进账本，也不受上限约束。用 `SAKK_ON_UNAVAILABLE=deny` 启动网关，就改为拒绝这些调用。
+有意的拒绝永远是拒绝：超出预算返回 402，没有价格的模型返回 403，请求本身有错返回 400。这只针对网关；编程智能体守卫和给你自己代码用的
+花费账本仍然失败即拒绝（fail-closed）。价格、拒绝和限制见
+[integrations/litellm/README.md](integrations/litellm/README.md)。
 
 在中世纪阿拉伯商业里，**ṣakk**（صك）是一张书面付款指令——商人以真实资金担保的承诺，在各条商路上都被兑付。这个词经波斯语和拉丁语进入英语，成了 _cheque / check_（支票）。它的复数 _sukuk_ 至今仍是海湾地区金融工具的名字。
 

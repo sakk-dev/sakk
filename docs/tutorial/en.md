@@ -1,9 +1,10 @@
-# Sakk tutorial: install, cap, block, console, halt, uninstall
+# Sakk tutorial: install, cap, block, console, halt, uninstall, gateway
 
 **English** | [简体中文](zh-CN.md)
 
 This walks through Sakk from a local checkout to a clean uninstall, in about
-15 minutes. Every command below was run on macOS with Sakk 0.4.0 in a
+15 minutes, then puts the spend cap in front of your own app through the
+gateway (step 12). Every command below was run on macOS with Sakk 0.4.0 in a
 throwaway home folder, and the output is copied from that run. Paths are
 shortened to `~`, the console token is replaced by `<tok>`, and your dates,
 time zone and figures will differ.
@@ -269,6 +270,12 @@ ledger exists (step 10) and you start the console with
 agents; resuming is done at a terminal (step 10). Press Ctrl+C to stop the
 console.
 
+If you run the gateway from step 12, the console also reads its report. While
+the gateway cannot get an answer from Sakk, a red bar at the top says calls
+are going through unmetered (or, in deny mode, refused), with how many and up
+to what amount. After the outage a note names its window; a gateway that
+stops answering its health check gets a red bar of its own.
+
 ### Optional: a username and password
 
 The token address is enough on your own machine. To sign in with a username
@@ -395,15 +402,147 @@ rm -rf ~/.sakk                                 # config, decision log, spend ind
 
 If you used the throwaway home from step 1, closing the shell is enough.
 
+## 12. Your own app, through the gateway
+
+Steps 3 to 10 put the guard in front of a coding agent. An app of your own,
+in any language, comes in another way: Sakk's spend gate runs inside the
+LiteLLM proxy, and the app changes its OpenAI base URL. This step starts from
+a new throwaway home (steps 1 and 2) and makes no paid call. The one request
+it sends could cost more than the cap, so Sakk refuses it before any provider
+sees it.
+
+The gateway charges a ledger, so create one first. Its cap is the ledger's
+own; the daily cap in step 5 is a separate cap on coding-agent logs. Then ask
+for the gateway files. Without LiteLLM installed, Sakk says so and writes
+nothing:
+
+```bash
+sakk init --cap 5
+sakk gateway init
+```
+
+```text
+ledger created: ~/.sakk/sakk-ledger.json
+hook wired: a halt on this ledger now stops the guarded agent (~/.sakk/config.json)
+cap: $5 — reserve before you spawn; reaching the cap refuses.
+GATEWAY_LITELLM_NOT_FOUND: no executable named litellm on PATH; nothing was written.
+Install the pinned LiteLLM proxy from a hash-locked file, then run this again
+(add --litellm "$PWD/.venv/bin/litellm" when the venv is not on PATH):
+  printf 'litellm[proxy]==1.106.2\n' > req.in
+  uv venv --python 3.12 .venv
+  uv pip compile req.in --generate-hashes --exclude-newer 2026-10-21T11:00:00Z -o req.lock
+  uv pip install --require-hashes -r req.lock
+Do not install LiteLLM 1.82.7, 1.82.8 or 1.107.0: those releases were compromised.
+Details: ~/.npm-global/lib/node_modules/sakk/integrations/litellm/README.md
+```
+
+It exits 1. Install LiteLLM the way it prints (this needs `uv`, and it
+downloads LiteLLM and its dependencies), then run it again with the path to
+`litellm`. The run below used a LiteLLM 1.106.2 installed that way, shown as
+`<venv>`:
+
+```bash
+sakk gateway init --litellm "$PWD/.venv/bin/litellm"
+```
+
+```text
+wrote the gateway files in ~/.sakk/gateway:
+  sakk_gateway.py  the Sakk callback LiteLLM loads
+  config.yaml      models and prices (USD per token); keys are os.environ/ references
+  start.sh         starts LiteLLM on 127.0.0.1:4000 with SAKK_BIN, SAKK_LEDGER and SAKK_GATEWAY_CONFIG set
+ledger:  ~/.sakk/sakk-ledger.json
+litellm: <venv>/bin/litellm (found; its version was not checked — the gateway is tested with 1.106.2)
+
+Start it with the keys in your environment (never in these files):
+  LITELLM_MASTER_KEY=<a long random key> DEEPSEEK_API_KEY=<your key> '~/.sakk/gateway/start.sh'
+
+Then change one line in your app, and send LITELLM_MASTER_KEY as its API key:
+OPENAI_BASE_URL=http://127.0.0.1:4000/v1
+
+Refusals, prices and limits: ~/.npm-global/lib/node_modules/sakk/integrations/litellm/README.md
+```
+
+Sakk prints the full path to `start.sh` in quotes; it is shortened to `~`
+here. Running it again refuses with `GATEWAY_FILES_EXIST` unless you pass
+`--force`. None of the three files holds a key, and `start.sh` will not start
+a proxy without the key your app sends:
+
+```bash
+~/.sakk/gateway/start.sh
+```
+
+```text
+~/.sakk/gateway/start.sh: line 8: LITELLM_MASTER_KEY: set LITELLM_MASTER_KEY to the key your app will send; this script does not start a proxy without one
+```
+
+Start it with a master key and a provider key. In real use the provider key
+is yours, and DeepSeek bills calls made with it; here it is a dummy value,
+because the request below never reaches DeepSeek:
+
+```bash
+export LITELLM_MASTER_KEY=sk-tutorial-0000   # use a long random key; your app sends it as its API key
+export DEEPSEEK_API_KEY=not-a-real-key
+~/.sakk/gateway/start.sh > ~/proxy.log 2>&1 &
+```
+
+The proxy answered on `http://127.0.0.1:4000/health/liveliness` after about
+5 seconds. Now ask for a reply of up to 20,000,000 tokens. At
+`deepseek-chat`'s output price in `config.yaml` ($0.00000042 a token), the
+worst case is $8.40, over the $5 cap:
+
+```bash
+curl -s -i http://127.0.0.1:4000/v1/chat/completions \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-chat","max_tokens":20000000,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+```text
+HTTP/1.1 402 Payment Required
+x-litellm-response-cost: 0
+...
+{"error":{"message":"BUDGET_EXCEEDED: settled + outstanding + this estimate reaches the cap — refused (the cap is a wall, not a target)","type":"invalid_request_error","param":null,"code":"402","provider_specific_fields":{"error":{"code":"BUDGET_EXCEEDED","message":"BUDGET_EXCEEDED: settled + outstanding + this estimate reaches the cap — refused (the cap is a wall, not a target)","estimatedMaxUsd":8.400184}}}}
+```
+
+Other headers are trimmed. The worst case also counts the prompt (one token
+per byte) and a small margin, hence $8.400184. Nothing was reserved and
+nothing was spent:
+
+```bash
+sakk status
+```
+
+```text
+ledger      ~/.sakk/sakk-ledger.json
+cap         $5
+settled     $0
+outstanding $0
+committed   $0  (remaining $5, max reservable $4.999999)
+entries     0 (reserved 0, settled 0, reconciliation 0)
+updated     2026-11-02T20:18:53.889Z
+gateway     no outage recorded (mode allow)
+```
+
+The `gateway` line is the gateway's own report. If the gateway cannot get an
+answer from the ledger, it lets the call through by default and says so: a
+WARNING in `~/proxy.log`, an `x-sakk-status: unmetered` header on the
+response, a red banner in `sakk ui` and an outage line here. A call let
+through this way is not recorded in the ledger and not held to the cap. Start
+the gateway with `SAKK_ON_UNAVAILABLE=deny` to refuse those calls instead.
+
+Point your app at the gateway with `OPENAI_BASE_URL=http://127.0.0.1:4000/v1`
+and send `LITELLM_MASTER_KEY` as its API key; the README shows the same call
+from Python, Node and curl. Stop the proxy with `kill %1`. `rm -rf ~/.sakk`
+from step 11 also removes `~/.sakk/gateway`.
+
 ## Exit codes
 
-| Code | Meaning                                                         |
-| ---- | --------------------------------------------------------------- |
-| 0    | ok                                                              |
-| 1    | ledger error (for example `LEDGER_MISSING` before `sakk init`)  |
-| 2    | usage error, or a change refused because no person confirmed it |
-| 3    | reconciliation required (`sakk status`)                         |
-| 4    | halted (`sakk status`; wins over 3)                             |
+| Code | Meaning                                                                                                                                  |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | ok                                                                                                                                       |
+| 1    | ledger error (for example `LEDGER_MISSING` before `sakk init`), or `sakk gateway init` refused (for example `GATEWAY_LITELLM_NOT_FOUND`) |
+| 2    | usage error, or a change refused because no person confirmed it                                                                          |
+| 3    | reconciliation required (`sakk status`)                                                                                                  |
+| 4    | halted (`sakk status`; wins over 3)                                                                                                      |
 
 Next: the [FAQ](../FAQ.md) answers what happens when the hook fails, where
 the data lives, and how spend is computed.

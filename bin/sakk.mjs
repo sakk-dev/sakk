@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: Apache-2.0
 import {
+  accessSync,
   chmodSync,
+  constants as fsConstants,
   existsSync,
   lstatSync,
+  mkdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import {
@@ -138,6 +143,11 @@ function ledgerPath() {
   }
   return r.path;
 }
+// npm exec / npx, bunx and pnpm dlx unpack into caches that get cleaned: a
+// file that pins this installation's path must not point into one.
+const EPHEMERAL =
+  /[\\/]_npx[\\/][0-9a-f]{6,}[\\/]node_modules[\\/]|[\\/]bunx-\d+-|[\\/]pnpm[\\/]dlx[\\/]/;
+
 /** A name, not whitespace: self-declared and never verified (ledger review N1; F-70; F-126). */
 const named = (by) => typeof by === 'string' && by.trim() !== '';
 
@@ -209,6 +219,11 @@ Spend and the daily cap (from Claude Code's local logs; an estimate, not the inv
   sakk spend [--day <YYYY-MM-DD>] [--json]                today's spend by model, and what could not be priced
   sakk prices [--json]                                    the price table in use and its source
 
+Your own app, any language (OpenAI-compatible, through the LiteLLM proxy):
+  sakk gateway init [--dir <path>] [--ledger <path>] [--port N] [--litellm <path>] [--force]
+                                                          write the gateway's files and start script, then print the one line your app changes
+                                                          (dir: <SAKK_HOME or ~/.sakk>/gateway · ledger: as below · port: 4000 · refuses to overwrite without --force)
+
 Ledger path: --ledger > the one init recorded in ~/.sakk/config.json (the hook reads it too) > $SAKK_LEDGER_PATH > ~/.sakk/sakk-ledger.json
   (a leftover ./sakk-ledger.json refuses with LEDGER_PATH_LEGACY until you pass --ledger or move it)
 Exit codes: 0 ok · 1 ledger error · 2 usage error · 3 reconciliation required (status) · 4 halted (status; wins over 3, both shown)
@@ -246,6 +261,7 @@ const COMMANDS = {
   cap: { values: ['zone'], bools: [], positional: true },
   spend: { values: ['day'], bools: ['json'] },
   prices: { values: [], bools: ['json'] },
+  gateway: { values: ['dir', 'ledger', 'port', 'litellm'], bools: ['force'], positional: true },
 };
 if (Object.hasOwn(COMMANDS, cmd)) {
   const spec = COMMANDS[cmd];
@@ -609,12 +625,7 @@ if (cmd === 'init') {
     // installation by absolute path. An installation inside the npx cache
     // is temporary: once the cache is cleaned every commit would fail.
     const self = realpathSync(fileURLToPath(import.meta.url));
-    // npm exec / npx, bunx and pnpm dlx unpack into caches that get cleaned
-    if (
-      /[\\/]_npx[\\/][0-9a-f]{6,}[\\/]node_modules[\\/]|[\\/]bunx-\d+-|[\\/]pnpm[\\/]dlx[\\/]/.test(
-        self,
-      )
-    ) {
+    if (EPHEMERAL.test(self)) {
       console.error(
         'SCAN_HOOK_EPHEMERAL: this sakk runs from the temporary npx cache — install it first (npm install --save-dev sakk, or npm install -g sakk), then run the installed `sakk scan --install-hook`',
       );
@@ -1152,6 +1163,186 @@ if (cmd === 'init') {
       console.error(`${uiCode}: ${String(e?.message ?? e)}`);
       process.exit(1);
     },
+  );
+} else if (cmd === 'gateway') {
+  // Every refusal below comes before the first write, so a refused run leaves
+  // the directory as it was. The hook judges this command as the write of
+  // start.sh (src/classify.mjs): an agent cannot re-point the gateway's ledger
+  // or executable inside Sakk's home.
+  const nothing = 'nothing was written';
+  const pos = [];
+  for (let i = 1; i < argv.length; i += 1)
+    if (!argv[i].startsWith('--')) pos.push(argv[i]);
+    else if (COMMANDS.gateway.values.includes(argv[i].slice(2))) i += 1;
+  if (pos.length !== 1 || pos[0] !== 'init') {
+    console.error(
+      'GATEWAY_USAGE: sakk gateway init [--dir <path>] [--ledger <path>] [--port N] [--litellm <path>] [--force] — see sakk --help',
+    );
+    process.exit(2);
+  }
+  const portArg = val('port') ?? '4000';
+  if (!/^\d{4,5}$/.test(portArg) || Number(portArg) < 1024 || Number(portArg) > 65535) {
+    console.error(`GATEWAY_PORT_INVALID: --port must be a whole number 1024-65535; ${nothing}`);
+    process.exit(2);
+  }
+  const port = Number(portArg);
+  // start.sh pins this sakk by path; once a cache cleaner removes it the
+  // gateway cannot reach its ledger, and its calls stop being metered
+  const bin = realpathSync(fileURLToPath(import.meta.url));
+  if (EPHEMERAL.test(bin)) {
+    console.error(
+      `GATEWAY_EPHEMERAL: this sakk runs from a temporary package cache (${display(bin)}) that gets cleaned — install it first (npm install -g sakk), then run the installed sakk gateway init; ${nothing}`,
+    );
+    process.exit(2);
+  }
+  const shipped = join(HERE, '..', 'integrations', 'litellm');
+  const source = {};
+  for (const f of ['sakk_gateway.py', 'config.example.yaml'])
+    try {
+      source[f] = readFileSync(join(shipped, f), 'utf8');
+    } catch (e) {
+      console.error(
+        `GATEWAY_SOURCE_MISSING: ${join(shipped, f)} is not in this install (${e.code ?? e.message}) — reinstall sakk; ${nothing}`,
+      );
+      process.exit(1);
+    }
+  // A gateway on a ledger it cannot read would treat every call as an outage
+  // call, so the ledger must answer now, before anything points at it.
+  const ledger = resolve(ledgerPath());
+  try {
+    readLedger({ ledgerPath: ledger, maxAgeMs: Number.POSITIVE_INFINITY });
+  } catch (e) {
+    console.error(
+      `GATEWAY_LEDGER_UNREADABLE: ${display(ledger)}: ${display(String(e.message))} — create it with sakk init --cap <usd>, or pass --ledger <path>; ${nothing}`,
+    );
+    process.exit(1);
+  }
+  // Existence and the execute bit only: litellm is never run here.
+  const runnable = (p) => {
+    try {
+      accessSync(p, fsConstants.X_OK);
+      return statSync(p).isFile();
+    } catch {
+      return false;
+    }
+  };
+  const given = val('litellm');
+  let litellm = null;
+  if (given !== undefined) litellm = runnable(resolve(given)) ? resolve(given) : null;
+  else
+    for (const d of (process.env.PATH ?? '').split(delimiter)) {
+      // a relative PATH entry means a different file from every working directory
+      if (!isAbsolute(d) || !runnable(join(d, 'litellm'))) continue;
+      litellm = join(d, 'litellm');
+      break;
+    }
+  if (litellm === null) {
+    console.error(
+      [
+        `GATEWAY_LITELLM_NOT_FOUND: ${given === undefined ? 'no executable named litellm on PATH' : `${display(resolve(given))} is not an executable file`}; ${nothing}.`,
+        'Install the pinned LiteLLM proxy from a hash-locked file, then run this again',
+        '(add --litellm "$PWD/.venv/bin/litellm" when the venv is not on PATH):',
+        "  printf 'litellm[proxy]==1.106.2\\n' > req.in",
+        '  uv venv --python 3.12 .venv',
+        '  uv pip compile req.in --generate-hashes --exclude-newer 2026-10-21T11:00:00Z -o req.lock',
+        '  uv pip install --require-hashes -r req.lock',
+        'Do not install LiteLLM 1.82.7, 1.82.8 or 1.107.0: those releases were compromised.',
+        `Details: ${join(shipped, 'README.md')}`,
+      ].join('\n'),
+    );
+    process.exit(1);
+  }
+  const dir = resolve(val('dir') ?? join(sakkHome(), 'gateway'));
+  const config = join(dir, 'config.yaml');
+  const start = join(dir, 'start.sh');
+  // POSIX single quotes: nothing inside is expanded; a quote is closed, escaped, reopened
+  const q = (s) => `'${s.replaceAll("'", `'\\''`)}'`;
+  const files = [
+    ['sakk_gateway.py', 0o600, source['sakk_gateway.py']],
+    [
+      'config.yaml',
+      0o600,
+      `# Written by sakk gateway init (sakk ${pkg.version}) from config.example.yaml.\n# Keys stay os.environ/ references: put no key in this file.\n${source['config.example.yaml']}`,
+    ],
+    [
+      'start.sh',
+      0o700,
+      [
+        '#!/bin/sh',
+        `# Written by sakk gateway init (sakk ${pkg.version}): the LiteLLM proxy with the Sakk spend gate on 127.0.0.1:${port}.`,
+        '# It holds no key. LITELLM_MASTER_KEY (the key your app sends) and the provider keys',
+        '# (DEEPSEEK_API_KEY and the others config.yaml names) come from the environment you start it in.',
+        '# When the ledger cannot answer, calls go through unmetered with a warning;',
+        '# start it with SAKK_ON_UNAVAILABLE=deny to refuse them instead.',
+        'set -eu',
+        ': "${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY to the key your app will send; this script does not start a proxy without one}"',
+        `[ -x ${q(process.execPath)} ] && [ -f ${q(bin)} ] && [ -f ${q(ledger)} ] || { echo 'sakk: GATEWAY_STALE: the node, sakk or ledger this script names is gone (node upgraded? sakk moved?) - run sakk gateway init --force again' >&2; exit 1; }`,
+        `export SAKK_NODE=${q(process.execPath)}`,
+        `export SAKK_BIN=${q(bin)}`,
+        `export SAKK_LEDGER=${q(ledger)}`,
+        `export SAKK_GATEWAY_CONFIG=${q(config)}`,
+        'export LITELLM_LOCAL_MODEL_COST_MAP=True',
+        `exec ${q(litellm)} --config ${q(config)} --host 127.0.0.1 --port ${port}`,
+        '',
+      ].join('\n'),
+    ],
+  ];
+  const present = new Set();
+  for (const [name] of files)
+    try {
+      lstatSync(join(dir, name));
+      present.add(name);
+    } catch {}
+  if (present.size > 0 && !flag('force')) {
+    console.error(
+      `GATEWAY_FILES_EXIST: ${[...present].map((n) => display(join(dir, n))).join(', ')} already exist — pass --force to replace them; ${nothing}`,
+    );
+    process.exit(1);
+  }
+  const created = [];
+  let tmp = null;
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    for (const [name, mode, data] of files) {
+      const target = join(dir, name);
+      if (present.has(name)) {
+        // rename replaces a planted symlink itself; it never writes through it
+        tmp = `${target}.sakk-tmp-${process.pid}`;
+        writeFileSync(tmp, data, { flag: 'wx', mode });
+        chmodSync(tmp, mode);
+        renameSync(tmp, target);
+        tmp = null;
+      } else {
+        writeFileSync(target, data, { flag: 'wx', mode });
+        created.push(target);
+        chmodSync(target, mode);
+      }
+    }
+  } catch (e) {
+    if (tmp !== null) rmSync(tmp, { force: true });
+    for (const p of created) rmSync(p, { force: true });
+    console.error(
+      `GATEWAY_WRITE_FAILED: ${display(dir)}: ${e.code ?? display(String(e.message))} — the files this run created were removed${present.size > 0 ? '; a file it had already replaced stays replaced, run it again with --force' : ''}`,
+    );
+    process.exit(1);
+  }
+  console.log(
+    [
+      `${present.size > 0 ? 'replaced' : 'wrote'} the gateway files in ${display(dir)}:`,
+      '  sakk_gateway.py  the Sakk callback LiteLLM loads',
+      '  config.yaml      models and prices (USD per token); keys are os.environ/ references',
+      `  start.sh         starts LiteLLM on 127.0.0.1:${port} with SAKK_BIN, SAKK_LEDGER and SAKK_GATEWAY_CONFIG set`,
+      `ledger:  ${display(ledger)}`,
+      `litellm: ${display(litellm)} (found; its version was not checked — the gateway is tested with 1.106.2)`,
+      '',
+      'Start it with the keys in your environment (never in these files):',
+      `  LITELLM_MASTER_KEY=<a long random key> DEEPSEEK_API_KEY=<your key> ${display(q(start))}`,
+      '',
+      'Then change one line in your app, and send LITELLM_MASTER_KEY as its API key:',
+      `OPENAI_BASE_URL=http://127.0.0.1:${port}/v1`,
+      '',
+      `Refusals, prices and limits: ${join(shipped, 'README.md')}`,
+    ].join('\n'),
   );
 } else if (cmd === '--version' || cmd === '-v') {
   console.log(pkg.version);

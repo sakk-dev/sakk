@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "branch": "feat/gateway-entry",
+  "answers": {
+    "C-01.1": {
+      "answer": "Every absent input refuses with a named code and writes nothing: no litellm on PATH or at --litellm (GATEWAY_LITELLM_NOT_FOUND, with the pinned install recipe), a ledger that is missing or unreadable (GATEWAY_LEDGER_UNREADABLE — a missing ledger would otherwise make every gateway call an outage call), shipped gateway sources missing from the install (GATEWAY_SOURCE_MISSING), no subcommand (GATEWAY_USAGE). The start script refuses to start LiteLLM when LITELLM_MASTER_KEY is unset, so an unset key never means an open proxy.",
+      "guard": "test/gateway-init.test.mjs::a ledger that cannot be read refuses before anything is written"
+    },
+    "C-01.2": {
+      "answer": "Each test reads the outcome it names from the disk or the process, not from the command's own report: the files and their modes are stat'ed, the start script is executed against a fake litellm that records its argv and environment, and the refusal tests list the target directory afterwards. Deleting the PATH check, the ledger read or the overwrite check turns the matching test red on the files that appear.",
+      "guard": "test/gateway-init.test.mjs::no litellm on PATH: refuses, prints the pinned recipe, writes nothing"
+    },
+    "C-02.1": {
+      "answer": "The set of files that ship is read from the real `npm pack --dry-run --json` output, not from package.json's list; the test requires the three files gateway init copies and refuses any file under integrations/litellm whose name starts with test_ or is mock_provider.py. The list of files gateway init writes is one constant in bin/sakk.mjs that the overwrite check, the write loop and the tests all use.",
+      "guard": "test/release.test.mjs::the files sakk gateway init copies ship, and the gateway tests and mock provider do not"
+    },
+    "C-02.2": {
+      "answer": "The same rule (a sakk subcommand that writes into Sakk's home is judged as that write) already covers init, cap and the halt family in src/classify.mjs; gateway init is added there with the directory it really writes (--dir, or SAKK_HOME/gateway), and declared in the R-24 table so a later subcommand cannot skip the declaration. The secret rule (keys stay os.environ references) is checked on every written file with the repository's own secret scanner.",
+      "guard": "test/kill-switch.test.mjs::R-24 every sakk subcommand is declared by its effect on a control, and judged by it"
+    },
+    "C-03.1": {
+      "answer": "Before committing I put two bugs back in bin/sakk.mjs and ran npm test each time. Dropping the existence check made 'existing files are refused, and --force replaces them' fail on its exit-status assertion (0 !== 1: the second init succeeded instead of refusing). Writing paths without escaping the single quote made the two start-script tests fail because /bin/sh hit a syntax error on the folder named the parent workspace's. Both edits were reverted and the suite re-run before the commit.",
+      "guard": "test/gateway-init.test.mjs::existing files are refused, and --force replaces them"
+    },
+    "C-03.2": {
+      "answer": "The quoting test runs the generated start.sh with /bin/sh from a directory whose name has spaces and a single quote, against a fake litellm that writes its argv and the SAKK_ variables to a file; the test reads that file, so it observes what a real shell passes, not the script's text. A control run with the key unset shows the script really refuses before litellm runs.",
+      "guard": "test/gateway-init.test.mjs::the start script keeps paths with spaces and quotes as one argument, all absolute"
+    },
+    "C-03.3": {
+      "answer": "The package check runs the real npm pack and reads the tarball file list, so a files entry that is spelled right but packs nothing still fails. The secret check runs src/secret-scan.mjs over the written directory and asserts that it scanned the files (scanned count above zero) as well as that it found nothing, so an empty scan cannot pass.",
+      "guard": "test/gateway-init.test.mjs::the written files hold no secret value"
+    },
+    "C-04.1": {
+      "answer": "gateway init does a fixed amount of work: it reads three shipped files of known size, stats each PATH entry once for one name, reads the ledger once, and writes three files. It runs no child process (litellm is never executed, only stat'ed), so a hostile PATH or --litellm cannot make it hang; every test spawn carries the suite's bounded-spawn timeout.",
+      "guard": "test/gateway-init.test.mjs::refuses what it does not understand, and each refusal writes nothing"
+    },
+    "C-05.1": {
+      "answer": "Each sentence about the gateway in README, README.zh-CN, docs/FAQ and llms.txt is pinned by a test that reads those docs: the command, the exact base URL line, the outage words (unmetered header, SAKK_ON_UNAVAILABLE=deny, refusals stay refusals) and that the gateway is not called fail-closed there. The recipe the CLI prints is compared line by line with the shipped integrations/litellm/README.md so the two cannot drift.",
+      "guard": "test/gateway-init.test.mjs::the docs show the gateway door, the line to change and the outage behavior"
+    },
+    "C-05.2": {
+      "answer": "Every exit code and line gateway init prints is acted on in a test: exit 0 leaves a start script that runs litellm with the printed port, the printed OPENAI_BASE_URL line names that same port, exit 1 and 2 refusals leave the directory unchanged so a retry after the fix succeeds, and --force after a refusal replaces the files. The codes are listed in CHANGELOG [Unreleased].",
+      "guard": "test/gateway-init.test.mjs::writes the gateway files with their modes and prints the one line to change"
+    },
+    "C-06.1": {
+      "answer": "The tests use a fake litellm script, and the docs and output say so honestly: gateway init checks only that an executable named litellm exists and never runs it, and it prints that the version was not checked. The PR does not claim a real LiteLLM run; the real-proxy coverage stays the Python suite in integrations/litellm, which this PR does not change.",
+      "guard": "test/gateway-init.test.mjs::writes the gateway files with their modes and prints the one line to change"
+    },
+    "C-07.1": {
+      "answer": "The --dir, --ledger and --litellm values come from whoever runs the command and end up in a shell script someone later executes, so every value is written inside single quotes with embedded quotes escaped, and paths are made absolute before writing. The port must be an integer 1024-65535. Config values are copied from the shipped example, never from input, so no key can enter them.",
+      "guard": "test/gateway-init.test.mjs::the start script keeps paths with spaces and quotes as one argument, all absolute"
+    },
+    "C-07.2": {
+      "answer": "A guarded coding agent cannot re-point the gateway's ledger or replace the start script in Sakk's home: the hook judges sakk gateway init as a write of the start script it would replace, so under SAKK_HOME it is the guard-state write the agent is denied. Into a project directory it is judged as the write it is, which the agent could make anyway, so nothing new is opened.",
+      "guard": "test/kill-switch.test.mjs::sakk gateway init is judged as the write it makes: into Sakk home denied, into the project as that write"
+    },
+    "C-08.1": {
+      "answer": "Files are created with an exclusive create (wx), so a symlink or file planted at a target name refuses instead of being followed; --force writes a temporary file and renames it over the target, which replaces a symlink itself rather than writing through it. All paths written into the start script are absolute, so the script means the same thing from any working directory.",
+      "guard": "test/gateway-init.test.mjs::existing files are refused, and --force replaces them"
+    },
+    "C-09.1": {
+      "answer": "The start script does not assume a node or litellm on the operator's PATH when it runs: it pins SAKK_NODE to the node that ran gateway init and execs litellm by absolute path. Tests run with a temporary HOME and SAKK_HOME, a PATH holding only the fake litellm's folder plus system folders, and once with no litellm at all; a run from an npx or dlx package cache is refused (GATEWAY_EPHEMERAL), because the start script would pin a path the cache cleaner later removes.",
+      "guard": "test/gateway-init.test.mjs::no litellm on PATH: refuses, prints the pinned recipe, writes nothing"
+    },
+    "C-09.2": {
+      "answer": "It runs where an application developer types it, outside any repository, with SAKK_HOME unset or set; the tests run the real bin/sakk.mjs as a child process from a temp folder, check the default directory lands under the given SAKK_HOME, and execute the written script with /bin/sh as an operator would, not just read its text.",
+      "guard": "test/gateway-init.test.mjs::the start script keeps paths with spaces and quotes as one argument, all absolute"
+    },
+    "C-10.1": {
+      "answer": "Shipping the gateway files is enforced by a test on the real npm pack output, not by the package.json comment; declaring the new subcommand's effect is enforced by the R-24 test, which fails for a dispatched subcommand that is not declared. Both run in npm test, which the commit gate runs.",
+      "guard": "test/release.test.mjs::the files sakk gateway init copies ship, and the gateway tests and mock provider do not"
+    },
+    "C-10.2": {
+      "answer": "The other route to the same files is a direct write by the agent, which protect-guard-state already denies under Sakk's home; gateway init is now judged as that same write, so both routes meet one rule. Files are written only after every check passes, and the content written is the content checked, so no input can change after the checks.",
+      "guard": "test/kill-switch.test.mjs::sakk gateway init is judged as the write it makes: into Sakk home denied, into the project as that write"
+    },
+    "C-11.1": {
+      "answer": "The written start script decides which ledger the gateway charges and which executable runs, a meaning that outlives the command; its writers are a person running gateway init (allowed) and a guarded agent (denied in Sakk's home by the hook). It records only absolute paths and a port, never a key, so reading the file reveals nothing secret.",
+      "guard": "test/gateway-init.test.mjs::the written files hold no secret value"
+    },
+    "C-15.1": {
+      "answer": "The tests run the real CLI binary, the real npm pack and the real generated start script under /bin/sh; only LiteLLM itself is a stand-in, a fake executable that records what it was given. Running the real LiteLLM is out of scope here (no installs, no paid calls) and the PR says so; the real proxy path is the existing Python suite.",
+      "guard": "test/gateway-init.test.mjs::the start script keeps paths with spaces and quotes as one argument, all absolute"
+    }
+  }
+}

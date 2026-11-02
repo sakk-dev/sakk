@@ -96,6 +96,45 @@ last_at}` and `last_outage` adds `ended_at`. The gateway assumes one
   amount in smaller type and never breaks inside, and the figure shrinks
   with its card so an amount stays whole on a phone.
 
+### Added — `sakk gateway init`: connect your own app, in any language
+
+- The README, its Chinese version, the FAQ and `llms.txt` now open with two
+  ways in: the coding-agent guard, and your own app through the LiteLLM
+  proxy, where the app changes one line,
+  `OPENAI_BASE_URL=http://127.0.0.1:4000/v1`. They state what the gateway
+  does when the spend ledger cannot answer: calls go through unmetered by
+  default with a warning, `SAKK_ON_UNAVAILABLE=deny` refuses them, and 402
+  and 403 refusals stay refusals. The guard and the library ledger stay
+  fail-closed.
+- New command `sakk gateway init`, with `--dir <path>`, `--ledger <path>`,
+  `--port N`, `--litellm <path>` and `--force`. It copies the shipped gateway callback,
+  writes `config.yaml` from `config.example.yaml` (keys stay `os.environ/`
+  references; no key is written) and a `start.sh` that sets `SAKK_BIN`,
+  `SAKK_LEDGER` and `SAKK_GATEWAY_CONFIG` to absolute paths and runs
+  `litellm --config … --host 127.0.0.1 --port N`. Defaults: the folder
+  `gateway` under `SAKK_HOME` (or `~/.sakk`), the ledger the other commands
+  use, port 4000. It prints the one line the app changes. It only checks that
+  an executable `litellm` exists on `PATH` or at `--litellm`; it never runs
+  it and does not check its version.
+- Exit codes: 0 written; 1 refused or failed; 2 usage. Refusal codes, each
+  of which writes nothing: `GATEWAY_USAGE` (2), `GATEWAY_PORT_INVALID` (2,
+  port outside 1024-65535), `GATEWAY_EPHEMERAL` (2, run from an npx, bunx or
+  pnpm dlx cache whose path the start script would pin; install with
+  `npm install -g sakk` first), `GATEWAY_SOURCE_MISSING` (1),
+  `GATEWAY_LEDGER_UNREADABLE` (1, a missing or unreadable ledger; create it
+  with `sakk init --cap <usd>`), `GATEWAY_LITELLM_NOT_FOUND` (1, prints the
+  hash-locked install steps for LiteLLM 1.106.2 and warns off the compromised
+  1.82.7, 1.82.8 and 1.107.0), `GATEWAY_FILES_EXIST` (1, pass `--force` to
+  replace them). `GATEWAY_WRITE_FAILED` (1) removes the files that run
+  created. The written `start.sh` refuses to start without
+  `LITELLM_MASTER_KEY` and exits 1 with `GATEWAY_STALE` when the node, sakk
+  or ledger it names is gone.
+- The guard judges `sakk gateway init` as the write of the `start.sh` it
+  makes: inside `SAKK_HOME` that is guard state, denied to the agent.
+- The npm package now ships `integrations/litellm/sakk_gateway.py`,
+  `config.example.yaml` and its `README.md`, not the Python tests or the mock
+  provider. New keywords: `litellm`, `openai-compatible`, `llm-gateway`.
+
 ## [0.3.0] - 2026-11-01
 
 ### Fixed — the tutorial and FAQ match the 0.3.0 build (F-234)

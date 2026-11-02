@@ -23,8 +23,8 @@ blocks a merge on a red check, and auto-merge is on.
 
 **Status 2026-11-02:** 0.3.0 closed the two release blockers below (F-199,
 F-111). The gateway for any app is the 0.4.0 work: the CI `gateway` job and
-the service templates (PR #51) and the fail-open-loud behaviour (PR #52)
-are on main; the setup command (gateway entry) is in review. The
+the service templates (PR #51), the fail-open-loud behaviour (PR #52) and
+the setup command `sakk gateway init` (gateway entry) are on main. The
 [reliability audit](reliability-audit-2026-11-02.md) found two P0 gaps in
 the gateway; they and the rest of the audit are listed under **Gateway
 reliability** below, with the test gaps known at 0.4.0.
@@ -140,12 +140,12 @@ which has the evidence and line numbers. None needs a paid call.
 
 ### Test gaps at 0.4.0
 
-| Gap                                                                                                                                   | Why it is open                                                     |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| No test holds the ledger lock past the gateway timeout, so P0-2 is inferred from the code, not reproduced                             | Lands with the P0-2 fix                                            |
-| The gateway has run only against a mock provider, never a real model                                                                  | A real run is a paid call and needs the owner's approval           |
-| In one full gate on PR #51 the 1 MiB hook payload test hung until its bound, as in F-220, and passed on rerun; the cause is not found | F-220's machine-wide lock was in place; needs a repro before a fix |
-| The fail-open gateway tests are timing-sensitive on a cold macOS start (F-239); the stand-in is now run once before it is timed       | The same cold start on a slow production host is part of P0-2      |
+| Gap                                                                                                                                                                                                                               | Why it is open                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| No test holds the ledger lock past the gateway timeout, so P0-2 is inferred from the code, not reproduced                                                                                                                         | Lands with the P0-2 fix                                                                                                 |
+| The gateway has run only against a mock provider, never a real model                                                                                                                                                              | A real run is a paid call and needs the owner's approval                                                                |
+| The malformed-payload hook test (`test/guard.test.mjs`) hung until its 240 s spawn bound in two full gates, as in F-220: PR #51, and the gateway-entry branch on 2026-11-03. Alone it passes in under 1 s; the cause is not found | F-220's machine-wide lock was in place both times; needs a repro before a fix. A third time stops the line for a review |
+| The fail-open gateway tests are timing-sensitive on a cold macOS start (F-239); the stand-in is now run once before it is timed                                                                                                   | The same cold start on a slow production host is part of P0-2                                                           |
 
 ### Console (`sakk ui`)
 

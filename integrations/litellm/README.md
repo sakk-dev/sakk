@@ -49,6 +49,19 @@ comments. Version 1.106.2 was published before the October release. The lock
 comes to 117 packages, about 472 MB. Do not move to a newer version until
 LiteLLM's advisory names it safe.
 
+Installed Sakk from npm? The lock is not in the npm package, so make the
+same kind of lock from the same one-line input. These are the steps
+`sakk gateway init` prints when it finds no `litellm`; the cut-off date
+keeps out every release published after 2026-10-21 11:00 UTC, 1.107.0
+included:
+
+```bash
+printf 'litellm[proxy]==1.106.2\n' > req.in
+uv venv --python 3.12 .venv
+uv pip compile req.in --generate-hashes --exclude-newer 2026-10-21T11:00:00Z -o req.lock
+uv pip install --require-hashes -r req.lock
+```
+
 ## Run
 
 ```bash

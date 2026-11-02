@@ -632,7 +632,14 @@ export function shellActions(
     // tightens and stays allowed.
     else if (name === 'sakk' && ['resume', 'reconcile', 'unlock'].includes(verb) && sakkHome)
       add('file.write', join(sakkHome, 'sakk-ledger.json'));
-    else if (
+    // gateway init writes the start script an operator later runs, naming the
+    // ledger the gateway charges and the executable it starts: judged as that
+    // write, in the folder it really writes (--dir, else SAKK_HOME/gateway)
+    else if (name === 'sakk' && verb === 'gateway' && sakkHome) {
+      const d = args.indexOf('--dir');
+      const dir = d >= 0 && args[d + 1] ? abs(args[d + 1]) : join(sakkHome, 'gateway');
+      add('file.write', join(dir, 'start.sh'));
+    } else if (
       name === 'sakk' &&
       verb === 'guard' &&
       ['install', 'uninstall'].includes(plain[1]) &&

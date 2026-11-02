@@ -62,6 +62,35 @@ Sakk 读取 Claude Code 在 `~/.claude/projects` 下的日志（设置了 `CLAUD
 密钥守门和急停对这两个 agent 同样生效。花费数字暂时不包括它们：`sakk spend` 只读 Claude Code 的日志。
 每次受守门的调用仍会检查上限，但通过 Cursor 或 Codex 花掉的 token 不在总数里。
 
+## 我自己的应用（不是编程智能体）怎么接入？
+
+通过 LiteLLM 代理。它说 OpenAI 的接口，所以任何有 OpenAI 客户端的语言都能用。先从带哈希锁定的文件
+装 LiteLLM 1.106.2（`sakk gateway init` 找不到 `litellm` 时会打印步骤），然后：
+
+```bash
+sakk init --cap 5        # 网关记账用的账本
+sakk gateway init        # 把网关文件和 start.sh 写到 ~/.sakk/gateway
+LITELLM_MASTER_KEY=<一个够长的随机密钥> DEEPSEEK_API_KEY=<你的密钥> ~/.sakk/gateway/start.sh
+```
+
+应用里改一行，并把 `LITELLM_MASTER_KEY` 当作 API 密钥发送：
+
+```bash
+OPENAI_BASE_URL=http://127.0.0.1:4000/v1
+```
+
+`sakk gateway init` 不加 `--force` 就拒绝覆盖已有文件，另有 `--dir`、`--ledger`、`--port` 和
+`--litellm` 选项。价格、拒绝和限制见 [integrations/litellm/README.md](../integrations/litellm/README.md)。
+应用拿真实的服务商密钥直接调服务商，就不经过网关；服务商密钥不要放进应用。
+
+## Sakk 停了，我应用的调用会怎样？
+
+如果网关从花费账本拿不到答复，默认放行这次调用，并明说：代理日志里一条 WARNING、响应上一个
+`x-sakk-status: unmetered`（不计量）响应头、`sakk ui` 里一条红色横幅、`sakk status` 里一行提示。
+这些调用不记进账本，也不受上限约束。用 `SAKK_ON_UNAVAILABLE=deny` 启动网关，就改为拒绝。
+有意的拒绝永远是拒绝：超出预算返回 402，没有价格的模型返回 403，请求本身有错返回 400。只有网关这样；编程智能体守卫和
+给你自己代码用的花费账本仍然失败即拒绝（fail-closed，见第一个问题）。
+
 ## 运行它要花多少钱？
 
 不花钱。Sakk 免费、开源，在本机 Node 上运行，没有运行时依赖、不要账号、没有要付费的服务，
