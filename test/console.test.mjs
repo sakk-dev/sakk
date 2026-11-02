@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { request } from 'node:http';
+import { createServer, request } from 'node:http';
 import {
   mkdtempSync,
   mkdirSync,
@@ -1275,6 +1275,232 @@ describe('sakk ui console: spend ledger', () => {
     }
   });
 
+  const OUTAGE = {
+    since: '2026-11-02T06:02:11.408Z',
+    allowed_calls: 3,
+    est_max_unrecorded_usd: 0.004213,
+    last_reason: 'sakk_reserve: TimeoutError: ',
+    last_at: '2026-11-02T06:09:58.120Z',
+  };
+  const gatewayFile = (ledgerPath, over = {}) =>
+    writeFileSync(
+      `${ledgerPath}.gateway.json`,
+      JSON.stringify({
+        version: 1,
+        updatedAt: '2026-11-02T06:10:00.000Z',
+        mode: 'allow',
+        outage: null,
+        last_outage: null,
+        ...over,
+      }),
+    );
+
+  test('with a gateway status file, the ledger view and sakk status --json still agree', async () => {
+    const w = world({ ledger: true });
+    spend(w.ledgerPath, 'g1', 0.5, 0.0123);
+    gatewayFile(w.ledgerPath, { outage: OUTAGE });
+    const env = { ...w.env };
+    delete env.SAKK_LEDGER_PATH;
+    delete env.SAKK_GATEWAY_STATUS;
+    const cli = spawnSync(
+      process.execPath,
+      [join(ROOT, 'bin', 'sakk.mjs'), 'status', '--json', '--ledger', w.ledgerPath],
+      { encoding: 'utf8', env, cwd: w.base },
+    );
+    assert.equal(cli.status, 0, cli.stderr);
+    const fromCli = JSON.parse(cli.stdout);
+    const c = await startConsole({ ...w, env });
+    try {
+      const { d } = await getLedger(c);
+      assert.deepEqual(d.status, fromCli);
+      assert.deepEqual(d.status.gateway.outage, OUTAGE);
+      // the outage calls are the gateway's report, not ledger entries
+      assert.equal(d.status.entries.SETTLED, 1);
+      assert.equal(d.entries_total, 1);
+    } finally {
+      await c.close();
+    }
+  });
+
+  test('/api/gateway answers behind the token and probes the gateway it names', async () => {
+    const w = world({ ledger: true });
+    const up = createServer((req, res) => res.writeHead(200).end('"I\'m alive!"'));
+    await new Promise((r) => up.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${up.address().port}`;
+    const env = { ...w.env, SAKK_GATEWAY_URL: url };
+    delete env.SAKK_GATEWAY_STATUS;
+    const c = await startConsole({ ...w, env });
+    try {
+      const anon = await hit(c.port, {
+        path: '/api/gateway',
+        headers: { Host: `127.0.0.1:${c.port}` },
+      });
+      assert.equal(anon.status, 403);
+      assert.doesNotMatch(anon.body, /outage|probe/);
+      const get = async () =>
+        JSON.parse(
+          (await hit(c.port, { path: '/api/gateway', headers: own(c.port, c.token) })).body,
+        );
+      // no status file: no gateway in use, nothing probed
+      assert.deepEqual(await get(), {
+        source: 'from the gateway status file',
+        status: null,
+        probe: null,
+      });
+      gatewayFile(w.ledgerPath, { outage: OUTAGE });
+      const d = await get();
+      assert.deepEqual(d.status.outage, OUTAGE);
+      assert.deepEqual(d.probe, { url, ok: true, status: 200 });
+    } finally {
+      await c.close();
+      await new Promise((r) => up.close(r));
+    }
+  });
+
+  /** The page's gatewayBanners, cut from the rendered page, on stub elements. */
+  function banners(gateway, when = (s) => `<${s}>`) {
+    const page = renderPage('n', true);
+    const a = page.indexOf('function gatewayBanners(');
+    assert.ok(a > 0, 'the page draws gateway banners');
+    const end = page.indexOf('\nfunction load(', a);
+    assert.ok(end > a, 'gatewayBanners ends before load()');
+    const src = page.slice(a, end);
+    const $ = (tag, attrs = {}, ...kids) => ({ tag, ...attrs, kids });
+    const items = [];
+    const main = { append: (x) => items.push(x) };
+    new Function('$', 'S', 'when', 'usd', 'plural', 'main', `${src}\ngatewayBanners(main);`)(
+      $,
+      { d: { gateway } },
+      when,
+      (v) => `$${v}`,
+      (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`,
+      main,
+    );
+    const text = (x) => [x.text ?? '', ...(x.kids ?? []).map(text)].join(' ');
+    return items.map((x) => ({ class: x.class, role: x.role, text: text(x) }));
+  }
+
+  test('during an outage every page carries a red banner; after it, a warning', () => {
+    const ok = { url: 'http://127.0.0.1:4000', ok: true, status: 200 };
+    // no status file: no banner
+    assert.deepEqual(banners({ status: null, probe: null }), []);
+    assert.deepEqual(banners(undefined), []);
+    // an outage: red, announced, and it says the calls are not in the ledger
+    const down = banners({ status: { outage: OUTAGE, last_outage: null }, probe: ok });
+    assert.equal(down.length, 1);
+    assert.equal(down[0].class, 'haltbar');
+    assert.equal(down[0].role, 'alert');
+    assert.match(down[0].text, /Sakk unreachable · calls going through unmetered/);
+    assert.match(down[0].text, /since <2026-11-02T06:02:11\.408Z>/);
+    assert.match(down[0].text, /3 calls let through, up to \$0\.004213/);
+    assert.match(down[0].text, /not recorded in the ledger and not capped/);
+    // the outage ended: a warning, not red, with the window to check
+    const ended = { ...OUTAGE, allowed_calls: 1, ended_at: '2026-11-02T06:20:00.000Z' };
+    const after = banners({ status: { outage: null, last_outage: ended }, probe: ok });
+    assert.equal(after.length, 1);
+    assert.equal(after[0].class, 'note warn');
+    assert.match(
+      after[0].text,
+      /Last Sakk outage: <2026-11-02T06:02:11\.408Z> to <2026-11-02T06:20:00\.000Z>/,
+    );
+    assert.match(after[0].text, /1 call through/);
+    // a blip inside one minute reads as one time, not "12:11 to 12:11"
+    const blip = banners(
+      { status: { outage: null, last_outage: ended }, probe: ok },
+      () => '12:11',
+    );
+    assert.match(blip[0].text, /Last Sakk outage: 12:11, under a minute\./);
+    assert.doesNotMatch(blip[0].text, /12:11 to 12:11/);
+    // the gateway itself does not answer: red, naming the address
+    const gone = banners({
+      status: { outage: null, last_outage: null },
+      probe: { url: 'http://127.0.0.1:4000', ok: false, error: 'ECONNREFUSED' },
+    });
+    assert.equal(gone.length, 1);
+    assert.equal(gone[0].class, 'haltbar');
+    assert.match(gone[0].text, /Gateway not answering at http:\/\/127\.0\.0\.1:4000/);
+    assert.match(gone[0].text, /ECONNREFUSED/);
+    // an unreadable status file is said, never shown as a healthy gateway
+    const broken = banners({
+      status: { error: 'GATEWAY_STATUS_INVALID', message: 'not JSON' },
+      probe: ok,
+    });
+    assert.equal(broken.length, 1);
+    assert.match(broken[0].text, /could not be read \(GATEWAY_STATUS_INVALID\)/);
+    // the banner is drawn by render(), which every page goes through
+    const page = renderPage('n', true);
+    const render = page.slice(page.indexOf('function render('));
+    assert.ok(render.indexOf('gatewayBanners(main);') > 0);
+    assert.match(page, /api\("gateway"\)/);
+  });
+
+  test('in deny mode the banner says calls are refused, never that they go through', () => {
+    const ok = { url: 'http://127.0.0.1:4000', ok: true, status: 200 };
+    const none = { ...OUTAGE, allowed_calls: 0, est_max_unrecorded_usd: 0 };
+    const deny = banners({ status: { mode: 'deny', outage: none, last_outage: null }, probe: ok });
+    assert.equal(deny.length, 1);
+    assert.equal(deny[0].class, 'haltbar');
+    assert.equal(deny[0].role, 'alert');
+    assert.match(deny[0].text, /Sakk unreachable · calls refused \(deny mode\)/);
+    assert.match(deny[0].text, /every call gets HTTP 503 until Sakk answers/);
+    assert.doesNotMatch(deny[0].text, /unmetered|let through/);
+    // switched to deny mid-outage: the calls let through before still show
+    const mixed = banners({
+      status: { mode: 'deny', outage: OUTAGE, last_outage: null },
+      probe: ok,
+    });
+    assert.match(mixed[0].text, /Earlier in this outage 3 calls went through unmetered/);
+    // an outage that let nothing through ends with nothing to check
+    const ended = { ...none, ended_at: '2026-11-02T06:20:00.000Z' };
+    const after = banners({
+      status: { mode: 'deny', outage: null, last_outage: ended },
+      probe: ok,
+    });
+    assert.match(after[0].text, /No calls went through unmetered\./);
+    assert.doesNotMatch(after[0].text, /provider's bill/);
+  });
+
+  /** The header state render() picks, cut from the rendered page. */
+  function headerState(gateway, D = {}) {
+    const page = renderPage('n', true);
+    const a = page.indexOf('\nconst h=D.halt;', page.indexOf('function render('));
+    const end = page.indexOf('\nlet stop;', a);
+    assert.ok(a > 0 && end > a, 'render() picks the header state');
+    return new Function('D', 'S', 'pill', `${page.slice(a, end)}\nreturn state;`)(
+      D,
+      { d: { gateway } },
+      (text, cls) => ({ text, cls }),
+    );
+  }
+
+  test('the header never says "Running normally" while the gateway reports trouble', () => {
+    const ok = { url: 'http://127.0.0.1:4000', ok: true, status: 200 };
+    const healthy = { status: { mode: 'allow', outage: null, last_outage: null }, probe: ok };
+    assert.deepEqual(headerState(healthy), { text: 'Running normally', cls: 'p-ok' });
+    assert.deepEqual(headerState(undefined), { text: 'Running normally', cls: 'p-ok' });
+    assert.deepEqual(headerState({ error: 'FETCH_FAILED' }), {
+      text: 'Running normally',
+      cls: 'p-ok',
+    });
+    const down = { status: { mode: 'allow', outage: OUTAGE, last_outage: null }, probe: ok };
+    assert.deepEqual(headerState(down), {
+      text: 'Sakk unreachable · calls unmetered',
+      cls: 'p-bad',
+    });
+    const deny = { status: { mode: 'deny', outage: OUTAGE, last_outage: null }, probe: ok };
+    assert.deepEqual(headerState(deny), { text: 'Sakk unreachable · calls refused', cls: 'p-bad' });
+    const gone = { ...healthy, probe: { url: ok.url, ok: false, error: 'ECONNREFUSED' } };
+    assert.deepEqual(headerState(gone), { text: 'Gateway not answering', cls: 'p-bad' });
+    // a past outage is a note on the page, not a header alarm
+    const ended = { ...OUTAGE, ended_at: '2026-11-02T06:20:00.000Z' };
+    const after = { status: { mode: 'allow', outage: null, last_outage: ended }, probe: ok };
+    assert.equal(headerState(after).cls, 'p-ok');
+    // a stop still outranks everything; reconciling still shows when the gateway is fine
+    assert.equal(headerState(down, { halt: { scope: 'global' } }).text, 'Stopped (global)');
+    const rec = { st: { reconciliation_required: true } };
+    assert.equal(headerState(healthy, rec).cls, 'p-warn');
+  });
+
   test('reading the ledger view leaves the ledger and its folder untouched', async () => {
     const w = world({ ledger: true });
     spend(w.ledgerPath, 'r1', 0.5, 0.1);
@@ -1656,5 +1882,107 @@ describe('sakk ui console: UAT 2026-11-01 fixes', () => {
     );
     L.S.d = {};
     assert.deepEqual(L.hookState('claude-code'), { on: false, detail: 'Not checked', where: '' });
+  });
+});
+
+describe('sakk ui console: 7-day chart axis', () => {
+  function axisTicks() {
+    const page = renderPage('n', true);
+    const a = page.indexOf('function axisTicks(');
+    assert.ok(a > 0, 'the page builds the chart axis with axisTicks');
+    return new Function(`${page.slice(a, page.indexOf('\n', a))}\nreturn axisTicks;`)();
+  }
+
+  test('the axis labels are distinct, keep their $, cover the tallest day and fit the margin (F-236)', () => {
+    const page = renderPage('n', true);
+    assert.ok(page.includes('pl=ax.pad'), 'the chart margin comes from the labels');
+    assert.ok(page.includes('t.textContent=ax.labels[i]'), 'the chart prints the axis labels');
+    const ticks = axisTicks();
+    // from a fraction of a cent (the mock calls in the 2026-11-02 acceptance) to thousands of dollars
+    for (const max of [0.00000012, 0.00005, 0.0003, 0.0123, 0.43, 7.5, 99.99, 1234]) {
+      const { top, labels, pad } = ticks(max);
+      assert.equal(new Set(labels).size, 5, `${max}: ${labels.join(' ')} has two labels alike`);
+      assert.ok(top >= max, `${max}: the tallest day fits under ${top}`);
+      labels.forEach((s, i) => {
+        assert.match(s, /^\$\d+\.\d{2,}$/, `${max}: ${s} keeps its $ and decimals`);
+        assert.ok(
+          Math.abs(Number(s.slice(1)) - (top * i) / 4) < 1e-9,
+          `${max}: ${s} is drawn at its value`,
+        );
+      });
+      const widest = Math.max(...labels.map((s) => s.length));
+      // right-aligned at pad - 4; a 10px monospace character is about 6px wide
+      assert.ok(pad - 4 >= widest * 6.2, `${max}: ${widest} characters fit in ${pad - 4}px`);
+    }
+  });
+});
+
+describe('sakk ui console: money amounts', () => {
+  function usd() {
+    const page = renderPage('n', true);
+    const a = page.indexOf('function usd(');
+    assert.ok(a > 0, 'the page formats money with usd');
+    return new Function(`${page.slice(a, page.indexOf('\n', a))}\nreturn usd;`)();
+  }
+  test('a spend above zero never prints as $0.0000 and keeps the old formats elsewhere (F-237)', () => {
+    const fmt = usd();
+    for (const v of [0.0000494, 0.00005, 0.000025, 0.00000012, -0.00003, 1e-10]) {
+      const s = fmt(v);
+      assert.match(s, /^\$-?\d+\.\d+$/, `${v} prints as a plain amount: ${s}`);
+      assert.notEqual(Number(s.replace('$', '')), 0, `${v} does not print as zero: ${s}`);
+      const rel = Math.abs(Number(s.replace('$', '')) - v) / Math.abs(v);
+      assert.ok(rel < 0.06, `${v} prints within 6%: ${s}`);
+    }
+    assert.equal(fmt(0), '$0.00');
+    assert.equal(fmt(0.0007), '$0.0007');
+    assert.equal(fmt(0.43), '$0.4300');
+    assert.equal(fmt(7.5), '$7.50');
+    assert.equal(fmt(1234), '$1234.00');
+    assert.equal(fmt(null), '—');
+    assert.equal(fmt(Number.NaN), '—');
+  });
+});
+
+describe('sakk ui console: spend-of-cap figures', () => {
+  test('the cap sits in its own smaller unbreakable span on both cards (F-238)', () => {
+    const page = renderPage('n', true);
+    const a = page.indexOf('function kpiOf(');
+    assert.ok(a > 0, 'the page builds spend-of-cap figures with kpiOf');
+    // a stand-in for the page's $() helper: records tag, attributes and children
+    const el = (t, at = {}, ...k) => ({ t, at, k });
+    const kpiOf = new Function('$', `${page.slice(a, page.indexOf('\n', a))}\nreturn kpiOf;`)(el);
+    const v = kpiOf('$0.000050', '$1.00');
+    assert.equal(v.t, 'div');
+    assert.equal(v.at.class, 'v');
+    assert.equal(v.k[0], '$0.000050', 'the amount stays the large figure');
+    const of = v.k[v.k.length - 1];
+    assert.equal(of.t, 'span');
+    assert.equal(of.at.class, 'of');
+    assert.equal(of.at.text, '/ $1.00', 'the cap keeps its slash');
+    assert.equal(kpiOf('—', 'no cap').k[2].at.text, '/ no cap');
+    assert.ok(page.includes('kpiOf(counted?usd(ov.spend_usd)'), 'the Today card uses kpiOf');
+    assert.ok(
+      page.includes('kpiOf(usd(s.committed_usd),usd(s.cap_usd))'),
+      'the ledger card uses kpiOf',
+    );
+    assert.ok(!page.includes('" / "+usd(s.cap_usd)'), 'no card joins amount and cap in one string');
+    const rule = page.match(/\.kpi \.v \.of\{([^}]*)\}/);
+    assert.ok(rule, 'the cap has its own style');
+    assert.match(rule[1], /white-space:nowrap/, 'the cap never breaks inside');
+    assert.match(rule[1], /font-size:\.\d+em/, 'the cap is smaller than the amount');
+    assert.match(
+      page,
+      /\.kpi \.v\{[^}]*overflow-wrap:anywhere/,
+      'a very long amount wraps inside its card',
+    );
+    // on a phone a card's content is about 132px; a 9-character amount like $0.000050 in a
+    // monospace face at 0.6em per character must fit whole, so the figure scales with its card
+    assert.match(page, /\.kpi\{container-type:inline-size\}/, 'each KPI card is a size container');
+    const size = page.match(/\.kpi \.v\{font-size:clamp\((\d+)px,(\d+)cqi,(\d+)px\)/);
+    assert.ok(size, 'the figure size follows the card width');
+    const [, lo, cqi, hi] = size.map(Number);
+    assert.equal(hi, 26, 'a wide card keeps the design size');
+    const at = (w) => Math.min(hi, Math.max(lo, (w * cqi) / 100));
+    assert.ok(9 * 0.6 * at(132) <= 132, `$0.000050 fits a 132px phone card at ${at(132)}px`);
   });
 });

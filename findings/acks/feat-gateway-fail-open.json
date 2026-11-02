@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "branch": "feat/gateway-fail-open",
+  "answers": {
+    "C-01.1": {
+      "answer": "Absent SAKK_ON_UNAVAILABLE means allow (the maintainer's decision) and is declared in the README and the startup log; any other value, the empty string included, refuses to start like a missing SAKK_BIN. An absent status file means 'no outage ever recorded' and the console and `sakk status` show nothing for it rather than a green 'gateway healthy'; an absent reply from Sakk (dead, hung, garbage) is the one absence that lets a call through, and it is logged, headed and counted, never silent.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_an_unknown_outage_mode_refuses_to_start"
+    },
+    "C-01.2": {
+      "answer": "Removing the allow branch turns the down-Sakk call back into a 503 and the outage test fails on its status code and provider hit count; removing the header hook fails it on the missing x-sakk-status header; removing the status write fails it on allowed_calls and the dollar estimate. Removing the mode check lets a typo'd mode start, which the startup test catches.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o2_sakk_down_lets_the_call_through_loudly"
+    },
+    "C-02.1": {
+      "answer": "The allow path is reached only from the single `except SakkUnavailable` branch, and SakkClient.call raises that one type for every way the process can fail to answer (spawn error, crash, broken pipe, timeout, EOF, malformed frame), so no hand list of failure kinds exists. Every structured Sakk answer that arrives within SAKK_TIMEOUT_S arrives as SakkRefused and keeps its 402, so no list of refusal codes decides allow either. The one timing-dependent case is a ledger file lock another process holds: Sakk waits about 2 s for it before answering LEDGER_LOCK_UNAVAILABLE, so with the default 2 s timeout the gateway usually stops waiting first, and a lock held past the timeout is treated as no answer (allowed, recorded and shown red, or 503 in deny mode), the way Envoy's ext_authz treats a slow authorization service. The README and the spec's input table say so; no test holds the lock, so this case is argued, not observed.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o5_a_hung_sakk_times_out_and_the_call_goes_through"
+    },
+    "C-02.2": {
+      "answer": "The same 'Sakk cannot answer' rule applies at reserve and at settle. Reserve is where allow happens; settle already only logs on failure and the call has already run, so it needs no mode. Allowed calls carry no call id, so success, failure and late-failure hooks all return before settling. The coding-agent hook's cap is out of scope and stays fail-closed.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o2_sakk_down_lets_the_call_through_loudly"
+    },
+    "C-03.1": {
+      "answer": "The outage tests break Sakk through a wrapper that exits at once (down) or sleeps past the timeout (hang), and assert the reason recorded in the status file names that cause; the budget test uses a healthy Sakk with a tiny cap so a 402 there can only come from a deliberate refusal, not an outage. Each assertion needs the new branch (the old code answers 503 with no header and writes no status file); the Python suite has not been run on this branch yet, so red-without-the-change is argued, not observed.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o7_budget_exceeded_is_still_402_in_allow_mode"
+    },
+    "C-03.2": {
+      "answer": "The respawn test kills the real long-lived mcp child by the PID the wrapper wrote, waits up to 5 s for that PID to be gone, then makes a call and asserts the ledger recorded it and a new PID was written, so it observes a real dead process, not a reset flag. It does not decide which branch ran: if the gateway has already reaped the child the call starts a fresh one, otherwise the write fails and the resend branch runs; either way the call must be metered. The resend rule itself is tested with a stand-in process: a write that fails on a process that was running goes once to a fresh one with the same callId (test_r1); a request that was written and got no reply is an outage with no second spawn, because a resend would be refused as a duplicate call id if the first reserve landed (test_r2); a fresh process failing is an outage after one spawn (test_r3). The deny test asserts the mock provider's hit count stayed zero, so it sees the provider was not reached. None of these has been run on this branch yet.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_r2_a_reply_lost_after_the_request_was_written_is_an_outage_not_a_second_reserve"
+    },
+    "C-03.3": {
+      "answer": "The status checks read the file the gateway actually wrote after real calls through a real LiteLLM proxy and compare allowed_calls and est_max_unrecorded_usd with the calls made and their worst-case prices, so the record cannot pass unless the calls happened. The recovery test requires a metered call in the ledger before last_outage may appear.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o6_recovery_moves_the_outage_to_last_outage"
+    },
+    "C-04.1": {
+      "answer": "A hung Sakk costs each call at most SAKK_TIMEOUT_S (default now 2 s), enforced by asyncio.wait_for and asserted by a call that completes against a wrapper that sleeps 30 s, not a stopwatch. The status file reader refuses files over 64 KiB and the console probe has a 500 ms socket timeout and a 5 s cache, so one page load makes at most one probe. Declared limit: queued calls wait one at a time on the client lock.",
+      "guard": "test/gateway-status.test.mjs::a broken, oversized or linked status file is a typed error, not a healthy gateway"
+    },
+    "C-05.1": {
+      "answer": "Each README sentence I add is backed by a test: allow is the default (outage test with no mode set), deny answers 503 (deny test), the header (streamed and plain tests), the file shape and 0600 mode (unit test), the banner (console test), the status --json key (CLI test), and the limit that outage calls are not in the ledger (outage test asserts the ledger total is unchanged).",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u2_status_file_is_atomic_and_private"
+    },
+    "C-05.2": {
+      "answer": "The dollar figure is labelled 'up to' because it is the sum of worst-case reserves, not a spend, and the README says an operator should reconcile it against the provider's bill. `sakk status` keeps its exit codes unchanged: the outage is reported in a line and the --json gateway key, so scripts that branch on exit 0/3/4 keep their meaning; this is listed for the maintainer as a choice.",
+      "guard": "test/gateway-status.test.mjs::sakk status --json carries the gateway key, null without a status file"
+    },
+    "C-06.1": {
+      "answer": "The banner's facts come from the status file the gateway writes about itself, plus a live probe of the gateway URL; the page says 'gateway reports' and never presents outage numbers as ledger records. The status --json key and the console endpoint return the same object from one shared reader, so neither reader sees a stronger source than the other.",
+      "guard": "test/console.test.mjs::with a gateway status file, the ledger view and sakk status --json still agree"
+    },
+    "C-07.1": {
+      "answer": "Untrusted inputs: the request body (a client could send metadata sakk_unmetered to skip settling, so the hook pops it before use), the status file (hand-editable: size-capped, no symlinks, type-checked, and its text escaped on the page and in the terminal), SAKK_GATEWAY_URL (only http or https accepted), and Sakk's own error text (truncated before it is stored).",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u4_a_client_cannot_mark_its_own_call_unmetered"
+    },
+    "C-07.2": {
+      "answer": "Nothing here gates a person; the outage clears itself when Sakk answers a reserve again, with a reservation or with a refusal (test_u6: an outage followed only by a 402 still ends). The client making calls cannot clear or hide an outage: it cannot write the status file, cannot set the header, and cannot make a call unmetered except by Sakk being genuinely unreachable from the gateway.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o6_recovery_moves_the_outage_to_last_outage"
+    },
+    "C-08.1": {
+      "answer": "The status file has one name derived one way: SAKK_GATEWAY_STATUS if set, else the ledger's folder resolved to its real path, the ledger's file name, then .gateway.json (the folder half of canonicalLedgerPath, which ledger.mjs does not export), computed by status_path_for in Python and gatewayStatusPathFor in Node. test_u7 has the Python side write the file at the path it names and runs `sakk status --json` with four ledger shapes (absolute, relative, through a linked folder, relative through it), asserting Node reads that same file; the Node test checks the same four shapes. Neither has been run on this branch yet. Known gap: for a ledger folder that does not exist, Python resolves the part that exists and Node falls back to the absolute path, but no ledger, and so no gateway, can be there. The reader opens the file with O_NOFOLLOW, so a symlink planted at that name is an error, not a redirect.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u7_the_status_path_is_the_one_sakk_status_reads"
+    },
+    "C-09.1": {
+      "answer": "The gateway assumes one LiteLLM worker process: the status file lock is a threading.Lock inside one process, and the README says so. Tests run the real proxy as a subprocess with a temp HOME and a real `node` on PATH; the outage cases replace SAKK_NODE with a wrapper script so the state 'Sakk died mid-run' is reached for real, not simulated.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o1_a_dead_sakk_process_is_respawned_and_the_next_call_is_metered"
+    },
+    "C-09.2": {
+      "answer": "It runs inside the LiteLLM proxy loading the callback from config, which is exactly how the tests start it (litellm --config with callbacks sakk_gateway.handler), and the console runs from `sakk console`, which the console tests start on a temp home and read through HTTP with the real token check.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o3_a_streamed_call_let_through_carries_the_header"
+    },
+    "C-10.1": {
+      "answer": "Loudness is enforced in code, not rule text: the allow branch writes the log line, sets the marker and records the status before returning, and the outage test fails if any of the three is missing. Refusal of an unknown mode is a startup error raised at import time, so the proxy cannot serve with it.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o2_sakk_down_lets_the_call_through_loudly"
+    },
+    "C-10.2": {
+      "answer": "Declared route around it, unchanged: a client with a real provider key can bypass the gateway entirely. Within the gateway every chat route goes through the same pre-call hook; deny mode remains for operators who want no unmetered call at all, and the deny test shows it reaches the provider zero times.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_d1_deny_mode_answers_503_and_the_provider_sees_nothing"
+    },
+    "C-11.1": {
+      "answer": "One writer: the gateway process writes the status file, and the file confirms only what the gateway saw (calls it let through and their worst-case prices); it never writes the ledger for outage calls, so the ledger's totals keep meaning 'what Sakk recorded'. Readers are the console and `sakk status`, both read-only.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o2_sakk_down_lets_the_call_through_loudly"
+    },
+    "C-15.1": {
+      "answer": "The outage tests run the real path: the real LiteLLM 1.106.2 proxy, the real sakk mcp child, the real mock provider over HTTP, with Sakk made unreachable by a real process exit or hang, and they read the real status file and the real proxy log. Only the console banner test reads the page logic as text, as every console test does today.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_o5_a_hung_sakk_times_out_and_the_call_goes_through"
+    }
+  }
+}

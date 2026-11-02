@@ -7787,6 +7787,145 @@
         "F-122": "F-122 is a secret-scan gap in src/secret-scan.mjs; F-235 is a repository link in src/console.mjs and the test that missed it. No secret scanning is involved.",
         "F-185": "F-185 is a command classification gap in src/classify.mjs; F-235 is a repository link and the file list that missed it. No classification is involved."
       }
+    },
+    {
+      "id": "F-236",
+      "title": "The console's 7-day chart cut the $0 off its axis labels and, under a cent, printed the same label on several lines",
+      "date": "2026-11-02",
+      "class": "C-09",
+      "introduced_in": "f7ed38b",
+      "found_by": "T0",
+      "areas": ["src/console.mjs", "test/console.test.mjs"],
+      "symptom": "The Overview chart's y axis read .0001, .0001, .0001, .0000, $0.00 from top to bottom for a day of two calls costing $0.000025 each: the $0 prefix was cut off every label but the bottom one and three lines carried the same value. Any amount under $1 prints as $0.xxxx (seven characters), so the prefix was cut for ordinary spend too.",
+      "evidence": "Found in the 2026-11-02 UI acceptance screenshots (S4-recovered-desktop.png, mock provider on a fake home): the chart showed the labels above; the left margin was a fixed 34 viewBox units with labels right-aligned at 30, and a seven-character label at 10px monospace is about 42 units wide.",
+      "direct_cause": "chartCard drew tick labels with usd(top*i/4), where top was max*1.15: usd rounds anything under $1 to four decimals, so fractions of a small top collapse to the same text, and the margin pl=34 was fixed for labels shorter than usd prints.",
+      "why": [
+        "The v10 console rebuild (F-223) sized the chart's left margin by eye for short labels.",
+        "The tick values were fractions of max*1.15, never rounded to the precision the label prints, so nothing kept two labels apart.",
+        "No test rendered the chart or read its labels; the console tests check the data and banner text, not the axis.",
+        "Every UAT before this one ran on real spend whose screenshots nobody read at the axis."
+      ],
+      "root_cause": "The chart assumed its labels were short and its values well apart, and that assumption was never tried against the amounts usd() really prints (four decimals under $1) or a day under a cent.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-01", "ES-07"],
+      "mechanism_gap": "No check read the chart's axis: the label text and the room it is given were never compared, and no test covered a day under a cent.",
+      "mechanism_upgrade": "test/console.test.mjs::the axis labels are distinct, keep their $, cover the tallest day and fit the margin (F-236)",
+      "instance_fix": "this commit: a new page function axisTicks(max) picks a round step (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 or 10 times a power of ten) so four steps cover the tallest day, prints as many decimals as the step needs (at least 2, so no two labels read alike), keeps the old $0.0001 floor for the scale, and returns a left margin of 6.4 units a character plus 8; chartCard uses its top, labels and margin.",
+      "guard": "test/console.test.mjs::the axis labels are distinct, keep their $, cover the tallest day and fit the margin (F-236)",
+      "sweep": "Every chart and fixed-width number column in src/console.mjs was checked with grep for svgEl, toFixed and usd(: the 7-day chart is the only SVG with text labels; table cells wrap or scroll in their own containers, and the 2026-11-02 screenshots at 1440 and 390 wide show no other cut text.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-231": "F-231 is the Today card showing $0.00 for a day it never counted, a missing-data state; F-236 is the chart's axis labels for data that is there, cut and repeated by the margin and rounding.",
+        "F-223": "F-223 is the v10 console rebuild itself; F-236 is one defect it shipped in the chart axis."
+      }
+    },
+    {
+      "id": "F-237",
+      "title": "The console printed spend under $0.00005 as $0.0000, so a ledger with settled calls read as free",
+      "date": "2026-11-02",
+      "class": "C-09",
+      "introduced_in": "f7ed38b",
+      "found_by": "T0",
+      "areas": ["src/console.mjs", "test/console.test.mjs"],
+      "symptom": "After two settled gateway calls the Gateway ledger card read 'settled $0.0000 · 2 calls', the money panel read '$0.0000 through the gateway' and the by-agent table read $0.0000, while the 7-day chart on the same screen drew today at about $0.00005.",
+      "evidence": "Found in the 2026-11-02 UI acceptance screenshot S4-recovered-desktop.png (mock provider on a fake home), taken right after the F-236 axis fix made the chart's amount readable.",
+      "direct_cause": "usd() printed every nonzero amount under $1 with toFixed(4), and toFixed(4) of anything under $0.00005 is 0.0000.",
+      "why": [
+        "usd() was written so amounts under $1 show four decimals, which covers a typical call of a tenth of a cent or more.",
+        "A call to a cheap model with a short prompt costs a few millionths of a dollar, below what four decimals can show.",
+        "No test fed usd() an amount under $0.0001; the console tests check where usd is called, not what it prints.",
+        "Until F-236 the chart axis could not show such amounts either, so the two displays agreed on a wrong zero and nothing looked off."
+      ],
+      "root_cause": "The money formatter assumed every nonzero amount is at least a hundredth of a cent, and that was never tried against the per-call costs of cheap models the gateway really settles.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-02", "ES-07"],
+      "mechanism_gap": "No test checked what usd() prints for a nonzero amount under $0.0001, so a real spend rounding to zero passed.",
+      "mechanism_upgrade": "test/console.test.mjs::a spend above zero never prints as $0.0000 and keeps the old formats elsewhere (F-237)",
+      "instance_fix": "this commit: usd() keeps two decimals for $0 and amounts of $1 or more and four for $0.0001 up to $1, and prints amounts under $0.0001 with two significant digits (up to 12 decimals), so $0.0000494 reads $0.000049.",
+      "guard": "test/console.test.mjs::a spend above zero never prints as $0.0000 and keeps the old formats elsewhere (F-237)",
+      "sweep": "Every money formatter in src and bin was checked with grep for toFixed: only src/console.mjs usd() rounds to four decimals; bin/sakk.mjs prints six decimals and src/spend.mjs prints the cap message in whole cents of an amount at or above the cap, which is never under a cent unless the cap is.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-236": "F-236 is the chart axis labels, cut and repeated by a fixed margin and rounded ticks; F-237 is the shared usd() formatter rounding a real amount to zero on the cards and tables.",
+        "F-231": "F-231 is the Today card showing $0.00 for a day that was never counted; F-237 is an amount that was counted and settled but printed as zero."
+      }
+    },
+    {
+      "id": "F-238",
+      "title": "The console's spend-of-cap cards broke the figure across lines once amounts got long",
+      "date": "2026-11-02",
+      "class": "C-09",
+      "introduced_in": "f7ed38b",
+      "found_by": "T0",
+      "areas": ["src/console.mjs", "test/console.test.mjs"],
+      "symptom": "On a 1440px desktop the Gateway ledger card read '$0.000050 /' on one line and '$1.00' on the next; on a 390px phone the Today card read '—', '/ no' and 'cap' on three lines.",
+      "evidence": "Found in the 2026-11-02 UI acceptance screenshots S4-recovered-desktop.png and S4-recovered-mobile.png (mock provider on a fake home), the first run after F-237 made sub-cent amounts print in full.",
+      "direct_cause": "Both cards built one text node of amount + ' / ' + cap in the 24-26px figure style, so the browser was free to wrap at any space once the string outgrew the card.",
+      "why": [
+        "The v10 design drew the figure as one string because its sample amounts were short, like '$4.20 / $10.00'.",
+        "F-237 made amounts under $0.0001 print with two significant digits, which adds up to four characters.",
+        "On a phone the KPI grid drops to two columns about 170px wide with about 132px of content, narrower than '$0.000050' at a fixed 26px.",
+        "No test or screenshot check looked at how a long figure lays out; the console tests check the card class, not the figure's markup."
+      ],
+      "root_cause": "The spend-of-cap figure was built for the short sample amounts of the design, with no markup that keeps the cap whole or shrinks it, and was never tried with the long amounts real cheap calls produce or at phone width.",
+      "dt": ["DT-LOGIC"],
+      "rc": ["RC-01"],
+      "es": ["ES-02", "ES-07"],
+      "mechanism_gap": "No test fixed the markup of the spend-of-cap figure, so a single breakable string passed on both cards.",
+      "mechanism_upgrade": "test/console.test.mjs::the cap sits in its own smaller unbreakable span on both cards (F-238)",
+      "instance_fix": "this commit: a kpiOf() helper builds both figures as the amount followed by a span.of holding '/ cap' at .55em in the muted color with white-space:nowrap, each .kpi card becomes a size container so the figure is clamp(18px,16cqi,26px) and a phone-width card keeps a 9-character amount whole, and .kpi .v gains overflow-wrap:anywhere so an amount longer than that wraps inside its card instead of widening the page.",
+      "guard": "test/console.test.mjs::the cap sits in its own smaller unbreakable span on both cards (F-238)",
+      "sweep": "Every '.v' figure in src/console.mjs was checked with grep for ' / ': only the Today and Gateway ledger cards join two amounts; the other cards show one number or a count.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-237": "F-237 is the usd() formatter printing a real amount as $0.0000; F-238 is the card layout breaking a correctly printed amount and cap across lines.",
+        "F-236": "F-236 is the chart axis labels cut by a fixed margin; F-238 is the KPI card figure wrapping in a narrow column."
+      }
+    },
+    {
+      "id": "F-239",
+      "title": "The gateway outage tests timed out the first spawn on macOS, because a freshly written stand-in script runs slowly the first time",
+      "date": "2026-11-02",
+      "class": "C-09",
+      "introduced_in": "worktree",
+      "found_by": "T0",
+      "areas": ["integrations/litellm/test_sakk_gateway.py"],
+      "symptom": "Run the way CI runs it (python -m unittest integrations/litellm/test_sakk_gateway.py), OutageAllowTest o1 and o2 errored on this Mac with FileNotFoundError for sakk.pid, four runs out of four; one run in the module form passed.",
+      "evidence": "The kept temp folder's gateway.log shows mode allow and the very first call let through as an outage with reason 'sakk_reserve: TimeoutError: ' and allowed_calls 1. A probe that writes a new shell script and runs it twice measured 0.32-0.98 s for the first run and about 0.025 s for the second.",
+      "direct_cause": "OutageAllowTest sets SAKK_TIMEOUT_S=1 and points SAKK_NODE at flaky-node.sh, which the test writes a moment before the gateway spawns it. The first spawn of that new file took longer than 1 s, so the gateway killed it before the script wrote its pid and let the call through unmetered; o1 then found no pid file to kill.",
+      "why": [
+        "macOS checks a newly written executable on its first run, which costs a fraction of a second to about one second; later runs of the same file are fast.",
+        "The tests use a 1 s timeout so that the hang case finishes quickly, and the gateway's timeout covers the spawn as well as the reply.",
+        "The stand-in script is new in every test class, so every class paid that first-run cost on the gateway's first call.",
+        "CI runs these tests on Linux, which has no such first-run check, so the tests were green there and the assumption was never tried on a Mac."
+      ],
+      "root_cause": "The tests assumed a freshly written script starts as fast as one that has run before, and that assumption was only ever tried on Linux.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "mechanism_gap": "The RC-01 detectors check inputs and stated behaviour; nothing ran the gateway tests on a host whose first exec of a new file is slow.",
+      "mechanism_upgrade": "test/gateway-stand-in-warmup.test.mjs::every stand-in script the gateway tests write runs once before it is timed (F-239)",
+      "instance_fix": "this commit: flaky_node() runs the new script once (it execs node -e 0) and removes the pid file that run wrote, so the gateway's first spawn is a warm one; o1 now checks that the first call carries no x-sakk-status header (integrations/litellm/test_sakk_gateway.py::the first call is metered (F-239), run by the CI gateway job), so a cold first spawn fails with that message instead of a missing pid file. The guard is a Node check of the test file's shape, because the proof job runs Node tests only and Linux has no slow first run to reproduce: every helper there that makes a file executable must run it before returning it.",
+      "guard": "test/gateway-stand-in-warmup.test.mjs::every stand-in script the gateway tests write runs once before it is timed (F-239)",
+      "sweep": "Every executable the gateway tests write was checked: flaky-node.sh is the only one, used by OutageAllowTest and OutageDenyTest, and both get it from flaky_node(). The resend tests r1-r3 use an in-process FakeSakk, and the Node tests that chmod a script do not run it under a sub-second timeout. The same first-call cost can reach a real gateway on a slow host; it goes into the reliability audit next to P0-2 with the docs change that follows this one.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "corrections": [
+        {
+          "field": "mechanism_upgrade",
+          "from": "integrations/litellm/test_sakk_gateway.py::the first call is metered (F-239)",
+          "why": "The proof job runs guards with node --test only, so a Python test can never pass there; the upgrade is now the Node check that every stand-in script is run once before it is timed, and o1 stays as the behaviour check in the CI gateway job."
+        }
+      ],
+      "answer_failed": {
+        "qid": "C-09.1",
+        "why": "The answer said the outage tests reach 'Sakk died mid-run' for real by running a wrapper script, but it treated that script as starting instantly; its guard o1 had never run where a new script's first exec is slow, so the wrapper itself broke the state it was meant to reach."
+      }
     }
   ]
 }

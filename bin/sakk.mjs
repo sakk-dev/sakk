@@ -49,6 +49,7 @@ import {
 import { doctor, install, uninstall } from '../src/guard-install.mjs';
 import { readSegment, reindex, segmentsOnDisk, verifyChain } from '../src/archive.mjs';
 import { startConsole } from '../src/console.mjs';
+import { gatewayStatus } from '../src/gateway-status.mjs';
 import { ConsoleLoginError, askConsoleLogin, clearConsoleLogin } from '../src/console-login.mjs';
 
 /**
@@ -339,7 +340,13 @@ if (cmd === 'init') {
     fail(e);
   }
   // one function with the console's ledger page, so the two cannot drift
-  const out = ledgerStatus({ ledgerPath: p, doc });
+  // the gateway key is the gateway's own report (null without a status
+  // file); it does not change the exit code
+  const out = {
+    ...ledgerStatus({ ledgerPath: p, doc }),
+    gateway: gatewayStatus({ ledgerPath: p }),
+  };
+  const gw = out.gateway;
   const t = totalsOf(doc);
   const byStatus = out.entries;
   const reco = out.reconciliation_required;
@@ -358,6 +365,22 @@ if (cmd === 'init') {
       `entries     ${doc.entries.length} (reserved ${byStatus.RESERVED}, settled ${byStatus.SETTLED}, reconciliation ${byStatus.RECONCILIATION_REQUIRED})`,
     );
     console.log(`updated     ${doc.updatedAt}`);
+    // the status file is hand-editable: its text is escaped like any name
+    if (gw?.error)
+      console.log(`gateway     ⚠ status file unreadable (${gw.error}): ${display(gw.message)}`);
+    else if (gw?.outage && gw.mode === 'deny')
+      console.log(
+        `gateway     ⚠ SAKK UNREACHABLE since ${display(gw.outage.since)}: deny mode, calls refused with HTTP 503; ${gw.outage.allowed_calls} call(s) let through unmetered earlier, up to ${usd(gw.outage.est_max_unrecorded_usd)} not in this ledger (${display(gw.outage.last_reason)})`,
+      );
+    else if (gw?.outage)
+      console.log(
+        `gateway     ⚠ SAKK UNREACHABLE since ${display(gw.outage.since)}: ${gw.outage.allowed_calls} call(s) let through unmetered, up to ${usd(gw.outage.est_max_unrecorded_usd)} not in this ledger (${display(gw.outage.last_reason)})`,
+      );
+    else if (gw?.last_outage)
+      console.log(
+        `gateway     no outage now; last one ${display(gw.last_outage.since)} to ${display(gw.last_outage.ended_at)}: ${gw.last_outage.allowed_calls} call(s) unmetered, up to ${usd(gw.last_outage.est_max_unrecorded_usd)} not in this ledger`,
+      );
+    else if (gw) console.log(`gateway     no outage recorded (mode ${display(String(gw.mode))})`);
     // names and reasons are operator input: escaped like file names, so a
     // hostile `--by` cannot write terminal control sequences (review nit)
     if (out.halted)

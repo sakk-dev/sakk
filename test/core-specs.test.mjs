@@ -40,6 +40,8 @@ const NOT_CORE = {
     'generated from config/gitleaks.toml by scripts/gitleaks-port.mjs; a data table, not hand code — the determinism test re-ports and compares byte-for-byte, and the both-sided test measures it',
   'src/append.mjs':
     'append-only file writes that refuse to follow a symlink; driven by the ledger and policy tests',
+  'src/gateway-status.mjs':
+    'read-only display of the LiteLLM gateway outage file for sakk status and the console; never reads or writes the ledger and makes no allow/deny decision. Threat note: specs/gateway/outage-allow.md; driven by test/gateway-status.test.mjs',
   'eval/lib/trace.mjs': 'trace file I/O; every field it writes is re-checked by the scorer',
   'eval/lib/validate.mjs': 'JSON-schema helper; schema failures surface through --validate tests',
   'eval/lib/exec-env.mjs': 'child-process environment; covered by the runner tests',
