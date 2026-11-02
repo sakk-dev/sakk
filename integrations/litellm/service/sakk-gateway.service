@@ -1,0 +1,23 @@
+# Sakk gateway as a systemd user service (Linux). A template: replace every
+# placeholder (a capital name between double underscores) with an absolute
+# path as README.md in this folder shows and
+# copy it to ~/.config/systemd/user/. The master key and provider keys go in
+# the EnvironmentFile (chmod 600), not in this file.
+[Unit]
+Description=Sakk spend gate in front of the LiteLLM proxy (127.0.0.1:4000)
+Documentation=https://github.com/sakk-dev/sakk/tree/main/integrations/litellm/service
+
+[Service]
+Type=simple
+Environment=SAKK_NODE=__NODE__
+Environment=SAKK_BIN=__SAKK_BIN__
+Environment=SAKK_LEDGER=__SAKK_LEDGER__
+Environment=SAKK_GATEWAY_CONFIG=__SAKK_GATEWAY_CONFIG__
+Environment=LITELLM_LOCAL_MODEL_COST_MAP=True
+EnvironmentFile=%h/.config/sakk-gateway/secrets.env
+ExecStart=__LITELLM__ --config __SAKK_GATEWAY_CONFIG__ --host 127.0.0.1 --port 4000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

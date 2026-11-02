@@ -1,0 +1,8 @@
+# Input of requirements.lock. 1.82.7, 1.82.8 and 1.107.0 were compromised on
+# PyPI; 1.106.2 was published before the October release. The lock was made
+# from this file (as req.in, the name its header keeps) with uv 0.12 on
+# 2026-10-30. Regenerate it, for every platform, with:
+#   uv pip compile requirements.in --universal --python-version 3.12 \
+#     --generate-hashes --exclude-newer 2026-10-21T11:00:00Z \
+#     -o requirements.lock
+litellm[proxy]==1.106.2

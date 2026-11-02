@@ -3,7 +3,7 @@
 **English** | [简体中文](zh-CN.md)
 
 This walks through Sakk from a local checkout to a clean uninstall, in about
-15 minutes. Every command below was run on macOS with Sakk 0.3.0 in a
+15 minutes. Every command below was run on macOS with Sakk 0.4.0 in a
 throwaway home folder, and the output is copied from that run. Paths are
 shortened to `~`, the console token is replaced by `<tok>`, and your dates,
 time zone and figures will differ.
@@ -47,10 +47,10 @@ sakk --version
 ```
 
 ```text
-sakk-0.3.0.tgz
+sakk-0.4.0.tgz
 
-added 1 package in 153ms
-0.3.0
+added 1 package in 159ms
+0.4.0
 ```
 
 - `mkdir -p ~/pack` comes first because npm 11 does not create the
@@ -119,7 +119,7 @@ sakk spend
 
 ```text
 cap set: $5/day in ~/.sakk/config.json — the hook denies paid calls once today's spend from local logs reaches it
-spend 2026-11-01 (Asia/Dubai, from local logs): $0 of $5 cap
+spend 2026-11-02 (Asia/Dubai, from local logs): $0 of $5 cap
 ```
 
 The day follows your machine's time zone; `--zone` picks another, for
@@ -144,7 +144,7 @@ sakk spend
 ```
 
 ```text
-spend 2026-11-01 (Asia/Dubai, from local logs): $6.5 of $5 cap
+spend 2026-11-02 (Asia/Dubai, from local logs): $6.5 of $5 cap
   claude-sonnet-4-5  $4.5
   claude-opus-4-5  $2
 ```
@@ -157,7 +157,7 @@ echo '{"hook_event_name":"PreToolUse","cwd":"'"$PWD"'","session_id":"s1","tool_u
 ```
 
 ```text
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — SPEND_CAP_REACHED: $6.50 ≥ $5.00 today (2026-11-01, Asia/Dubai, from local logs) — a person raises it with sakk cap set <usd>; it resets at midnight. If this is wrong, tell the person you work for and stop; do not route around it."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — SPEND_CAP_REACHED: $6.50 ≥ $5.00 today (2026-11-02, Asia/Dubai, from local logs) — a person raises it with sakk cap set <usd>; it resets at midnight. If this is wrong, tell the person you work for and stop; do not route around it."}}
 ```
 
 In a real session Claude Code reads this answer, does not run `npm test`, and
@@ -205,7 +205,7 @@ sakk spend --json
 
 ```text
 {
- "day": "2026-11-01",
+ "day": "2026-11-02",
  "zone": "Asia/Dubai",
  "cap_usd": 5,
  "spend_usd": 6.5,
@@ -344,14 +344,14 @@ settled     $0
 outstanding $0
 committed   $0  (remaining $20, max reservable $0)
 entries     0 (reserved 0, settled 0, reconciliation 0)
-updated     2026-11-01T15:02:53.755Z
-⛔ HALTED by oncall at 2026-11-01T15:02:53.821Z — runaway loop (all new spending refused)
+updated     2026-11-02T18:22:54.965Z
+⛔ HALTED by oncall at 2026-11-02T18:22:55.031Z — runaway loop (all new spending refused)
 ```
 
 `sakk status` exits 4 while a halt is on. The hook now refuses with the halt:
 
 ```text
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — halted (global) by oncall at 2026-11-01T15:02:53.821Z — runaway loop; a person resumes with: sakk resume --by <name>. If this is wrong, tell the person you work for and stop; do not route around it."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — halted (global) by oncall at 2026-11-02T18:22:55.031Z — runaway loop; a person resumes with: sakk resume --by <name>. If this is wrong, tell the person you work for and stop; do not route around it."}}
 ```
 
 `--by` is a name you type. Sakk records it as given and does not check who

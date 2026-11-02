@@ -3,7 +3,7 @@
 [English](en.md) | **简体中文**
 
 本教程从本地仓库副本装上 Sakk，一路走到干净卸载，大约 15 分钟。下面每条命令都在
-macOS 上用 Sakk 0.3.0、在一个一次性的主目录里真跑过，输出照抄那次运行。路径缩写成
+macOS 上用 Sakk 0.4.0、在一个一次性的主目录里真跑过，输出照抄那次运行。路径缩写成
 `~`，控制台令牌换成 `<tok>`；你看到的日期、时区和金额会不一样。
 
 > 这次运行是从仓库副本安装的（第 2 步），所以输出和你正在读的代码完全对应。`sakk` 上了 npm 之后，
@@ -42,10 +42,10 @@ sakk --version
 ```
 
 ```text
-sakk-0.3.0.tgz
+sakk-0.4.0.tgz
 
-added 1 package in 153ms
-0.3.0
+added 1 package in 159ms
+0.4.0
 ```
 
 - 先 `mkdir -p ~/pack`，因为 npm 11 不会自己建 `--pack-destination` 指定的文件夹，没有它
@@ -109,7 +109,7 @@ sakk spend
 
 ```text
 cap set: $5/day in ~/.sakk/config.json — the hook denies paid calls once today's spend from local logs reaches it
-spend 2026-11-01 (Asia/Dubai, from local logs): $0 of $5 cap
+spend 2026-11-02 (Asia/Dubai, from local logs): $0 of $5 cap
 ```
 
 「一天」按本机时区算；用 `--zone` 换别的时区，例如 `sakk cap set 5 --zone Europe/Berlin`。
@@ -131,7 +131,7 @@ sakk spend
 ```
 
 ```text
-spend 2026-11-01 (Asia/Dubai, from local logs): $6.5 of $5 cap
+spend 2026-11-02 (Asia/Dubai, from local logs): $6.5 of $5 cap
   claude-sonnet-4-5  $4.5
   claude-opus-4-5  $2
 ```
@@ -144,7 +144,7 @@ echo '{"hook_event_name":"PreToolUse","cwd":"'"$PWD"'","session_id":"s1","tool_u
 ```
 
 ```text
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — SPEND_CAP_REACHED: $6.50 ≥ $5.00 today (2026-11-01, Asia/Dubai, from local logs) — a person raises it with sakk cap set <usd>; it resets at midnight. If this is wrong, tell the person you work for and stop; do not route around it."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — SPEND_CAP_REACHED: $6.50 ≥ $5.00 today (2026-11-02, Asia/Dubai, from local logs) — a person raises it with sakk cap set <usd>; it resets at midnight. If this is wrong, tell the person you work for and stop; do not route around it."}}
 ```
 
 真实会话里，Claude Code 读到这个回答就不会运行 `npm test`，并把原因告诉 agent。
@@ -188,7 +188,7 @@ sakk spend --json
 
 ```text
 {
- "day": "2026-11-01",
+ "day": "2026-11-02",
  "zone": "Asia/Dubai",
  "cap_usd": 5,
  "spend_usd": 6.5,
@@ -314,14 +314,14 @@ settled     $0
 outstanding $0
 committed   $0  (remaining $20, max reservable $0)
 entries     0 (reserved 0, settled 0, reconciliation 0)
-updated     2026-11-01T15:02:53.755Z
-⛔ HALTED by oncall at 2026-11-01T15:02:53.821Z — runaway loop (all new spending refused)
+updated     2026-11-02T18:22:54.965Z
+⛔ HALTED by oncall at 2026-11-02T18:22:55.031Z — runaway loop (all new spending refused)
 ```
 
 急停期间 `sakk status` 以 4 退出。钩子现在按急停拒绝：
 
 ```text
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — halted (global) by oncall at 2026-11-01T15:02:53.821Z — runaway loop; a person resumes with: sakk resume --by <name>. If this is wrong, tell the person you work for and stop; do not route around it."}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Sakk: shell.run refused — halted (global) by oncall at 2026-11-02T18:22:55.031Z — runaway loop; a person resumes with: sakk resume --by <name>. If this is wrong, tell the person you work for and stop; do not route around it."}}
 ```
 
 `--by` 是你自己敲的名字。Sakk 原样记下，不核验你是谁。用 `--agent <id>` 只停一个 agent，不停全部。

@@ -1,0 +1,44 @@
+# The Sakk spend gate for the LiteLLM proxy, as a Python package: the one
+# module sakk_gateway.py. Built locally and published by hand
+# (docs/launch/pypi-publish.md); the version is the npm package's
+# (test/gateway-package.test.mjs).
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sakk-litellm"
+version = "0.4.0"
+description = "Sakk spend gate for the LiteLLM proxy: reserve each call's worst-case cost before the provider is called, settle the real cost after."
+readme = "README.pypi.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.10"
+authors = [{ name = "Sakk contributors" }]
+keywords = ["litellm", "llm", "budget", "spend", "proxy", "callback"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Libraries",
+]
+# At least the version the plugin is tested on, which also rules out the
+# compromised 1.82.7 and 1.82.8; 1.107.0 was compromised too. No upper bound,
+# so a fixed later release is not blocked. Install LiteLLM from the hash lock
+# first and this package with --no-deps (README.pypi.md).
+dependencies = ["litellm[proxy]>=1.106.2,!=1.107.0"]
+
+[project.urls]
+Homepage = "https://github.com/sakk-dev/sakk"
+Documentation = "https://github.com/sakk-dev/sakk/tree/main/integrations/litellm"
+Source = "https://github.com/sakk-dev/sakk"
+Issues = "https://github.com/sakk-dev/sakk/issues"
+Changelog = "https://github.com/sakk-dev/sakk/blob/main/CHANGELOG.md"
+
+# The wheel holds the module only: no tests, mock provider or example config.
+[tool.hatch.build.targets.wheel]
+only-include = ["sakk_gateway.py"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["sakk_gateway.py", "README.pypi.md", "LICENSE", "NOTICE"]

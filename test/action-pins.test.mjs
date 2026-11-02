@@ -30,6 +30,10 @@ const NODE24_FROM = {
   'actions/setup-node': 5,
   'github/codeql-action/upload-sarif': 4,
   'ossf/scorecard-action': 2,
+  // v6.0.0 release notes: "Upgrade to node 24"; v7.0.0 action.yml: using: 'node24'
+  'actions/setup-python': 6,
+  // v7.0.0 release notes: the action runs on node24; v10.2.0 action.yml: using: "node24"
+  'astral-sh/setup-uv': 7,
 };
 
 const PIN = /^(['"]?)([\w.-]+\/[\w.-]+(?:\/[\w./-]+)?)@([0-9a-f]{40})\1\s+#\s*(v(\d+)\.\d+\.\d+)$/;

@@ -74,7 +74,7 @@ Sakk 读取 Claude Code 在 `~/.claude/projects` 下的日志（设置了 `CLAUD
 1. Sakk 读取 Claude Code 日志里每条 assistant 消息的 token 用量。每次调用只算一次，按消息 id 和请求 id
    去重，同一份日志读两遍也不会翻倍。
 2. 用价格表乘以 token 数。随 Sakk 发布的价格表 `prices/snapshot.json` 从 LiteLLM 公开的价格清单裁剪而来
-   （MIT 协议，Berri AI 出品）；其中的 `source` 一段记着网址、提交、SHA-256 和抓取日期（0.3.0 版是 2026-10-28）。
+   （MIT 协议，Berri AI 出品）；其中的 `source` 一段记着网址、提交、SHA-256 和抓取日期（0.4.0 版是 2026-10-28）。
    `sakk prices` 显示正在使用的表。
 3. 「一天」按你的时区算，或按你用 `sakk cap set <usd> --zone <IANA>` 设的时区。日期写在未来的日志行，
    或者过了那一天才第一次看到的日志行，都算在 Sakk 看到它的那一天。
