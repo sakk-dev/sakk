@@ -58,7 +58,10 @@
     "spend-cap",
     "kill-switch",
     "secret-scanning",
-    "mcp"
+    "mcp",
+    "litellm",
+    "openai-compatible",
+    "llm-gateway"
   ],
   "author": "The Sakk authors",
   "license": "Apache-2.0",
@@ -76,6 +79,9 @@
     "policies",
     "prices",
     ".claude-plugin",
+    "integrations/litellm/sakk_gateway.py",
+    "integrations/litellm/config.example.yaml",
+    "integrations/litellm/README.md",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",

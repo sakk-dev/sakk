@@ -104,6 +104,32 @@ describe('release packaging (M5)', () => {
       assert.ok(packed.includes(need), `missing from the package: ${need}`);
   });
 
+  test('the files sakk gateway init copies ship, and the gateway tests and mock provider do not', () => {
+    const packed = packedFiles();
+    // read from the CLI, so a file gateway init starts reading is required here too
+    const bin = read('bin/sakk.mjs');
+    const reads = bin.match(/for \(const f of \[('sakk_gateway\.py'[^\]]*)\]\)/)?.[1];
+    assert.ok(reads, 'the list of files gateway init reads was not found in bin/sakk.mjs');
+    const needed = [...reads.matchAll(/'([^']+)'/g)].map((m) => `integrations/litellm/${m[1]}`);
+    assert.deepEqual(needed, [
+      'integrations/litellm/sakk_gateway.py',
+      'integrations/litellm/config.example.yaml',
+    ]);
+    // the README its refusals and output point at ships with them
+    needed.push('integrations/litellm/README.md');
+    for (const f of needed) assert.ok(packed.includes(f), `missing from the package: ${f}`);
+    const shipped = packed.filter((p) => p.startsWith('integrations/'));
+    assert.deepEqual(shipped.sort(), [...needed].sort(), 'only the gateway files ship');
+    for (const p of shipped)
+      assert.ok(
+        !/(^|\/)(test_[^/]*|mock_provider\.py)$/.test(p),
+        `gateway test file shipped: ${p}`,
+      );
+    // control: the tests and the mock provider exist in the repository, so their absence means something
+    for (const f of ['test_sakk_gateway.py', 'mock_provider.py'])
+      assert.ok(existsSync(join(ROOT, 'integrations', 'litellm', f)), `${f} exists in the repo`);
+  });
+
   test('the Claude Code plugin manifest is valid and its hook runs the installed sakk', () => {
     const m = JSON.parse(read('.claude-plugin/plugin.json'));
     assert.equal(m.name, 'sakk');

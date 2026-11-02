@@ -918,7 +918,43 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
     },
     spend: { effect: 'none', judged: [['sakk spend --json', 'allow']] },
     prices: { effect: 'none', judged: [['sakk prices', 'allow']] },
+    // writes the start script that names the ledger the gateway charges: in
+    // Sakk's home that is guard state, judged as that write and denied
+    gateway: {
+      effect: 'loosens',
+      judged: [
+        ['sakk gateway init', 'deny'],
+        ['sakk gateway init --force --ledger ./big.json', 'deny'],
+      ],
+    },
   };
+
+  test('sakk gateway init is judged as the write it makes: into Sakk home denied, into the project as that write', () => {
+    const w = world();
+    const judge = (command) =>
+      evaluate(
+        normalize('claude-code', {
+          hook_event_name: 'PreToolUse',
+          cwd: w.proj,
+          session_id: 's-gw',
+          tool_use_id: 'c-gw',
+          tool_name: 'Bash',
+          tool_input: { command },
+        }),
+        { env: w.env, log: false },
+      );
+    for (const command of [
+      'sakk gateway init',
+      'sakk gateway init --port 4100',
+      `sakk gateway init --dir ${join(w.home, 'gateway')} --force`,
+      `sakk gateway init --dir ${w.home}`,
+    ])
+      assert.equal(judge(command).verdict, 'deny', command);
+    // into the project it is the same write a plain redirect makes there
+    const write = judge('echo x > ./gw/start.sh').verdict;
+    assert.equal(judge('sakk gateway init --dir ./gw').verdict, write);
+    assert.notEqual(write, 'deny', 'a write into the project is not guard state');
+  });
 
   test('R-24 every sakk subcommand is declared by its effect on a control, and judged by it', () => {
     const src = readFileSync(CLI, 'utf8');

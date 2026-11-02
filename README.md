@@ -11,9 +11,64 @@ code. Local, zero dependencies, Apache-2.0.
 
 ![Sakk's policy check allowing ls -la and denying rm -rf ~](docs/media/sakk-block.gif)
 
+**I use Claude Code, Cursor or Codex:**
+
 ```bash
 npm install -g sakk && sakk guard install claude-code && sakk doctor   # run in your project
 ```
+
+**My own AI app, any language:** Sakk's spend gate runs inside the LiteLLM
+proxy, and your app changes one line. `sakk gateway init` needs LiteLLM
+installed (the pinned 1.106.2); without it, it prints the hash-locked install
+steps and writes nothing.
+
+```bash
+npm install -g sakk && sakk init --cap 5   # the ledger the gateway charges, capped at $5
+sakk gateway init                         # writes sakk_gateway.py, config.yaml and start.sh to ~/.sakk/gateway
+LITELLM_MASTER_KEY=<a long random key> DEEPSEEK_API_KEY=<your key> ~/.sakk/gateway/start.sh
+```
+
+Then point the app at the gateway, and send `LITELLM_MASTER_KEY` as its API
+key. The OpenAI SDKs for Python and Node read this variable:
+
+```bash
+OPENAI_BASE_URL=http://127.0.0.1:4000/v1
+```
+
+Or in code:
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(base_url="http://127.0.0.1:4000/v1", api_key=os.environ["LITELLM_MASTER_KEY"])
+```
+
+```js
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'http://127.0.0.1:4000/v1',
+  apiKey: process.env.LITELLM_MASTER_KEY,
+});
+```
+
+```bash
+curl -s http://127.0.0.1:4000/v1/chat/completions \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-chat","max_tokens":512,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+If the gateway cannot get an answer from the spend ledger, it lets the call
+through by default and says so: a WARNING in the proxy's log, an
+`x-sakk-status: unmetered` header on the response, a red banner in `sakk ui`
+and a line in `sakk status`. A call let through this way is not recorded in
+the ledger and not held to the cap. Start the gateway with
+`SAKK_ON_UNAVAILABLE=deny` to refuse those calls instead. A deliberate refusal
+is always a refusal: 402 when the budget is exceeded, 403 for a model with no
+price, 400 for a malformed request. This is the gateway only; the coding-agent guard and the spend ledger
+for your own code stay fail-closed. Prices, refusals and limits:
+[integrations/litellm/README.md](integrations/litellm/README.md).
 
 In medieval Arab commerce, a **ṣakk** (صك) was a written order of payment — a merchant's promise backed by real funds, honored across the trade routes. The word traveled through Persian and Latin into English as _cheque / check_. Its plural, _sukuk_, still names the Gulf's financial instruments today.
 
