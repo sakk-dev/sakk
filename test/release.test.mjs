@@ -118,6 +118,14 @@ describe('release packaging (M5)', () => {
     // the README its refusals and output point at ships with them
     needed.push('integrations/litellm/README.md');
     for (const f of needed) assert.ok(packed.includes(f), `missing from the package: ${f}`);
+    // npm packs a directory's LICENSE and NOTICE on its own; they ship only as
+    // byte-for-byte copies of the root ones, so the package carries one licence
+    for (const f of ['LICENSE', 'NOTICE']) {
+      const copy = `integrations/litellm/${f}`;
+      if (!packed.includes(copy)) continue;
+      assert.equal(read(copy), read(f), `${copy} differs from the root ${f}`);
+      needed.push(copy);
+    }
     const shipped = packed.filter((p) => p.startsWith('integrations/'));
     assert.deepEqual(shipped.sort(), [...needed].sort(), 'only the gateway files ship');
     for (const p of shipped)

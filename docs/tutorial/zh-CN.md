@@ -1,8 +1,8 @@
-# Sakk 教程：安装、设上限、看拦截、控制台、急停、卸载
+# Sakk 教程：安装、设上限、看拦截、控制台、急停、卸载、网关
 
 [English](en.md) | **简体中文**
 
-本教程从本地仓库副本装上 Sakk，一路走到干净卸载，大约 15 分钟。下面每条命令都在
+本教程从本地仓库副本装上 Sakk，一路走到干净卸载，大约 15 分钟；最后（第 12 步）通过网关把花费上限放到你自己的应用前面。下面每条命令都在
 macOS 上用 Sakk 0.4.0、在一个一次性的主目录里真跑过，输出照抄那次运行。路径缩写成
 `~`，控制台令牌换成 `<tok>`；你看到的日期、时区和金额会不一样。
 
@@ -245,6 +245,10 @@ UI_PORT_IN_USE: port 8790 is already in use — choose another --port
 Emergency stop（急停）按钮才能用，按下后要敲 STOP 确认。控制台从不解除急停，解除要在终端里做（第 10 步）。
 按 Ctrl+C 关掉控制台。
 
+如果你按第 12 步跑了网关，控制台也会读它的状态。网关拿不到 Sakk 的回答时，页面顶部出现一条红色横条，
+说调用正在不计量地放行（deny 模式下是被拒绝），并写明放行了几次、最多多少钱。故障过去后有一条提示写明那段时间；
+网关的健康检查不回应时，也有它自己的红色横条。
+
 ### 可选：用户名和密码
 
 在你自己的机器上，带令牌的地址就够了。想改用用户名和密码登录，在终端里设置：
@@ -362,14 +366,130 @@ rm -rf ~/.sakk                                 # config, decision log, spend ind
 
 如果用的是第 1 步的一次性主目录，关掉终端就行。
 
+## 12. 你自己的应用：走网关
+
+第 3 到 10 步把守门放在编程 agent 前面。你自己的应用（任何语言）走另一扇门：Sakk
+的花费闸门跑在 LiteLLM 代理里，应用只改它的 OpenAI 接口地址。这一步从一个新的一次性主目录开始（第 1、2
+步），不发任何付费调用：唯一发出的那个请求可能花得比上限多，Sakk 在它到达任何模型商之前就拒了。
+
+网关记账用的是账本，所以先建一个。账本的上限是账本自己的；第 5 步的每日上限是另一个上限，管的是编程 agent
+的日志。然后要网关文件。没装 LiteLLM 时，Sakk 会直说，一个文件都不写：
+
+```bash
+sakk init --cap 5
+sakk gateway init
+```
+
+```text
+ledger created: ~/.sakk/sakk-ledger.json
+hook wired: a halt on this ledger now stops the guarded agent (~/.sakk/config.json)
+cap: $5 — reserve before you spawn; reaching the cap refuses.
+GATEWAY_LITELLM_NOT_FOUND: no executable named litellm on PATH; nothing was written.
+Install the pinned LiteLLM proxy from a hash-locked file, then run this again
+(add --litellm "$PWD/.venv/bin/litellm" when the venv is not on PATH):
+  printf 'litellm[proxy]==1.106.2\n' > req.in
+  uv venv --python 3.12 .venv
+  uv pip compile req.in --generate-hashes --exclude-newer 2026-10-21T11:00:00Z -o req.lock
+  uv pip install --require-hashes -r req.lock
+Do not install LiteLLM 1.82.7, 1.82.8 or 1.107.0: those releases were compromised.
+Details: ~/.npm-global/lib/node_modules/sakk/integrations/litellm/README.md
+```
+
+它以 1 退出。按它打印的步骤装 LiteLLM（需要 `uv`，会下载 LiteLLM 和它的依赖），再带上 `litellm`
+的路径跑一次。下面这次运行用的是这样装好的 LiteLLM 1.106.2，写作 `<venv>`：
+
+```bash
+sakk gateway init --litellm "$PWD/.venv/bin/litellm"
+```
+
+```text
+wrote the gateway files in ~/.sakk/gateway:
+  sakk_gateway.py  the Sakk callback LiteLLM loads
+  config.yaml      models and prices (USD per token); keys are os.environ/ references
+  start.sh         starts LiteLLM on 127.0.0.1:4000 with SAKK_BIN, SAKK_LEDGER and SAKK_GATEWAY_CONFIG set
+ledger:  ~/.sakk/sakk-ledger.json
+litellm: <venv>/bin/litellm (found; its version was not checked — the gateway is tested with 1.106.2)
+
+Start it with the keys in your environment (never in these files):
+  LITELLM_MASTER_KEY=<a long random key> DEEPSEEK_API_KEY=<your key> '~/.sakk/gateway/start.sh'
+
+Then change one line in your app, and send LITELLM_MASTER_KEY as its API key:
+OPENAI_BASE_URL=http://127.0.0.1:4000/v1
+
+Refusals, prices and limits: ~/.npm-global/lib/node_modules/sakk/integrations/litellm/README.md
+```
+
+Sakk 打印的 `start.sh` 是带引号的完整路径，这里缩写成了 `~`。再跑一次会以 `GATEWAY_FILES_EXIST`
+拒绝，除非加 `--force`。三个文件里都没有密钥；没有你的应用要发的那把密钥，`start.sh` 不会启动代理：
+
+```bash
+~/.sakk/gateway/start.sh
+```
+
+```text
+~/.sakk/gateway/start.sh: line 8: LITELLM_MASTER_KEY: set LITELLM_MASTER_KEY to the key your app will send; this script does not start a proxy without one
+```
+
+带上主密钥和模型商密钥启动。真用时模型商密钥是你自己的，用它发的调用由 DeepSeek
+计费；这里用的是假值，因为下面的请求根本到不了 DeepSeek：
+
+```bash
+export LITELLM_MASTER_KEY=sk-tutorial-0000   # use a long random key; your app sends it as its API key
+export DEEPSEEK_API_KEY=not-a-real-key
+~/.sakk/gateway/start.sh > ~/proxy.log 2>&1 &
+```
+
+大约 5 秒后代理在 `http://127.0.0.1:4000/health/liveliness` 上应答。现在要一个最多 20,000,000
+个 token 的回复。按 `config.yaml` 里 `deepseek-chat` 的输出价（每个 token $0.00000042），最坏情况是
+$8.40，超过 $5 的上限：
+
+```bash
+curl -s -i http://127.0.0.1:4000/v1/chat/completions \
+  -H "Authorization: Bearer $LITELLM_MASTER_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-chat","max_tokens":20000000,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+```text
+HTTP/1.1 402 Payment Required
+x-litellm-response-cost: 0
+...
+{"error":{"message":"BUDGET_EXCEEDED: settled + outstanding + this estimate reaches the cap — refused (the cap is a wall, not a target)","type":"invalid_request_error","param":null,"code":"402","provider_specific_fields":{"error":{"code":"BUDGET_EXCEEDED","message":"BUDGET_EXCEEDED: settled + outstanding + this estimate reaches the cap — refused (the cap is a wall, not a target)","estimatedMaxUsd":8.400184}}}}
+```
+
+其余响应头省略了。最坏情况还算上了提示词（每字节按一个 token）和一点余量，所以是
+$8.400184。什么都没预留，什么都没花：
+
+```bash
+sakk status
+```
+
+```text
+ledger      ~/.sakk/sakk-ledger.json
+cap         $5
+settled     $0
+outstanding $0
+committed   $0  (remaining $5, max reservable $4.999999)
+entries     0 (reserved 0, settled 0, reconciliation 0)
+updated     2026-11-02T20:18:53.889Z
+gateway     no outage recorded (mode allow)
+```
+
+`gateway` 这一行是网关自己的报告。网关从账本拿不到答复时，默认放行这次调用，并且明说：`~/proxy.log`
+里一行 WARNING、响应上一个 `x-sakk-status: unmetered` 头、`sakk ui` 里一条红色横幅，这里也会多一行故障记录。这样放行的调用不进账本，也不受上限约束。想改成拒绝，就用
+`SAKK_ON_UNAVAILABLE=deny` 启动网关。
+
+让应用用 `OPENAI_BASE_URL=http://127.0.0.1:4000/v1` 指向网关，并把 `LITELLM_MASTER_KEY`
+当作它的 API 密钥发出；README 里有 Python、Node 和 curl 的同一个调用。用 `kill %1` 停掉代理。第 11 步的
+`rm -rf ~/.sakk` 也会删掉 `~/.sakk/gateway`。
+
 ## 退出码
 
-| 退出码 | 含义                                                 |
-| ------ | ---------------------------------------------------- |
-| 0      | 正常                                                 |
-| 1      | 账本错误（例如 `sakk init` 之前的 `LEDGER_MISSING`） |
-| 2      | 用法错误，或因为没有人确认而拒绝的改动               |
-| 3      | 需要对账（`sakk status`）                            |
-| 4      | 急停中（`sakk status`；优先于 3）                    |
+| 退出码 | 含义                                                                                                                  |
+| ------ | --------------------------------------------------------------------------------------------------------------------- |
+| 0      | 正常                                                                                                                  |
+| 1      | 账本错误（例如 `sakk init` 之前的 `LEDGER_MISSING`），或 `sakk gateway init` 拒绝（例如 `GATEWAY_LITELLM_NOT_FOUND`） |
+| 2      | 用法错误，或因为没有人确认而拒绝的改动                                                                                |
+| 3      | 需要对账（`sakk status`）                                                                                             |
+| 4      | 急停中（`sakk status`；优先于 3）                                                                                     |
 
 下一步：[FAQ](../FAQ.zh-CN.md) 讲钩子自己出错时会怎样、数据放在哪里、花费怎么算。
