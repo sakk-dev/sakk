@@ -23,8 +23,8 @@ blocks a merge on a red check, and auto-merge is on.
 
 **Status 2026-11-02:** 0.3.0 closed the two release blockers below (F-199,
 F-111). The gateway for any app is the 0.4.0 work: the CI `gateway` job and
-the service templates are on main (PR #51); the fail-open-loud behaviour
-(PR #52) and the setup command (gateway entry) are in review. The
+the service templates (PR #51) and the fail-open-loud behaviour (PR #52)
+are on main; the setup command (gateway entry) is in review. The
 [reliability audit](reliability-audit-2026-11-02.md) found two P0 gaps in
 the gateway; they and the rest of the audit are listed under **Gateway
 reliability** below, with the test gaps known at 0.4.0.

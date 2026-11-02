@@ -46,6 +46,14 @@
       "answer": "The audit's item list was built by walking the gateway call path (reserve, settle, timeout, retry, lock, status file, console probe) in code, not from a hand list of known worries; each item cites the file it came from.",
       "guard": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository"
     },
+    "C-09.1": {
+      "answer": "The docs assume no environment of their own: they are Markdown read on GitHub or in the repository. Where they describe an environment-dependent behaviour they name it: the F-239 cold start is stated as macOS-observed in the tests and as a margin question on a slow production host, and the P0-2 gap is tied to the default 2 s timeout, not to every setting.",
+      "guard": "test/claims-are-checked.test.mjs::every scanned file exists and has text"
+    },
+    "C-09.2": {
+      "answer": "Nothing here runs. The doc checks that read these files were run where CI runs them, through the same node --test launch with test/clean-git-env.mjs loaded first, on the tree rebased onto the main that has PR #52.",
+      "guard": "test/claims-are-checked.test.mjs::every node --test launch in package.json and the hooks loads test/clean-git-env.mjs first"
+    },
     "C-02.2": {
       "answer": "The same status was applied in all three places that carry the gateway items: the audit's status table, ROADMAP Now/Next and the V2-BACKLOG rows, so no copy says fixed while another says open.",
       "guard": "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code"

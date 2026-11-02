@@ -25,7 +25,7 @@ not only coding agents. Nothing is published or tagged yet.
 - When Sakk cannot answer, the gateway lets the call through and says so: a
   WARNING line in the proxy log, an `x-sakk-status: unmetered` header, a red
   banner in `sakk ui` and a gateway line in `sakk status`.
-  `SAKK_ON_UNAVAILABLE=deny` refuses instead. Every refusal from Sakk (402, 403) stays a refusal. Calls let through this way are not recorded or capped.
+  `SAKK_ON_UNAVAILABLE=deny` refuses instead. Every refusal from Sakk (402, 403) stays a refusal. Calls let through this way are not recorded or capped. On main.
 - A setup command writes a working gateway folder and prints the one line an
   app changes (its OpenAI base URL). README and FAQ open with two doors:
   coding agents, or your own app. In review, not on main yet.
