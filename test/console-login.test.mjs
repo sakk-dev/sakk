@@ -677,3 +677,38 @@ test('sakk ui refuses a password on the command line and a password prompt witho
     { code: 'UI_PASSWORD_NEEDS_TTY' },
   );
 });
+
+test('the hidden prompt turns echo off before it shows the prompt (F-240)', async () => {
+  // A driver such as expect answers the moment it can read a prompt, and a key
+  // that lands while echo is still on is shown. So echo goes off first, the way
+  // Python's getpass does it, and comes back only after the line is read.
+  const w = world();
+  const log = [];
+  const answers = [`${USER}\n`, `${PASS}\r`, `${PASS}\r`];
+  const input = new PassThrough();
+  input.isTTY = true;
+  input.setRawMode = (on) => log.push(on ? 'echo off' : 'echo on');
+  const output = new PassThrough();
+  const write = output.write.bind(output);
+  output.write = (chunk, ...rest) => {
+    const text = String(chunk);
+    log.push(`show ${text}`);
+    if (text.endsWith(': ') && answers.length) {
+      const next = answers.shift();
+      setImmediate(() => input.write(next));
+    }
+    return write(chunk, ...rest);
+  };
+  await L.askConsoleLogin({ home: w.home, input, output });
+  const seen = JSON.stringify(log);
+  const hidden = log.flatMap((e, i) => (/^show (Password|The same password)/.test(e) ? [i] : []));
+  assert.equal(hidden.length, 2, `two hidden prompts: ${seen}`);
+  for (const i of hidden)
+    assert.equal(log[i - 1], 'echo off', `echo is off before "${log[i]}" is shown: ${seen}`);
+  assert.deepEqual(
+    log.filter((e) => e.startsWith('echo')),
+    ['echo off', 'echo on', 'echo off', 'echo on'],
+    `echo comes back after each line: ${seen}`,
+  );
+  assert.ok(!seen.includes(PASS), 'the password never reaches the output');
+});

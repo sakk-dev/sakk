@@ -340,13 +340,16 @@ export async function askConsoleLogin({ home, input = process.stdin, output = pr
 /**
  * Read one line from a terminal without echoing it. Refuses anything that is
  * not a TTY, so a password is never piped in, logged or put on argv.
+ * Echo goes off before the prompt is shown, as Python's getpass does: someone
+ * (or a driver such as expect) who answers the moment the prompt appears must
+ * not land a key while echo is still on (F-240).
  */
 export function promptHidden({ input = process.stdin, output = process.stderr, prompt }) {
   if (!isTerminal(input)) return Promise.reject(needsTty());
   return new Promise((resolve, reject) => {
     let buf = '';
-    output.write(prompt);
     input.setRawMode(true);
+    output.write(prompt);
     input.resume();
     input.setEncoding('utf8');
     const done = (err, value) => {
