@@ -1,0 +1,54 @@
+{
+  "version": 2,
+  "branch": "docs/reliability-audit",
+  "answers": {
+    "C-05.1": {
+      "answer": "ROADMAP is a release doc, so the claims and command tests scan it: every backticked code it names must exist in the code and every `sakk <x>` it names must be a real command or carry a not-shipped marker (the planned `sakk settle` does). The sentences about what ships in 0.4.0 were read back against main and PR #52, not written from intent. The audit doc and V2-BACKLOG are planning records, not release claims: each audit line is marked as read from code (with file and line) or as inferred, and no test backs an audit sentence; that is declared in the audit's own header.",
+      "guard": "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code"
+    },
+    "C-05.2": {
+      "answer": "The docs add no figure or exit code a reader acts on. The one command they name that does not exist yet (`sakk settle`) is marked planned, not shipped, and the release test fails if that marker is removed. Hour and cost figures are estimates labelled as estimates, waiting on the maintainer's go.",
+      "guard": "test/release.test.mjs::every command the README shows is a real sakk subcommand"
+    },
+    "C-06.1": {
+      "answer": "Each audit item names its source: read from code (file and line) or inferred. P0-2 is labelled inferred because no test holds the ledger lock, and the test-gap table says so, so no reader sees a stronger source than the one that exists. Calls let through during an outage are described as not recorded and not capped, never as ledger records.",
+      "guard": "test/claims-are-checked.test.mjs::no user-facing text calls a record signed, immutable or tamper-proof without a mechanism"
+    },
+    "C-03.1": {
+      "answer": "No check is added or changed. The existing doc checks were seen red for the reason they name on this branch: a backticked env var and gateway command not yet on main, and a `sakk settle` line without a not-shipped marker, each turned the matching test red; rewording made them green.",
+      "guard": "test/release.test.mjs::F-175 every multi-word sakk command in docs, specs and runtime strings is real"
+    },
+    "C-03.2": {
+      "answer": "No test is added, so no test claims to observe anything new. The audit lists the tests that do not exist (no lock-hold test, mock provider only) instead of implying coverage.",
+      "guard": "test/claims-are-checked.test.mjs::every scanned file exists and has text"
+    },
+    "C-03.3": {
+      "answer": "The open items are tied to things that resolve: each P0/P1 row names the code path it changes and the owner decision it waits on, and V2-BACKLOG carries them as rows with a status, so they cannot read done while the code is unchanged. The ROADMAP done rule (acceptance case observed, sibling cases checked, the next-instance test landed) is unchanged.",
+      "guard": "test/release.test.mjs::every command the README shows is a real sakk subcommand"
+    },
+    "C-10.1": {
+      "answer": "No required step is introduced. Whether the gateway CI job becomes a required check is recorded as the maintainer's decision, not stated as rule text that something enforces.",
+      "guard": "test/claims-are-checked.test.mjs::every CI job has timeout-minutes"
+    },
+    "C-10.2": {
+      "answer": "The change only adds and edits Markdown; no gate, hook or input a gate reads is touched, so there is no new route around a gate. The full gate ran on this exact tree before commit.",
+      "guard": "test/claims-are-checked.test.mjs::the commit gate passes exit codes straight through"
+    },
+    "C-01.1": {
+      "answer": "Absence is stated, not read as success: the audit's status table says not fixed for every open item, the 0.4.0 known gap says one call can go through unmetered, and the test-gap table lists the tests that are absent.",
+      "guard": "test/claims-are-checked.test.mjs::every scanned file exists and has text"
+    },
+    "C-01.2": {
+      "answer": "Deleting ROADMAP or emptying it fails the scanned-file check; deleting the not-shipped marker beside `sakk settle` fails the README command test. The audit and backlog are not gated and are declared as planning records.",
+      "guard": "test/claims-are-checked.test.mjs::every scanned file exists and has text"
+    },
+    "C-02.1": {
+      "answer": "The audit's item list was built by walking the gateway call path (reserve, settle, timeout, retry, lock, status file, console probe) in code, not from a hand list of known worries; each item cites the file it came from.",
+      "guard": "test/claims-are-checked.test.mjs::each backticked file name in the docs appears in the code or the repository"
+    },
+    "C-02.2": {
+      "answer": "The same status was applied in all three places that carry the gateway items: the audit's status table, ROADMAP Now/Next and the V2-BACKLOG rows, so no copy says fixed while another says open.",
+      "guard": "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code"
+    }
+  }
+}
