@@ -14,20 +14,61 @@ observed in a run of the case's own steps, the sibling cases its finding
 names are checked the same way, and the test that would catch the next
 instance lands in the same change.
 
-## Now — release 0.3.0
+## Now — release 0.4.0: the gateway for any app
+
+0.4.0 puts Sakk's spend cap in front of any app that speaks the OpenAI API,
+not only coding agents. Nothing is published or tagged yet.
+
+- The LiteLLM gateway runs as a service (launchd and systemd templates), in
+  CI (the `gateway` job runs the plugin's end-to-end tests against a mock
+  provider) and as the Python package `sakk-litellm`. On main.
+- When Sakk cannot answer, the gateway lets the call through and says so: a
+  WARNING line in the proxy log, an `x-sakk-status: unmetered` header, a red
+  banner in `sakk ui` and a gateway line in `sakk status`.
+  `SAKK_ON_UNAVAILABLE=deny` refuses instead. Every refusal from Sakk (402, 403) stays a refusal. Calls let through this way are not recorded or capped. On main.
+- A setup command writes a working gateway folder and prints the one line an
+  app changes (its OpenAI base URL). README and FAQ open with two doors:
+  coding agents, or your own app. In review, not on main yet.
+- Known gap at release: under a busy ledger the gateway's 2 s timeout can
+  read as an outage, so one call goes through unmetered (P0-2 in the
+  [reliability audit](reliability-audit-2026-11-02.md)). The fix is planned
+  under **Next — gateway reliability**.
+
+## Shipped in 0.3.0
 
 - Apache-2.0 license, contributions under the DCO
   ([ADR-0011](adr/0011-apache-2-license-and-dco.md)).
 - Public repository built from filtered history
-  ([ADR-0012](adr/0012-public-repo-from-filtered-history.md)). Depends on a
-  clean de-identification scan of the history.
+  ([ADR-0012](adr/0012-public-repo-from-filtered-history.md)). Going public
+  waits on a clean de-identification scan of the history and the owner's
+  click.
 - Basic username and password login for `sakk ui`, beside the token link
   ([ADR-0013](adr/0013-basic-password-login-sso-later.md)).
 - Regulated case packs and the strict regulated policy move out of the open
   core ([ADR-0014](adr/0014-open-core-split.md)).
+- Third-party notices ship in NOTICE (F-199); version, CHANGELOG and tag
+  agree (F-111).
 
-Already closed for release: third-party notices ship in NOTICE (F-199), and
-version, CHANGELOG and tag agree (F-111).
+## Next — gateway reliability
+
+From the [2026-11-02 reliability audit](reliability-audit-2026-11-02.md).
+None of these needs a paid call.
+
+- P0-1: a reservation the gateway never settles holds its worst-case amount
+  for ever, and 10,000 of them refuse every call (`LEDGER_FULL`). Add an
+  expiry that settles at the worst-case amount, a `sakk settle` command with
+  an audit line (planned, not shipped), and settle the gateway's own open
+  reservations at start.
+- P0-2: make the gateway timeout longer than the ledger's lock wait, open a
+  short breaker after a timeout so queued calls do not each wait it out, and
+  write calls let through to a side file that is booked once the ledger
+  answers. Waits on the maintainer's go.
+- P1-1: retry `LEDGER_LOCK_UNAVAILABLE` and `LEDGER_WRITE_FAILED` at settle,
+  with backoff and jitter.
+- P1-2: refuse to start when the proxy's model retries are not 0.
+- P1-3: log the ledger process's stderr, and back off its restarts.
+- P2 items (502/504 settled at the worst case, stale locks, a ledger
+  benchmark, console request timeouts, graceful stop) are in the audit.
 
 ## Next — guard reach, then spend, ledger and console
 
@@ -83,9 +124,10 @@ verifiable pack reports (F-50); a reference oracle for the policy fuzz
 - Local proxy and key custody: meter spend at egress and keep keys out of
   the agent's hands (DECISIONS D12). Depends on a design review before any
   build.
-- Gateway follow-ups (D14): the LiteLLM plugin's tests in CI, Anthropic
-  `/v1/messages`, paid search through the gateway, cached-input prices.
-  Depends on adding a required CI check, which is the maintainer's call.
+- Gateway follow-ups (D14): Anthropic `/v1/messages`, paid search through
+  the gateway, cached-input prices. The plugin's tests now run in CI (the
+  `gateway` job); making that job a required check on main is the
+  maintainer's call.
 - The ledger books from a versioned price table: reserve from model and max
   tokens, settle from provider usage (F-125). Depends on a maintainer
   decision.
@@ -98,7 +140,6 @@ verifiable pack reports (F-50); a reference oracle for the policy fuzz
   Depends on a maintainer decision on F-124.
 - Lock protocol: unlock refuses a live holder, and the owner is recorded in
   the lock (F-49, F-104). Depends on a review of the lock protocol change.
-- A `sakk settle` CLI command for late settlement. Planned, not shipped.
 
 ## Enterprise edition, not in open source
 

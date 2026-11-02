@@ -21,6 +21,14 @@ open on the owner.
 **2026-10-30:** the owner answered F-116 (D13): `main` has a ruleset that
 blocks a merge on a red check, and auto-merge is on.
 
+**Status 2026-11-02:** 0.3.0 closed the two release blockers below (F-199,
+F-111). The gateway for any app is the 0.4.0 work: the CI `gateway` job and
+the service templates (PR #51) and the fail-open-loud behaviour (PR #52)
+are on main; the setup command (gateway entry) is in review. The
+[reliability audit](reliability-audit-2026-11-02.md) found two P0 gaps in
+the gateway; they and the rest of the audit are listed under **Gateway
+reliability** below, with the test gaps known at 0.4.0.
+
 ## When an item is done
 
 - Its P0 case's **expected result is observed** in a run of the case's own
@@ -35,7 +43,8 @@ blocks a merge on a red check, and auto-merge is on.
 
 ## Before any release
 
-These two block an npm publish. Nothing else here does.
+Both closed in 0.3.0 (NOTICE ships; version, CHANGELOG and tag agree). Kept
+for traceability.
 
 | Finding | What is wrong                                                                                                | Fix                                                                                                                                         |
 | ------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -58,6 +67,8 @@ These two block an npm publish. Nothing else here does.
 | F-106       | Allow-default policies over MCP                                                                   | Require declared fields when a policy is loaded, or refuse allow-default policies over MCP                                                                                            |
 | F-125       | The ledger books the cost the caller states                                                       | The proposed design: a versioned price table, reserve from model and max tokens, settle from provider usage                                                                           |
 | D1 at merge | main's checker lacks the F-178 rule, so the base-checker fails this branch until the stack merges | Rebuild history, or land the documented one-time base-checker exception. PR #19's across-names failure is not a pure false positive (the RC-09 answers file is in its range)          |
+| Gateway CI  | Make the CI `gateway` job a required check on main?                                               | Yes: a change that breaks the plugin cannot merge, at the cost of one more required check per PR. No: the job reports, and a red one still needs a person to notice                   |
+| P0-2 fix    | Fix the gateway timeout before 0.4.0 is tagged, or tag with the known gap?                        | Fix first: about 1.5 h, $0, and the tag waits. Tag now: the gap is stated in ROADMAP and the audit, and a busy ledger can let a call through unmetered (loudly)                       |
 | Order       | Which group goes first and by when                                                                | A suggested order is at the end of this file                                                                                                                                          |
 
 ## Work by component
@@ -95,23 +106,46 @@ tamper test that edits the installed package and expects a deny.
 
 ### Spend and ledger
 
-| Finding | Cases                             | Fix                                                                                                                                                                                                                                  | Sweep                                                                       |
-| ------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| F-191   | S-SEC-010                         | Record the absolute log folder at `cap set` and read only that; ask or refuse when the environment points elsewhere                                                                                                                  | Correct docs/SPEND.md in the same change                                    |
-| —       | D12 (2026-10-29)                  | Local proxy + key custody: stand inside the API call path instead of reading the agent's own logs, closing the C-07 family (F-191/205/210/211) at the architecture level — spend observed at egress, keys never in the agent's hands | Owner ruling D12 sent the proxy direction to v2; design before build        |
-| —       | D14 (2026-10-30)                  | Gateway follow-ups: run `integrations/litellm` tests in CI (a new required check, owner's call); meter Anthropic `/v1/messages`; route paid search through the gateway or the ledger; price cached input                             | Owner ruling D14 adopted the LiteLLM proxy; v1 refuses what it cannot meter |
-| F-192   | S-REL-001                         | Isolate each log read: skip and report an unreadable file with a code, the cap fails closed under it; a distinct hook code per failing step                                                                                          | Every step of the hook that can fail                                        |
-| F-193   | L-REL-013                         | Bind the summary to the chain head and refuse `reserve` on a mismatch                                                                                                                                                                | Every cached total the cap reads                                            |
-| F-175   | A-ACC-013, P-ACC-006 (known open) | After the owner's answer; the two runtime hints in `src/spend.mjs` and `src/console.mjs` still name the command                                                                                                                      | Specs and CHANGELOG                                                         |
-| F-180   | —                                 | After the owner's answer                                                                                                                                                                                                             | The enumeration test names the two unpriced fields                          |
-| F-125   | —                                 | After the owner's answer                                                                                                                                                                                                             | MCP gate and CLI                                                            |
-| F-49    | —                                 | `unlock` refuses a live holder unless forced twice                                                                                                                                                                                   | —                                                                           |
-| F-104   | —                                 | Owner encoded in the lock directory name, release by rename-then-remove (a lock-protocol change for review)                                                                                                                          | —                                                                           |
-| F-114   | —                                 | Ledger and release nits listed in the finding                                                                                                                                                                                        | —                                                                           |
+| Finding | Cases                             | Fix                                                                                                                                                                                                                                                      | Sweep                                                                       |
+| ------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| F-191   | S-SEC-010                         | Record the absolute log folder at `cap set` and read only that; ask or refuse when the environment points elsewhere                                                                                                                                      | Correct docs/SPEND.md in the same change                                    |
+| —       | D12 (2026-10-29)                  | Local proxy + key custody: stand inside the API call path instead of reading the agent's own logs, closing the C-07 family (F-191/205/210/211) at the architecture level — spend observed at egress, keys never in the agent's hands                     | Owner ruling D12 sent the proxy direction to v2; design before build        |
+| —       | D14 (2026-10-30)                  | Gateway follow-ups: meter Anthropic `/v1/messages`; route paid search through the gateway or the ledger; price cached input. The `integrations/litellm` tests run in CI since PR #51 (the `gateway` job); making it a required check is the owner's call | Owner ruling D14 adopted the LiteLLM proxy; v1 refuses what it cannot meter |
+| F-192   | S-REL-001                         | Isolate each log read: skip and report an unreadable file with a code, the cap fails closed under it; a distinct hook code per failing step                                                                                                              | Every step of the hook that can fail                                        |
+| F-193   | L-REL-013                         | Bind the summary to the chain head and refuse `reserve` on a mismatch                                                                                                                                                                                    | Every cached total the cap reads                                            |
+| F-175   | A-ACC-013, P-ACC-006 (known open) | After the owner's answer; the two runtime hints in `src/spend.mjs` and `src/console.mjs` still name the command                                                                                                                                          | Specs and CHANGELOG                                                         |
+| F-180   | —                                 | After the owner's answer                                                                                                                                                                                                                                 | The enumeration test names the two unpriced fields                          |
+| F-125   | —                                 | After the owner's answer                                                                                                                                                                                                                                 | MCP gate and CLI                                                            |
+| F-49    | —                                 | `unlock` refuses a live holder unless forced twice                                                                                                                                                                                                       | —                                                                           |
+| F-104   | —                                 | Owner encoded in the lock directory name, release by rename-then-remove (a lock-protocol change for review)                                                                                                                                              | —                                                                           |
+| F-114   | —                                 | Ledger and release nits listed in the finding                                                                                                                                                                                                            | —                                                                           |
 
 Class detector (C-07): a tamper test per trusted input (the environment, the
 summary, the caller's cost) that changes it and expects the figure to hold.
 For F-192 (C-14): an EACCES fixture in the spend tests.
+
+### Gateway reliability (audit 2026-11-02)
+
+From [docs/reliability-audit-2026-11-02.md](reliability-audit-2026-11-02.md),
+which has the evidence and line numbers. None needs a paid call.
+
+| Item | What is wrong                                                                                                                                         | Fix                                                                                                                                                       |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0-1 | A reservation the gateway never settles (restart, refused settle, two failed settles) holds its worst case for ever; 10,000 of them refuse every call | An expiry that settles at the worst case, a `sakk settle` command with an audit line, settle the gateway's own open ones at start                         |
+| P0-2 | The gateway's 2 s timeout equals the ledger's 2 s lock wait, so a busy ledger reads as an outage and that call goes through unmetered                 | Timeout of lock wait plus margin (cold start included, F-239), a short breaker after a timeout, a side file of calls let through. Waits on the owner's go |
+| P1-1 | A settle refused with `LEDGER_LOCK_UNAVAILABLE` or `LEDGER_WRITE_FAILED` is not retried, so it becomes a P0-1 orphan                                  | Retry those two codes with backoff and jitter                                                                                                             |
+| P1-2 | The gateway does not check at start that the proxy's model retries are 0                                                                              | Refuse to start when they are not                                                                                                                         |
+| P1-3 | The ledger process's stderr is dropped and a crash restarts it at once                                                                                | Log stderr, back off restarts up to 30 s                                                                                                                  |
+| P2   | 502/504 settled at $0, stale locks without `owner.json`, no ledger benchmark, console request timeouts and `doctor()` per request, no graceful stop   | Listed with estimates in the audit                                                                                                                        |
+
+### Test gaps at 0.4.0
+
+| Gap                                                                                                                                   | Why it is open                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| No test holds the ledger lock past the gateway timeout, so P0-2 is inferred from the code, not reproduced                             | Lands with the P0-2 fix                                            |
+| The gateway has run only against a mock provider, never a real model                                                                  | A real run is a paid call and needs the owner's approval           |
+| In one full gate on PR #51 the 1 MiB hook payload test hung until its bound, as in F-220, and passed on rerun; the cause is not found | F-220's machine-wide lock was in place; needs a repro before a fix |
+| The fail-open gateway tests are timing-sensitive on a cold macOS start (F-239); the stand-in is now run once before it is timed       | The same cold start on a slow production host is part of P0-2      |
 
 ### Console (`sakk ui`)
 
@@ -207,8 +241,9 @@ owner ruling — see docs/DECISIONS.md). These notes stayed non-blocking:
 
 The owner sets the order and dates (D10). A suggestion:
 
-1. **Release blockers and decisions.** F-199, F-111, and the owner's answers
-   above, since five fixes wait on them.
+1. **Decisions and gateway P0.** The owner's answers above, since several
+   fixes wait on them (F-199 and F-111 closed in 0.3.0); then gateway P0-1
+   and P0-2, since the gateway is what 0.4.0 ships.
 2. **Guard reach.** F-183, F-184, F-185, F-186, F-187, F-189: the gaps an
    agent can use today.
 3. **Spend, ledger, console.** F-191, F-192, F-193, F-194, F-195, F-201.
