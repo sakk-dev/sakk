@@ -7926,6 +7926,35 @@
         "qid": "C-09.1",
         "why": "The answer said the outage tests reach 'Sakk died mid-run' for real by running a wrapper script, but it treated that script as starting instantly; its guard o1 had never run where a new script's first exec is slow, so the wrapper itself broke the state it was meant to reach."
       }
+    },
+    {
+      "id": "F-240",
+      "title": "sakk ui --set-password showed the prompt before it turned echo off, so a password typed the moment the prompt appeared was echoed",
+      "date": "2026-11-03",
+      "class": "C-09",
+      "introduced_in": "f36008e",
+      "found_by": "T0",
+      "areas": ["src/console-login.mjs", "test/console-login.test.mjs"],
+      "symptom": "In the 0.4.0 tutorial run, which drives sakk ui --set-password with expect, the transcript showed the second password in clear after 'The same password again: '. The first password in the same run was not shown.",
+      "evidence": "The tutorial run log shows the second password (a throwaway value from openssl rand in a temporary HOME, masked in every report). The same expect step re-run on the code before the fix: 20 runs, all saved, the password in the transcript in 2. After the fix: 60 runs, all saved, the password in none. The new unit test, run on the unfixed promptHidden, fails because the prompt is shown before echo goes off.",
+      "direct_cause": "promptHidden called output.write(prompt) and only then input.setRawMode(true). Until the mode switch took effect the terminal still echoed, and a reader that answers as soon as it reads the prompt could land keys in that gap.",
+      "why": [
+        "The prompt was written first because that is the order a person reads it in; nothing said echo must be off before the prompt is visible.",
+        "Node's switch to raw mode waits for output already written to drain (libuv sets the mode with TCSADRAIN), so the prompt can reach the reader before echo is off.",
+        "A person needs far longer than that gap to start typing, so the hand-run check never showed an echo; a pty driver such as expect answers within it.",
+        "The unit tests checked only the end state (raw mode on then off, typed text not in the output) on a fake stream that echoes nothing, so they could not see the order."
+      ],
+      "root_cause": "The prompt assumed the person types after reading it, slower than the switch to raw mode; that was never tried with a reader that answers at once, and no test recorded the order of the two calls.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "mechanism_gap": "The console-login tests checked that raw mode was turned on and restored and that typed text did not reach the fake output; none recorded whether echo was off before the prompt was shown, and the fake terminal echoes nothing, so it could not show an echo.",
+      "mechanism_upgrade": "test/console-login.test.mjs::the hidden prompt turns echo off before it shows the prompt (F-240)",
+      "instance_fix": "this commit: promptHidden turns echo off before it writes the prompt, the order Python's getpass uses (it calls tcsetattr before it writes the prompt). Node cannot discard keys typed before a prompt appears, as getpass does with TCSAFLUSH; those are echoed by the terminal as they are typed, and the CHANGELOG names that limit.",
+      "guard": "test/console-login.test.mjs::the hidden prompt turns echo off before it shows the prompt (F-240)",
+      "sweep": "setRawMode appears only in promptHidden; both password prompts in askConsoleLogin go through it, and bin/sakk.mjs reaches it only through askConsoleLogin. The username line is meant to be visible and uses readline. No other code in src/ or bin/ reads a secret from a terminal.",
+      "sweep_status": "done",
+      "status": "fixed"
     }
   ]
 }

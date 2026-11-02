@@ -96,6 +96,16 @@ last_at}` and `last_outage` adds `ended_at`. The gateway assumes one
   amount in smaller type and never breaks inside, and the figure shrinks
   with its card so an amount stays whole on a phone.
 
+### Fixed — `sakk ui --set-password` no longer shows a password (F-240)
+
+- The password prompts were shown a moment before echo went off, so a
+  password typed the instant a prompt appeared could be echoed. A script
+  that answers the prompts (such as `expect`) showed the password in 2 runs
+  out of 20. Echo now goes off before each prompt is shown, the way
+  Python's `getpass` does it; the same script showed it in none of 60 runs.
+- Keys typed before a prompt appears are still echoed by the terminal
+  itself. Wait for the prompt before you type the password.
+
 ### Added — `sakk gateway init`: connect your own app, in any language
 
 - The README, its Chinese version, the FAQ and `llms.txt` now open with two
