@@ -35,6 +35,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/gateway-package.test.mjs` ties the lock, the package and the CI job
   together.
 
+### Changed — the LiteLLM gateway lets calls through when Sakk cannot answer
+
+- When Sakk's process will not start, crashes, hangs past the timeout or
+  replies with garbage, the gateway now sends the call to the provider
+  instead of answering 503. `SAKK_ON_UNAVAILABLE=deny` keeps the old 503
+  `SAKK_UNAVAILABLE`; any value other than `allow` or `deny` refuses to
+  start. **Calls let through this way are not recorded in the ledger and
+  not capped.** A refusal from Sakk that arrives within `SAKK_TIMEOUT_S`
+  (402 over the cap, halted, reconciliation, any other Sakk code) and the
+  gateway's own 403 and 400 refusals stay refusals in both modes. A ledger
+  file lock another process holds longer than the timeout is no answer and
+  counts as an outage; Sakk waits about 2 s for the lock itself, so with the
+  default timeout this is usually the case.
+- Each such call logs one JSON WARNING line (`"event":
+"sakk_unavailable_allowed"`, with the model, `est_max_usd`, the reason,
+  `outage_since` and `allowed_calls`) and its response, streamed or not,
+  carries the header `x-sakk-status: unmetered`. The first answer from Sakk
+  again, a reservation or a refusal, ends the outage and logs
+  `sakk_outage_ended`.
+- A Sakk process that died is started again within the next call, and that
+  call is metered if the new process answers. The request is sent again
+  only if writing it to the old process failed; a request that was written
+  and got no reply is an outage and is not sent again, because the first
+  reservation may have landed (it stays reserved until reconciled).
+- `SAKK_TIMEOUT_S` now defaults to 2 seconds (was 10), for reserve and
+  settle alike; zero, negative or non-numeric values refuse to start.
+- New status file, `SAKK_GATEWAY_STATUS` or `<SAKK_LEDGER>.gateway.json`
+  with the ledger's folder resolved to its real path on both the gateway and
+  the `sakk` side, so a relative or linked ledger path names the same file;
+  written whole (temporary file, fsync, rename) with mode 0600 on the
+  gateway's event loop:
+  `{version: 1, updatedAt, mode, outage, last_outage}`, where `outage` is
+  null or `{since, allowed_calls, est_max_unrecorded_usd, last_reason,
+last_at}` and `last_outage` adds `ended_at`. The gateway assumes one
+  process per ledger.
+- `sakk status` prints a `gateway` line when the status file exists, and
+  `sakk status --json` has a `gateway` key (null without the file). The exit
+  code does not change.
+- The console shows a red banner on every page during an outage and a
+  warning after one, and, when the status file exists, checks
+  `SAKK_GATEWAY_URL` (default `http://127.0.0.1:4000`) at
+  `/health/liveliness` (500 ms, cached 5 s), with a red banner when the
+  gateway does not answer.
+- `integrations/litellm/config.example.yaml` no longer has a Claude route.
+
+### Fixed — the console's spend figures read right (F-236, F-237, F-238)
+
+- The console's 7-day spend chart cut the `$0` off its axis labels and,
+  for days under a cent, printed the same label on several lines (F-236).
+  The axis now steps in round amounts, prints as many decimals as the step
+  needs and widens its margin to the longest label.
+- The console printed spend under $0.00005 as `$0.0000`, so the gateway
+  ledger card read as free next to a chart showing the same calls (F-237).
+  Amounts under $0.0001 now print with two significant digits, such as
+  `$0.000049`; every other amount prints as before.
+- The Today and Gateway ledger cards printed spend and cap as one large
+  string, so `$0.000050 / $1.00` broke across two lines on a desktop and
+  `— / no cap` across three on a phone (F-238). The cap now sits after the
+  amount in smaller type and never breaks inside, and the figure shrinks
+  with its card so an amount stays whole on a phone.
+
 ## [0.3.0] - 2026-11-01
 
 ### Fixed — the tutorial and FAQ match the 0.3.0 build (F-234)

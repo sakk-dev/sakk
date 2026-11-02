@@ -22,6 +22,7 @@ import {
   normalize,
 } from './hook.mjs';
 import { loadPrices } from './prices.mjs';
+import { gatewayStatus, gatewayView } from './gateway-status.mjs';
 import { daySpend, systemZone, dayOf, SpendError } from './spend.mjs';
 import { doctor } from './guard-install.mjs';
 import { halt, LedgerError, readLedger, ledgerStatus, alertsPathFor } from './ledger.mjs';
@@ -191,6 +192,7 @@ const timeOf = (s) => {
  */
 export function ledgerData({
   ledgerPath,
+  env = process.env,
   now = Date.now(),
   limit = PAGE_LINES,
   maxBytes = LEDGER_VIEW_BYTES,
@@ -239,7 +241,11 @@ export function ledgerData({
   return {
     configured: true,
     source,
-    status: ledgerStatus({ ledgerPath, doc, now }),
+    // the same object as `sakk status --json`, gateway key included
+    status: {
+      ...ledgerStatus({ ledgerPath, doc, now }),
+      gateway: gatewayStatus({ ledgerPath, env }),
+    },
     entries: sorted.slice(0, limit).map((e) => pick(e, ENTRY_FIELDS)),
     entries_total: doc.entries.length,
     truncated: doc.entries.length > limit,
@@ -390,6 +396,7 @@ export function startConsole({
 } = {}) {
   const tok = token();
   const state = { forbidden: 0 };
+  const gateway = gatewayView({ ledgerPath, env, now });
   // opt-in sign-in: no credential file, no sign-in, the console is token-only as before;
   // a file that cannot be trusted refuses the start (CONSOLE_LOGIN_UNSAFE / _INVALID)
   let gate = null;
@@ -473,7 +480,14 @@ export function startConsole({
             checks: doctor({ cwd, home: env.HOME || homedir(), env, probe: false }),
           });
         // the path is the one the console started with; the request cannot pick a file
-        if (name === 'ledger') return json(res, ledgerData({ ledgerPath }));
+        if (name === 'ledger') return json(res, ledgerData({ ledgerPath, env }));
+        // the probe is bounded (500 ms) and shared for 5 s; it runs only when
+        // the gateway has written a status file
+        if (name === 'gateway')
+          return void gateway().then(
+            (d) => json(res, d),
+            (e) => json(res, { error: 'CONSOLE_GATEWAY_FAILED', message: String(e?.message ?? e) }),
+          );
         if (name === 'prices') {
           try {
             return json(res, pricesData({ home }));
@@ -877,7 +891,9 @@ main{padding-inline:16px}
 .ph{margin-bottom:4px}
 .ph h1{font-size:22px;letter-spacing:-.01em}
 .pagesub{color:var(--muted);font-size:13.5px;margin:0 0 18px;max-width:78ch}
-.kpi .v{font-size:26px}
+.kpi{container-type:inline-size}
+.kpi .v{font-size:clamp(18px,16cqi,26px);overflow-wrap:anywhere}
+.kpi .v .of{font-size:.55em;font-weight:400;color:var(--muted);white-space:nowrap}
 .mono{font-variant-numeric:tabular-nums}
 html[lang="en"] th,html[lang="en"] .kpi .l{text-transform:uppercase;letter-spacing:.06em;font-size:11px}
 html[lang="en"] .grp{text-transform:uppercase;letter-spacing:.1em;font-size:10.5px}
@@ -1142,7 +1158,9 @@ const TPL=document.getElementById("icons");
 function icon(n){const s=TPL&&TPL.content.querySelector('[data-i="'+n+'"]');if(!s)return $("span");const c=document.importNode(s,true);c.removeAttribute("data-i");return c;}
 function svgEl(tag){const p=TPL.content.querySelector('[data-i="chartproto"]');if(tag==="svg"){const c=p.cloneNode(false);c.removeAttribute("data-i");return c;}return p.querySelector(tag).cloneNode(false);}
 function sattr(e,o){for(const k in o)e.setAttribute(k,String(o[k]));return e;}
-function usd(v){if(v==null||typeof v!=="number"||!isFinite(v))return "—";const a=Math.abs(v);return "$"+v.toFixed(a<1&&v!==0?4:2);}
+function usd(v){if(v==null||typeof v!=="number"||!isFinite(v))return "—";const a=Math.abs(v);const d=a>=1||v===0?2:a>=0.0001?4:Math.min(12,1-Math.floor(Math.log10(a)));return "$"+v.toFixed(d);}
+/* a KPI "spent / cap": the cap is smaller and kept whole, so a long amount never splits the pair mid-line (F-238) */
+function kpiOf(main,of){return $("div",{class:"v"},main," ",$("span",{class:"of",text:"/ "+of}));}
 function num(v){return typeof v==="number"&&isFinite(v)?v.toLocaleString("en-GB"):"—";}
 function plural(n,w){return n+" "+w+(n===1?"":"s");}
 function arr(x){return Array.isArray(x)?x:[];}
@@ -1213,8 +1231,11 @@ closePop();
 const oldNav=app.querySelector("nav.side");const navX=oldNav?oldNav.scrollLeft:0,navY=oldNav?oldNav.scrollTop:0;
 app.textContent="";
 const h=D.halt;
+const gw=S.d.gateway||{},gst=gw.status,gpr=gw.probe;
 let state;
 if(h)state=pill("Stopped ("+h.scope+")","p-bad");
+else if(gst&&gst.outage)state=pill(gst.mode==="deny"?"Sakk unreachable · calls refused":"Sakk unreachable · calls unmetered","p-bad");
+else if(gpr&&!gpr.ok)state=pill("Gateway not answering","p-bad");
 else if(D.st&&D.st.reconciliation_required)state=pill("Needs reconciling · new spend paused","p-warn");
 else state=pill("Running normally","p-ok");
 let stop;
@@ -1230,6 +1251,7 @@ const cur=PARENT[S.page]||S.page;
 GROUPS.forEach(g=>{side.append($("div",{class:"grp",text:g[0]||" "}));g[1].forEach(p=>{const b=$("button",{class:"nav",type:"button","data-page":p,"aria-current":cur===p?"page":null},$("span",{class:"ic"},icon(ICON[p])),$("span",{class:"lbl","data-label":TITLES[p],text:TITLES[p]}));if(p==="upgrade")b.append($("span",{class:"navsoon",text:"coming soon"}));if(p==="overview"&&D.openN)b.append($("span",{class:"badge",text:String(D.openN)}));b.addEventListener("click",()=>go(p));side.append(b);});});
 const main=$("main",{id:"main"});
 if(h){const v=btn("View","sm",mHalt);main.append($("div",{class:"haltbar",role:"status"},$("b",{text:"Stopped · "+h.scope}),$("span",{class:"grow",text:(h.by||"Someone")+" stopped agents at "+when(h.at)+". New requests are refused until a person runs sakk resume."}),v));}
+gatewayBanners(main);
 if(PARENT[S.page])main.append($("div",{class:"crumb"},linkish("Overview",()=>go("overview")),$("span",{text:" › "}),$("span",{text:TITLES[S.page]})));
 const helpKey={overview:"source",calls:"ledger",blocks:"blocks",policy:"policy",dlp:"dlp",agents:"agents",data:"data",prices:"prices",upgrade:"upgrade"}[S.page];
 main.append($("div",{class:"ph"},$("h1",{text:TITLES[S.page]}),q(helpKey)));
@@ -1254,7 +1276,7 @@ const ov=D.ov;const k=$("div",{class:"grid kpis"});
 if(ov.error&&!ov.day){c.append($("div",{class:"v",text:"—"}),$("div",{class:"s",text:errText(ov)}));}
 else{const cap=ov.cap_usd;const counted=ov.counted_today===true;const tail=" · from local logs"+(ov.error?" · "+ov.error:"")+(ov.unreadable_spend?" · "+ov.unreadable_spend+" unreadable":"");
 /* a day not counted yet has no figure: a dash, never $0 (F-231) */
-c.append($("div",{class:"v",text:(counted?usd(ov.spend_usd):"—")+" / "+(cap==null?"no cap":usd(cap))}));
+c.append(kpiOf(counted?usd(ov.spend_usd):"—",cap==null?"no cap":usd(cap)));
 if(cap&&counted){const i=$("i");i.style.width=Math.min(100,Math.max(0,(ov.spend_usd||0)/cap*100)).toFixed(1)+"%";c.append($("div",{class:"bar"},i));}
 c.append($("div",{class:"s",text:counted?plural(ov.calls||0,"call")+" · counted "+when(ov.indexed_at)+tail:(ov.indexed_at?"Not counted today":"Not counted yet")+" · run sakk spend to count it"+tail}));
 c.append(linkish("See every call",()=>go("calls")));}
@@ -1263,7 +1285,7 @@ k.append(c);}
 {const c=$("div",{class:"card kpi"});c.append($("div",{class:"l"},"Gateway ledger ",q("ledger")));const L=D.led;
 if(!L.configured){c.append($("div",{class:"v",text:"—"}),$("div",{class:"s",text:"Not set up: start sakk ui --ledger <path>"}));}
 else if(!D.ledOk){c.append($("div",{class:"v",text:"—"}),$("div",{class:"s",text:errText(L)}));}
-else{const s=D.st;c.append($("div",{class:"v",text:usd(s.committed_usd)+" / "+usd(s.cap_usd)}));if(s.cap_usd){const i=$("i");i.style.width=Math.min(100,Math.max(0,(s.committed_usd||0)/s.cap_usd*100)).toFixed(1)+"%";c.append($("div",{class:"bar"},i));}
+else{const s=D.st;c.append(kpiOf(usd(s.committed_usd),usd(s.cap_usd)));if(s.cap_usd){const i=$("i");i.style.width=Math.min(100,Math.max(0,(s.committed_usd||0)/s.cap_usd*100)).toFixed(1)+"%";c.append($("div",{class:"bar"},i));}
 c.append($("div",{class:"s",text:"settled "+usd(s.settled_usd)+" · "+plural(L.entries_total||0,"call")+" · "+usd(s.remaining_usd)+" left"}));}
 k.append(c);}
 /* 3: blocked today */
@@ -1293,6 +1315,7 @@ two.append(chartCard());two.append(spendCard());m.append(two);
 function recordFromDecision(d){const c=d.context||{};const r=d.ruleId;const type=d.verdict==="allow"?null:r==="secret"?"secret":r==="spend-cap"?"budget":r==="halt"?"halted":d.verdict==="require_approval"?"approval":"deny";
 return {id:c.callId||"—",at:d.at,type:type,verdict:d.verdict,who:c.agent||d.by||"—",via:VIA[d.by]||d.by||"—",action:(c.action||"")+(c.scope?" "+scopeText(c.scope):""),why:d.why||("Matched rule "+r),rule:r,open:type==="secret",src:d};}
 const SW=["sw0","sw1","sw2","sw3","sw4"];
+function axisTicks(max){const raw=Math.max(max,0.0001)/4,b=Math.pow(10,Math.floor(Math.log10(raw)));const step=[1,1.5,2,2.5,3,4,5,6,8,10].find(m=>m*b>=raw*(1-1e-9))*b;let d=2;while(d<8&&Math.abs(step*Math.pow(10,d)-Math.round(step*Math.pow(10,d)))>1e-6)d++;const labels=[0,1,2,3,4].map(i=>"$"+(step*i).toFixed(d));return {top:step*4,labels:labels,pad:Math.ceil(Math.max.apply(null,labels.map(s=>s.length))*6.4)+8};}
 function chartCard(){
 const c=$("div",{class:"card"});c.append($("h2",{text:"Spend over the last 7 days, by agent"}));
 if(!D.led.configured){c.append(empty("The chart needs the gateway ledger: start sakk ui --ledger <path>. Today’s local-log spend is on the first card."));return c;}
@@ -1300,9 +1323,9 @@ if(!D.ledOk){c.append(errNote(D.led,"the gateway ledger"));return c;}
 const days=D.days;const ags=D.agentsSeen;const tot=days.map(k=>ags.reduce((s,a)=>s+((D.byDay[k]||{})[a]||0),0));
 const max=Math.max.apply(null,tot.concat([0]));
 if(!max){c.append(empty("No settled calls in the last 7 days."));}
-else{const W=560,H=180,pl=34,pb=22,bw=(W-pl-10)/7,top=Math.max(max*1.15,0.0001);
+else{const ax=axisTicks(max),W=560,H=180,pl=ax.pad,pb=22,bw=(W-pl-10)/7,top=ax.top;
 const svg=sattr(svgEl("svg"),{viewBox:"0 0 "+W+" "+H,class:"chart",role:"img","aria-label":"Spend over the last 7 days, by agent"});
-for(let i=0;i<5;i++){const y=(H-pb)-(H-pb-10)*i/4;svg.append(sattr(svgEl("line"),{x1:pl,x2:W-6,y1:y,y2:y,class:"gl"}));const t=sattr(svgEl("text"),{x:pl-4,y:y+3,"text-anchor":"end"});t.textContent=usd(top*i/4);svg.append(t);}
+for(let i=0;i<5;i++){const y=(H-pb)-(H-pb-10)*i/4;svg.append(sattr(svgEl("line"),{x1:pl,x2:W-6,y1:y,y2:y,class:"gl"}));const t=sattr(svgEl("text"),{x:pl-4,y:y+3,"text-anchor":"end"});t.textContent=ax.labels[i];svg.append(t);}
 days.forEach((k,i)=>{let y=H-pb;const x=pl+i*bw+bw*0.2;ags.forEach((a,j)=>{const v=(D.byDay[k]||{})[a]||0;if(!v)return;const h=(H-pb-10)*v/top;y-=h;const r=sattr(svgEl("rect"),{x:x,y:y,width:bw*0.6,height:Math.max(h,1),rx:2,class:"f"+Math.min(j,4)});const tt=svgEl("title");tt.textContent=a+" · "+k+" · "+usd(v);r.append(tt);svg.append(r);});
 const lab=sattr(svgEl("text"),{x:pl+i*bw+bw/2,y:H-6,"text-anchor":"middle",class:i===6?"bold":""});lab.textContent=i===6?"Today":FMT_W.format(new Date(k+"T12:00:00Z"));svg.append(lab);});
 c.append(svg);
@@ -1589,7 +1612,14 @@ card.style.top=top+"px";card.style.left=Math.max(12,Math.min(r.left,innerWidth-c
 window.addEventListener("resize",()=>{if(S.tour>=0)showStep();else closePop();});
 
 /* ---------- start ---------- */
-function load(){return Promise.all([api("overview"),api("ledger"),api("rules"),api("records"),api("agents"),api("prices"),api("secret"),api("forbidden")].map(p=>p.catch(e=>({error:"FETCH_FAILED",message:String(e&&e.message||e)})))).then(r=>{["overview","ledger","rules","records","agents","prices","secret","forbidden"].forEach((n,i)=>{S.d[n]=r[i];});derive();render();if(S.tour>=0)showStep();});}
+function gatewayBanners(main){const g=S.d.gateway;const st=g&&g.status;if(!st)return;
+if(st.error){main.append($("p",{class:"note warn",role:"status",text:"The gateway status file could not be read ("+st.error+"): "+st.message}));}
+else if(st.outage){const o=st.outage;const since="The gateway reports Sakk has not answered since "+when(o.since)+". ";
+if(st.mode==="deny")main.append($("div",{class:"haltbar",role:"alert"},$("b",{text:"Sakk unreachable · calls refused (deny mode)"}),$("span",{class:"grow",text:since+"SAKK_ON_UNAVAILABLE=deny, so every call gets HTTP 503 until Sakk answers."+(o.allowed_calls>0?" Earlier in this outage "+plural(o.allowed_calls,"call")+" went through unmetered, up to "+usd(o.est_max_unrecorded_usd)+" not recorded in the ledger.":"")})));
+else main.append($("div",{class:"haltbar",role:"alert"},$("b",{text:"Sakk unreachable · calls going through unmetered"}),$("span",{class:"grow",text:since+plural(o.allowed_calls,"call")+" let through, up to "+usd(o.est_max_unrecorded_usd)+" not recorded in the ledger and not capped."})));}
+else if(st.last_outage){const o=st.last_outage,a=when(o.since),b=when(o.ended_at);main.append($("p",{class:"note warn",role:"status",text:"Last Sakk outage: "+(a===b?a+", under a minute":a+" to "+b)+". "+(o.allowed_calls>0?"The gateway let "+plural(o.allowed_calls,"call")+" through, up to "+usd(o.est_max_unrecorded_usd)+" not recorded in the ledger. Check the provider's bill for that window.":"No calls went through unmetered.")}));}
+const p=g.probe;if(p&&!p.ok)main.append($("div",{class:"haltbar",role:"alert"},$("b",{text:"Gateway not answering at "+p.url}),$("span",{class:"grow",text:"The health check got "+(p.status?"HTTP "+p.status:p.error)+". The status above is the last one the gateway wrote."})));}
+function load(){return Promise.all([api("overview"),api("ledger"),api("rules"),api("records"),api("agents"),api("prices"),api("secret"),api("forbidden"),api("gateway")].map(p=>p.catch(e=>({error:"FETCH_FAILED",message:String(e&&e.message||e)})))).then(r=>{["overview","ledger","rules","records","agents","prices","secret","forbidden","gateway"].forEach((n,i)=>{S.d[n]=r[i];});derive();render();if(S.tour>=0)showStep();});}
 const h0=location.hash.slice(1);if(TITLES[h0])S.page=h0;
 load();
 })();</script>

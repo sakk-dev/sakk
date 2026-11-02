@@ -2,7 +2,21 @@
 
 Every chat call through the proxy reserves its worst-case cost with Sakk
 before the provider is called, and settles the real cost afterwards.
-Anything the gate cannot price or meter is refused, never let through.
+Anything the gate cannot price is refused, never let through.
+
+When Sakk itself cannot answer (it will not start, crashed, hung past the
+timeout, or replied garbage) the default is to let the call through,
+unmetered and loudly: a WARNING log line, an `x-sakk-status: unmetered`
+response header, and an outage record in the status file that the console
+and `sakk status` show. Calls let through this way are not in the ledger
+and not capped. SAKK_ON_UNAVAILABLE=deny refuses them with 503 instead.
+A deliberate refusal from Sakk (over the cap, halted, needs
+reconciliation) stays a refusal in both modes.
+
+One LiteLLM worker process is assumed: the status file is guarded by an
+in-process lock, so several workers would overwrite each other's counts.
+Status writes take that lock and fsync on the event-loop thread, so a slow
+disk stalls every call in this worker while an outage opens, counts or ends.
 
 Load it from the proxy config, with this file next to config.yaml:
 
@@ -16,17 +30,22 @@ Required environment:
 Optional:
     SAKK_NODE                node executable (default: node)
     SAKK_DEFAULT_MAX_TOKENS  max_tokens injected when a request has none (2048)
-    SAKK_TIMEOUT_S           how long one ledger call may take (10)
+    SAKK_TIMEOUT_S           how long one ledger call may take (2)
+    SAKK_ON_UNAVAILABLE      allow (default) or deny, when Sakk cannot answer
+    SAKK_GATEWAY_STATUS      status file (default: <SAKK_LEDGER>.gateway.json, folder links resolved)
 """
 
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import logging
 import math
 import os
+import threading
 import uuid
+from datetime import datetime, timezone
 from decimal import ROUND_CEILING, Decimal
 from typing import Any
 
@@ -47,12 +66,23 @@ INPUT_OVERHEAD_TOKENS = 512
 OUTPUT_MARGIN_TOKENS = 64
 # How long a proxy-side failure waits for the provider-call log event.
 LATE_SETTLE_S = float(os.environ.get("SAKK_LATE_SETTLE_S", "2"))
+# A ledger call that has not answered in this long is an outage. Short,
+# because in allow mode every queued call waits this long before going
+# through, one at a time.
+DEFAULT_TIMEOUT_S = 2.0
+OUTAGE_MODES = ("allow", "deny")
+STATUS_VERSION = 1
+REASON_MAX = 200
 # Request fields that become prompt tokens.
 PROMPT_FIELDS = ("messages", "tools", "functions", "tool_choice", "response_format", "system")
 
 
 class SakkUnavailable(Exception):
     """The ledger could not be reached or answered something unreadable."""
+
+
+class _NotSent(Exception):
+    """A request that never fully reached `sakk mcp`; the only failure that is sent again."""
 
 
 class SakkRefused(Exception):
@@ -67,6 +97,163 @@ def _required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"sakk_gateway: {name} is not set; the gateway refuses to start without it")
     return value
+
+
+def _outage_mode() -> str:
+    value = os.environ.get("SAKK_ON_UNAVAILABLE")
+    if value is None:
+        return "allow"
+    if value not in OUTAGE_MODES:
+        raise RuntimeError(
+            f"sakk_gateway: SAKK_ON_UNAVAILABLE must be allow or deny, not {value!r}; the gateway refuses to start"
+        )
+    return value
+
+
+def _timeout_s() -> float:
+    raw = os.environ.get("SAKK_TIMEOUT_S")
+    if raw is None:
+        return DEFAULT_TIMEOUT_S
+    try:
+        value = float(raw)
+    except ValueError:
+        value = math.nan
+    # A zero timeout would turn every call into an outage, and in allow mode
+    # into an unmetered call.
+    if not math.isfinite(value) or value <= 0:
+        raise RuntimeError(
+            f"sakk_gateway: SAKK_TIMEOUT_S must be a positive number of seconds, not {raw!r}; "
+            "the gateway refuses to start"
+        )
+    return value
+
+
+def status_path_for(ledger: str) -> str:
+    """Where the gateway records outages; `sakk status` and the console derive the same path.
+
+    The ledger's folder with every link resolved, the ledger's file name, then
+    ".gateway.json": the same rule as gatewayStatusPathFor in
+    src/gateway-status.mjs, so a relative SAKK_LEDGER or one through a linked
+    folder still names the file the readers look at.
+    """
+    override = os.environ.get("SAKK_GATEWAY_STATUS")
+    if override:
+        return override
+    absolute = os.path.abspath(ledger)
+    folder = os.path.realpath(os.path.dirname(absolute))
+    return os.path.join(folder, os.path.basename(absolute)) + ".gateway.json"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _valid_outage(o: Any) -> bool:
+    if not isinstance(o, dict) or not isinstance(o.get("since"), str):
+        return False
+    n, usd = o.get("allowed_calls"), o.get("est_max_unrecorded_usd")
+    return (
+        isinstance(n, int)
+        and not isinstance(n, bool)
+        and n >= 0
+        and isinstance(usd, (int, float))
+        and not isinstance(usd, bool)
+        and math.isfinite(usd)
+        and usd >= 0
+    )
+
+
+class GatewayStatus:
+    """The gateway's own record of Sakk outages, kept in one small JSON file.
+
+    Written whole each time (temp file, fsync, rename, mode 0600). A write
+    that fails is logged and never fails the call it describes.
+    """
+
+    def __init__(self, path: str, mode: str):
+        self.path = path
+        self.mode = mode
+        self._lock = threading.Lock()
+        self.outage: dict[str, Any] | None = None
+        self.last_outage: dict[str, Any] | None = None
+        self._load()
+        with self._lock:
+            self._write_locked()
+
+    def _load(self) -> None:
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                doc = json.load(f)
+        except FileNotFoundError:
+            return
+        except Exception as e:
+            log.error("sakk_gateway: status file %s is unreadable, starting a fresh one: %s", self.path, e)
+            return
+        if not isinstance(doc, dict) or doc.get("version") != STATUS_VERSION:
+            log.error("sakk_gateway: status file %s has an unknown shape, starting a fresh one", self.path)
+            return
+        # An outage still open when the gateway last stopped keeps counting.
+        if _valid_outage(doc.get("outage")):
+            self.outage = dict(doc["outage"])
+        if _valid_outage(doc.get("last_outage")):
+            self.last_outage = dict(doc["last_outage"])
+
+    def _write_locked(self) -> None:
+        doc = {
+            "version": STATUS_VERSION,
+            "updatedAt": _now_iso(),
+            "mode": self.mode,
+            "outage": self.outage,
+            "last_outage": self.last_outage,
+        }
+        tmp = f"{self.path}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(doc, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.path)
+        except Exception as e:
+            log.error("sakk_gateway: could not write the status file %s: %s", self.path, e)
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+    def outage_seen(self, reason: str, worst: float, allowed: bool) -> dict[str, Any]:
+        with self._lock:
+            now = _now_iso()
+            if self.outage is None:
+                self.outage = {
+                    "since": now,
+                    "allowed_calls": 0,
+                    "est_max_unrecorded_usd": 0.0,
+                    "last_reason": "",
+                    "last_at": now,
+                }
+            o = self.outage
+            if allowed:
+                o["allowed_calls"] += 1
+                o["est_max_unrecorded_usd"] = round(o["est_max_unrecorded_usd"] + worst, 6)
+            o["last_reason"] = reason[:REASON_MAX]
+            o["last_at"] = now
+            snap = dict(o)
+            self._write_locked()
+        return snap
+
+    def answered(self) -> dict[str, Any] | None:
+        """Sakk answered a reserve: close the open outage, if any."""
+        if self.outage is None:
+            return None
+        with self._lock:
+            if self.outage is None:
+                return None
+            ended = {**self.outage, "ended_at": _now_iso()}
+            self.last_outage = ended
+            self.outage = None
+            self._write_locked()
+        return ended
 
 
 def _round_up_usd(x: float) -> float:
@@ -135,7 +322,14 @@ class SakkClient:
     async def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         self._next_id += 1
         rid = self._next_id
-        await self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
+        try:
+            await self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
+        except OSError as e:
+            # The pipe was already closed, so the request's closing newline never
+            # reached Sakk and it cannot have acted on it.
+            if isinstance(e, (BrokenPipeError, ConnectionResetError)) or e.errno == errno.EPIPE:
+                raise _NotSent(f"{type(e).__name__}: {e}") from e
+            raise
         assert self._proc is not None and self._proc.stdout is not None
         while True:
             line = await self._proc.stdout.readline()
@@ -168,16 +362,26 @@ class SakkClient:
 
     async def call(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
         async with self._lock:
-            try:
-                if self._proc is None or self._proc.returncode is not None:
-                    await asyncio.wait_for(self._start(), self._timeout)
-                result = await asyncio.wait_for(
-                    self._rpc("tools/call", {"name": tool, "arguments": args}), self._timeout
-                )
-                body = json.loads(result["content"][0]["text"])
-            except Exception as e:  # any doubt about the ledger is an outage
-                self._kill()
-                raise SakkUnavailable(f"{tool}: {type(e).__name__}: {e}") from e
+            for _ in range(2):  # the second pass is always a fresh process: _kill clears _proc
+                fresh = self._proc is None or self._proc.returncode is not None
+                try:
+                    if fresh:
+                        await asyncio.wait_for(self._start(), self._timeout)
+                    result = await asyncio.wait_for(
+                        self._rpc("tools/call", {"name": tool, "arguments": args}), self._timeout
+                    )
+                    body = json.loads(result["content"][0]["text"])
+                    break
+                except Exception as e:  # any doubt about the ledger is an outage
+                    self._kill()
+                    # Sent again only when the request never reached a process that
+                    # was already running (it died since the last call). Anything
+                    # else is an outage at once: a fresh process failing, a hang, or
+                    # a reply lost after the request was written, because the same
+                    # callId sent twice is refused as a duplicate when the first one
+                    # landed (Stripe's rule for calls that are not idempotent).
+                    if fresh or not isinstance(e, _NotSent):
+                        raise SakkUnavailable(f"{tool}: {type(e).__name__}: {e}") from e
         if result.get("isError"):
             raise SakkRefused(str(body.get("code", "REFUSED")), str(body.get("message", "")))
         return body
@@ -249,11 +453,17 @@ class SakkGate(CustomLogger):
         self.prices = load_prices(self._config_path)
         log.warning("sakk_gateway: priced models: %s", ", ".join(sorted(self.prices)) or "(none)")
         self.default_max_tokens = int(os.environ.get("SAKK_DEFAULT_MAX_TOKENS", "2048"))
+        self.on_unavailable = _outage_mode()
+        ledger = _required_env("SAKK_LEDGER")
         self.client = SakkClient(
             os.environ.get("SAKK_NODE", "node"),
             _required_env("SAKK_BIN"),
-            _required_env("SAKK_LEDGER"),
-            float(os.environ.get("SAKK_TIMEOUT_S", "10")),
+            ledger,
+            _timeout_s(),
+        )
+        self.status = GatewayStatus(status_path_for(ledger), self.on_unavailable)
+        log.warning(
+            "sakk_gateway: when Sakk cannot answer: %s (status file %s)", self.on_unavailable, self.status.path
         )
         # sakk callId -> what settling it needs. Popped exactly once.
         self.pending: dict[str, dict[str, Any]] = {}
@@ -265,7 +475,8 @@ class SakkGate(CustomLogger):
         if not isinstance(md, dict):
             md = {}
             data["metadata"] = md
-        md.pop("sakk_call_id", None)  # only this hook may set it
+        md.pop("sakk_call_id", None)  # only this hook may set these
+        md.pop("sakk_unmetered", None)
 
         if call_type not in METERED_CALL_TYPES:
             raise _refuse(403, "SAKK_UNMETERED", f"route type {call_type!r} has no cost model in the Sakk gateway")
@@ -298,15 +509,51 @@ class SakkGate(CustomLogger):
                 {"callId": cid, "estimatedMaxUsd": worst, "agent": AGENT, "action": f"chat:{model}"},
             )
         except SakkRefused as e:
+            self._sakk_answered()  # a refusal is an answer: Sakk is back
             raise _refuse(402, e.code, e.message, estimatedMaxUsd=worst)
         except SakkUnavailable as e:
-            log.error("sakk reserve failed: %s", e)
-            raise _refuse(503, "SAKK_UNAVAILABLE", "the spend ledger is unreachable; no call was made")
+            reason = str(e)[:REASON_MAX]
+            if self.on_unavailable == "deny":
+                self.status.outage_seen(reason, worst, allowed=False)
+                log.error("sakk reserve failed: %s", reason)
+                raise _refuse(503, "SAKK_UNAVAILABLE", "the spend ledger is unreachable; no call was made")
+            snap = self.status.outage_seen(reason, worst, allowed=True)
+            log.warning(
+                "%s",
+                json.dumps(
+                    {
+                        "event": "sakk_unavailable_allowed",
+                        "model": model,
+                        "est_max_usd": worst,
+                        "reason": reason,
+                        "outage_since": snap["since"],
+                        "allowed_calls": snap["allowed_calls"],
+                    }
+                ),
+            )
+            # No call id and no pending entry: the settle hooks skip this call.
+            md["sakk_unmetered"] = True
+            return data
+        self._sakk_answered()
         self.pending[cid] = {"price": price, "worst": worst, "model": model}
         md["sakk_call_id"] = cid
         return data
 
+    def _sakk_answered(self) -> None:
+        """Sakk answered a reserve, with a reservation or a refusal: end an open outage."""
+        ended = self.status.answered()
+        if ended is not None:
+            log.warning("%s", json.dumps({"event": "sakk_outage_ended", **ended}))
+
     # ---- after the provider -------------------------------------------------
+
+    async def async_post_call_response_headers_hook(
+        self, data, user_api_key_dict, response, request_headers=None, litellm_call_info=None
+    ):
+        md = data.get("metadata") if isinstance(data, dict) else None
+        if isinstance(md, dict) and md.get("sakk_unmetered") is True:
+            return {"x-sakk-status": "unmetered"}
+        return None
 
     async def _settle(self, cid: str | None, actual: float, why: str) -> None:
         if not cid:

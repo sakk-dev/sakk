@@ -513,6 +513,31 @@ const BOUNDS = {
         'test/secret-scan.test.mjs::200KB adversarial lines for every rule scan without catastrophic backtracking',
     },
   },
+  'gateway-status.mjs': {
+    gatewayStatusPathFor: {
+      bounded:
+        'reads one environment variable, or makes one realpath call on the ledger folder and appends a fixed suffix; no file is read',
+      guard:
+        'test/gateway-status.test.mjs::a relative ledger path, or one through a linked folder, names the file the gateway writes',
+    },
+    gatewayStatus: {
+      bounded:
+        'one open with O_NOFOLLOW and O_NONBLOCK; a file over GATEWAY_STATUS_MAX_BYTES (64 KiB) is refused by fstat before it is read, and only a fixed set of fields is copied out',
+      guard:
+        'test/gateway-status.test.mjs::a broken, oversized or linked status file is a typed error, not a healthy gateway',
+    },
+    probeGateway: {
+      bounded:
+        'one GET under a timer (500 ms by default) that caps the whole exchange; the body is discarded unread',
+      guard: 'test/gateway-status.test.mjs::probeGateway reports a gateway that does not answer',
+    },
+    gatewayView: {
+      bounded:
+        'one bounded gatewayStatus read per call and at most one probe per cacheMs window, shared while it is in flight',
+      guard:
+        'test/gateway-status.test.mjs::gatewayView probes only with a status file, at most once per window',
+    },
+  },
   'append.mjs': {
     appendNoFollow: {
       bounded:
