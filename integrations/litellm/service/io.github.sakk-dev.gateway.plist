@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Sakk gateway as a launchd user agent (macOS). A template: replace every
+  placeholder (a capital name between double underscores) with an absolute
+  path or value as README.md in this folder
+  shows, copy it to ~/Library/LaunchAgents/ and make it readable by you only
+  (chmod 600): it holds the master key and your provider keys.
+  launchd starts agents with PATH=/usr/bin:/bin:/usr/sbin:/sbin and does not
+  expand ~, so every path here is absolute and SAKK_NODE names node.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.github.sakk-dev.gateway</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__LITELLM__</string>
+    <string>--config</string>
+    <string>__SAKK_GATEWAY_CONFIG__</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>4000</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>SAKK_NODE</key>
+    <string>__NODE__</string>
+    <key>SAKK_BIN</key>
+    <string>__SAKK_BIN__</string>
+    <key>SAKK_LEDGER</key>
+    <string>__SAKK_LEDGER__</string>
+    <key>SAKK_GATEWAY_CONFIG</key>
+    <string>__SAKK_GATEWAY_CONFIG__</string>
+    <key>LITELLM_MASTER_KEY</key>
+    <string>__LITELLM_MASTER_KEY__</string>
+    <key>LITELLM_LOCAL_MODEL_COST_MAP</key>
+    <string>True</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/gateway.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/gateway.err.log</string>
+</dict>
+</plist>

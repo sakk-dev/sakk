@@ -1,0 +1,82 @@
+Sakk
+Copyright 2026 The Sakk authors
+
+This product is licensed under the Apache License, Version 2.0 (see
+LICENSE).
+
+Third-party material
+====================
+
+The package also ships material derived from the following MIT-licensed
+projects. The MIT license
+requires that its copyright and permission notice be included in all copies
+or substantial portions of the material; this file carries those notices.
+
+1. gitleaks — secret-detection rules
+------------------------------------
+
+src/secret-rules.generated.mjs is generated from the gitleaks rule set
+(config/gitleaks.toml), tag v8.21.2, commit
+a9e1950fe247fbb08817393121691474c55a6cfa: 194 of 195 rules ported, 192
+enabled. Source: https://github.com/gitleaks/gitleaks
+
+  MIT License
+
+  Copyright (c) 2019 Zachary Rice
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to
+  the following conditions:
+
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+2. LiteLLM — model price table
+------------------------------
+
+prices/snapshot.json is a trimmed snapshot of LiteLLM's
+model_prices_and_context_window.json (the snapshot records the exact source
+URL, fetch time and upstream sha-256).
+Source: https://github.com/BerriAI/litellm
+
+  MIT License
+
+  Copyright (c) 2023 Berri AI
+
+  Permission is hereby granted, free of charge, to any person obtaining a
+  copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to
+  the following conditions:
+
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+3. cc-safety-net — acknowledgment
+---------------------------------
+
+The guard's shell tokenizer and wrapper-unwrapping approach was studied
+from cc-safety-net (MIT). No code was copied (specs/guard/decide.md); this
+acknowledgment records the influence.

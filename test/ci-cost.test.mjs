@@ -26,12 +26,14 @@ const DIR = join(ROOT, '.github', 'workflows');
 // https://docs.github.com/en/billing/reference/actions-runner-pricing
 const LINUX_USD_PER_MIN = 0.006;
 // Worst case today: ci.yml test 2x30 + self-evolution 10 + base-checker 10 +
-// format 10 + drill 2x30 (F-219), plus pr-review 2 + 20; the DCO check is a
-// step in the format job, so it adds nothing. A tag release (release.yml, 30)
+// format 10 + drill 2x30 (F-219) + gateway 15, plus pr-review 2 + 20; the DCO
+// check is a step in the format job, so it adds nothing. The gateway job (the
+// LiteLLM plugin's end-to-end tests) raised both commit ceilings by 15
+// minutes, $0.09 at this rate (2026-11-02). A tag release (release.yml, 30)
 // and a weekly run (scorecard.yml, 10, skipped while the repository is
 // private) bill per tag and per week, not per commit. Raising a ceiling is a
 // cost decision: say the new figure in the pull request.
-const CEILING = { pull_request: 172, push: 130, release: 30, schedule: 10 };
+const CEILING = { pull_request: 187, push: 145, release: 30, schedule: 10 };
 const WHAT = {
   pull_request: 'pull request commit',
   push: 'merge to main',

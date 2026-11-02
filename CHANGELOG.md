@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the version is 0.4.0
+
+- `package.json`, the plugin manifest and the `sakk-litellm` package say
+  0.4.0. Both tutorials were re-run on the packed 0.4.0 tarball in a
+  throwaway home; their output, dates and timings come from that run.
+  Nothing is published or tagged yet.
+
+### Added — the LiteLLM gateway runs as a service, in CI and as a Python package
+
+- CI has a `gateway` job: it installs LiteLLM 1.106.2 from the new hash lock
+  `integrations/litellm/requirements.lock` (hashes required, no source builds,
+  uv pinned by checksum) and runs the plugin's end-to-end tests against the
+  mock provider, with no key and no cost. It adds 15 runner-minutes to each
+  pull request commit and each merge to main (about $0.09); the ceilings in
+  `test/ci-cost.test.mjs` say so. It is not on main's required checks, which
+  the owner sets.
+- Service templates in `integrations/litellm/service/`: a launchd agent
+  (`KeepAlive`, at most one restart per 10 s) and a systemd user unit
+  (`Restart=always`), both on 127.0.0.1 only, with install, check and
+  uninstall commands. `test/gateway-service.test.mjs` checks both against the
+  variables `sakk_gateway.py` reads.
+- `integrations/litellm/pyproject.toml` packages the plugin as `sakk-litellm`
+  (version 0.4.0, the module alone, Apache-2.0 with NOTICE). It requires
+  `litellm[proxy]>=1.106.2,!=1.107.0`, which keeps the compromised releases
+  out. Not yet published; `docs/launch/pypi-publish.md` has the steps.
+  `test/gateway-package.test.mjs` ties the lock, the package and the CI job
+  together.
+
 ## [0.3.0] - 2026-11-01
 
 ### Fixed — the tutorial and FAQ match the 0.3.0 build (F-234)

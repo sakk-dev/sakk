@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "branch": "feat/gateway-ops",
+  "answers": {
+    "C-01.1": {
+      "answer": "Each absent piece refuses. A service file that leaves out SAKK_BIN, SAKK_LEDGER or SAKK_GATEWAY_CONFIG fails the service test, which reads the required names from sakk_gateway.py's _required_env calls; the plugin also refuses to start without them. A lock with no hashes or no litellm line fails the lock test. A missing requirements.lock makes the CI install step exit non-zero; there is no fallback to an unpinned install. A pyproject without a version, or a package folder without LICENSE or NOTICE, fails the package test.",
+      "guard": "test/gateway-service.test.mjs::both service files set every variable the plugin requires and none it does not read"
+    },
+    "C-01.2": {
+      "answer": "Deleting KeepAlive from the plist or Restart=always from the unit turns the service test red; its controls delete each one from an in-memory copy and expect the named refusal. Deleting --require-hashes or --no-build from the CI install step, or the whole gateway job, turns the CI-job test red. The gateway check is not on main's required list: the owner sets that list, so merge-rule.test.mjs declares it in NOT_REQUIRED with that reason instead of passing silently.",
+      "guard": "test/gateway-service.test.mjs::a malformed plist, a dropped KeepAlive or Restart, a missing variable or a public bind is refused (controls)"
+    },
+    "C-02.1": {
+      "answer": "No hand list stands in for the variables: the test collects every SAKK_* name the plugin source reads (required and optional) and the required subset from _required_env, then checks both service files against that. The placeholders are collected from the service files themselves and each must be filled by the README's sed lines. The npm version is read from package.json. The three compromised LiteLLM versions are written once in the package test and checked against both the lock and the pyproject's exclusions.",
+      "guard": "test/gateway-service.test.mjs::the service README fills every placeholder and names install, check and uninstall for both managers"
+    },
+    "C-02.2": {
+      "answer": "The LiteLLM pin rule applies in four places and each is covered: the CI lock (lock test), the pyproject dependency (package test: lower bound 1.106.2, 1.107.0 excluded), the publish and service docs (both install from the lock, the package with --no-deps), and the service files (they run the litellm the locked venv provides). The action-pin rule covers the two new actions: setup-python and setup-uv are pinned by SHA and added to NODE24_FROM, and uv itself is pinned by version and sha256 checksum.",
+      "guard": "test/gateway-package.test.mjs::the package depends on LiteLLM without the compromised releases and ships only the plugin module"
+    },
+    "C-03.1": {
+      "answer": "Each control plants one defect into a copy and asserts the specific message, not just a failure: KeepAlive false gives 'KeepAlive is not true', a 0.0.0.0 host gives the public-bind message, a lock pinned to 1.107.0 names that version. Before committing, the real plist was edited to KeepAlive false and the real lock had its litellm hash lines removed, and the suite went red on those named assertions; both edits were reverted.",
+      "guard": "test/gateway-package.test.mjs::a lock without hashes, on another LiteLLM, or on a compromised release is refused (controls)"
+    },
+    "C-03.2": {
+      "answer": "Well-formed is observed with a strict plist reader, not a regex: it walks the XML, accepts only the plist element types, requires matching close tags and one root dict, and refuses anything else; a control feeds it a truncated plist and an unknown element. The lock reader splits the file into requirement blocks and counts sha256 hashes per pin, so a pin with zero hashes is seen. plutil could not be run in this session (the session hook refuses it), so the strict reader is the evidence.",
+      "guard": "test/gateway-service.test.mjs::the launchd plist is well formed, keeps the gateway alive and binds 127.0.0.1"
+    },
+    "C-03.3": {
+      "answer": "The lock test checks text; the gateway CI job is what really runs it: on every pull request and on main it installs LiteLLM from requirements.lock with hashes required and no source builds, then runs the end-to-end plugin tests against the real proxy and the mock provider. The CI-job test ties the job to that lock path and that unittest command, so the job cannot drift to an unpinned install. The Python package build is not run in CI; the PR says so.",
+      "guard": "test/gateway-package.test.mjs::the CI gateway job installs only from the hash lock with no source builds and runs the plugin tests"
+    },
+    "C-04.1": {
+      "answer": "The CI job has timeout-minutes 15, and ci-cost.test.mjs counts it: the pull request ceiling goes from 172 to 187 runner-minutes and the main ceiling from 130 to 145, $0.09 more per commit at the test's own rate. A crash loop of the service is bounded by rate: ThrottleInterval 10 s in the plist and RestartSec 5 s in the unit, both asserted by the service tests as lower bounds, so a broken config restarts at most every few seconds.",
+      "guard": "test/ci-cost.test.mjs::one pull request commit and one merge to main stay inside the runner-minute budget"
+    },
+    "C-05.1": {
+      "answer": "The service README's facts (KeepAlive, Restart=always, 127.0.0.1, the variable names, each placeholder) are read back by the service tests. The integration PR draft's refusal table is checked against the codes the plugin and Sakk raise. One stale sentence remains outside this branch: integrations/litellm/README.md says the Python tests are not in CI; that file belongs to the fail-open PR, so the report asks for that one line there instead of editing it here.",
+      "guard": "test/gateway-package.test.mjs::every refusal code the integration draft names is raised by the plugin or by Sakk"
+    },
+    "C-05.2": {
+      "answer": "The check commands the service README gives are ones an operator can act on: launchctl print gui/$UID/<label> and systemctl --user status name the same label and unit file the tests read, and the health URL is /health/liveliness on 127.0.0.1:4000, the endpoint the plugin tests wait on. The cost figure in ci-cost.test.mjs is computed from its own per-minute rate, not typed in.",
+      "guard": "test/gateway-service.test.mjs::the service README fills every placeholder and names install, check and uninstall for both managers"
+    },
+    "C-06.1": {
+      "answer": "The lock came from uv's resolver on 2026-10-30 (its header keeps the exact command, --python 3.12, not --universal); its first Linux install is the CI job, and the PR says so instead of claiming it was tried on Linux. The package tests read pyproject.toml; the wheel and sdist were not built in this session because the session hook refuses uv, and the PR body states that rather than listing contents nobody saw.",
+      "guard": "test/gateway-package.test.mjs::the committed lock pins litellm==1.106.2 with hashes and no compromised release"
+    },
+    "C-09.1": {
+      "answer": "launchd starts agents with PATH=/usr/bin:/bin:/usr/sbin:/sbin and no ~ expansion, so both files set SAKK_NODE to an absolute node path and every path is an absolute placeholder; the test refuses a placeholder the README does not fill. A systemd user unit stops when the user logs out, so the README gives loginctl enable-linger. CI uses setup-python 3.12 and a pinned uv, not whatever the runner image ships.",
+      "guard": "test/gateway-service.test.mjs::both service files set every variable the plugin requires and none it does not read"
+    },
+    "C-09.2": {
+      "answer": "The service files were not loaded into launchd or systemd here (the brief forbids running launchctl or systemctl), so the README's commands are the documented ones from the man pages and the tests check the committed files an operator copies. The gateway job runs on ubuntu-latest in this repository's CI, the same place as every other job, on the pull_request event and on main.",
+      "guard": "test/gateway-service.test.mjs::the systemd user unit restarts always and binds 127.0.0.1"
+    },
+    "C-10.1": {
+      "answer": "Each required step is enforced by a check, not by text: install only from the lock is the CI step's --require-hashes and --no-build flags plus the CI-job test; package version equals npm version is the version test, which reads both files; bind 127.0.0.1 only is asserted by both service tests and refused by their controls when the host changes.",
+      "guard": "test/gateway-package.test.mjs::the Python package version is the npm package version"
+    },
+    "C-10.2": {
+      "answer": "Someone can install LiteLLM outside the lock. The package's dependency stops the known bad ones (at least 1.106.2, which also rules out 1.82.7 and 1.82.8, and not 1.107.0), and the publish and service docs install LiteLLM from requirements.lock first and the plugin with --no-deps. No upper bound, so a later security release is not blocked; the README advisory rule (move only when LiteLLM names a version safe) stays the guidance.",
+      "guard": "test/gateway-package.test.mjs::the package depends on LiteLLM without the compromised releases and ships only the plugin module"
+    },
+    "C-16.1": {
+      "answer": "The writer of this branch also wrote its tests, so they are not the judge: the gateway job and the base-checker run on fresh runners, and the pull request gets the adversarial-review workflow with a different model after it opens. merge-rule.test.mjs keeps the required list honest by naming the new gateway check as not required, with the owner's reason.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    }
+  }
+}

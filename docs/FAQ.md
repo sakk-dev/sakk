@@ -96,7 +96,7 @@ From your local logs, as an estimate:
 2. It multiplies the tokens by a price table. The table that ships with
    Sakk, `prices/snapshot.json`, is trimmed from LiteLLM's public price list
    (MIT, by Berri AI); its `source` block records the URL, commit, SHA-256
-   and the date it was fetched (2026-10-28 for 0.3.0). `sakk prices` shows
+   and the date it was fetched (2026-10-28 for 0.4.0). `sakk prices` shows
    the table in use.
 3. The day follows your time zone, or the one you set with
    `sakk cap set <usd> --zone <IANA>`. A log line dated in the future, or

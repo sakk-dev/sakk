@@ -23,6 +23,8 @@ const ACTIONS_APP = 15368;
 const NOT_REQUIRED = {
   'adversarial-review':
     'its verdict is read by whoever merges; the job fails only when the review cannot be made or posted, so requiring it would let a provider outage block every merge',
+  gateway:
+    "the owner sets main's required checks (2026-11-02); the LiteLLM plugin job runs on every pull request and its result is read before merging until the owner adds it to .github/rulesets/main.json",
 };
 
 /** Indented lines under the top-level key `key`, or null when the key is absent. */
