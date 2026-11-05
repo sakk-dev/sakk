@@ -1,5 +1,5 @@
 {
-  "name": "sakk",
+  "name": "@sakk-dev/sakk",
   "version": "0.4.0",
   "description": "The original check, rebuilt for AI agents — a fail-closed spend ledger: reserve before you spawn, settle with real costs, refuse everything pathological.",
   "type": "module",

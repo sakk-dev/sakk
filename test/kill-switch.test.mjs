@@ -433,7 +433,10 @@ describe('review B1: agent ids that are prototype names are ordinary ids', () =>
       ),
       'AGENT_HALTED',
     );
-    assert.equal(resume({ ledgerPath: lp, by: 'maintainer', agentId: 'constructor' }).wasHalted, false);
+    assert.equal(
+      resume({ ledgerPath: lp, by: 'maintainer', agentId: 'constructor' }).wasHalted,
+      false,
+    );
   });
 });
 
@@ -1246,11 +1249,17 @@ describe('F-177 — lifting a halt, clearing the books and breaking a lock are p
       const w = world();
       halt({ ledgerPath: w.lp, by: 'maintainer', reason: 'stop' });
 
-      const wrong = atTerminal(['resume', '--by', 'maintainer'], 'yes', { env: w.env, cwd: w.base });
+      const wrong = atTerminal(['resume', '--by', 'maintainer'], 'yes', {
+        env: w.env,
+        cwd: w.base,
+      });
       assert.equal(wrong.status, 2, wrong.out);
       assert.match(wrong.out, /HUMAN_CONFIRMATION_REQUIRED: the answer was not resume/);
 
-      const resumed = atTerminal(['resume', '--by', 'maintainer'], 'resume', { env: w.env, cwd: w.base });
+      const resumed = atTerminal(['resume', '--by', 'maintainer'], 'resume', {
+        env: w.env,
+        cwd: w.base,
+      });
       assert.equal(resumed.status, 0, resumed.out);
       assert.ok(resumed.asked, 'resume asked before acting');
       assert.match(resumed.out, /resumed all spending by maintainer/);
@@ -1264,7 +1273,10 @@ describe('F-177 — lifting a halt, clearing the books and breaking a lock are p
       assert.match(cleared.out, /reconciliation cleared by maintainer/);
 
       mkdirSync(`${w.lp}.lock`);
-      const unlocked = atTerminal(['unlock', '--by', 'maintainer'], 'unlock', { env: w.env, cwd: w.base });
+      const unlocked = atTerminal(['unlock', '--by', 'maintainer'], 'unlock', {
+        env: w.env,
+        cwd: w.base,
+      });
       assert.equal(unlocked.status, 0, unlocked.out);
       assert.equal(existsSync(`${w.lp}.lock`), false, 'the lock is gone');
     },

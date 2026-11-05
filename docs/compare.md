@@ -60,7 +60,7 @@ no claim either way.
   the day, leaks a secret or force-pushes.** That is what Sakk is for:
 
 ```bash
-npm install -g sakk
+npm install -g @sakk-dev/sakk
 sakk guard install claude-code     # or: cursor, codex
 sakk doctor                        # checks the hook really fires
 sakk cap set 5 --zone Asia/Dubai   # deny paid calls once today's spend reaches $5

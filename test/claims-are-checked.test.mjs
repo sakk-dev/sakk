@@ -186,7 +186,11 @@ describe('a security word is backed by a mechanism (F-126, C-05 detector upgrade
   // Each permitted use is a person who really signs something, or a mechanism
   // that exists in the code. Adding one is a reviewed choice.
   const ALLOWED = [
-    ['CHANGELOG.md', 'design signed 2026-10-15', 'the maintainer signed the policy-engine design review'],
+    [
+      'CHANGELOG.md',
+      'design signed 2026-10-15',
+      'the maintainer signed the policy-engine design review',
+    ],
   ];
   test('every scanned file exists and has text', () => {
     for (const f of SCANNED) assert.ok(read(f).trim().length > 0, f);

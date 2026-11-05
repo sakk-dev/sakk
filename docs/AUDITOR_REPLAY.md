@@ -88,7 +88,7 @@ case is normal, not missing evidence:
 | `gate-probe.jsonl`  | when a paid step hits the approval gate | gate invocations for paid steps                                              |
 | `sakk-alerts.jsonl` | when the ledger refused/halted          | greppable refusals/halts next to the ledger                                  |
 
-The ledger file is plain JSON; `npx sakk status --ledger <file>` summarizes
+The ledger file is plain JSON; `npx @sakk-dev/sakk status --ledger <file>` summarizes
 it and exits 3 if the run ended in an unresolved reconciliation.
 
 ## 6. If you were handed an evidence bundle (.tgz)

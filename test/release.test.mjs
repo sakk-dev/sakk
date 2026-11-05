@@ -719,10 +719,12 @@ describe('release honesty (V2 line D)', () => {
       assert.ok(m, `${f} names the Sakk version the run used`);
       assert.equal(m[1], pkg.version, `${f} was run with ${m[1]}; the package is ${pkg.version}`);
       const out = codeSpans(md);
+      // npm pack names a scoped package's tarball scope-name-version.tgz.
+      const tgz = `${pkg.name.replace(/^@/, '').replace(/\//g, '-')}-${pkg.version}.tgz`;
       assert.match(
         out,
-        new RegExp(`^sakk-${pkg.version.replace(/\./g, '\\.')}\\.tgz$`, 'm'),
-        `${f} shows npm pack producing sakk-${pkg.version}.tgz`,
+        new RegExp(`^${tgz.replace(/\./g, '\\.')}$`, 'm'),
+        `${f} shows npm pack producing ${tgz}`,
       );
       assert.match(
         out,
@@ -859,5 +861,78 @@ describe('release honesty (V2 line D)', () => {
       }
     }
     assert.ok(seen > 0, 'the package and docs link the repository at least once');
+  });
+
+  // npm refuses the unscoped name `sakk` (too close to sax, sass, …), so the
+  // package ships under package.json's scoped name while the command stays
+  // `sakk`. Every install line a person copies must name what npm publishes.
+  test('every install command in the docs and the CLI names the package npm publishes', () => {
+    const name = pkg.name;
+    assert.ok(typeof name === 'string' && name.length > 0, 'package.json names the package');
+    assert.equal(pkg.bin?.sakk, 'bin/sakk.mjs', 'the installed command is still `sakk`');
+    const files = readdirSync(ROOT).filter((f) => /^README.*\.md$/.test(f) || f === 'llms.txt');
+    for (const [dir, ext] of [
+      ['docs', '.md'],
+      ['integrations', '.md'],
+      ['bin', '.mjs'],
+      ['src', '.mjs'],
+    ]) {
+      for (const f of readdirSync(join(ROOT, dir), { recursive: true })) {
+        if (String(f).endsWith(ext)) files.push(join(dir, String(f)));
+      }
+    }
+    const PKG = /^((?:@[\w.-]+\/)?sakk)(?:@[\w.^~-]+)?$/;
+    const clean = (t) => t.replace(/^[`'"(]+/, '').replace(/[`'"),.;:…]+$/, '');
+    const wrong = [];
+    let seen = 0;
+    let readmeInstall = false;
+    for (const f of files) {
+      read(f)
+        .split('\n')
+        .forEach((line, i) => {
+          const at = `${f}:${i + 1}`;
+          const toks = line.split(/\s+/).map(clean);
+          for (let k = 0; k < toks.length; k++) {
+            const npm =
+              toks[k] === 'npm' &&
+              /^(install|i|add|uninstall|un|remove|rm)$/.test(toks[k + 1] ?? '');
+            const npx = toks[k] === 'npx';
+            if (!npm && !npx) continue;
+            // Bare `npx sakk` runs the installed command; with -y, or "without
+            // installing", npx fetches the word from the registry.
+            let fetches = /without installing|不安装/.test(line);
+            for (let j = k + (npm ? 2 : 1); j < toks.length; j++) {
+              const t = toks[j];
+              if (t === '') continue;
+              if (/^(&&|\|\||\||;|#)/.test(t)) break;
+              if (t === '-y' || t === '--yes') {
+                fetches = true;
+                continue;
+              }
+              if (t === '--prefix') {
+                j++;
+                continue;
+              }
+              if (t.startsWith('-')) continue;
+              const m = t.match(PKG);
+              if (m && !(npx && t === 'sakk' && !fetches)) {
+                seen++;
+                if (f === 'README.md' && npm) readmeInstall = true;
+                if (m[1] !== name) wrong.push(`${at}: ${npm ? `npm ${toks[k + 1]}` : 'npx'} ${t}`);
+              }
+              break; // the first word after the flags is the package; prose follows
+            }
+          }
+          for (const m of line.matchAll(
+            /(?:npm root -g\)|node_modules)\/((?:@[\w.-]+\/)?sakk)(?=[/"`\s]|$)/g,
+          )) {
+            seen++;
+            if (m[1] !== name) wrong.push(`${at}: installed path …/${m[1]}`);
+          }
+        });
+    }
+    assert.ok(readmeInstall, "README.md's own install command is among the lines checked");
+    assert.ok(seen > 0, 'the docs name the package at least once');
+    assert.deepEqual(wrong, [], `these lines name a package npm does not publish (${name})`);
   });
 });

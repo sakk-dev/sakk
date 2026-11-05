@@ -6,8 +6,8 @@
 macOS 上用 Sakk 0.4.0、在一个一次性的主目录里真跑过，输出照抄那次运行。路径缩写成
 `~`，控制台令牌换成 `<tok>`；你看到的日期、时区和金额会不一样。
 
-> 这次运行是从仓库副本安装的（第 2 步），所以输出和你正在读的代码完全对应。`sakk` 上了 npm 之后，
-> 可以用 `npm install -g sakk` 代替第 2 步。
+> 这次运行是从仓库副本安装的（第 2 步），所以输出和你正在读的代码完全对应。Sakk 上了 npm 之后，
+> 可以用 `npm install -g @sakk-dev/sakk` 代替第 2 步。
 
 ## 0. 准备
 
@@ -42,7 +42,7 @@ sakk --version
 ```
 
 ```text
-sakk-0.4.0.tgz
+sakk-dev-sakk-0.4.0.tgz
 
 added 1 package in 159ms
 0.4.0
@@ -72,7 +72,7 @@ next: sakk doctor — it checks the hook really fires
 
 ```text
 ✓ node — Node 25.8.2 (20 or later required)
-✓ policy — ~/.npm-global/lib/node_modules/sakk/policies/guard-default.json — 17 rules, sha256 77d0fc7022df…
+✓ policy — ~/.npm-global/lib/node_modules/@sakk-dev/sakk/policies/guard-default.json — 17 rules, sha256 77d0fc7022df…
 ✓ decision log — ~/.sakk/decisions.jsonl is writable
 ✓ claude-code (project) — ~/work/demo/.claude/settings.json: a forced push is denied
 ! claude-code start folder — Claude Code loads ~/work/demo/.claude/settings.json only for sessions started in ~/work/demo; a session started in a parent folder skips it — add --user, or managed settings, if you start sessions elsewhere
@@ -96,8 +96,8 @@ sakk try 'git push --force origin main'
 ```text
 deny             git.destructive  (rule shell-destructive)
 → deny
-Sakk: git.destructive is denied by rule shell-destructive (~/.npm-global/lib/node_modules/sakk/policies/guard-default.json). A person changes the policy; If this is wrong, tell the person you work for and stop; do not route around it.
-policy ~/.npm-global/lib/node_modules/sakk/policies/guard-default.json (sha256 77d0fc7022df…)
+Sakk: git.destructive is denied by rule shell-destructive (~/.npm-global/lib/node_modules/@sakk-dev/sakk/policies/guard-default.json). A person changes the policy; If this is wrong, tell the person you work for and stop; do not route around it.
+policy ~/.npm-global/lib/node_modules/@sakk-dev/sakk/policies/guard-default.json (sha256 77d0fc7022df…)
 ```
 
 ## 5. 设每日花费上限
@@ -210,7 +210,7 @@ sakk prices
 ```
 
 ```text
-prices: 170 model(s) from ~/.npm-global/lib/node_modules/sakk/prices/snapshot.json
+prices: 170 model(s) from ~/.npm-global/lib/node_modules/@sakk-dev/sakk/prices/snapshot.json
   provenance (as recorded in the table): https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json, at commit 34c10829b1f2aba5ee44887a413bac12d77e2bc0, sha256 7989a84f15ba56025650ed850c1b1a262d95a42680746d7ec5b1c956dd012121, fetched 2026-10-28, LiteLLM (MIT, (c) Berri AI)
   claude-haiku-4-5-20251001  in 0.000001 / out 0.000005
   claude-haiku-4-5  in 0.000001 / out 0.000005
@@ -360,7 +360,7 @@ An agent must not make this change, so a person confirms it here. Type claude-co
 敲 `claude-code`。然后删包，愿意的话把 Sakk 的状态也删掉：
 
 ```bash
-npm uninstall -g --prefix ~/.npm-global sakk   # drop --prefix for a normal global install
+npm uninstall -g --prefix ~/.npm-global @sakk-dev/sakk   # drop --prefix for a normal global install
 rm -rf ~/.sakk                                 # config, decision log, spend index, ledger
 ```
 
@@ -392,7 +392,7 @@ Install the pinned LiteLLM proxy from a hash-locked file, then run this again
   uv pip compile req.in --generate-hashes --exclude-newer 2026-10-21T11:00:00Z -o req.lock
   uv pip install --require-hashes -r req.lock
 Do not install LiteLLM 1.82.7, 1.82.8 or 1.107.0: those releases were compromised.
-Details: ~/.npm-global/lib/node_modules/sakk/integrations/litellm/README.md
+Details: ~/.npm-global/lib/node_modules/@sakk-dev/sakk/integrations/litellm/README.md
 ```
 
 它以 1 退出。按它打印的步骤装 LiteLLM（需要 `uv`，会下载 LiteLLM 和它的依赖），再带上 `litellm`
@@ -416,7 +416,7 @@ Start it with the keys in your environment (never in these files):
 Then change one line in your app, and send LITELLM_MASTER_KEY as its API key:
 OPENAI_BASE_URL=http://127.0.0.1:4000/v1
 
-Refusals, prices and limits: ~/.npm-global/lib/node_modules/sakk/integrations/litellm/README.md
+Refusals, prices and limits: ~/.npm-global/lib/node_modules/@sakk-dev/sakk/integrations/litellm/README.md
 ```
 
 Sakk 打印的 `start.sh` 是带引号的完整路径，这里缩写成了 `~`。再跑一次会以 `GATEWAY_FILES_EXIST`

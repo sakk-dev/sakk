@@ -732,7 +732,7 @@ if (cmd === 'init') {
     const self = realpathSync(fileURLToPath(import.meta.url));
     if (EPHEMERAL.test(self)) {
       console.error(
-        'SCAN_HOOK_EPHEMERAL: this sakk runs from the temporary npx cache — install it first (npm install --save-dev sakk, or npm install -g sakk), then run the installed `sakk scan --install-hook`',
+        'SCAN_HOOK_EPHEMERAL: this sakk runs from the temporary npx cache — install it first (npm install --save-dev @sakk-dev/sakk, or npm install -g @sakk-dev/sakk), then run the installed `sakk scan --install-hook`',
       );
       process.exit(2);
     }
@@ -1299,7 +1299,7 @@ if (cmd === 'init') {
   const bin = realpathSync(fileURLToPath(import.meta.url));
   if (EPHEMERAL.test(bin)) {
     console.error(
-      `GATEWAY_EPHEMERAL: this sakk runs from a temporary package cache (${display(bin)}) that gets cleaned — install it first (npm install -g sakk), then run the installed sakk gateway init; ${nothing}`,
+      `GATEWAY_EPHEMERAL: this sakk runs from a temporary package cache (${display(bin)}) that gets cleaned — install it first (npm install -g @sakk-dev/sakk), then run the installed sakk gateway init; ${nothing}`,
     );
     process.exit(2);
   }

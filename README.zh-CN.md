@@ -14,7 +14,7 @@ Claude Code 的每日花费上限，一个急停开关，以及一本给你自�
 **我用 Claude Code、Cursor 或 Codex：**
 
 ```bash
-npm install -g sakk && sakk guard install claude-code && sakk doctor   # 在你的项目目录里运行
+npm install -g @sakk-dev/sakk && sakk guard install claude-code && sakk doctor   # 在你的项目目录里运行
 ```
 
 **我自己的 AI 应用，任何语言：** Sakk 的花费闸门跑在 LiteLLM 代理里，你的应用只改一行。
@@ -22,7 +22,7 @@ npm install -g sakk && sakk guard install claude-code && sakk doctor   # 在你�
 不写任何文件。
 
 ```bash
-npm install -g sakk && sakk init --cap 5   # 网关记账用的账本，上限 5 美元
+npm install -g @sakk-dev/sakk && sakk init --cap 5   # 网关记账用的账本，上限 5 美元
 sakk gateway init                         # 把 sakk_gateway.py、config.yaml 和 start.sh 写到 ~/.sakk/gateway
 LITELLM_MASTER_KEY=<一个够长的随机密钥> DEEPSEEK_API_KEY=<你的密钥> ~/.sakk/gateway/start.sh
 ```
@@ -107,7 +107,7 @@ curl -s http://127.0.0.1:4000/v1/chat/completions \
 ## 安装
 
 ```bash
-npm install sakk        # 或者不安装，直接调用 CLI：npx sakk …
+npm install @sakk-dev/sakk   # 或者不安装，直接调用 CLI：npx @sakk-dev/sakk …
 ```
 
 ## 如何阻止 AI 编程智能体执行 force-push 这类危险命令？
@@ -134,8 +134,8 @@ force push、项目外的删除、读取密钥和部署，会按一份你能阅�
 如果只想在一个会话里从 npm 包加载：
 
 ```bash
-npm install -g sakk
-claude --plugin-dir "$(npm root -g)/sakk"
+npm install -g @sakk-dev/sakk
+claude --plugin-dir "$(npm root -g)/@sakk-dev/sakk"
 ```
 
 没有自动化测试能驱动 Claude Code，所以这两种方式都靠人手动核对
@@ -182,7 +182,7 @@ sakk prices                        # 当前使用的价格表，以及它的来�
 ### 密钥扫描
 
 ```bash
-npm install --save-dev sakk     # 钩子运行的是这份已安装的副本——不是 npx
+npm install --save-dev @sakk-dev/sakk # 钩子运行的是这份已安装的副本——不是 npx
 npx sakk scan src config        # 扫描路径；发现任何东西就以 1 退出
 npx sakk scan --install-hook    # 拒绝含有密钥的提交和合并提交
 ```

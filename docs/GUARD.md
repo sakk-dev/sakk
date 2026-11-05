@@ -11,7 +11,7 @@ you can read and export.
 ## Start
 
 ```bash
-npm install -g sakk
+npm install -g @sakk-dev/sakk
 sakk guard install claude-code   # or: cursor, codex
 sakk doctor                      # checks the hook really fires
 ```

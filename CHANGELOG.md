@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2026-11-05
 
+### Changed — the npm package is `@sakk-dev/sakk`
+
+- npm refused the unscoped name `sakk` as too close to existing packages, so
+  Sakk is published as `@sakk-dev/sakk`: install it with
+  `npm install -g @sakk-dev/sakk`. The command it installs is still `sakk`,
+  so every `sakk …` command in these notes and the docs is unchanged. A test
+  now fails when an install line in the docs or the CLI names any other
+  package.
+
 ### Fixed — the spend cap and the ledger summary can be trusted
 
 - One Claude Code log file that cannot be opened (permissions) no longer

@@ -7,7 +7,7 @@ A call the gate cannot price or meter is refused.
 
 This package is the plugin only, the module `sakk_gateway`. The ledger is
 kept by [Sakk](https://github.com/sakk-dev/sakk), a Node.js command-line tool
-(`npm install -g sakk`), which the plugin runs for every reservation.
+(`npm install -g @sakk-dev/sakk`), which the plugin runs for every reservation.
 
 ## Install
 

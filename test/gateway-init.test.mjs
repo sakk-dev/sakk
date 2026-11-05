@@ -330,7 +330,7 @@ describe('sakk gateway init', () => {
     const npx = copyPackage(join(w.base, '_npx', 'abcdef12', 'node_modules', 'sakk'));
     const e = w.run(['gateway', 'init'], { cli: npx });
     assert.equal(e.status, 2, e.stderr);
-    assert.match(e.stderr, /^GATEWAY_EPHEMERAL: .*npm install -g sakk/);
+    assert.match(e.stderr, /^GATEWAY_EPHEMERAL: .*npm install -g @sakk-dev\/sakk/);
     assert.equal(listing(w.gwDir), null);
     // an install that lost the gateway sources
     const bare = copyPackage(join(w.base, 'bare', 'sakk'), { integrations: false });
