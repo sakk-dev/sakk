@@ -11,9 +11,11 @@ import {
 } from 'node:fs';
 import { appendNoFollow, writeFileAtomic } from './append.mjs';
 import {
+  ArchiveError,
   MAX_INFLIGHT,
   SEAL_AT,
   archivedEntry,
+  checkHead,
   emptyArchive,
   idxDir,
   indexLookup,
@@ -425,11 +427,11 @@ export function readLedger({
   if (doc.schema === LEDGER_SCHEMA_V2) validateHalt(doc.halt, ledgerPath);
   if (doc.schema === LEDGER_SCHEMA_V3) {
     if (doc.halt !== undefined) validateHalt(doc.halt, ledgerPath);
-    // the gate reads ONLY the hot file (F-105): the archive summary is checked
-    // for shape here — a corrupt or missing summary refuses, never reads as
-    // zero settled — but the cold segments are not read on the gate path, so a
-    // call costs the same whatever the history. Cold integrity (a lost or
-    // altered segment) is `sakk ledger verify`, on demand.
+    // the archive summary is checked for shape here — a corrupt or missing
+    // summary refuses, never reads as zero settled. Its binding to the cold
+    // trail (the head segment's running total, F-193) is checked by reserve
+    // and the seal, one segment read whatever the history; the rest of the
+    // chain (an older segment lost or altered) is `sakk ledger verify`.
     try {
       validateArchive(doc.archive, ledgerPath);
     } catch (e) {
@@ -769,6 +771,18 @@ export function reserve({
         'the call-id index is missing but the cold trail has sealed segments — run sakk ledger reindex',
         { ledgerPath },
       );
+    // the summary is the sealed part of the cap's total, and the hot file is
+    // writable: refuse unless it matches the head segment's hash-covered
+    // running total and nothing was sealed past it (F-193). One segment read.
+    try {
+      checkHead(ledgerPath, doc.archive ?? emptyArchive(), doc.entries);
+    } catch (e) {
+      if (!(e instanceof ArchiveError)) throw e;
+      throw new LedgerError(e.code, e.message.replace(/^[A-Z_]+: /, ''), {
+        ledgerPath,
+        ...e.details,
+      });
+    }
     // a callId sealed into the cold trail is used too — uniqueness holds across
     // all history, not just the hot tail (F-105); one small index shard read
     if (indexLookup(ledgerPath, callId) !== null)
@@ -974,18 +988,28 @@ function maybeSeal(ledgerPath, doc) {
   const settled = doc.entries.filter((e) => e.status === 'SETTLED');
   if (settled.length < SEAL_AT) return;
   const archive = doc.archive ?? emptyArchive();
+  // never extend a trail the summary does not match: sealing over an edited
+  // summary would write a new head whose running total carries the edit, and
+  // launder it (F-193). The entries stay hot, so they still count, and
+  // reserve refuses until a person repairs the trail.
+  try {
+    checkHead(ledgerPath, archive, doc.entries);
+  } catch (e) {
+    if (e instanceof ArchiveError) return;
+    throw e;
+  }
   // seal exactly SEAL_AT oldest settled (array order is reservation order),
   // leaving the rest hot; segments are uniform at SEAL_AT entries
   const toSeal = settled.slice(0, SEAL_AT);
   const sealedIds = new Set(toSeal.map((e) => e.callId));
-  const { seq, hash } = sealSegment(ledgerPath, archive.segments, archive.tip, toSeal);
-  doc.schema = LEDGER_SCHEMA_V3;
-  doc.archive = {
-    segments: seq,
+  // the running total through this segment, hash-covered: the summary must equal it
+  const total = {
     settledCount: archive.settledCount + toSeal.length,
     settledUsd: archive.settledUsd + toSeal.reduce((s, e) => s + e.actualUsd, 0),
-    tip: hash,
   };
+  const { seq, hash } = sealSegment(ledgerPath, archive.segments, archive.tip, toSeal, total);
+  doc.schema = LEDGER_SCHEMA_V3;
+  doc.archive = { segments: seq, ...total, tip: hash };
   doc.entries = doc.entries.filter((e) => !(e.status === 'SETTLED' && sealedIds.has(e.callId)));
 }
 

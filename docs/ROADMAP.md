@@ -84,6 +84,8 @@ None of these needs a paid call.
   its own controls.
 - F-186: resolve a symlink before every secret and scope rule.
 
+F-183 to F-186 are done (2026-11-05).
+
 **Guard: install and reach.**
 
 - F-189: match every file-reading tool (Grep, Glob) and write the deny rules
@@ -98,8 +100,9 @@ None of these needs a paid call.
 
 - F-191: record the log folder at `sakk cap set` and read only that.
 - F-192: skip and report one unreadable log; the cap fails closed under it.
+  Done 2026-11-05.
 - F-193: bind the ledger summary to the chain head, and refuse `reserve` on
-  a mismatch.
+  a mismatch. Done 2026-11-05.
 - F-194: redact secrets in every field of a decision, not only the command.
 - F-201: a browser run of the console's stop button as an acceptance case.
 - F-230: the Agents page shows the two doctor warnings it still hides.

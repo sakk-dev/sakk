@@ -3,9 +3,11 @@
 // The ledger's cold trail (F-105, specs/ledger "The hot/cold split"). Settled
 // entries are sealed into append-only, hash-chained segments so the live
 // `ledger.json` stays small and a call costs the same whatever the history.
-// The gate's go/no-go never reads cold — it reads the hot file's atomic
-// `archive` summary. Cold is the audit record: a lost or altered segment is
-// caught (the chain + the per-call tip check), never read as freed cap.
+// The gate's go/no-go reads the hot file's atomic `archive` summary, bound
+// to the head segment: each sealed segment carries the running totals through
+// it, under its hash, and reserve checks the summary against that one head
+// (F-193). Cold is otherwise the audit record: a lost or altered older
+// segment is caught by `sakk ledger verify`, never read as freed cap.
 //
 // All callers hold the ledger's mkdir lock, so there is never a concurrent
 // sealer; this module does no locking of its own.
@@ -51,10 +53,28 @@ const SHARD_HEX = 3;
 const shardOf = (callId) => sha(callId).slice(0, SHARD_HEX);
 const shardPath = (ledgerPath, callId) => join(idxDir(ledgerPath), `${shardOf(callId)}.json`);
 
-/** The sealed hash of a segment: its seq, the previous segment's hash, and its entries. */
-export function segmentHash(seq, prev, entries) {
-  return sha(JSON.stringify({ seq, prev, entries }));
+/**
+ * The sealed hash of a segment: its seq, the previous segment's hash, its
+ * entries and, from F-193 on, the running totals through it. A segment sealed
+ * before F-193 has no `total` and hashes as it always did.
+ */
+export function segmentHash(seq, prev, entries, total) {
+  return sha(
+    JSON.stringify(total === undefined ? { seq, prev, entries } : { seq, prev, entries, total }),
+  );
 }
+
+/** A segment's running total is exactly {settledCount, settledUsd}, both finite and non-negative. */
+const validTotal = (t) =>
+  t !== null &&
+  typeof t === 'object' &&
+  !Array.isArray(t) &&
+  Object.keys(t).sort().join(',') === 'settledCount,settledUsd' &&
+  Number.isInteger(t.settledCount) &&
+  t.settledCount >= 0 &&
+  typeof t.settledUsd === 'number' &&
+  Number.isFinite(t.settledUsd) &&
+  t.settledUsd >= 0;
 
 /** The empty summary a v1/v2 ledger (no cold trail yet) reads as. */
 export const emptyArchive = () => ({ segments: 0, settledCount: 0, settledUsd: 0, tip: '' });
@@ -103,7 +123,8 @@ export function readSegment(ledgerPath, seq) {
     seg.seq !== seq ||
     typeof seg.prev !== 'string' ||
     !Array.isArray(seg.entries) ||
-    seg.hash !== segmentHash(seq, seg.prev, seg.entries)
+    (seg.total !== undefined && !validTotal(seg.total)) ||
+    seg.hash !== segmentHash(seq, seg.prev, seg.entries, seg.total)
   )
     throw new ArchiveError('LEDGER_ARCHIVE_BROKEN', `cold segment ${seq} fails its hash`, { seq });
   return seg;
@@ -147,6 +168,17 @@ export function verifyChain(ledgerPath, archive) {
     // sum per segment then add, exactly as maybeSeal accumulates archive.settledUsd,
     // so float addition's non-associativity never makes an intact chain mismatch (F-105 review)
     settledUsd += seg.entries.reduce((s, e) => s + e.actualUsd, 0);
+    // a segment's running total must be what the chain sums to through it (F-193)
+    if (
+      seg.total !== undefined &&
+      (seg.total.settledCount !== settledCount ||
+        Math.abs(seg.total.settledUsd - settledUsd) > 1e-9)
+    )
+      throw new ArchiveError(
+        'LEDGER_ARCHIVE_BROKEN',
+        `cold segment ${seq}'s running total does not match the chain`,
+        { seq },
+      );
     prev = seg.hash;
   }
   if (prev !== archive.tip)
@@ -185,6 +217,66 @@ export function verifyChain(ledgerPath, archive) {
         );
   }
   return { segments: archive.segments, settledCount, settledUsd };
+}
+
+/**
+ * The per-call binding of the summary to the cold trail (F-193), run by
+ * reserve and by the seal under the ledger lock. Reads one segment, the head,
+ * whatever the history, and checks:
+ * - the head exists, passes its hash, and is the summary's tip;
+ * - the summary's totals equal the head's running total (hash-covered);
+ * - no segment past the summary exists, unless it is the redoable prefix a
+ *   seal that crashed before its hot commit leaves (it links to the tip and
+ *   every entry it holds is still settled in hot). Anything else there means
+ *   the summary was rolled back or dropped.
+ * A head sealed before F-193 has no running total: the chain is walked once
+ * per call until the next seal writes one. Throws LEDGER_ARCHIVE_BROKEN.
+ *
+ * Limit: the hash is unkeyed and the trail is a local file, so a writer who
+ * rewrites the summary, deletes the newer segments and their index entries,
+ * or rehashes the trail is not caught here. Keeping the agent from writing the
+ * ledger at all is the guard's job (it denies writes into ~/.sakk).
+ */
+export function checkHead(ledgerPath, archive, hotEntries) {
+  validateArchive(archive, ledgerPath);
+  const bad = (why) => {
+    throw new ArchiveError('LEDGER_ARCHIVE_BROKEN', `${why} — run sakk ledger verify`, {
+      ledgerPath,
+    });
+  };
+  const next = archive.segments + 1;
+  if (existsSync(segPath(ledgerPath, next))) {
+    const orphan = readSegment(ledgerPath, next);
+    const hot = new Set(hotEntries.filter((e) => e.status === 'SETTLED').map((e) => e.callId));
+    if (orphan.prev !== archive.tip || !orphan.entries.every((e) => hot.has(e.callId)))
+      bad(`cold segment ${next} exists past the summary — the summary was rolled back`);
+  }
+  if (archive.segments === 0) {
+    if (archive.settledCount !== 0 || archive.settledUsd !== 0)
+      bad('the summary has sealed totals but no segments');
+    return;
+  }
+  const head = readSegment(ledgerPath, archive.segments);
+  if (head.hash !== archive.tip) bad('the summary tip is not the head segment');
+  let total = head.total;
+  if (total === undefined) {
+    // legacy head: sum the whole chain (the same per-segment order as the seal)
+    total = { settledCount: 0, settledUsd: 0 };
+    let prev = '';
+    for (let seq = 1; seq <= archive.segments; seq++) {
+      const seg = seq === archive.segments ? head : readSegment(ledgerPath, seq);
+      // written prev-first so the MUT-AG drill anchor (verifyChain's link check) stays unique
+      if (prev !== seg.prev) bad(`cold segment ${seq} does not link to ${seq - 1}`);
+      total.settledCount += seg.entries.length;
+      total.settledUsd += seg.entries.reduce((s, e) => s + e.actualUsd, 0);
+      prev = seg.hash;
+    }
+  }
+  if (
+    total.settledCount !== archive.settledCount ||
+    Math.abs(total.settledUsd - archive.settledUsd) > 1e-9
+  )
+    bad('the summary totals do not match the head segment');
 }
 
 /** Rebuild the whole index from the cold trail (sakk ledger reindex): recovery after an index loss. */
@@ -231,16 +323,18 @@ export function archivedEntry(ledgerPath, callId) {
  * in the index, in the crash-safe order the spec sets: the segment first,
  * then the shards, then the caller commits the hot file. The hot file is
  * authoritative, so a crash before its commit leaves this as a redoable
- * prefix (the entries are still in hot). Returns { seq, hash }.
+ * prefix (the entries are still in hot). `total` is the running totals
+ * through this segment, which binds the summary (F-193); omitted, the segment
+ * is the pre-F-193 shape. Returns { seq, hash }.
  */
-export function sealSegment(ledgerPath, prevSegments, prevTip, entries) {
+export function sealSegment(ledgerPath, prevSegments, prevTip, entries, total) {
   mkdirSync(coldDir(ledgerPath), { recursive: true });
   mkdirSync(idxDir(ledgerPath), { recursive: true });
   const seq = prevSegments + 1;
-  const hash = segmentHash(seq, prevTip, entries);
+  const hash = segmentHash(seq, prevTip, entries, total);
   writeFileAtomic(
     segPath(ledgerPath, seq),
-    `${JSON.stringify({ seq, prev: prevTip, entries, hash })}\n`,
+    `${JSON.stringify(total === undefined ? { seq, prev: prevTip, entries, hash } : { seq, prev: prevTip, entries, total, hash })}\n`,
   );
   // group the call-ids by shard, merge into each shard, write it
   const byShard = new Map();

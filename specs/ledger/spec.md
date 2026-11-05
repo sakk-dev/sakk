@@ -20,7 +20,8 @@ halt and resume paths are specified in `specs/kill-switch/spec.md`.
 | Unknown cost | A failed call with unknowable cost is booked as a number                           | entry and flag enter reconciliation; a person clears it · `test/ledger.test.mjs::MCP review N8: an entry awaiting reconciliation can be settled by a person, not through the agent channel`                                                                                                      |
 | Lock debris  | A crashed holder's lock is broken while its owner may be alive                     | only a dead same-host pid is broken · `test/ledger.test.mjs::owned by a live process we may not signal (EPERM, pid 1)`                                                                                                                                                                           |
 | Files        | Alerts or decisions are written through a planted symlink                          | `appendNoFollow` · `test/ledger.test.mjs::review S4: the alert file is never written through a planted symlink`                                                                                                                                                                                  |
-| Cold trail   | A sealed segment is altered or lost, or the summary's shape is wrong               | shape check on every read + hash-chain `sakk ledger verify` (the gate's total lives in the hot summary, so a lost segment fails the audit, not the gate) · `test/ledger-archive.test.mjs::verify catches a flipped byte, a broken link and a wrong tip`                                          |
+| Cold trail   | A sealed segment is altered or lost, or the summary's shape is wrong               | shape check on every read + hash-chain `sakk ledger verify` (an older segment's loss fails the audit; the head is checked by reserve, below) · `test/ledger-archive.test.mjs::verify catches a flipped byte, a broken link and a wrong tip`                                                      |
+| Summary      | An edited hot summary frees cap, or a lost or rolled-back head goes unnoticed      | each segment's hash covers its running total; reserve and the seal check the summary against the head segment (`LEDGER_ARCHIVE_BROKEN`) · `test/ledger-archive.test.mjs::an edited summary is refused by reserve: the head segment binds the totals (F-193)`                                     |
 | In-flight    | Reservations pile up unsettled and grow the hot file without bound                 | `MAX_INFLIGHT` (10,000) outstanding then `LEDGER_FULL`; settling still works · `test/ledger-archive.test.mjs::settling past the seal threshold always seals, never leaves hot unbounded`                                                                                                         |
 | Seal crash   | A crash mid-seal loses a settled entry or forks the books                          | segment→index→hot order, hot authoritative, redoable prefix · `test/ledger-archive.test.mjs::a seal interrupted before the hot commit is a redoable prefix, no entry lost`                                                                                                                       |
 | Index loss   | The call-id index is lost or wrong, re-admitting a sealed call-id (a double-spend) | reserve refuses when segments are sealed but the whole index is gone; `verify` checks every sealed call-id is in its shard; `sakk ledger reindex` rebuilds it from cold · `test/ledger-archive.test.mjs::verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id` |
@@ -36,14 +37,17 @@ entry and capping nothing.
 - **Hot file** (`ledger.json`): the cap, flags, halt, the outstanding
   reservations, the settled entries not yet sealed, and an `archive`
   summary `{segments, settledCount, settledUsd, tip}`. The gate's decision
-  reads only this file: `totalsOf` = `archive.settledUsd` + hot settled +
-  hot outstanding. Per-call cost is bounded by the hot size, whatever the
-  history.
+  uses this file's totals: `totalsOf` = `archive.settledUsd` + hot settled +
+  hot outstanding, with the summary first checked against the head segment
+  (below). Per-call cost is bounded by the hot size plus one segment,
+  whatever the history.
 - **Cold segments** (`ledger.json.cold/<seq>.json`): settled entries sealed
   in append-only segments of `SEAL_AT` each, hash-chained
-  (`hash = sha256(seq, prev, entries)`, `prev` = the previous segment's
-  hash, the first segment's `prev` = `""`). `archive.tip` is the last
-  segment's hash. A segment is never rewritten once sealed.
+  (`hash = sha256(seq, prev, entries, total)`, `prev` = the previous
+  segment's hash, the first segment's `prev` = `""`; `total` =
+  `{settledCount, settledUsd}` through this segment, F-193 — a segment
+  sealed by 0.4.0 has no `total` and hashes without it). `archive.tip` is
+  the last segment's hash. A segment is never rewritten once sealed.
 - **Index** (`ledger.json.idx/<3-hex>.json`): `callId → seq`, sharded by
   the first three hex of `sha256(callId)` (4096 shards), so a call-id lookup
   reads one small shard (about sealed-call-ids / 4096). It keeps "a call-id
@@ -60,20 +64,36 @@ sealer. A seal writes the segment (fsync+rename), then the index shards
 authoritative, so a crash before its commit leaves the sealed segment and
 index entries as a harmless re-doable prefix (the entries are still in hot).
 
-The gate reads **only the hot file** — never a cold segment — so a call
-costs the same whatever the history; the archive summary is checked for
+The gate reads **the hot file plus one cold segment, the head**, so a call
+costs the same whatever the history. The archive summary is checked for
 shape on every read (a corrupt or missing summary refuses, never reads as
-zero settled), but the go/no-go trusts the hot summary the same way it
-trusts the cap and the entries beside it. Cold integrity — a lost or altered
-segment — is `sakk ledger verify`, which walks the whole hash chain on
-demand; losing a segment does not change the gate's total (that lives in the
-hot summary), it fails the audit. `sakk ledger export` rebuilds one flat
-ledger from cold + hot.
+zero settled), and reserve then binds it to the cold trail (F-193): the head
+segment must exist, pass its hash and be the summary's `tip`, its running
+total must equal the summary's totals, and no segment may exist past the
+summary unless it is the redoable prefix a crashed seal leaves (it links to
+the tip and all its entries are still settled in hot). Any other state
+refuses `LEDGER_ARCHIVE_BROKEN` and names `sakk ledger verify`. The seal
+runs the same check before it extends the trail, so an edited summary is
+never sealed into a new, self-consistent head. A head sealed by 0.4.0
+carries no total: reserve walks the chain once per call until the next seal
+writes one.
+
+Limit: the hash is unkeyed and the trail is a local file. A writer who
+rewrites the head segment (recomputing its hash) and the summary to match
+passes reserve; `sakk ledger verify` still catches it, because it re-sums
+every segment and checks each running total against the chain. Keeping the
+agent from writing the ledger at all is the guard's job (it denies writes
+into `~/.sakk`).
+
+Older segments are audited by `sakk ledger verify`, which walks the whole
+hash chain on demand; losing one of them does not change the gate's total,
+it fails the audit. `sakk ledger export` rebuilds one flat ledger from
+cold + hot.
 
 ## Table 2 — failure modes
 
 - Refusals carry a code: `BUDGET_EXCEEDED`, `DUPLICATE_CALL_ID`, `ESTIMATE_INVALID`, `INPUT_TOO_LONG`, `INPUT_INVALID`, `CALL_ID_REQUIRED`, `LEDGER_MISSING`, `LEDGER_UNREADABLE`, `LEDGER_MALFORMED`, `LEDGER_SCHEMA_INVALID`, `LEDGER_STALE`, `LEDGER_COST_UNCOMPUTABLE`, `LEDGER_LOCK_UNAVAILABLE`, `LEDGER_WRITE_FAILED`, `LEDGER_PATH_NOT_CANONICAL`, `LEDGER_FULL`, `LEDGER_ARCHIVE_BROKEN`, `RECONCILIATION_REQUIRED`, `RECONCILIATION_ENTRIES_OPEN`, `SETTLE_UNKNOWN_CALL`, `SETTLE_INVALID`, `SETTLE_MISMATCH`, `SETTLE_RECONCILIATION_HUMAN_ONLY`.
-- The cold trail is an audit record, not the gate's authority: the go/no-go uses the hot file's atomic summary and never reads a cold segment, so the call stays flat. A read checks the summary's shape (a corrupt or missing summary refuses); `sakk ledger verify` walks the whole chain and the index on demand. What verify detects: accidental corruption (a flipped byte that was not re-hashed), a lost or truncated segment, and a lost or wrong index entry. What it does NOT detect: a writer who rewrites a sealed amount, recomputes the segment's sha256, relinks every later `prev`/`hash`, and edits `archive.tip` — the chain hash is unkeyed and its tip lives in the writable hot file, so this is the same trust model as a hand-edited hot summary (a local file its owner can rewrite), not tamper-evidence against that owner. Signed/append-only out-of-band anchoring is a later milestone.
+- The go/no-go uses the hot file's atomic summary, checked against the head segment's hash-covered running total (one segment read, so the call stays flat); a mismatch, a lost or rolled-back head, or a removed summary refuses `LEDGER_ARCHIVE_BROKEN` (F-193). A read checks the summary's shape (a corrupt or missing summary refuses); `sakk ledger verify` walks the whole chain and the index on demand. What verify detects: accidental corruption (a flipped byte that was not re-hashed), a lost or truncated segment, and a lost or wrong index entry. What it does NOT detect: a writer who rewrites a sealed amount, recomputes that segment's and every later segment's running total and sha256, relinks every later `prev`/`hash`, and edits `archive.tip` and the summary totals — the chain hash is unkeyed and its tip lives in the writable hot file, so this is the same trust model as a hand-edited hot summary (a local file its owner can rewrite), not tamper-evidence against that owner. Signed/append-only out-of-band anchoring is a later milestone.
 - `sakk status` exits 3 while a person must act (reconciliation by flag or entry, or stale), 4 while globally halted.
 - Not covered by design: cross-host sharing of one ledger directory (the dead-owner check compares hostnames); a crash inside the lock's create/release window leaves a lock only `sakk unlock` clears (fail-closed); macOS fsync does not flush the drive cache.
 

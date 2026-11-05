@@ -73,10 +73,12 @@ still read (F-211).
   symlink or a symlink loop at the root is this deny, never an
   honest-looking $0 — only a root that truly does not exist is $0 (F-208).
 
-In v1 a log file the user cannot read at all (permissions) is handled
-badly: `sakk spend` exits with a raw error, and the hook's deny says it
-cannot read its rules although a log file is what failed (F-192). Fix the
-file's permissions; the cap stays closed meanwhile.
+A single log FILE that cannot be opened (permissions) is the same
+`SPEND_LOGS_UNLISTABLE`: `sakk spend` names the file and its error and
+exits 1, the other files are still indexed, and the cap stays closed until
+a person fixes the file's permissions (F-192). When any other step of the
+guard fails, the deny names that step (the spend cap, the kill switch, the
+secret scan or the rules) instead of always blaming the rules.
 
 Both deny only when a cap is set: spend that cannot be priced cannot be
 shown to be under it.

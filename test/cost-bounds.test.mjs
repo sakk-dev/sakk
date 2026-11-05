@@ -576,6 +576,12 @@ const BOUNDS = {
       guard:
         'test/ledger-archive.test.mjs::a corrupt archive summary refuses; a lost segment fails verify, never freeing cap',
     },
+    checkHead: {
+      bounded:
+        'reads the head segment (at most SEAL_AT entries) and probes one possible orphan; a 0.4.0 head without a running total walks the trail once, until the next seal writes one',
+      guard:
+        'test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)',
+    },
     readSegment: {
       bounded: 'reads one segment file of at most SEAL_AT entries and checks its hash',
       guard:

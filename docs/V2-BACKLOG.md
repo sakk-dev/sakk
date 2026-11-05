@@ -135,6 +135,16 @@ Class detector (C-07): a tamper test per trusted input (the environment, the
 summary, the caller's cost) that changes it and expects the figure to hold.
 For F-192 (C-14): an EACCES fixture in the spend tests.
 
+F-192 and F-193 are fixed (branch `fix/spend-ledger-trust`, 2026-11-05;
+the owner moved them ahead of the open-source release). F-192's EACCES
+fixture is in `test/spend.test.mjs`; F-193's tamper tests for the summary
+are in `test/ledger-archive.test.mjs`. Left for V2 from that sweep: the
+chain hash is unkeyed, so a writer who rewrites the newest segment and the
+summary together passes reserve (`sakk ledger verify` catches it); a
+keyed or out-of-band anchor is the enterprise ledger. The same review found
+F-241: the flat-cost test's read counter never reached the code it counted,
+now fixed with a detector (`test/builtin-patch-detector.test.mjs`).
+
 ### Gateway reliability (audit 2026-11-02)
 
 From [docs/reliability-audit-2026-11-02.md](reliability-audit-2026-11-02.md),
@@ -257,6 +267,7 @@ The owner sets the order and dates (D10). A suggestion:
    and P0-2, since the gateway is what 0.4.0 ships.
 2. **Guard reach.** F-183, F-184, F-185, F-186, F-187, F-189: the gaps an
    agent can use today.
-3. **Spend, ledger, console.** F-191, F-192, F-193, F-194, F-195, F-201.
+3. **Spend, ledger, console.** F-191, F-194, F-195, F-201 (F-192 and
+   F-193 fixed 2026-11-05).
 4. **Gold v2 and the C-13 corpus,** by 2026-11-30.
 5. **README and package features.** P-ACC-001, 002, 004, 012, P-INS-004.

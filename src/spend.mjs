@@ -276,21 +276,33 @@ export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() })
     if (st.mtimeMs < since && prev && prev.size === st.size) continue;
     if (prev && prev.size === st.size && prev.mtimeMs === st.mtimeMs) continue;
     let offset = prev?.offset ?? 0;
-    const head = headOf(file);
-    if (prev && (st.size < prev.offset || head !== prev.head)) {
-      rewritten.push(file); // counted spend stays; the file is read again from the start
-      offset = 0;
-    }
-    const fd = openSync(file, 'r');
+    let head;
     let text;
+    let wasRewritten = false;
+    // one try covers every read of this file: a file that lists and stats but
+    // cannot be opened (mode 000, a lock, a vanished link) is a named, absent
+    // reading like an unstatable one, never a crash of the whole walk (F-192)
     try {
-      const len = st.size - offset;
-      const b = Buffer.alloc(Math.max(0, len));
-      readSync(fd, b, 0, len, offset);
-      text = b.toString('utf8');
-    } finally {
-      closeSync(fd);
+      head = headOf(file);
+      if (prev && (st.size < prev.offset || head !== prev.head)) {
+        wasRewritten = true;
+        offset = 0;
+      }
+      const fd = openSync(file, 'r');
+      try {
+        const len = st.size - offset;
+        const b = Buffer.alloc(Math.max(0, len));
+        readSync(fd, b, 0, len, offset);
+        text = b.toString('utf8');
+      } finally {
+        closeSync(fd);
+      }
+    } catch (e) {
+      unlistable.push({ path: file, code: e.code ?? 'UNREADABLE' });
+      continue;
     }
+    // counted spend stays; the file is read again from the start
+    if (wasRewritten) rewritten.push(file);
     const lastNl = text.lastIndexOf('\n');
     const complete = lastNl < 0 ? '' : text.slice(0, lastNl); // a partial last line waits for its end
     for (const line of complete.split('\n')) {

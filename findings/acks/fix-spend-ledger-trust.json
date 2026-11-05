@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "branch": "fix/spend-ledger-trust",
+  "answers": {
+    "C-01.1": {
+      "answer": "An unreadable log file is not read as absent: it is listed in unlistable with its code, so the cap denies SPEND_LOGS_UNLISTABLE and sakk spend exits 1, never $0. A missing head segment, a missing next-segment check or a summary with no matching head refuses reserve with LEDGER_ARCHIVE_BROKEN instead of reading the summary as the truth.",
+      "guard": "test/spend.test.mjs::one unreadable log file is a named, isolated failure, not a crash (F-192)"
+    },
+    "C-01.2": {
+      "answer": "Deleting the head segment, or the segment total that binds the summary, makes reserve refuse (the test removes the head and expects LEDGER_ARCHIVE_BROKEN); deleting the try/catch around a log read turns the F-192 test red with an uncaught EACCES. Neither check is optional.",
+      "guard": "test/ledger-archive.test.mjs::a lost, rolled-back or altered head is refused by reserve, and a seal never launders an edit (F-193)"
+    },
+    "C-02.1": {
+      "answer": "No hand list: the read isolation wraps every file the index walk opens (the head read and the range read share one try), and the head check compares every field of the summary (segments, settledCount, settledUsd, tip) against the head, not a chosen subset.",
+      "guard": "test/ledger-archive.test.mjs::an edited summary is refused by reserve: the head segment binds the totals (F-193)"
+    },
+    "C-02.2": {
+      "answer": "The same trust rule applies wherever the summary is extended or spent against: reserve checks the head before the cap math, and the seal checks the head before it appends, so a settle cannot carry an edited total into a new, self-consistent head. verify also checks each segment's running total. The hook's other failing steps (secret scan, rules) get their own named cause too, not only the cap.",
+      "guard": "test/ledger-archive.test.mjs::a lost, rolled-back or altered head is refused by reserve, and a seal never launders an edit (F-193)"
+    },
+    "C-03.1": {
+      "answer": "Each new test fails for its named reason on the base: the summary edit (settledUsd 8 -> 0) is allowed by reserve on main and refused here; the unreadable file throws EACCES on main and is listed here. findings-proof runs each guard on the base and at HEAD.",
+      "guard": "test/ledger-archive.test.mjs::an edited summary is refused by reserve: the head segment binds the totals (F-193)"
+    },
+    "C-03.2": {
+      "answer": "The tests reach the live target: the summary edit is written to the real ledger file and reserve is called through the library, with a control that the unedited ledger still reserves; the unreadable log is a real chmod 000 file (skipped as root, where chmod cannot deny) and the CLI test spawns the real bin.",
+      "guard": "test/spend-cli.test.mjs::sakk spend names an unreadable log file and exits 1 without a stack (F-192)"
+    },
+    "C-03.3": {
+      "answer": "The ledger record is tied to tests that run: F-192 and F-193 move to fixed only with guards that findings-proof executes red on the base and green at HEAD, not with a written claim.",
+      "guard": "test/spend.test.mjs::one unreadable log file is a named, isolated failure, not a crash (F-192)"
+    },
+    "C-04.1": {
+      "answer": "The head check reads exactly one cold segment (at most SEAL_AT entries) and tests one more name for existence, whatever the history; the flat-cost test counts cold reads at two history sizes and asserts the same small count. A legacy head with no total falls back to the full walk once, until the next seal writes a total.",
+      "guard": "test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)"
+    },
+    "C-05.1": {
+      "answer": "Each sentence added to the ledger spec, README and CHANGELOG names behaviour a test holds: the summary is bound to the head (the F-193 tests), and an unreadable log is named (the F-192 tests). The limit is stated too: a writer who recomputes every hash is not caught here; keeping the agent from writing the ledger is the guard's job.",
+      "guard": "test/ledger-archive.test.mjs::the spec's claims each have a test that fails without them"
+    },
+    "C-05.2": {
+      "answer": "The codes reported can be acted on: SPEND_LOGS_UNLISTABLE names the file and its errno so the operator can fix its mode, the hook's deny names the cap step instead of the rules, and LEDGER_ARCHIVE_BROKEN tells the operator to run sakk ledger verify, which reports the same mismatch.",
+      "guard": "test/spend-cli.test.mjs::sakk spend names an unreadable log file and exits 1 without a stack (F-192)"
+    },
+    "C-06.1": {
+      "answer": "The SPEND doc sentence reports what the spawned CLI prints (the file path and its errno, exit 1) and what capCheck returns, both read by tests from the real run; the ledger spec sentence reports what reserve returns on an edited summary, not what verify alone would show. No reader is shown a stronger source than the test that holds it.",
+      "guard": "test/spend-cli.test.mjs::sakk spend names an unreadable log file and exits 1 without a stack (F-192)"
+    },
+    "C-07.1": {
+      "answer": "The hot ledger is a file a writer other than sakk can change, so its archive summary is no longer the authority alone: it must equal the head segment's hash-covered total. Log files come from the agent's environment, so a file the reader cannot open is a named failure, not trusted as empty.",
+      "guard": "test/ledger-archive.test.mjs::an edited summary is refused by reserve: the head segment binds the totals (F-193)"
+    },
+    "C-07.2": {
+      "answer": "The agent cannot clear the refusal by editing the summary back into a lie: the head binds it. Repairing a broken trail is sakk ledger verify plus a person restoring the files; the guard already denies agent writes into the ledger directory, and this change does not add a clearing path.",
+      "guard": "test/ledger-archive.test.mjs::a lost, rolled-back or altered head is refused by reserve, and a seal never launders an edit (F-193)"
+    },
+    "C-08.1": {
+      "answer": "The head is found by one name only: the segment path derived from the canonical ledger path and the summary's segment count; the next-segment check uses the same derivation, so a rolled-back summary cannot point at an older head while a newer one exists.",
+      "guard": "test/ledger-archive.test.mjs::a lost, rolled-back or altered head is refused by reserve, and a seal never launders an edit (F-193)"
+    },
+    "C-09.1": {
+      "answer": "The tests do not assume a non-root user silently: the chmod test skips as root, where mode 000 does not deny, like the F-204 tests. The ledger tests run on a fresh temp ledger with a small seal threshold, and also on a legacy head without a total, the state a 0.4.0 archive is in.",
+      "guard": "test/spend.test.mjs::one unreadable log file is a named, isolated failure, not a crash (F-192)"
+    },
+    "C-09.2": {
+      "answer": "Both run where they really run: sakk spend is spawned as the real CLI, the hook deny goes through evaluate as the installed hook calls it, and reserve is the library entry the gateway and MCP server call.",
+      "guard": "test/spend-cli.test.mjs::sakk spend names an unreadable log file and exits 1 without a stack (F-192)"
+    },
+    "C-10.1": {
+      "answer": "The head check is code on the reserve and seal paths, not a rule to run verify by hand; a test fails when it is removed. The spec's claim table in ledger-archive gains the new guarantee so dropping its test fails the claims check.",
+      "guard": "test/ledger-archive.test.mjs::the spec's claims each have a test that fails without them"
+    },
+    "C-10.2": {
+      "answer": "Every spending route goes through reserve (CLI, MCP, gateway), and every extension of the trail goes through the seal in settle, so both routes meet the head check; the head is read under the ledger lock, so the summary cannot change between the check and the cap math.",
+      "guard": "test/ledger-archive.test.mjs::a lost, rolled-back or altered head is refused by reserve, and a seal never launders an edit (F-193)"
+    },
+    "C-11.1": {
+      "answer": "The new segment total means the sealed totals through that segment and nothing else; only the seal under the ledger lock writes it, and it is hash-covered. The skipped-seal path on a broken head keeps settled entries hot rather than writing a new head over a lie.",
+      "guard": "test/ledger-archive.test.mjs::a lost, rolled-back or altered head is refused by reserve, and a seal never launders an edit (F-193)"
+    },
+    "C-14.1": {
+      "answer": "One unreadable log file no longer ends the spend read: it gets a named entry (path and errno) and the rest of the files are still indexed, while the cap fails closed on it. The hook names which step failed (cap, secret scan or rules) instead of one generic cause.",
+      "guard": "test/spend.test.mjs::one unreadable log file is a named, isolated failure, not a crash (F-192)"
+    },
+    "C-15.1": {
+      "answer": "The tests run the real paths: a real unreadable file under a real log root through updateIndex, capCheck and the spawned CLI; a real sealed cold trail through reserve and settle, with no stand-in writing its own evidence.",
+      "guard": "test/spend-cli.test.mjs::sakk spend names an unreadable log file and exits 1 without a stack (F-192)"
+    }
+  }
+}

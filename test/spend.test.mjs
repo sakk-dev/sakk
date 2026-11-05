@@ -870,6 +870,70 @@ describe('F-208 — an unreachable log ROOT fails the cap closed; only a truly a
   });
 });
 
+describe('F-192 — one log file that cannot be opened is named, not a crash', () => {
+  const asRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+  test(
+    'one unreadable log file is a named, isolated failure, not a crash (F-192)',
+    { skip: asRoot && 'root ignores file modes' },
+    () => {
+      const w = world();
+      writeFileSync(w.file, line());
+      const locked = join(w.logs, 'locked.jsonl');
+      writeFileSync(locked, line({ id: 'msg_2', req: 'req_2' }));
+      for (const f of [w.file, locked]) utimesSync(f, NOW / 1000, NOW / 1000);
+      chmodSync(locked, 0o000);
+      try {
+        let idx;
+        assert.doesNotThrow(() => {
+          idx = updateIndex({ home: w.home, logDir: w.config.claudeLogDir, zone: 'UTC', now: NOW });
+        }, 'one file that cannot be opened must not end the walk');
+        assert.deepEqual(
+          idx.unlistable,
+          [{ path: locked, code: 'EACCES' }],
+          'named with its errno',
+        );
+        // the readable file is still indexed: isolated, not all-or-nothing
+        close(daySpend({ home: w.home, day: '2026-10-22', table: TABLE }).usd, 0.0045);
+        const r = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+        assert.equal(r?.deny, true, 'the cap fails closed while a file is unread');
+        assert.match(r.reason, /SPEND_LOGS_UNLISTABLE/);
+        assert.ok(r.reason.includes(locked), 'the refusal names the file');
+      } finally {
+        chmodSync(locked, 0o600);
+      }
+      // permissions fixed → both files count and the cap decides again
+      assert.equal(capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW }), null);
+      close(daySpend({ home: w.home, day: '2026-10-22', table: TABLE }).usd, 0.009);
+    },
+  );
+
+  test('the hook names the step that failed, not always the rules (F-192)', async () => {
+    const { normalize, evaluate } = await import('../src/hook.mjs');
+    const w = world();
+    writeFileSync(join(w.home, 'config.json'), JSON.stringify(w.config));
+    const ev = normalize('claude-code', {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Bash',
+      cwd: w.base,
+      tool_input: { command: 'ls' },
+    });
+    const broken = () => {
+      throw Object.assign(new Error('SPEND_INDEX_BROKEN: the index cannot be read'), {
+        code: 'SPEND_INDEX_BROKEN',
+      });
+    };
+    const r = evaluate(ev, {
+      env: { ...process.env, SAKK_HOME: w.home, HOME: w.base },
+      log: false,
+      now: () => NOW,
+      capCheck: broken,
+    });
+    assert.equal(r.verdict, 'deny', 'a cap that cannot be checked still fails closed');
+    assert.match(r.reason, /cannot check the spend cap \(SPEND_INDEX_BROKEN/);
+    assert.doesNotMatch(r.reason, /cannot read its rules/, 'the rules were read fine');
+  });
+});
+
 describe('F-205 — a future-dated log line is counted on the day observed (UAT S-REL-005)', () => {
   test('a line stamped tomorrow lands in today, flagged, and still hits the cap', () => {
     const w = world({ cap: 0.001 });
