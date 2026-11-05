@@ -653,6 +653,26 @@ describe('release honesty (V2 line D)', () => {
       );
   });
 
+  test('F-111 the security policy supports the minor line package.json is on', () => {
+    // a bump that forgets SECURITY.md leaves reporters told an older line is
+    // the supported one (0.3.x stayed after the bump to 0.4.0).
+    const [major, minor] = pkg.version.split('.');
+    const rows = [...read('SECURITY.md').matchAll(/^\|\s*([^|]+?)\s*\|\s*(✅|❌)\s*\|\s*$/gm)].map(
+      (m) => ({ version: m[1], supported: m[2] === '✅' }),
+    );
+    assert.ok(rows.length > 0, 'SECURITY.md has a supported-versions table');
+    const supported = rows.filter((r) => r.supported).map((r) => r.version);
+    assert.deepEqual(
+      supported,
+      [`${major}.${minor}.x`],
+      `SECURITY.md supports only ${major}.${minor}.x, the line package.json (${pkg.version}) is on`,
+    );
+    assert.ok(
+      rows.some((r) => !r.supported && r.version === `< ${major}.${minor}`),
+      `SECURITY.md marks < ${major}.${minor} unsupported`,
+    );
+  });
+
   test('F-199 the NOTICE file ships and carries the MIT notices the package derives from', () => {
     const notice = read('NOTICE');
     assert.ok(packedFiles().includes('NOTICE'), 'NOTICE is in the npm package');
