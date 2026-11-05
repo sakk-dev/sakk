@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "branch": "fix/gateway-reservations-timeout",
+  "answers": {
+    "C-01.1": {
+      "answer": "Absent settings are declared defaults, malformed ones refuse: with SAKK_BREAKER_S unset the breaker opens for 10s, with SAKK_RESERVATION_TTL_S unset gateway reservations expire after 3600s, and with SAKK_TIMEOUT_S unset a ledger call gets 5s. A value that is not a finite number in range stops the gateway at load instead of running without the control. On the CLI, sakk settle with no --by or no call id exits 2 with usage and changes nothing.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u9_bad_breaker_or_ttl_env_refuses_to_start"
+    },
+    "C-01.2": {
+      "answer": "Each new step has a test that turns red when the step is deleted: remove the sweep and the stuck reservation in u10 is still RESERVED after the TTL; remove the agentId/settling filter and u11 sees another agent's entry settled; remove the breaker gate and u8 counts every queued call reaching the ledger; remove the settle bypass and u12 sees the settle refused while the breaker is open.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u11_sweep_skips_other_agents_fresh_and_settling_entries"
+    },
+    "C-02.1": {
+      "answer": "No hand-written list stands in for all subcommands: the new settle command is declared in the CLI's own COMMANDS table, so the strictness suite (which enumerates that table) rejects unknown flags for it, and R-24 compares the declared SUBCOMMANDS keys against every name the CLI dispatches, so settle fails that test until its effect and hook verdict are declared.",
+      "guard": "test/cli-strictness.test.mjs::every CLI refuses what it does not understand"
+    },
+    "C-02.2": {
+      "answer": "The same rule (a call that waits on the ledger must be bounded, and a reservation must not live forever) applies to every ledger call the gateway makes: reserve goes through the breaker, settles bypass it on purpose so a recovering ledger can still release money, the late-settle path and the sweep reuse the same _settle so the settling set covers both, and the person-side release is the new sakk settle beside reconcile and unlock in the hook's guard-state list.",
+      "guard": "test/kill-switch.test.mjs::R-24 every sakk subcommand is declared by its effect on a control, and judged by it"
+    },
+    "C-03.1": {
+      "answer": "u8 fails for the reason it names: a fake client whose reserve raises SakkUnavailable is called once, then the test fires more pre_call hooks and asserts the fake saw no further reserve calls and every hook answered the outage path with the breaker-open reason; with the gate removed the call counter climbs and the assertion goes red on that count, not on timing.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u8_breaker_opens_after_a_reserve_outage_and_queued_calls_fail_fast"
+    },
+    "C-03.2": {
+      "answer": "Controls prove the tests observe what they claim: u12 is the control for u8 (while the breaker is open a settle still reaches the client, so the breaker is not simply a dead client), u13 shows the breaker closes when the ledger answers, and u11 seeds entries that must NOT be settled (fresh, other agent, being settled) beside one that must, so a sweep that settles everything or nothing fails.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u12_settles_bypass_the_open_breaker"
+    },
+    "C-03.3": {
+      "answer": "The fix is tied to running code, not paperwork: F-242 and F-243 move to fixed only with guards naming two Node tests that findings-proof can run, which load the real sakk_gateway.py under python3; the F-242 one drives the real sakk bin over MCP against a real temp ledger and reads the file back, so if the sweep stops settling the entry stays RESERVED and the test fails even with the ledger record intact.",
+      "guard": "test/gateway-reliability.test.mjs::a gateway reservation nobody settles is settled at its worst case once it outlives SAKK_RESERVATION_TTL_S (F-242)"
+    },
+    "C-04.1": {
+      "answer": "Work is bounded by counters, not stopwatches: each ledger call is capped by SAKK_TIMEOUT_S, an open breaker turns every queued reserve into an immediate refusal-or-pass without touching the ledger (u8 asserts the call count stays at one), the sweep runs at most once per 60s with one run in flight, and settles at most 50 entries per run, so a ledger with thousands of stuck entries cannot stall the event loop in one pass.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u8_breaker_opens_after_a_reserve_outage_and_queued_calls_fail_fast"
+    },
+    "C-05.1": {
+      "answer": "Doc sentences were read back against the code: the README env table names the three env vars with the defaults the code reads (5, 10, 3600) and u1/u9 assert those defaults and refusals; the CHANGELOG names SETTLE_UNKNOWN_CALL, SETTLE_AWAITS_RECONCILIATION and SETTLED_AT_RESERVED which tests assert; the codes the docs name are checked to exist in the code by the claims suite, so a renamed code turns it red.",
+      "guard": "test/claims-are-checked.test.mjs::every code the user-facing docs name exists in the code"
+    },
+    "C-05.2": {
+      "answer": "The figure sakk settle prints is the amount it books: the confirmation line states the entry's reserved dollar amount, the settle call books exactly estimatedMaxUsd, and the test reads the ledger back and the alert line back to check both carry that same number; a stuck-entry refusal exits non-zero and names sakk reconcile --by, the command that actually clears that state.",
+      "guard": "test/cli.test.mjs::at a terminal, settle releases a stuck reservation at its reserved amount and logs who did it (F-242)"
+    },
+    "C-06.1": {
+      "answer": "The sweep's evidence that a reservation is stuck comes from the hot ledger file itself (status, agentId, createdAt), the same record every sakk reader sees, not from the gateway's in-memory pending map; the CLI reads it through readLedger. The expiry is reported as a sakk_reservation_expired log line and the person's release as a SETTLED_AT_RESERVED alert, so readers see a worst-case settle, never a measured cost.",
+      "guard": "test/cli.test.mjs::settle of an already-settled or unknown call asks no one: no-op or SETTLE_UNKNOWN_CALL (F-242)"
+    },
+    "C-07.1": {
+      "answer": "Ledger entries are someone else's input (any writer of the file, or a hand edit): the sweep only acts on entries whose callId is a string, whose estimatedMaxUsd is a finite non-negative number and not a bool, whose createdAt parses, and whose agentId is exactly litellm-gateway; anything else is skipped. CLI arguments --by and the call id are operator text, refused when empty and printed with the existing display() escaping.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u11_sweep_skips_other_agents_fresh_and_settling_entries"
+    },
+    "C-07.2": {
+      "answer": "The agent this gate constrains cannot clear it: sakk settle closes a reservation's real cost unanswered and frees an outstanding slot under LEDGER_FULL (the dollars stay counted), so it requires --by and a person typing settle at a real terminal (no TTY exits 2 with HUMAN_CONFIRMATION_REQUIRED and nothing changed), and the hook judges sakk settle as a write to Sakk's guard state and denies it from an agent, through every launcher.",
+      "guard": "test/cli.test.mjs::settle requires --by and a call id, and refuses with no terminal (F-242)"
+    },
+    "C-08.1": {
+      "answer": "One name per thing: the ledger path is resolved once by ledgerPath() for both the read and the settle, the alerts file is derived from that same resolved path by alertsPathFor, and an entry is named only by its exact call id string; no new path, alias or case-folded lookup is introduced, and the gateway keeps using the single SAKK_LEDGER path it already passes to the sakk MCP child.",
+      "guard": "none: settle names one entry by its exact call id and reuses the CLI's single resolved ledger path, adding no second route"
+    },
+    "C-09.1": {
+      "answer": "States a real run reaches beyond the happy path are tested: an entry already settled or sealed (no-op, asks no one), an id the ledger never saw (SETTLE_UNKNOWN_CALL), an entry awaiting reconciliation (refused, points at reconcile), a ledger that comes back after an outage (breaker closes), and a sweep racing a late settle in the same process (the settling set keeps them apart).",
+      "guard": "test/cli.test.mjs::settle refuses an entry that awaits reconciliation and points at sakk reconcile (F-242)"
+    },
+    "C-09.2": {
+      "answer": "It runs where it really runs: the sweep test loads sakk_gateway.py the way LiteLLM loads a callback module and drives the real sakk bin over stdio MCP against a real ledger file; the CLI test spawns bin/sakk.mjs under a pseudo-terminal like a person would; the hook verdict is checked through evaluate() on a PreToolUse Bash payload from claude-code, the agent the guard is installed for.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u10_expired_gateway_reservations_settle_at_the_worst_case"
+    },
+    "C-10.1": {
+      "answer": "The person-only rule is enforced by code, not text: confirmByPerson refuses without a TTY, the hook classifies sakk settle as a guard-state write and denies it, and R-24 fails if settle is dispatched without a declared effect and a deny verdict; the expiry sweep is not a rule anyone must remember to run, it starts itself from the first pre_call.",
+      "guard": "test/kill-switch.test.mjs::R-24 every sakk subcommand is declared by its effect on a control, and judged by it"
+    },
+    "C-10.2": {
+      "answer": "Other routes to the same release meet the gate: every launcher (npx, pnpm dlx, bunx, node path, sudo) is judged like plain sakk settle because the launcher test iterates the SUBCOMMANDS table that now holds settle; the MCP sakk_settle tool keeps its existing amount check, and the CLI re-reads the entry and settles under the ledger lock, so a status that changed after the read refuses rather than settling stale.",
+      "guard": "test/kill-switch.test.mjs::F-185 every control-loosening sakk subcommand is judged the same through every launcher"
+    },
+    "C-11.1": {
+      "answer": "A worst-case settle means the money is counted as spent although the true cost is unknown; two writers can cause it: the gateway sweep, only for its own litellm-gateway entries past the TTL, logged as sakk_reservation_expired; and a named person through sakk settle, logged as a SETTLED_AT_RESERVED alert with --by. Both over-record on the safe side, and a late real settle at another amount gets SETTLE_MISMATCH plus an alert.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u11_sweep_skips_other_agents_fresh_and_settling_entries"
+    },
+    "C-14.1": {
+      "answer": "One bad unit never takes the run down: in the gateway sweep each expired entry is settled in its own try, so a refused settle logs that call id and the loop moves on, a malformed or foreign entry is skipped before any call, an unreadable ledger logs and ends that run with 0 sent, and an outage stops only the current run. The spend and hook files arrive here unchanged from the merged PR #57, whose F-192 fix isolates one unreadable agent log with a named code.",
+      "guard": "test/spend.test.mjs::one unreadable log file is a named, isolated failure, not a crash (F-192)"
+    },
+    "C-15.1": {
+      "answer": "The expiry runs the real path: u10 starts the real sakk MCP server from SAKK_BIN, reserves through it, ages the entry past a tiny TTL, lets the gateway's own sweep run, and reads the real ledger file to see SETTLED at the reserved amount; the CLI settle test runs the real bin against a ledger written by the real reserve, and the default-timeout test reads the value the module actually built.",
+      "guard": "integrations/litellm/test_sakk_gateway.py::test_u10_expired_gateway_reservations_settle_at_the_worst_case"
+    }
+  }
+}

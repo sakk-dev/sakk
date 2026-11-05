@@ -30,9 +30,22 @@ Required environment:
 Optional:
     SAKK_NODE                node executable (default: node)
     SAKK_DEFAULT_MAX_TOKENS  max_tokens injected when a request has none (2048)
-    SAKK_TIMEOUT_S           how long one ledger call may take (2)
+    SAKK_TIMEOUT_S           how long one ledger call may take (5)
+    SAKK_BREAKER_S           after a reserve outage, how long reserves skip the ledger (10; 0 = never)
+    SAKK_RESERVATION_TTL_S   age at which this gateway's unsettled reservations settle at their worst case (3600)
     SAKK_ON_UNAVAILABLE      allow (default) or deny, when Sakk cannot answer
     SAKK_GATEWAY_STATUS      status file (default: <SAKK_LEDGER>.gateway.json, folder links resolved)
+
+A reservation whose settle never arrives (the proxy crashed, a settle failed
+twice, the event never fired) would stay outstanding for ever: its worst case
+counts against the cap either way, but it also holds one of the ledger's
+outstanding slots (LEDGER_FULL) and keeps the books from sealing. Once it is
+older than SAKK_RESERVATION_TTL_S, a background sweep settles it at the worst
+case it reserved, with a WARNING `sakk_reservation_expired` line (F-242). Only
+entries this gateway made (agent litellm-gateway) are swept. With several
+gateways on one ledger, one may sweep another's long call; that call's own
+settle then refuses with SETTLE_MISMATCH and an alert, and the books keep the
+worst case: over-recorded, never under.
 """
 
 from __future__ import annotations
@@ -44,10 +57,11 @@ import logging
 import math
 import os
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from decimal import ROUND_CEILING, Decimal
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 from fastapi import HTTPException
@@ -66,10 +80,22 @@ INPUT_OVERHEAD_TOKENS = 512
 OUTPUT_MARGIN_TOKENS = 64
 # How long a proxy-side failure waits for the provider-call log event.
 LATE_SETTLE_S = float(os.environ.get("SAKK_LATE_SETTLE_S", "2"))
-# A ledger call that has not answered in this long is an outage. Short,
-# because in allow mode every queued call waits this long before going
-# through, one at a time.
-DEFAULT_TIMEOUT_S = 2.0
+# A ledger call that has not answered in this long is an outage. It must be
+# longer than the ledger's own lock wait (about 2 s of spinning in
+# src/ledger.mjs, then LEDGER_LOCK_UNAVAILABLE): at 2 s a busy but healthy
+# ledger read as down (F-243). Queued calls do not each wait it out: the
+# breaker below fails them at once.
+DEFAULT_TIMEOUT_S = 5.0
+# After a reserve outage, reserves skip the ledger this long and take the
+# outage path at once (allow: unmetered and counted; deny: 503), instead of
+# queueing behind one another for a timeout each.
+DEFAULT_BREAKER_S = 10.0
+# A gateway reservation still unsettled after this long settles at its
+# reserved worst case (F-242). The sweep runs at most this often, and settles
+# at most this many entries per run.
+DEFAULT_RESERVATION_TTL_S = 3600.0
+SWEEP_EVERY_S = 60.0
+SWEEP_MAX = 50
 OUTAGE_MODES = ("allow", "deny")
 STATUS_VERSION = 1
 REASON_MAX = 200
@@ -79,6 +105,10 @@ PROMPT_FIELDS = ("messages", "tools", "functions", "tool_choice", "response_form
 
 class SakkUnavailable(Exception):
     """The ledger could not be reached or answered something unreadable."""
+
+
+class _BreakerOpen(SakkUnavailable):
+    """A reserve not sent because the ledger failed one moments ago; it takes the outage path."""
 
 
 class _NotSent(Exception):
@@ -126,6 +156,57 @@ def _timeout_s() -> float:
             "the gateway refuses to start"
         )
     return value
+
+
+def _seconds_env(name: str, default: float, zero_ok: bool) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        value = math.nan
+    if not math.isfinite(value) or value < 0 or (value == 0 and not zero_ok):
+        need = "zero or a positive number" if zero_ok else "a positive number"
+        raise RuntimeError(f"sakk_gateway: {name} must be {need} of seconds, not {raw!r}; the gateway refuses to start")
+    return value
+
+
+def _breaker_s() -> float:
+    # 0 turns the breaker off: every reserve tries the ledger and waits out the timeout.
+    return _seconds_env("SAKK_BREAKER_S", DEFAULT_BREAKER_S, zero_ok=True)
+
+
+def _reservation_ttl_s() -> float:
+    # No "never": a reservation nobody settles stays outstanding for ever (F-242).
+    return _seconds_env("SAKK_RESERVATION_TTL_S", DEFAULT_RESERVATION_TTL_S, zero_ok=False)
+
+
+def _expired_reservation(e: Any, cutoff: float) -> tuple[str, float] | None:
+    """(callId, worst case) for a reservation this gateway made before `cutoff`, else None.
+
+    The ledger file is read as data anyone could have written: an entry with a
+    field of the wrong type, or an unreadable time, is left alone.
+    """
+    if not isinstance(e, dict) or e.get("status") != "RESERVED" or e.get("agentId") != AGENT:
+        return None
+    cid, usd, at = e.get("callId"), e.get("estimatedMaxUsd"), e.get("createdAt")
+    if not isinstance(cid, str) or not cid or not isinstance(at, str):
+        return None
+    if not isinstance(usd, (int, float)) or isinstance(usd, bool) or not math.isfinite(usd) or usd < 0:
+        return None
+    try:
+        created = datetime.fromisoformat(at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if created.tzinfo is None or created.timestamp() > cutoff:
+        return None
+    return cid, float(usd)
+
+
+def _read_json(path: str) -> Any:
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def status_path_for(ledger: str) -> str:
@@ -360,8 +441,17 @@ class SakkClient:
         )
         await self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
-    async def call(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
+    async def call(
+        self, tool: str, args: dict[str, Any], gate: Callable[[], None] | None = None
+    ) -> dict[str, Any]:
+        # gate raises to skip the ledger. It is asked again once the lock is
+        # held, so a call that queued behind a failing one does not then wait
+        # out its own timeout (F-243).
+        if gate is not None:
+            gate()
         async with self._lock:
+            if gate is not None:
+                gate()
             for _ in range(2):  # the second pass is always a fresh process: _kill clears _proc
                 fresh = self._proc is None or self._proc.returncode is not None
                 try:
@@ -454,19 +544,32 @@ class SakkGate(CustomLogger):
         log.warning("sakk_gateway: priced models: %s", ", ".join(sorted(self.prices)) or "(none)")
         self.default_max_tokens = int(os.environ.get("SAKK_DEFAULT_MAX_TOKENS", "2048"))
         self.on_unavailable = _outage_mode()
-        ledger = _required_env("SAKK_LEDGER")
+        self.breaker_s = _breaker_s()
+        self.reservation_ttl_s = _reservation_ttl_s()
+        self.ledger = _required_env("SAKK_LEDGER")
         self.client = SakkClient(
             os.environ.get("SAKK_NODE", "node"),
             _required_env("SAKK_BIN"),
-            ledger,
+            self.ledger,
             _timeout_s(),
         )
-        self.status = GatewayStatus(status_path_for(ledger), self.on_unavailable)
+        self.status = GatewayStatus(status_path_for(self.ledger), self.on_unavailable)
         log.warning(
             "sakk_gateway: when Sakk cannot answer: %s (status file %s)", self.on_unavailable, self.status.path
         )
         # sakk callId -> what settling it needs. Popped exactly once.
         self.pending: dict[str, dict[str, Any]] = {}
+        # callIds a settle is in flight for: the sweep leaves them alone.
+        self._settling: set[str] = set()
+        # event-loop time until which reserves take the outage path unsent
+        self._breaker_until = -math.inf
+        self._next_sweep = -math.inf
+        self._sweep_task: asyncio.Task | None = None
+        self._settled_since_read: set[str] | None = None
+
+    def _breaker_gate(self) -> None:
+        if asyncio.get_running_loop().time() < self._breaker_until:
+            raise _BreakerOpen(f"breaker open: a reserve failed within the last {self.breaker_s:g}s, not sent")
 
     # ---- before the provider ------------------------------------------------
 
@@ -502,16 +605,20 @@ class SakkGate(CustomLogger):
         except ValueError as e:
             raise _refuse(400, "SAKK_BAD_REQUEST", str(e))
 
+        self._maybe_sweep()
         cid = "gw-" + uuid.uuid4().hex
         try:
             await self.client.call(
                 "sakk_reserve",
                 {"callId": cid, "estimatedMaxUsd": worst, "agent": AGENT, "action": f"chat:{model}"},
+                gate=self._breaker_gate,
             )
         except SakkRefused as e:
             self._sakk_answered()  # a refusal is an answer: Sakk is back
             raise _refuse(402, e.code, e.message, estimatedMaxUsd=worst)
         except SakkUnavailable as e:
+            if not isinstance(e, _BreakerOpen) and self.breaker_s > 0:
+                self._breaker_until = asyncio.get_running_loop().time() + self.breaker_s
             reason = str(e)[:REASON_MAX]
             if self.on_unavailable == "deny":
                 self.status.outage_seen(reason, worst, allowed=False)
@@ -541,9 +648,79 @@ class SakkGate(CustomLogger):
 
     def _sakk_answered(self) -> None:
         """Sakk answered a reserve, with a reservation or a refusal: end an open outage."""
+        self._breaker_until = -math.inf
         ended = self.status.answered()
         if ended is not None:
             log.warning("%s", json.dumps({"event": "sakk_outage_ended", **ended}))
+
+    # ---- reservations nobody settled (F-242) -------------------------------
+
+    def _maybe_sweep(self) -> None:
+        """Start a sweep in the background if one is due and none is running."""
+        if self._sweep_task is not None and not self._sweep_task.done():
+            return
+        loop = asyncio.get_running_loop()
+        if loop.time() < self._next_sweep:
+            return
+        self._next_sweep = loop.time() + SWEEP_EVERY_S
+        self._sweep_task = loop.create_task(self._sweep_expired())
+
+    async def _sweep_expired(self) -> int:
+        """Settle this gateway's reservations older than the TTL at their worst case.
+
+        Returns how many settles it sent. At most SWEEP_MAX per run; the rest
+        wait for the next run. Settles bypass the breaker, like every settle.
+        """
+        # settles this process finishes after the read below: the file read
+        # still shows them RESERVED, and a second settle would only refuse
+        self._settled_since_read = set()
+        try:
+            return await self._sweep_run()
+        finally:
+            self._settled_since_read = None
+
+    async def _sweep_run(self) -> int:
+        try:
+            doc = await asyncio.to_thread(_read_json, self.ledger)
+            entries = doc["entries"]
+            if not isinstance(entries, list):
+                raise ValueError("entries is not a list")
+        except Exception as e:
+            log.error("sakk_gateway: could not read the ledger to expire old reservations: %s", e)
+            return 0
+        cutoff = time.time() - self.reservation_ttl_s
+        sent = 0
+        for e in entries:
+            if sent >= SWEEP_MAX:
+                break
+            hit = _expired_reservation(e, cutoff)
+            if hit is None or hit[0] in self._settling or hit[0] in (self._settled_since_read or ()):
+                continue
+            cid, usd = hit
+            # one of ours still waiting for its provider: this settle replaces its own
+            self.pending.pop(cid, None)
+            sent += 1
+            try:
+                await self.client.call("sakk_settle", {"callId": cid, "actualUsd": usd})
+            except SakkRefused as err:
+                log.error("sakk refused expiring %s: %s", cid, err)
+                continue
+            except SakkUnavailable as err:
+                log.error("sakk settle failed expiring %s, the sweep stops until the next run: %s", cid, err)
+                return sent
+            log.warning(
+                "%s",
+                json.dumps(
+                    {
+                        "event": "sakk_reservation_expired",
+                        "callId": cid,
+                        "settled_usd": usd,
+                        "created_at": e.get("createdAt"),
+                        "ttl_s": self.reservation_ttl_s,
+                    }
+                ),
+            )
+        return sent
 
     # ---- after the provider -------------------------------------------------
 
@@ -561,18 +738,30 @@ class SakkGate(CustomLogger):
         rec = self.pending.pop(cid, None)
         if rec is None:
             return  # already settled, or not ours
-        last: Exception | None = None
-        for _ in range(2):  # settle is idempotent per callId, so one retry is safe
-            try:
-                await self.client.call("sakk_settle", {"callId": cid, "actualUsd": actual})
-                log.info("sakk settled %s %s $%.6f (%s)", cid, rec["model"], actual, why)
-                return
-            except SakkRefused as e:
-                log.error("sakk refused settling %s: %s", cid, e)
-                return
-            except SakkUnavailable as e:
-                last = e
-        log.error("sakk settle failed for %s, the reservation stays held: %s", cid, last)
+        self._settling.add(cid)
+        try:
+            last: Exception | None = None
+            for _ in range(2):  # settle is idempotent per callId, so one retry is safe
+                try:
+                    # no gate: a settle releases cap, so it is sent even while reserves are not
+                    await self.client.call("sakk_settle", {"callId": cid, "actualUsd": actual})
+                    log.info("sakk settled %s %s $%.6f (%s)", cid, rec["model"], actual, why)
+                    return
+                except SakkRefused as e:
+                    log.error("sakk refused settling %s: %s", cid, e)
+                    return
+                except SakkUnavailable as e:
+                    last = e
+            log.error(
+                "sakk settle failed for %s, the reservation stays held until it expires (%gs): %s",
+                cid,
+                self.reservation_ttl_s,
+                last,
+            )
+        finally:
+            self._settling.discard(cid)
+            if self._settled_since_read is not None:
+                self._settled_since_read.add(cid)
 
     @staticmethod
     def _cid_from_kwargs(kwargs: dict[str, Any]) -> str | None:

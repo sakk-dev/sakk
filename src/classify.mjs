@@ -686,11 +686,11 @@ function sakkControl(sk, { abs, home, here, repoRoot, sakkHome }, add) {
     add('file.write', join(sakkHome, 'config.json'));
     return true;
   }
-  // resume, reconcile and unlock lift a halt, clear the books or break the
-  // lock — the inverse of the controls that bind the agent, judged as the
-  // guard-state write they make: denied, never asked (F-177, D11). `halt`
-  // tightens and stays allowed.
-  if (['resume', 'reconcile', 'unlock'].includes(verb) && sakkHome) {
+  // resume, reconcile, unlock and settle lift a halt, clear the books, break
+  // the lock or release a reservation — the inverse of the controls that bind
+  // the agent, judged as the guard-state write they make: denied, never asked
+  // (F-177, D11, F-242). `halt` tightens and stays allowed.
+  if (['resume', 'reconcile', 'unlock', 'settle'].includes(verb) && sakkHome) {
     add('file.write', join(sakkHome, 'sakk-ledger.json'));
     return true;
   }

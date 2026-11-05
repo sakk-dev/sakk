@@ -27,9 +27,12 @@ import {
   forceUnlock,
   halt,
   resume,
+  settle,
+  alertsPathFor,
   LedgerError,
   DEFAULT_MAX_AGE_MS,
 } from '../src/ledger.mjs';
+import { appendNoFollow } from '../src/append.mjs';
 import { loadPolicy } from '../src/policy.mjs';
 import { startMcpServer } from '../src/mcp.mjs';
 import { display, scanPaths, scanStaged, ScanError } from '../src/secret-scan.mjs';
@@ -204,6 +207,7 @@ Usage:
   sakk status [--ledger <path>] [--json]                  totals, entries, reconciliation state
   sakk reconcile --by <name> [--ledger <path>]            clear the reconciliation flag (named)
   sakk unlock --by <name> [--ledger <path>]               break a stuck lock by hand (named)
+  sakk settle <callId> --by <name> [--ledger <path>]      release a stuck reservation at its reserved amount (named)
   sakk halt --by <name> [--reason <t>] [--agent <id>]     kill switch: refuse all new spending (named)
   sakk resume --by <name> [--agent <id>]                  lift a halt (named)
   sakk mcp --ledger <path> [--policy <path>]              MCP stdio server: reserve/settle/status as tools
@@ -255,6 +259,7 @@ const COMMANDS = {
   status: { values: ['ledger'], bools: ['json'] },
   reconcile: { values: ['by', 'ledger'], bools: [] },
   unlock: { values: ['by', 'ledger'], bools: [] },
+  settle: { values: ['by', 'ledger'], bools: [], positional: true },
   halt: { values: ['by', 'reason', 'agent', 'ledger'], bools: [] },
   resume: { values: ['by', 'agent', 'ledger'], bools: [] },
   mcp: { values: ['ledger', 'policy'], bools: [] },
@@ -549,6 +554,99 @@ if (cmd === 'init') {
     fail(e);
   }
   console.log(r.removed ? `lock removed by ${by}: ${p}.lock` : `no lock present: ${p}.lock`);
+} else if (cmd === 'settle') {
+  // The call id is the one word that is not a flag or a flag's value; the
+  // parser above has already refused unknown and repeated flags.
+  const ids = [];
+  for (let i = 1; i < argv.length; i += 1) {
+    if (argv[i].startsWith('--')) i += 1;
+    else ids.push(argv[i]);
+  }
+  const by = val('by');
+  if (!named(by) || ids.length !== 1 || ids[0] === '') {
+    console.error(
+      'settle requires one call id and --by <name> — releasing a reservation takes a name: sakk settle <callId> --by <name>',
+    );
+    process.exit(2);
+  }
+  const [callId] = ids;
+  const p = ledgerPath();
+  let doc;
+  try {
+    doc = readLedger({ ledgerPath: p, maxAgeMs: Number.POSITIVE_INFINITY });
+  } catch (e) {
+    fail(e);
+  }
+  const e = doc.entries.find((x) => x.callId === callId);
+  // Nothing held, nothing to release, no one asked (the reconcile and unlock
+  // precedent). An id gone from the hot file is either sealed in the cold
+  // trail (settled) or was never reserved: the ledger's own lookup tells them
+  // apart, and with no amount it changes nothing.
+  if (e === undefined) {
+    try {
+      settle({ ledgerPath: p, callId });
+    } catch (err) {
+      fail(err);
+    }
+    console.log(`nothing to settle: ${display(callId)} is already settled (sealed): ${p}`);
+    process.exit(0);
+  }
+  if (e.status === 'SETTLED') {
+    console.log(
+      `nothing to settle: ${display(callId)} is already settled at ${usd(e.actualUsd)}: ${p}`,
+    );
+    process.exit(0);
+  }
+  // A failed call of unknown cost is a person's figure to decide, not the
+  // reservation's: settling it at the worst case here would close the
+  // question without anyone answering it (F-242).
+  if (e.status !== 'RESERVED') {
+    console.error(
+      `SETTLE_AWAITS_RECONCILIATION: ${display(callId)} is ${display(String(e.status))}, not a held reservation — settle it with the figure you decided on (settle() with actualUsd, see the README), then run sakk reconcile --by <name>; nothing changed`,
+    );
+    process.exit(1);
+  }
+  // The dollars stay counted (the worst case is booked as spent), but the
+  // entry stops counting toward the outstanding limit (LEDGER_FULL) and its
+  // real cost is closed unanswered — a person's call, confirmed at this
+  // terminal; the hook denies the command from an agent (F-177, F-242).
+  const amount = e.estimatedMaxUsd;
+  await confirmByPerson(
+    `This settles reservation ${display(callId)} at its reserved ${usd(amount)}, the most it could have cost (${p})`,
+    'settle',
+  );
+  // settle() re-reads the entry under the lock: a real settle that landed
+  // since the read above refuses (SETTLE_MISMATCH) instead of being replaced.
+  let r;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      r = settle({ ledgerPath: p, callId, actualUsd: amount, allowReconciling: false });
+      break;
+    } catch (err) {
+      if (err instanceof LedgerError && err.code === 'LEDGER_LOCK_UNAVAILABLE' && attempt < 15)
+        continue;
+      fail(err);
+    }
+  }
+  if (r.duplicate) {
+    console.log(`nothing to settle: ${display(callId)} was settled at ${usd(amount)} meanwhile`);
+    process.exit(0);
+  }
+  const alerts = alertsPathFor(p);
+  try {
+    appendNoFollow(
+      alerts,
+      `${JSON.stringify({ at: new Date().toISOString(), kind: 'SETTLED_AT_RESERVED', callId, usd: amount, by, agentId: e.agentId ?? null })}\n`,
+    );
+  } catch (err) {
+    console.error(
+      `${display(callId)} is settled at ${usd(amount)}, but who did it could not be written to ${alerts} (${err.code ?? err.message}) — record it by hand`,
+    );
+    process.exit(1);
+  }
+  console.log(
+    `settled ${display(callId)} at its reserved ${usd(amount)} by ${display(by)}: ${p} (logged to ${alerts})`,
+  );
 } else if (cmd === 'mcp') {
   // The MCP gate takes NO default ledger path: an MCP server's cwd is
   // whatever the agent host chose, and a gate quietly booking into a

@@ -881,6 +881,8 @@ describe('J-UAT-016: the agent cannot lift its own cap or remove its own guard (
       judged: [['sakk reconcile --by alice', 'deny']],
     },
     unlock: { effect: 'loosens', judged: [['sakk unlock --by alice', 'deny']] },
+    // closes a held reservation at its worst case, freeing an outstanding slot (F-242)
+    settle: { effect: 'loosens', judged: [['sakk settle gw-abc --by alice', 'deny']] },
     halt: { effect: 'tightens', judged: [['sakk halt --by alice --agent cursor', 'allow']] },
     resume: {
       effect: 'loosens',
