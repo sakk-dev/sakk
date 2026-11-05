@@ -578,7 +578,7 @@ const BOUNDS = {
     },
     checkHead: {
       bounded:
-        'reads the head segment (at most SEAL_AT entries) and probes one possible orphan; only when a crash left that orphan does it read it and list the cold folder once; a 0.4.0 head without a running total walks the trail once, until the next seal writes one',
+        'reads the head segment (at most SEAL_AT entries) and probes two segment numbers past it for existence; a 0.4.0 head without a running total walks the trail once, until the next seal writes one',
       guard:
         'test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)',
     },
@@ -607,7 +607,18 @@ const BOUNDS = {
     sealSegment: {
       bounded: 'writes one segment of SEAL_AT entries and the shards of their call-ids',
       guard:
-        'test/ledger-archive.test.mjs::a seal interrupted before the hot commit is a redoable prefix, no entry lost',
+        'test/ledger-archive.test.mjs::a seal interrupted before the hot commit is adopted as written, no entry lost',
+    },
+    leftoverSegment: {
+      bounded:
+        'probes one segment number past the summary; only when a crash left it does it read that one segment (at most SEAL_AT entries) and look each entry up in the hot file',
+      guard:
+        'test/ledger-archive.test.mjs::a leftover segment is adopted only when it matches hot; an overrun in it still trips the gate (F-193 review)',
+    },
+    indexSegment: {
+      bounded: 'writes the shards of one segment of at most SEAL_AT call-ids',
+      guard:
+        'test/ledger-archive.test.mjs::a seal interrupted before the hot commit is adopted as written, no entry lost',
     },
     checkSegmentFiles: {
       bounded:

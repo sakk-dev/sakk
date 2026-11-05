@@ -27,8 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Limit: the hash is unkeyed, so a writer who rewrites the newest segment
   and the summary together passes reserve; `sakk ledger verify` catches it.
 - A seal that crashed before its hot commit no longer locks reserve: the
-  segment it left is read as a prefix to redo, and the next settle redoes
-  it at whatever amount it books; `sakk ledger verify` says so and exits 0.
+  segment it left is adopted as written by the next reserve or settle (a
+  segment number on disk is never sealed again, and a leftover whose entries
+  differ from the hot file is refused); `sakk ledger verify` says so and
+  exits 0.
   A summary rolled back over real segments, a stray or out-of-place
   segment file, or a 0.4.0 segment holding an entry with no amount is
   refused (`LEDGER_ARCHIVE_BROKEN`), and verify exits 1 where it used to

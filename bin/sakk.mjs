@@ -55,6 +55,7 @@ import { doctor, install, uninstall } from '../src/guard-install.mjs';
 import {
   checkHead,
   checkSegmentFiles,
+  leftoverSegment,
   readSegment,
   reindex,
   verifyChain,
@@ -826,17 +827,19 @@ if (cmd === 'init') {
     // walk the whole cold chain; a broken or lost segment exits non-zero so CI can gate on it
     try {
       const got = verifyChain(p, archive);
-      // the gate's own check (a rolled-back summary, an orphan that is not a
-      // crash's redoable prefix), then the files: exactly 1..segments, plus at
-      // most one segment a crashed seal left, which the next seal redoes (F-193)
-      checkHead(p, archive, doc.entries);
-      const onDisk = checkSegmentFiles(p, archive);
+      // a segment a crashed seal left is checked as the next reserve or
+      // settle would adopt it, then the gate's own check and the files run
+      // against the summary through it: exactly 1..segments (F-193)
+      const left = leftoverSegment(p, archive, doc.entries);
+      const through = left?.archive ?? archive;
+      checkHead(p, through);
+      checkSegmentFiles(p, through);
       console.log(
         `ledger verify: sound — ${got.segments} segment(s), ${got.settledCount} sealed call(s), ${usd(got.settledUsd)} sealed; chain tip matches`,
       );
-      if (onDisk > got.segments)
+      if (left !== null)
         console.log(
-          `  segment ${onDisk} is left from a seal that was interrupted; the next seal redoes it`,
+          `  segment ${through.segments} is left from a seal that was interrupted; the next reserve or settle adopts it as written`,
         );
       process.exit(0);
     } catch (e) {

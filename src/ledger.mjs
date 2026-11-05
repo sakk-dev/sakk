@@ -20,6 +20,8 @@ import {
   emptyArchive,
   idxDir,
   indexLookup,
+  indexSegment,
+  leftoverSegment,
   sealSegment,
   validateArchive,
 } from './archive.mjs';
@@ -746,6 +748,17 @@ export function reserve({
         },
       );
     }
+    // a seal that crashed before its hot commit is finished first, so the
+    // checks below see the books it committed to (F-193 review)
+    try {
+      adoptLeftover(ledgerPath, doc);
+    } catch (e) {
+      if (!(e instanceof ArchiveError)) throw e;
+      throw new LedgerError(e.code, e.message.replace(/^[A-Z_]+: /, ''), {
+        ledgerPath,
+        ...e.details,
+      });
+    }
     // Dual-source halt (review finding E2): the flag OR any entry still in
     // RECONCILIATION_REQUIRED blocks new spending — the halt must not hinge
     // on a single deletable field.
@@ -786,7 +799,7 @@ export function reserve({
     // writable: refuse unless it matches the head segment's hash-covered
     // running total and nothing was sealed past it (F-193). One segment read.
     try {
-      checkHead(ledgerPath, doc.archive ?? emptyArchive(), doc.entries);
+      checkHead(ledgerPath, doc.archive ?? emptyArchive());
     } catch (e) {
       if (!(e instanceof ArchiveError)) throw e;
       throw new LedgerError(e.code, e.message.replace(/^[A-Z_]+: /, ''), {
@@ -864,6 +877,14 @@ export function settle({
   const lock = acquireLock(ledgerPath);
   try {
     const doc = readLedger({ ledgerPath, maxAgeMs: Number.POSITIVE_INFINITY });
+    // finish a crashed seal first, so a retried settle of a call it sealed is
+    // answered from the segment; a leftover that is not sound stays on disk,
+    // the settle is still recorded hot, and reserve refuses (F-193 review)
+    try {
+      adoptLeftover(ledgerPath, doc);
+    } catch (err) {
+      if (!(err instanceof ArchiveError)) throw err;
+    }
     const e = doc.entries.find((x) => x.callId === callId);
     if (e === undefined) {
       // a callId already sealed into the cold trail is a settled entry: a
@@ -979,8 +1000,9 @@ export function settle({
     // once settled entries fill the hot tail, seal the oldest into the cold
     // trail so the live file stays bounded (F-105). The seal writes the
     // segment and index first, then this write commits the smaller hot file:
-    // a crash before it leaves a redoable prefix, not a lost entry.
-    maybeSeal(ledgerPath, doc, callId);
+    // a crash before it leaves a segment the next reserve or settle adopts as
+    // written, not a lost entry.
+    maybeSeal(ledgerPath, doc);
     // a settle confirms nothing about the books: an agent settling an old
     // reservation must not make a stale ledger fresh (review S1, F-67 class)
     writeLedger(ledgerPath, doc, { keepUpdatedAt: true });
@@ -994,23 +1016,11 @@ export function settle({
  * Seal the oldest settled entries when the hot tail reaches SEAL_AT, in place
  * on `doc` (the caller writes it). Runs under the ledger lock, so there is no
  * concurrent sealer. Upgrades a v1/v2 ledger to v3 the first time.
- * `callId` is the settle being committed: a crash's leftover segment may hold
- * it at another amount, and this seal redoes that segment.
  */
-function maybeSeal(ledgerPath, doc, callId) {
+function maybeSeal(ledgerPath, doc) {
   const settled = doc.entries.filter((e) => e.status === 'SETTLED');
   if (settled.length < SEAL_AT) return;
   const archive = doc.archive ?? emptyArchive();
-  // never extend a trail the summary does not match: sealing over an edited
-  // summary would write a new head whose running total carries the edit, and
-  // launder it (F-193). The entries stay hot, so they still count, and
-  // reserve refuses until a person repairs the trail.
-  try {
-    checkHead(ledgerPath, archive, doc.entries, { pending: callId });
-  } catch (e) {
-    if (e instanceof ArchiveError) return;
-    throw e;
-  }
   // seal exactly SEAL_AT oldest settled (array order is reservation order),
   // leaving the rest hot; segments are uniform at SEAL_AT entries
   const toSeal = settled.slice(0, SEAL_AT);
@@ -1020,10 +1030,67 @@ function maybeSeal(ledgerPath, doc, callId) {
     settledCount: archive.settledCount + toSeal.length,
     settledUsd: archive.settledUsd + toSeal.reduce((s, e) => s + e.actualUsd, 0),
   };
-  const { seq, hash } = sealSegment(ledgerPath, archive.segments, archive.tip, toSeal, total);
+  // never extend a trail the summary does not match (a new head would carry
+  // an edit and launder it, F-193), and never write a segment number already
+  // on disk (sealSegment refuses). A refused seal leaves the entries hot, so
+  // they still count, and reserve refuses until a person repairs the trail.
+  let sealed;
+  try {
+    checkHead(ledgerPath, archive);
+    sealed = sealSegment(ledgerPath, archive.segments, archive.tip, toSeal, total);
+  } catch (e) {
+    if (e instanceof ArchiveError) return;
+    throw e;
+  }
   doc.schema = LEDGER_SCHEMA_V3;
-  doc.archive = { segments: seq, ...total, tip: hash };
+  doc.archive = { segments: sealed.seq, ...total, tip: sealed.hash };
   doc.entries = doc.entries.filter((e) => !(e.status === 'SETTLED' && sealedIds.has(e.callId)));
+}
+
+/**
+ * Finish a seal that crashed before its hot commit (F-193 review): the
+ * segment it left is adopted as written — the summary moves to it, its
+ * entries leave hot and its call-ids are indexed (again, if the crash came
+ * after the shards). Its number is never sealed a second time, so no edit of
+ * the hot file can change what it says. An overrun the crashed settle would
+ * have flagged is flagged here. Writes `doc` when it adopts; throws
+ * ArchiveError when the leftover is not a clean continuation.
+ */
+function adoptLeftover(ledgerPath, doc) {
+  const archive = doc.archive ?? emptyArchive();
+  const left = leftoverSegment(ledgerPath, archive, doc.entries);
+  if (left === null) return;
+  // indexing would recreate a lost index and hide the loss (F-105 review)
+  if (archive.segments > 0 && !existsSync(idxDir(ledgerPath)))
+    throw new ArchiveError(
+      'LEDGER_ARCHIVE_BROKEN',
+      'the call-id index is missing but the cold trail has sealed segments — run sakk ledger reindex',
+      { ledgerPath },
+    );
+  indexSegment(ledgerPath, left.archive.segments, left.entries);
+  const sealed = new Map(left.entries.map((e) => [e.callId, e]));
+  for (const h of doc.entries) {
+    const s = sealed.get(h.callId);
+    if (s === undefined || h.status === 'SETTLED' || !(s.actualUsd > h.estimatedMaxUsd + 1e-9))
+      continue;
+    emitAlert(ledgerPath, {
+      kind: 'BUDGET_OVERRUN',
+      callId: h.callId,
+      reservedUsd: h.estimatedMaxUsd,
+      actualUsd: s.actualUsd,
+      capUsd: doc.capUsd,
+    });
+    doc.flags = {
+      reconciliationRequired: true,
+      reason: boundReason(
+        `call ${h.callId} settled ${s.actualUsd} against a ${h.estimatedMaxUsd} reservation`,
+      ),
+    };
+  }
+  doc.schema = LEDGER_SCHEMA_V3;
+  doc.archive = left.archive;
+  doc.entries = doc.entries.filter((e) => !sealed.has(e.callId));
+  writeLedger(ledgerPath, doc, { keepUpdatedAt: true });
 }
 
 /** For out-of-band accounting failures: completed work stands, but the flag + alert block all further paid calls. */
