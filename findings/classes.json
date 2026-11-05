@@ -105,7 +105,8 @@
         "eval/__tests__/scorer-rules.test.mjs::fires on its trigger, and not without it",
         "test/ledger-archive.test.mjs::verify catches a lost index, and reserve refuses rather than re-admit a sealed call-id",
         "test/bounded-spawn.test.mjs::every node --test run loads the bound, whatever flags come first (F-215)",
-        "test/bounded-spawn-detector.test.mjs::the bounded-spawn detector sees a launch with another --import first (F-215)"
+        "test/bounded-spawn-detector.test.mjs::the bounded-spawn detector sees a launch with another --import first (F-215)",
+        "test/builtin-patch-detector.test.mjs::a test that patches a builtin also syncs it to named imports (F-241)"
       ]
     },
     {
@@ -228,7 +229,8 @@
         "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving",
         "test/spend.test.mjs::a line stamped tomorrow lands in today, flagged, and still hits the cap",
         "test/spend.test.mjs::a forged old-dated line appearing after the baseline lands in today, flagged, and hits the cap",
-        "test/spend.test.mjs::a file planted with a faked old mtime is still read — mtime is not a trust boundary"
+        "test/spend.test.mjs::a file planted with a faked old mtime is still read — mtime is not a trust boundary",
+        "test/ledger-archive.test.mjs::an edited summary is refused by reserve: the head segment binds the totals (F-193)"
       ],
       "stopline": {
         "after": "F-211",
@@ -384,7 +386,8 @@
       "detectors": [
         "test/mcp.test.mjs::F-82: hostile frame shapes answer an error and the gate keeps serving",
         "eval/__tests__/scorer-rules.test.mjs::SCORER_ERROR: a judge that cannot score",
-        "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it"
+        "test/self-evolution-cli.test.mjs::the committed gate passes its own self-test from a copy, as the dispatcher runs it",
+        "test/spend.test.mjs::one unreadable log file is a named, isolated failure, not a crash (F-192)"
       ]
     },
     {
