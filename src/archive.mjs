@@ -172,7 +172,7 @@ export function verifyChain(ledgerPath, archive) {
     if (
       seg.total !== undefined &&
       (seg.total.settledCount !== settledCount ||
-        Math.abs(seg.total.settledUsd - settledUsd) > 1e-9)
+        !(Math.abs(seg.total.settledUsd - settledUsd) <= 1e-9))
     )
       throw new ArchiveError(
         'LEDGER_ARCHIVE_BROKEN',
@@ -188,7 +188,8 @@ export function verifyChain(ledgerPath, archive) {
       counted: settledCount,
       summary: archive.settledCount,
     });
-  if (Math.abs(settledUsd - archive.settledUsd) > 1e-9)
+  // written so a NaN (an entry with no amount) fails rather than passes
+  if (!(Math.abs(settledUsd - archive.settledUsd) <= 1e-9))
     throw new ArchiveError('LEDGER_ARCHIVE_BROKEN', 'the sealed total does not match the summary', {
       counted: settledUsd,
       summary: archive.settledUsd,
@@ -226,18 +227,21 @@ export function verifyChain(ledgerPath, archive) {
  * - the head exists, passes its hash, and is the summary's tip;
  * - the summary's totals equal the head's running total (hash-covered);
  * - no segment past the summary exists, unless it is the redoable prefix a
- *   seal that crashed before its hot commit leaves (it links to the tip and
- *   every entry it holds is still settled in hot). Anything else there means
- *   the summary was rolled back or dropped.
+ *   seal that crashed before its hot commit leaves (see isRedoablePrefix).
+ *   Anything else there means the summary was rolled back or dropped.
  * A head sealed before F-193 has no running total: the chain is walked once
  * per call until the next seal writes one. Throws LEDGER_ARCHIVE_BROKEN.
+ *
+ * `pending` is the call-id a settle is committing right now: its hot entry is
+ * still unsettled on disk, so an orphan from an earlier crashed settle of the
+ * same call may hold a different amount, and the seal redoes it.
  *
  * Limit: the hash is unkeyed and the trail is a local file, so a writer who
  * rewrites the summary, deletes the newer segments and their index entries,
  * or rehashes the trail is not caught here. Keeping the agent from writing the
  * ledger at all is the guard's job (it denies writes into ~/.sakk).
  */
-export function checkHead(ledgerPath, archive, hotEntries) {
+export function checkHead(ledgerPath, archive, hotEntries, { pending } = {}) {
   validateArchive(archive, ledgerPath);
   const bad = (why) => {
     throw new ArchiveError('LEDGER_ARCHIVE_BROKEN', `${why} — run sakk ledger verify`, {
@@ -247,8 +251,13 @@ export function checkHead(ledgerPath, archive, hotEntries) {
   const next = archive.segments + 1;
   if (existsSync(segPath(ledgerPath, next))) {
     const orphan = readSegment(ledgerPath, next);
-    const hot = new Set(hotEntries.filter((e) => e.status === 'SETTLED').map((e) => e.callId));
-    if (orphan.prev !== archive.tip || !orphan.entries.every((e) => hot.has(e.callId)))
+    // a crash leaves at most one segment past the summary; a later one means
+    // the summary was rolled back over real history (rare path: one listing)
+    if (
+      orphan.prev !== archive.tip ||
+      seqsOnDisk(ledgerPath).some((s) => s > next) ||
+      !isRedoablePrefix(archive, orphan, hotEntries, pending)
+    )
       bad(`cold segment ${next} exists past the summary — the summary was rolled back`);
   }
   if (archive.segments === 0) {
@@ -272,11 +281,61 @@ export function checkHead(ledgerPath, archive, hotEntries) {
       prev = seg.hash;
     }
   }
+  // written so a NaN (a legacy entry with no amount) fails rather than passes
   if (
     total.settledCount !== archive.settledCount ||
-    Math.abs(total.settledUsd - archive.settledUsd) > 1e-9
+    !(Math.abs(total.settledUsd - archive.settledUsd) <= 1e-9)
   )
     bad('the summary totals do not match the head segment');
+}
+
+/**
+ * Whether a segment past the summary is exactly what a seal that crashed
+ * before its hot commit leaves behind, and so safe to redo: its running total
+ * is the summary plus its own entries, and every entry is still in hot with
+ * the same reservation — settled at the same amount, or, for at most one
+ * entry (the settle that triggered the seal), not yet settled on disk. A
+ * rolled-back summary with sealed calls copied back at a lower amount, or
+ * copied back at all while later segments exist, is not (F-193 review).
+ */
+function isRedoablePrefix(archive, orphan, hotEntries, pending) {
+  const hot = new Map(hotEntries.map((e) => [e.callId, e]));
+  let unsettled = 0;
+  let usd = 0;
+  for (const e of orphan.entries) {
+    const h = hot.get(e?.callId);
+    if (h === undefined || h.estimatedMaxUsd !== e.estimatedMaxUsd) return false;
+    const triggering =
+      h.callId === pending || h.status === 'RESERVED' || h.status === 'RECONCILIATION_REQUIRED';
+    if (triggering) {
+      if (++unsettled > 1) return false;
+    } else if (h.status !== 'SETTLED' || h.actualUsd !== e.actualUsd) return false;
+    usd += e.actualUsd;
+  }
+  if (orphan.total === undefined) return true;
+  return (
+    orphan.total.settledCount === archive.settledCount + orphan.entries.length &&
+    Math.abs(orphan.total.settledUsd - (archive.settledUsd + usd)) <= 1e-9
+  );
+}
+
+/**
+ * The cold segment files on disk are exactly 1..segments, or 1..segments+1
+ * when a crashed seal left one redoable segment. A gap, a missing segment or
+ * one further past the summary is LEDGER_ARCHIVE_BROKEN. Lists the cold
+ * folder once; used by `sakk ledger verify`, off the gate path.
+ */
+export function checkSegmentFiles(ledgerPath, archive) {
+  validateArchive(archive, ledgerPath);
+  const seqs = seqsOnDisk(ledgerPath);
+  const exact = (n) => seqs.length === n && seqs.every((s, i) => s === i + 1);
+  if (!exact(archive.segments) && !exact(archive.segments + 1))
+    throw new ArchiveError(
+      'LEDGER_ARCHIVE_BROKEN',
+      `the cold segment files on disk are not 1..${archive.segments} (found ${seqs.length}, highest ${seqs.at(-1) ?? 0})`,
+      { ledgerPath },
+    );
+  return seqs.length;
 }
 
 /** Rebuild the whole index from the cold trail (sakk ledger reindex): recovery after an index loss. */
@@ -331,6 +390,14 @@ export function sealSegment(ledgerPath, prevSegments, prevTip, entries, total) {
   mkdirSync(coldDir(ledgerPath), { recursive: true });
   mkdirSync(idxDir(ledgerPath), { recursive: true });
   const seq = prevSegments + 1;
+  // writing seq over a trail that already goes past it would overwrite real
+  // history; checkHead refuses that first, this holds it for any other caller
+  if (existsSync(segPath(ledgerPath, seq + 1)))
+    throw new ArchiveError(
+      'LEDGER_ARCHIVE_BROKEN',
+      `cold segment ${seq + 1} already exists — refusing to rewrite segment ${seq}`,
+      { ledgerPath },
+    );
   const hash = segmentHash(seq, prevTip, entries, total);
   writeFileAtomic(
     segPath(ledgerPath, seq),
@@ -363,7 +430,15 @@ export function sealSegment(ledgerPath, prevSegments, prevTip, entries, total) {
 
 /** How many cold segment files are actually on disk (for verify / export). */
 export function segmentsOnDisk(ledgerPath) {
+  return seqsOnDisk(ledgerPath).length;
+}
+
+/** The seq numbers of the segment files on disk, ascending. Lists the cold folder once. */
+function seqsOnDisk(ledgerPath) {
   const d = coldDir(ledgerPath);
-  if (!existsSync(d)) return 0;
-  return readdirSync(d).filter((f) => /^\d{6}\.json$/.test(f)).length;
+  if (!existsSync(d)) return [];
+  return readdirSync(d)
+    .filter((f) => /^\d{6,}\.json$/.test(f))
+    .map((f) => Number(f.slice(0, -'.json'.length)))
+    .sort((a, b) => a - b);
 }

@@ -26,6 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so reserve walks the chain on each call until the next seal writes one.
   Limit: the hash is unkeyed, so a writer who rewrites the newest segment
   and the summary together passes reserve; `sakk ledger verify` catches it.
+- A seal that crashed before its hot commit no longer locks reserve: the
+  segment it left is read as a prefix to redo, and the next settle redoes
+  it at whatever amount it books; `sakk ledger verify` says so and exits 0.
+  A summary rolled back over real segments, a stray or out-of-place
+  segment file, or a 0.4.0 segment holding an entry with no amount is
+  refused (`LEDGER_ARCHIVE_BROKEN`), and verify exits 1 where it used to
+  report sound. A seal never rewrites a segment that already exists.
+  `sakk init` refuses `LEDGER_ALREADY_EXISTS` beside a leftover
+  `<ledger>.cold` or `<ledger>.idx` (F-193).
+- Downgrading is unsupported: segments sealed by this version carry a
+  running total that 0.4.0 does not hash, so 0.4.0 cannot verify or
+  export them.
 - The test that holds "a call costs the same whatever the history" now sees
   the reads it counts: it patched `fs` without syncing the named imports
   the code uses, so it passed on zero reads whatever the code did. A new

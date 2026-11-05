@@ -578,7 +578,7 @@ const BOUNDS = {
     },
     checkHead: {
       bounded:
-        'reads the head segment (at most SEAL_AT entries) and probes one possible orphan; a 0.4.0 head without a running total walks the trail once, until the next seal writes one',
+        'reads the head segment (at most SEAL_AT entries) and probes one possible orphan; only when a crash left that orphan does it read it and list the cold folder once; a 0.4.0 head without a running total walks the trail once, until the next seal writes one',
       guard:
         'test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)',
     },
@@ -609,9 +609,14 @@ const BOUNDS = {
       guard:
         'test/ledger-archive.test.mjs::a seal interrupted before the hot commit is a redoable prefix, no entry lost',
     },
-    segmentsOnDisk: {
+    checkSegmentFiles: {
       bounded:
-        'counts segment files, which grow with history; used only by verify and export, off the gate path',
+        'lists the segment files, which grow with history; used only by sakk ledger verify, off the gate path',
+      guard:
+        'test/ledger-archive.test.mjs::verify reports a stray segment file past the summary; the files are exactly 1..segments',
+    },
+    segmentsOnDisk: {
+      bounded: 'counts segment files, which grow with history; a test helper, off the gate path',
       guard:
         "test/ledger-archive.test.mjs::export rebuilds one valid ledger with the same totals; verify's exit code is acted on",
     },

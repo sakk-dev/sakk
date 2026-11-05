@@ -16,6 +16,7 @@ import {
   SEAL_AT,
   archivedEntry,
   checkHead,
+  coldDir,
   emptyArchive,
   idxDir,
   indexLookup,
@@ -664,6 +665,16 @@ export function initLedger({
           ledgerPath,
         },
       );
+    // a new ledger beside an old cold trail would read that trail's segments
+    // and index as its own: a fresh summary plus an old segment 1 is exactly
+    // what a rolled-back summary looks like (F-193 review)
+    for (const d of [coldDir(ledgerPath), idxDir(ledgerPath)])
+      if (existsSync(d))
+        throw new LedgerError(
+          'LEDGER_ALREADY_EXISTS',
+          'a cold trail from an earlier ledger is still here — move it away first',
+          { ledgerPath, dir: d },
+        );
     writeLedger(ledgerPath, {
       schema: LEDGER_SCHEMA,
       initializedAt: new Date().toISOString(),
@@ -969,7 +980,7 @@ export function settle({
     // trail so the live file stays bounded (F-105). The seal writes the
     // segment and index first, then this write commits the smaller hot file:
     // a crash before it leaves a redoable prefix, not a lost entry.
-    maybeSeal(ledgerPath, doc);
+    maybeSeal(ledgerPath, doc, callId);
     // a settle confirms nothing about the books: an agent settling an old
     // reservation must not make a stale ledger fresh (review S1, F-67 class)
     writeLedger(ledgerPath, doc, { keepUpdatedAt: true });
@@ -983,8 +994,10 @@ export function settle({
  * Seal the oldest settled entries when the hot tail reaches SEAL_AT, in place
  * on `doc` (the caller writes it). Runs under the ledger lock, so there is no
  * concurrent sealer. Upgrades a v1/v2 ledger to v3 the first time.
+ * `callId` is the settle being committed: a crash's leftover segment may hold
+ * it at another amount, and this seal redoes that segment.
  */
-function maybeSeal(ledgerPath, doc) {
+function maybeSeal(ledgerPath, doc, callId) {
   const settled = doc.entries.filter((e) => e.status === 'SETTLED');
   if (settled.length < SEAL_AT) return;
   const archive = doc.archive ?? emptyArchive();
@@ -993,7 +1006,7 @@ function maybeSeal(ledgerPath, doc) {
   // launder it (F-193). The entries stay hot, so they still count, and
   // reserve refuses until a person repairs the trail.
   try {
-    checkHead(ledgerPath, archive, doc.entries);
+    checkHead(ledgerPath, archive, doc.entries, { pending: callId });
   } catch (e) {
     if (e instanceof ArchiveError) return;
     throw e;

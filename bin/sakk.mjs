@@ -52,7 +52,13 @@ import {
   SpendError,
 } from '../src/spend.mjs';
 import { doctor, install, uninstall } from '../src/guard-install.mjs';
-import { readSegment, reindex, segmentsOnDisk, verifyChain } from '../src/archive.mjs';
+import {
+  checkHead,
+  checkSegmentFiles,
+  readSegment,
+  reindex,
+  verifyChain,
+} from '../src/archive.mjs';
 import { startConsole } from '../src/console.mjs';
 import { gatewayStatus } from '../src/gateway-status.mjs';
 import { ConsoleLoginError, askConsoleLogin, clearConsoleLogin } from '../src/console-login.mjs';
@@ -820,23 +826,24 @@ if (cmd === 'init') {
     // walk the whole cold chain; a broken or lost segment exits non-zero so CI can gate on it
     try {
       const got = verifyChain(p, archive);
-      const onDisk = segmentsOnDisk(p);
-      // fewer segments than the summary claims is a lost segment (broken); more
-      // is a harmless crash orphan (a seal wrote a segment, then the hot commit
-      // did not land, so the summary never counted it) — the chain is still sound
-      if (onDisk < got.segments) {
-        console.error(
-          `LEDGER_ARCHIVE_BROKEN: ${onDisk} cold segment file(s) on disk, summary says ${got.segments}`,
-        );
-        process.exit(1);
-      }
+      // the gate's own check (a rolled-back summary, an orphan that is not a
+      // crash's redoable prefix), then the files: exactly 1..segments, plus at
+      // most one segment a crashed seal left, which the next seal redoes (F-193)
+      checkHead(p, archive, doc.entries);
+      const onDisk = checkSegmentFiles(p, archive);
       console.log(
         `ledger verify: sound — ${got.segments} segment(s), ${got.settledCount} sealed call(s), ${usd(got.settledUsd)} sealed; chain tip matches`,
       );
+      if (onDisk > got.segments)
+        console.log(
+          `  segment ${onDisk} is left from a seal that was interrupted; the next seal redoes it`,
+        );
       process.exit(0);
     } catch (e) {
       console.error(
-        `${e.code ?? 'LEDGER_ARCHIVE_BROKEN'}: ${String(e.message).replace(/^[A-Z_]+: /, '')}`,
+        `${e.code ?? 'LEDGER_ARCHIVE_BROKEN'}: ${String(e.message)
+          .replace(/^[A-Z_]+: /, '')
+          .replace(/ — run sakk ledger verify$/, '')}`,
       );
       process.exit(1);
     }

@@ -674,4 +674,154 @@ describe('F-193 the archive summary is bound to the head segment', () => {
       'NO_ERROR',
     );
   });
+
+  const segAt = (p, seq) => join(coldDir(p), `${String(seq).padStart(6, '0')}.json`);
+  const segOf = (p, seq) => JSON.parse(readFileSync(segAt(p, seq), 'utf8'));
+  const verifyCli = (p) => sakk(['ledger', 'verify', '--ledger', p]);
+
+  test('a seal that crashed before its hot commit stays usable: reserve, verify and a redo at any amount (F-193 review)', () => {
+    for (const redoUsd of [0.002, 0.003]) {
+      const p = fresh();
+      seed(p, SEAL_AT - 1);
+      reserve({ ledgerPath: p, callId: 'trigger', estimatedMaxUsd: 0.01 });
+      const beforeCommit = readFileSync(p, 'utf8');
+      settle({ ledgerPath: p, callId: 'trigger', actualUsd: 0.002 }); // this settle seals segment 1
+      assert.equal(segmentsOnDisk(p), 1);
+      // the crash: the segment and index landed, the hot commit did not, so the
+      // trigger is still RESERVED in hot while the segment holds it settled
+      writeFileSync(p, beforeCommit);
+      assert.equal(
+        code(() => reserve({ ledgerPath: p, callId: 'after', estimatedMaxUsd: 0.001 })),
+        'NO_ERROR',
+        'the gate stays open after a crash',
+      );
+      const v = verifyCli(p);
+      assert.equal(v.status, 0, v.stderr);
+      assert.match(v.stdout, /interrupted/);
+      // the retried settle may carry another amount: the seal redoes segment 1
+      assert.equal(
+        code(() => settle({ ledgerPath: p, callId: 'trigger', actualUsd: redoUsd })),
+        'NO_ERROR',
+        `re-settling the trigger at ${redoUsd}`,
+      );
+      const doc = readLedger({ ledgerPath: p, maxAgeMs: Infinity });
+      assert.equal(doc.archive.segments, 1);
+      assert.ok(Math.abs(doc.archive.settledUsd - ((SEAL_AT - 1) * 0.002 + redoUsd)) < 1e-9);
+      assert.equal(segOf(p, 1).entries.find((e) => e.callId === 'trigger').actualUsd, redoUsd);
+      const after = verifyCli(p);
+      assert.equal(after.status, 0, after.stderr);
+      assert.doesNotMatch(after.stdout, /interrupted/);
+      assert.equal(
+        code(() => reserve({ ledgerPath: p, callId: 'later', estimatedMaxUsd: 0.001 })),
+        'NO_ERROR',
+      );
+    }
+  });
+
+  test('a summary rolled back over a real segment is refused, and no seal overwrites that segment (F-193 review)', () => {
+    // A: roll the summary back to nothing and copy segment 1's calls into hot
+    // at $0 — the old probe saw "every call-id settled in hot" and passed
+    const a = fresh(0.1);
+    seed(a, SEAL_AT + 3, 0.002, 0.002);
+    for (let i = 0; i < 5; i++)
+      reserve({ ledgerPath: a, callId: `open${i}`, estimatedMaxUsd: 0.001 });
+    const seg1 = readFileSync(segAt(a, 1), 'utf8');
+    edit(a, (d) => {
+      d.archive = { segments: 0, settledCount: 0, settledUsd: 0, tip: '' };
+      d.entries.push(...JSON.parse(seg1).entries.map((e) => ({ ...e, actualUsd: 0 })));
+    });
+    refused(a, 'a summary rolled back to nothing over segment 1, copied at $0');
+    assert.equal(verifyCli(a).status, 1, 'verify names the rollback');
+    // settles that reach the seal threshold must not reseal segment 1 at $0
+    for (let i = 0; i < 5; i++) settle({ ledgerPath: a, callId: `open${i}`, actualUsd: 0.001 });
+    assert.equal(readFileSync(segAt(a, 1), 'utf8'), seg1, 'segment 1 was not rewritten');
+    refused(a, 'still refused after the settles');
+
+    // B: roll back to segment 1 of 3 and copy segment 2 faithfully; segment 3's
+    // spend would be freed, and a faithful copy looks like a crash leftover
+    const b = fresh();
+    seed(b, SEAL_AT * 3 + 2);
+    assert.equal(segmentsOnDisk(b), 3);
+    const s1 = segOf(b, 1);
+    const s2 = segOf(b, 2);
+    edit(b, (d) => {
+      d.archive = { segments: 1, ...s1.total, tip: s1.hash };
+      d.entries.push(...s2.entries);
+    });
+    refused(b, 'a summary rolled back below two later segments');
+    const v = verifyCli(b);
+    assert.equal(v.status, 1);
+    assert.match(v.stderr, /LEDGER_ARCHIVE_BROKEN/);
+  });
+
+  test('verify reports a stray segment file past the summary; the files are exactly 1..segments', () => {
+    const p = two();
+    const doc = readLedger({ ledgerPath: p, maxAgeMs: Infinity });
+    assert.equal(archive.checkSegmentFiles(p, doc.archive), 2);
+    assert.equal(verifyCli(p).status, 0);
+    // a gap: segment 4 with no segment 3 — no crash leaves this
+    writeFileSync(segAt(p, 4), readFileSync(segAt(p, 2)));
+    assert.equal(
+      code(() => archive.checkSegmentFiles(p, doc.archive)),
+      'LEDGER_ARCHIVE_BROKEN',
+    );
+    const v = verifyCli(p);
+    assert.equal(v.status, 1, v.stdout);
+    assert.match(v.stderr, /not 1\.\.2/);
+    // and the seal refuses to write segment 3 under it
+    assert.equal(
+      code(() => archive.sealSegment(p, 2, doc.archive.tip, segOf(p, 2).entries)),
+      'LEDGER_ARCHIVE_BROKEN',
+    );
+  });
+
+  test('init refuses to start a ledger beside an earlier cold trail or index', () => {
+    const old = fresh();
+    seed(old, SEAL_AT + 1);
+    fs.rmSync(old); // the hot file gone, its trail left behind
+    assert.equal(
+      code(() => initLedger({ ledgerPath: old, capUsd: 1 })),
+      'LEDGER_ALREADY_EXISTS',
+    );
+    fs.rmSync(coldDir(old), { recursive: true });
+    assert.equal(
+      code(() => initLedger({ ledgerPath: old, capUsd: 1 })),
+      'LEDGER_ALREADY_EXISTS',
+      'the index alone is still an old trail',
+    );
+    fs.rmSync(idxDir(old), { recursive: true });
+    assert.equal(
+      code(() => initLedger({ ledgerPath: old, capUsd: 1 })),
+      'NO_ERROR',
+    );
+  });
+
+  test('a legacy head holding an entry with no amount is broken, never passed', () => {
+    // NaN compares false both ways: a check written as `diff > tolerance`
+    // would let a missing amount through
+    const p = fresh();
+    const entries = Array.from({ length: SEAL_AT }, (_, i) => ({
+      callId: `m${i}`,
+      runId: null,
+      taskId: null,
+      agentId: null,
+      estimatedMaxUsd: 0.01,
+      status: 'SETTLED',
+      actualUsd: 0.002,
+      settledAt: new Date().toISOString(),
+    }));
+    delete entries[0].actualUsd;
+    const s = archive.sealSegment(p, 0, '', entries);
+    edit(p, (d) => {
+      d.schema = 'sakk-ledger.v3';
+      d.archive = {
+        segments: 1,
+        settledCount: SEAL_AT,
+        settledUsd: (SEAL_AT - 1) * 0.002,
+        tip: s.hash,
+      };
+    });
+    refused(p, 'a legacy head with a missing amount');
+    assert.equal(verifyCli(p).status, 1);
+  });
 });
