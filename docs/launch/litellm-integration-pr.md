@@ -51,7 +51,7 @@ curl -fsSLO https://raw.githubusercontent.com/sakk-dev/sakk/main/integrations/li
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python --require-hashes -r requirements.lock
 uv pip install --python .venv/bin/python --no-deps sakk-litellm
-npm install -g sakk
+npm install -g @sakk-dev/sakk
 sakk init --cap 5 --ledger /abs/path/ledger.json --by you
 ```
 
@@ -83,7 +83,7 @@ general_settings:
 Retries are off so one reservation covers one provider request.
 
 ```shell
-export SAKK_BIN=$(npm root -g)/sakk/bin/sakk.mjs
+export SAKK_BIN=$(npm root -g)/@sakk-dev/sakk/bin/sakk.mjs
 export SAKK_LEDGER=/abs/path/ledger.json
 export SAKK_GATEWAY_CONFIG=$PWD/config.yaml
 export LITELLM_MASTER_KEY=sk-choose-a-long-random-key

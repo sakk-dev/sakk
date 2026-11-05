@@ -1,0 +1,86 @@
+{
+  "version": 2,
+  "branch": "chore/npm-scoped-name",
+  "answers": {
+    "C-01.1": {
+      "answer": "Absence refuses: the new test fails when package.json has no name or no sakk bin entry, and it fails when the scan finds no install lines at all or none in README.md, so a renamed README or a wrong root cannot read as a pass on an empty scan.",
+      "guard": "test/release.test.mjs::every install command in the docs and the CLI names the package npm publishes"
+    },
+    "C-01.2": {
+      "answer": "The check is required: it runs inside npm test, which the pre-push hook and both CI test jobs run. Putting back one unscoped `npm install -g sakk` line in README.md turns it red on that file and line; deleting the package name from package.json turns it red on the missing name.",
+      "guard": "test/release.test.mjs::every install command in the docs and the CLI names the package npm publishes"
+    },
+    "C-02.1": {
+      "answer": "No hand list of files: the test walks README*.md at the top, every .md under docs/ and integrations/, llms.txt, and every .mjs under bin/ and src/, and reads the package name from package.json instead of a literal. Only CHANGELOG.md is left out, because its old entries describe releases that already happened.",
+      "guard": "test/release.test.mjs::every install command in the docs and the CLI names the package npm publishes"
+    },
+    "C-02.2": {
+      "answer": "Every place that tells a person how to install is covered by the one scan: both READMEs, both tutorials, GUARD, compare, the auditor replay, the LiteLLM docs, llms.txt, the two CLI refusal messages in bin/sakk.mjs and the console's install hint. Guard cases that name `npx sakk` on purpose (specs, kill-switch attack strings, the classifier) are not install instructions and stay; the plugin manifests' name is the plugin's name, not the npm package.",
+      "guard": "test/kill-switch.test.mjs::F-185 every control-loosening sakk subcommand is judged the same through every launcher"
+    },
+    "C-03.1": {
+      "answer": "It fails for the reason it names and lists each offender as file:line with the package it named; I put the unscoped README line back, watched it go red with that line, then restored it. Lines that already name the package from package.json pass, so it does not fail on anything else.",
+      "guard": "test/release.test.mjs::every install command in the docs and the CLI names the package npm publishes"
+    },
+    "C-03.2": {
+      "answer": "The control is in the test: it asserts the scan found the README's own install command among its matches, so a regex that matches nothing, or matches only lines that happen to be right, cannot pass. The forms matched (npm install with -g, --global, --save-dev, -D, and npx with or without -y) are the forms the docs use.",
+      "guard": "test/release.test.mjs::every install command in the docs and the CLI names the package npm publishes"
+    },
+    "C-03.3": {
+      "answer": "It is tied to what really ships: release.yml runs npm publish, which publishes under package.json's name, and the test compares every install line with that same field. If the package name changes and a doc does not, it fails; it does not depend on any record or comment being present.",
+      "guard": "test/release.test.mjs::every install command in the docs and the CLI names the package npm publishes"
+    },
+    "C-04.1": {
+      "answer": "Its work is bounded by the repository: it reads a fixed set of tracked folders once each with one linear regex per line, no network and no child process, and the suite runs under --test-timeout like every other test file.",
+      "guard": "test/claims-are-checked.test.mjs::every node --test script carries --test-timeout"
+    },
+    "C-05.1": {
+      "answer": "Each changed sentence is read back by a test: every install line by the new test against package.json, the CHANGELOG note that the command stays `sakk` by the same test's assertion that package.json's bin still maps `sakk`, and the GATEWAY_EPHEMERAL hint by the gateway-init test that reads the real stderr.",
+      "guard": "test/release.test.mjs::every install command in the docs and the CLI names the package npm publishes"
+    },
+    "C-05.2": {
+      "answer": "What a reader copies works: `npm install -g @sakk-dev/sakk` installs the package release.yml publishes, and the bin entry the test asserts keeps the `sakk` command, so every later `sakk ...` line in the docs is still right. The refusal messages keep their codes and exit status; only the install hint inside them changes to the real name.",
+      "guard": "test/gateway-init.test.mjs::refuses what it does not understand, and each refusal writes nothing"
+    },
+    "C-06.1": {
+      "answer": "The evidence is package.json in the checkout, the same file npm publish reads in release.yml, and the doc files every reader sees on GitHub and in the tarball. The test claims nothing about the registry; whether @sakk-dev/sakk exists on npm is checked after release by looking at the registry, not by this test.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    },
+    "C-07.1": {
+      "answer": "No new input crosses a trust boundary: the changed CLI and console strings are static text, and the test only reads repository files that change through reviewed pull requests; it never executes them. The guard's classifier already treats `npx @scope/sakk` like `npx sakk`, so the scoped name opens no new route around it.",
+      "guard": "test/kill-switch.test.mjs::F-185 every control-loosening sakk subcommand is judged the same through every launcher"
+    },
+    "C-07.2": {
+      "answer": "The test constrains whoever edits docs; the only way to pass it is to write the real package name, which is the fix. What it protects, the published name, is not something an agent can change: npm trusted publishing for @sakk-dev/sakk and the release tag are set up and pushed by a person, and main only moves through a reviewed pull request.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-08.1": {
+      "answer": "This change removes a second name: the docs said `sakk` while npm will only accept @sakk-dev/sakk. After it, package.json's name is the one install name and the test makes every install line use it; `sakk` remains only as the command (bin), a different thing, which the test asserts. The guard already judges both launch spellings the same.",
+      "guard": "test/kill-switch.test.mjs::F-185 every control-loosening sakk subcommand is judged the same through every launcher"
+    },
+    "C-09.1": {
+      "answer": "It assumes only the repository top, derived from the test file's URL rather than the working directory, and plain file reads, no git state, PATH tool or network, so it passes from a linked worktree, a subfolder, the filtered public copy and a CI checkout alike.",
+      "guard": "test/pre-push.test.mjs::a push from a linked worktree: the suite gets no GIT_ variables, so a fixture cannot write into the repository (F-214)"
+    },
+    "C-09.2": {
+      "answer": "It runs where it matters: in npm test, which the pre-push hook runs before a push and the test (20) and test (22) jobs run on every pull request and on main here and in the public repository, all required checks.",
+      "guard": "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails"
+    },
+    "C-10.1": {
+      "answer": "Keeping install lines in step with the package name was a step people had to remember, and npm's refusal of the unscoped name showed every doc was wrong at once; the new test makes it a gate that fails npm test, pre-push and CI when any install line names another package.",
+      "guard": "test/release.test.mjs::every install command in the docs and the CLI names the package npm publishes"
+    },
+    "C-10.2": {
+      "answer": "No route skips it: every change reaches main through a pull request whose required test jobs run it, and the public repository is synced from the same main and requires the same checks before its main moves; release.yml publishes only from a tag on that main.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    },
+    "C-11.1": {
+      "answer": "package.json's name carries meaning beyond the file: it is what npm publishes and what people install. Its only writer is a reviewed pull request into protected main, and npm trusted publishing is bound to @sakk-dev/sakk, so a different name would fail to publish rather than ship under a name nobody set up. The plugin manifests keep their own name `sakk`, which no install line reads.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    },
+    "C-15.1": {
+      "answer": "The real path runs: the gateway-init test starts the real bin/sakk.mjs from an ephemeral npx-style path and reads its real stderr for the install hint, and the new test reads the real repository files and the real package.json, not a copy written by the test.",
+      "guard": "test/gateway-init.test.mjs::refuses what it does not understand, and each refusal writes nothing"
+    }
+  }
+}

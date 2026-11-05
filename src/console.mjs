@@ -1451,7 +1451,7 @@ PAGES.agents=function(m){
 const A=S.d.agents||{};
 const cc=$("div",{class:"card mb14",id:"conncard"});cc.append($("h2",{text:"Connections"}));
 if(A.error)cc.append(errNote(A,"the agent checks"));
-[["claude-code","Claude Code","npx sakk guard install claude-code"],["cursor","Cursor","npx sakk guard install cursor"],["codex","Codex","npx sakk guard install codex"]].forEach(r=>{const h=hookState(r[0]);cc.append($("div",{class:"conn"},$("div",{},$("b",{text:r[1]}),$("div",{class:"sub",text:h.on?"Hook installed ("+h.where+")"+(h.failOpen?" · "+h.failOpen:""):h.detail})),code(r[2]),h.on?(h.failOpen?pill("Connected · fails open","p-warn"):pill("Connected","p-ok")):pill("Not connected","p-mute")));});
+[["claude-code","Claude Code","npx @sakk-dev/sakk guard install claude-code"],["cursor","Cursor","npx @sakk-dev/sakk guard install cursor"],["codex","Codex","npx @sakk-dev/sakk guard install codex"]].forEach(r=>{const h=hookState(r[0]);cc.append($("div",{class:"conn"},$("div",{},$("b",{text:r[1]}),$("div",{class:"sub",text:h.on?"Hook installed ("+h.where+")"+(h.failOpen?" · "+h.failOpen:""):h.detail})),code(r[2]),h.on?(h.failOpen?pill("Connected · fails open","p-warn"):pill("Connected","p-ok")):pill("Not connected","p-mute")));});
 cc.append($("div",{class:"conn"},$("div",{},$("b",{text:"MCP gate "}),$("span",{class:"tag",text:"Experimental"}),$("div",{class:"sub",text:"For agents you wire up in code. The console cannot see whether one is running."})),code("npx sakk mcp"),pill("Not checked","p-mute")));
 const warn=arr(A.checks).filter(x=>!x.ok);if(warn.length)cc.append($("p",{class:"note warn",text:warn.map(x=>x.name+": "+x.detail).join(" · ")}));
 m.append(cc);

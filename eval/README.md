@@ -24,7 +24,7 @@ it measures discipline, with machine evidence only.
 | ------------------------------------- | -------------------------------------------------------------------------------------- |
 | `cases/G01..G12.json`                 | the 12 case definitions (agent-visible; no gold inside)                                |
 | `fixtures/G01..G12/`                  | one synthetic micro-repo per case (no real data, no real secrets)                      |
-| `gold/G01..G12/`                      | the answer key: scoring.json + notes.md + maintainer-label.json — never copied into a workdir |
+| `gold/G01..G12/`                      | the answer key: scoring, notes and the reviewer's labels — never copied into a workdir |
 | `gold/manifest.sha256`                | per-file SHA-256 inventory, verified at every runner start                             |
 | `schemas/`                            | case / trace / result / metrics JSON Schemas (draft-07 subset)                         |
 | `lib/`                                | validate / trace / paid-step gate / env scrub / scorer / case packs / bundle verifier  |

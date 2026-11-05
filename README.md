@@ -14,7 +14,7 @@ code. Local, zero dependencies, Apache-2.0.
 **I use Claude Code, Cursor or Codex:**
 
 ```bash
-npm install -g sakk && sakk guard install claude-code && sakk doctor   # run in your project
+npm install -g @sakk-dev/sakk && sakk guard install claude-code && sakk doctor   # run in your project
 ```
 
 **My own AI app, any language:** Sakk's spend gate runs inside the LiteLLM
@@ -23,7 +23,7 @@ installed (the pinned 1.106.2); without it, it prints the hash-locked install
 steps and writes nothing.
 
 ```bash
-npm install -g sakk && sakk init --cap 5   # the ledger the gateway charges, capped at $5
+npm install -g @sakk-dev/sakk && sakk init --cap 5   # the ledger the gateway charges, capped at $5
 sakk gateway init                         # writes sakk_gateway.py, config.yaml and start.sh to ~/.sakk/gateway
 LITELLM_MASTER_KEY=<a long random key> DEEPSEEK_API_KEY=<your key> ~/.sakk/gateway/start.sh
 ```
@@ -112,7 +112,7 @@ Two concurrent agents cannot jointly overspend: read-modify-write runs under an 
 ## Install
 
 ```bash
-npm install sakk        # or call the CLI without installing: npx sakk …
+npm install @sakk-dev/sakk   # or call the CLI without installing: npx @sakk-dev/sakk …
 ```
 
 ## How do I block dangerous commands like force-push from an AI coding agent?
@@ -142,8 +142,8 @@ own plugin marketplace, so inside Claude Code:
 To load it for one session from the npm package instead:
 
 ```bash
-npm install -g sakk
-claude --plugin-dir "$(npm root -g)/sakk"
+npm install -g @sakk-dev/sakk
+claude --plugin-dir "$(npm root -g)/@sakk-dev/sakk"
 ```
 
 No automated test can drive Claude Code, so both routes are checked by hand
@@ -199,7 +199,7 @@ Two layers, with the same rules:
 ### Secret scanning
 
 ```bash
-npm install --save-dev sakk     # the hook runs THIS installed copy — not npx
+npm install --save-dev @sakk-dev/sakk # the hook runs THIS installed copy — not npx
 npx sakk scan src config        # scan paths; exit 1 if anything is found
 npx sakk scan --install-hook    # refuse commits and merge commits that contain secrets
 ```

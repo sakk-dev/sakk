@@ -868,12 +868,18 @@ describe('C-04: every exported function is bounded on attacker-shaped input', ()
     );
     assert.equal(
       code(() =>
-        ledger.halt({ ledgerPath: fresh(), by: 'maintainer', reason: long(LIMITS.reasonChars + 1) }),
+        ledger.halt({
+          ledgerPath: fresh(),
+          by: 'maintainer',
+          reason: long(LIMITS.reasonChars + 1),
+        }),
       ),
       'INPUT_TOO_LONG',
     );
     assert.equal(
-      code(() => ledger.halt({ ledgerPath: fresh(), by: 'maintainer', reason: long(LIMITS.reasonChars) })),
+      code(() =>
+        ledger.halt({ ledgerPath: fresh(), by: 'maintainer', reason: long(LIMITS.reasonChars) }),
+      ),
       'NO_REFUSAL',
     );
   });
