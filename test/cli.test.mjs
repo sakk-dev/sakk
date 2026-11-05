@@ -260,6 +260,150 @@ describe('sakk unlock', () => {
   );
 });
 
+describe('sakk settle', () => {
+  const entry = (p, id) =>
+    JSON.parse(readFileSync(p, 'utf8')).entries.find((e) => e.callId === id) ?? null;
+  const alertLines = (p) => {
+    const a = join(dirname(p), 'sakk-alerts.jsonl');
+    return existsSync(a)
+      ? readFileSync(a, 'utf8')
+          .split('\n')
+          .filter(Boolean)
+          .map((l) => JSON.parse(l))
+      : [];
+  };
+  const held = () => {
+    const p = join(tdir(), 'l.json');
+    run(['init', '--cap', '10', '--ledger', p]);
+    reserve({ ledgerPath: p, callId: 'gw-1', estimatedMaxUsd: 2.5, agentId: 'litellm-gateway' });
+    return p;
+  };
+
+  test('settle requires --by and a call id, and refuses with no terminal (F-242)', () => {
+    const p = held();
+    for (const args of [
+      ['settle', 'gw-1', '--ledger', p],
+      ['settle', 'gw-1', '--by', '  ', '--ledger', p],
+      ['settle', '--by', 'maintainer', '--ledger', p],
+      ['settle', 'gw-1', 'gw-2', '--by', 'maintainer', '--ledger', p],
+      ['settle', 'gw-1', '--by', 'maintainer', '--amount', '0', '--ledger', p],
+    ]) {
+      const r = run(args);
+      assert.equal(r.status, 2, `${args.join(' ')}: ${r.stderr}`);
+    }
+    // an agent's run has no terminal: releasing the reservation is a person's
+    // move, and nothing changes
+    const r = run(['settle', 'gw-1', '--by', 'maintainer', '--ledger', p]);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /HUMAN_CONFIRMATION_REQUIRED/);
+    assert.equal(entry(p, 'gw-1').status, 'RESERVED', 'the reservation is untouched');
+    assert.deepEqual(alertLines(p), []);
+  });
+
+  test('settle of an already-settled or unknown call asks no one: no-op or SETTLE_UNKNOWN_CALL (F-242)', () => {
+    const p = held();
+    settle({ ledgerPath: p, callId: 'gw-1', actualUsd: 0.25 });
+    // no terminal here: a no-op that reached the prompt would exit 2
+    const done = run(['settle', 'gw-1', '--by', 'maintainer', '--ledger', p]);
+    assert.equal(done.status, 0, done.stderr);
+    assert.match(done.stdout, /nothing to settle: gw-1 is already settled at \$0\.25/);
+    assert.equal(entry(p, 'gw-1').actualUsd, 0.25, 'the real figure is kept');
+    const unknown = run(['settle', 'never-reserved', '--by', 'maintainer', '--ledger', p]);
+    assert.equal(unknown.status, 1);
+    assert.match(unknown.stderr, /SETTLE_UNKNOWN_CALL/);
+    // an entry sealed into the cold trail is settled too (seal after every settle)
+    const q = join(tdir(), 'sealed.json');
+    run(['init', '--cap', '10', '--ledger', q]);
+    const ledgerUrl = new URL('../src/ledger.mjs', import.meta.url).href;
+    const sealer = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { reserve, settle } from ${JSON.stringify(ledgerUrl)};
+         const p = ${JSON.stringify(q)};
+         reserve({ ledgerPath: p, callId: 'old', estimatedMaxUsd: 1 });
+         settle({ ledgerPath: p, callId: 'old', actualUsd: 0.5 });`,
+      ],
+      { encoding: 'utf8', env: { ...process.env, SAKK_SEAL_AT: '1' } },
+    );
+    assert.equal(sealer.status, 0, sealer.stderr);
+    assert.equal(entry(q, 'old'), null, 'the entry left the hot file');
+    const sealed = run(['settle', 'old', '--by', 'maintainer', '--ledger', q]);
+    assert.equal(sealed.status, 0, sealed.stderr);
+    assert.match(sealed.stdout, /nothing to settle: old is already settled \(sealed\)/);
+    assert.deepEqual(alertLines(p), []);
+  });
+
+  test('settle refuses an entry that awaits reconciliation and points at sakk reconcile (F-242)', () => {
+    const p = held();
+    settle({ ledgerPath: p, callId: 'gw-1', failedUnknownCost: true });
+    const before = readFileSync(p, 'utf8');
+    const r = run(['settle', 'gw-1', '--by', 'maintainer', '--ledger', p]);
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /SETTLE_AWAITS_RECONCILIATION/);
+    assert.match(r.stderr, /sakk reconcile --by/);
+    assert.doesNotMatch(r.stderr, /HUMAN_CONFIRMATION_REQUIRED/, 'refused before any prompt');
+    assert.equal(readFileSync(p, 'utf8'), before, 'nothing changed');
+  });
+
+  test(
+    'at a terminal, settle releases a stuck reservation at its reserved amount and logs who did it (F-242)',
+    { skip: !HAS_PTY && 'python3 with pty is not installed' },
+    () => {
+      const p = held();
+      const home = tdir();
+      const env = { ...process.env, SAKK_LEDGER_PATH: '', SAKK_HOME: home };
+      // the wrong word changes nothing
+      const no = atTerminal(['settle', 'gw-1', '--by', 'maintainer', '--ledger', p], 'yes', {
+        env,
+        cwd: home,
+      });
+      assert.equal(no.status, 2, no.out);
+      assert.equal(entry(p, 'gw-1').status, 'RESERVED');
+      const r = atTerminal(['settle', 'gw-1', '--by', 'maintainer', '--ledger', p], 'settle', {
+        env,
+        cwd: home,
+      });
+      assert.equal(r.status, 0, r.out);
+      assert.match(r.out, /at its reserved \$2\.5/, 'the prompt states the amount it books');
+      assert.match(r.out, /settled gw-1 at its reserved \$2\.5 by maintainer/);
+      const e = entry(p, 'gw-1');
+      assert.equal(e.status, 'SETTLED');
+      assert.equal(e.actualUsd, 2.5);
+      const alerts = alertLines(p).filter((a) => a.kind === 'SETTLED_AT_RESERVED');
+      assert.equal(alerts.length, 1);
+      assert.equal(alerts[0].callId, 'gw-1');
+      assert.equal(alerts[0].by, 'maintainer');
+      assert.equal(alerts[0].usd, 2.5);
+      assert.equal(alerts[0].agentId, 'litellm-gateway');
+      // over-record, never release: the worst case now counts as spent, and
+      // nothing is outstanding any more
+      const s = JSON.parse(run(['status', '--json', '--ledger', p]).stdout);
+      assert.equal(s.settled_usd, 2.5);
+      assert.equal(s.outstanding_usd, 0);
+    },
+  );
+
+  test(
+    'settle that cannot write who did it says so and exits 1, the books already settled (F-242)',
+    { skip: !HAS_PTY && 'python3 with pty is not installed' },
+    () => {
+      const p = held();
+      const home = tdir();
+      mkdirSync(join(dirname(p), 'sakk-alerts.jsonl'));
+      const env = { ...process.env, SAKK_LEDGER_PATH: '', SAKK_HOME: home };
+      const r = atTerminal(['settle', 'gw-1', '--by', 'maintainer', '--ledger', p], 'settle', {
+        env,
+        cwd: home,
+      });
+      assert.equal(r.status, 1, r.out);
+      assert.match(r.out, /record it by hand/);
+      assert.equal(entry(p, 'gw-1').status, 'SETTLED');
+    },
+  );
+});
+
 describe('review fix F3: flag parsing', () => {
   test('a flag given without a value refuses instead of swallowing the next flag', () => {
     const r = run(['init', '--cap', '5', '--ledger', '--json']);

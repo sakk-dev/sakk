@@ -234,7 +234,7 @@ npx sakk reconcile --by alice   # 清除对账停机——需要一个名字
 npx sakk ledger verify          # 检查封存历史的哈希链（断了就以 1 退出）
 ```
 
-账本类命令（`init`、`status`、`reconcile`、`halt`、`resume`、
+账本类命令（`init`、`status`、`reconcile`、`settle`、`halt`、`resume`、
 `unlock`、`mcp`、`ledger verify|export`）接受 `--ledger <path>`。不传时，
 它们依次使用：`sakk init` 记录在 `~/.sakk/config.json` 里的绝对路径
 （守卫钩子读的是同一项），然后是 `SAKK_LEDGER_PATH`
@@ -300,7 +300,9 @@ POSIX；暂不支持 Windows）。账本是一个人类可读的 JSON 文件；�
   因为钱可能真的已经花出去了。在任何进程里用**同一个 `callId`** 结算即可恢复：
   知道数字后用 `settle({ ledgerPath, callId, actualUsd })`，
   无从得知时用 `failedUnknownCost: true`（这会停住账本，等一个人处理）。
-  `sakk settle` CLI 命令尚未发布（not shipped），在路线图上；目前补结算是一段三行的 Node 脚本。
+  数字无从得知、按最坏价记账也可以接受时，可以由人在终端运行 `sakk settle <callId> --by <name>`：
+  按预留金额结清，并在告警文件写一行 `SETTLED_AT_RESERVED`，记下是谁做的（F-242）。
+  LiteLLM 网关会对自己超过一小时的预留自动这样做。
 - **`markReconciliationRequired`** 用于带外发现——与账本对不上的发票、
   服务商事故。它会停掉之后所有预留，直到一个具名的人清除该标志。
 
@@ -438,7 +440,7 @@ Agent Governance Toolkit 面向基于它所适配框架构建的智能体，覆�
 
 更长远的计划，以及每一步取决于什么：[docs/ROADMAP.md](docs/ROADMAP.md)。
 
-- [x] CLI（`sakk init / status / reconcile / unlock / halt / resume / scan / mcp`）
+- [x] CLI（`sakk init / status / reconcile / settle / unlock / halt / resume / scan / mcp`）
 - [x] 评测框架：带变异测试打分的金标用例（裁判也要被裁判）——在仓库的 [`eval/`](eval/) 里，不在 npm 包里
 - [x] 策略内核（`sakk/policy`）：声明式的 `sakk-policy.v1`、纯函数 `decide()`、按哈希固定的决策日志
 - [x] MCP 服务器执行器（`sakk mcp`）：把 reserve/settle/status 作为工具提供，受策略把关
@@ -450,7 +452,7 @@ Agent Governance Toolkit 面向基于它所适配框架构建的智能体，覆�
 - [x] 以 Claude Code 插件形式发布（`.claude-plugin/`）（开源 v1 M5）
 - [x] `sakk cap set/off`、`sakk spend`、`sakk prices`——设置上限、查看当天花费、显示价格表（F-161）
 - [ ] 按法规划分的案例包（CBUAE、DORA、DIFC——按主题，条款编号未核实），逐项要求给出判决——企业版（已移出开源核心）
-- [ ] `sakk settle` CLI 命令（不写代码也能补结算）
+- [x] `sakk settle` CLI 命令（不写代码也能按预留金额补结算；还不能指定金额）
 - [x] 证据包：每次运行一个 .tgz，带清单和它自己的零依赖校验器——审计者无需仓库即可核验（[docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6）；从仓库构建，不在 npm 包里
 - [ ] 带哈希链（篡改可察觉）的账本模式——企业版
 - [ ] 具名审批人身份、SSO——企业版
@@ -496,7 +498,7 @@ Agent Governance Toolkit 面向基于它所适配框架构建的智能体，覆�
 
 账本和库：
 
-- **名字是自我声明的。** halt、resume、reconcile 和 unlock 上的 `--by`
+- **名字是自我声明的。** halt、resume、reconcile、settle 和 unlock 上的 `--by`
   记录的是操作者输入的名字；没有任何东西对它做身份验证。
 - **账本的汇总是被信任的。** 守卫会拒绝受守卫的智能体执行
   `resume`、`reconcile` 和 `unlock`——每一个都要在终端前询问一个人——

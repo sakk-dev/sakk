@@ -78,18 +78,21 @@ export DEEPSEEK_API_KEY=...                # provider keys live here only
 
 The gateway does not start without `SAKK_BIN`, `SAKK_LEDGER` and
 `SAKK_GATEWAY_CONFIG`, or with a `SAKK_ON_UNAVAILABLE` other than `allow` or
-`deny`, or a `SAKK_TIMEOUT_S` that is not a positive number. Optional
-settings:
+`deny`, or a `SAKK_TIMEOUT_S` or `SAKK_RESERVATION_TTL_S` that is not a
+positive number, or a `SAKK_BREAKER_S` that is negative or not a number.
+Optional settings:
 
-| Variable                  | Default                      | Meaning                                              |
-| ------------------------- | ---------------------------- | ---------------------------------------------------- |
-| `SAKK_NODE`               | `node`                       | Node executable that runs Sakk                       |
-| `SAKK_DEFAULT_MAX_TOKENS` | 2048                         | `max_tokens` added when a request has none           |
-| `SAKK_TIMEOUT_S`          | 2                            | How long one ledger call may take, reserve or settle |
-| `SAKK_LATE_SETTLE_S`      | 2                            | Wait before charging the worst case on errors        |
-| `SAKK_ON_UNAVAILABLE`     | `allow`                      | `allow` or `deny` a call when Sakk cannot answer     |
-| `SAKK_GATEWAY_STATUS`     | `<SAKK_LEDGER>.gateway.json` | Where the gateway records outages                    |
-| `SAKK_GATEWAY_URL`        | `http://127.0.0.1:4000`      | Read by the console, which checks the gateway is up  |
+| Variable                  | Default                      | Meaning                                                                             |
+| ------------------------- | ---------------------------- | ----------------------------------------------------------------------------------- |
+| `SAKK_NODE`               | `node`                       | Node executable that runs Sakk                                                      |
+| `SAKK_DEFAULT_MAX_TOKENS` | 2048                         | `max_tokens` added when a request has none                                          |
+| `SAKK_TIMEOUT_S`          | 5                            | How long one ledger call may take, reserve or settle                                |
+| `SAKK_BREAKER_S`          | 10                           | After a reserve outage, how long reserves skip the ledger; 0 turns it off           |
+| `SAKK_RESERVATION_TTL_S`  | 3600                         | Age at which the gateway settles its own unsettled reservations at their worst case |
+| `SAKK_LATE_SETTLE_S`      | 2                            | Wait before charging the worst case on errors                                       |
+| `SAKK_ON_UNAVAILABLE`     | `allow`                      | `allow` or `deny` a call when Sakk cannot answer                                    |
+| `SAKK_GATEWAY_STATUS`     | `<SAKK_LEDGER>.gateway.json` | Where the gateway records outages                                                   |
+| `SAKK_GATEWAY_URL`        | `http://127.0.0.1:4000`      | Read by the console, which checks the gateway is up                                 |
 
 ### Prices
 
@@ -183,15 +186,23 @@ provider request.
 ## When Sakk cannot answer
 
 Sakk cannot answer when its process will not start, crashes, closes its
-pipe, takes longer than `SAKK_TIMEOUT_S` (2 seconds by default), or replies
+pipe, takes longer than `SAKK_TIMEOUT_S` (5 seconds by default), or replies
 with something that is not a valid answer. A process that died since the last
 call is started again within the next call, and the request goes to the new
 one only if it never reached the old one (the pipe was already closed). If
 the new one answers, that call is metered as usual. A request that was
 written and then got no reply is not sent again: the first reservation may
 have landed, and Sakk would refuse the same call id twice. That call counts
-as an outage, and the reservation, if it landed, is held until a person
-reconciles it.
+as an outage, and the reservation, if it landed, is held until it expires
+(below).
+
+After a reserve that Sakk did not answer, the gateway stops asking for
+`SAKK_BREAKER_S` (10 seconds by default): reserves in that window, including
+calls already queued behind the failing one, take the outage path at once
+instead of each waiting out its own timeout. They are still counted, logged
+and shown like any other outage call, with a reason that starts with
+`breaker open`. Settles are never held back by it. Set `SAKK_BREAKER_S=0` to
+ask Sakk on every call.
 
 With the default, `SAKK_ON_UNAVAILABLE=allow`, the gateway then sends the
 call to the provider anyway, and says so:
@@ -229,8 +240,38 @@ is a 402 like any other refusal. A lock held longer than the timeout means
 Sakk has not answered in time, and that counts as Sakk cannot answer, the way
 Envoy's `ext_authz` filter treats an authorization service that is too slow:
 the call is let through, recorded and shown red, or gets 503 in deny mode.
-With the default 2-second timeout the gateway usually stops waiting first, so
-a held lock usually shows up as an outage, not as a 402.
+The default 5-second timeout leaves room for Sakk's own 2-second wait, so a
+busy but healthy ledger shows up as a 402 `LEDGER_LOCK_UNAVAILABLE`, not as
+an outage (F-243; with the earlier 2-second default the gateway usually
+stopped waiting first).
+
+## Reservations nobody settled
+
+A reservation whose settle never arrives (the proxy restarted mid-call, the
+ledger refused or missed the settle twice) would stay outstanding for good.
+Its worst case counts against the cap either way, but it also holds one of
+the ledger's 10,000 outstanding slots (`LEDGER_FULL`) and keeps the books
+from sealing. Once one of the gateway's own reservations (agent
+`litellm-gateway`) is older than `SAKK_RESERVATION_TTL_S` (an hour by
+default), a sweep in the background settles it at the worst case it
+reserved and logs a WARNING JSON line with `"event": "sakk_reservation_expired"`,
+the `callId`, `settled_usd`, `created_at` and `ttl_s` (F-242). The next call
+starts the sweep, at most once a minute and 50 settles per run. Set the TTL
+longer than your slowest call: a call still running when it expires is
+booked at its worst case and its own settle is dropped. With several gateways
+on one ledger, one may expire another's long call; that call's settle then
+gets `SETTLE_MISMATCH` and an alert.
+
+To release one reservation sooner, a person runs
+
+```bash
+sakk settle <callId> --by <name> --ledger <path>
+```
+
+at a terminal and types `settle` to confirm. It books the reserved amount and
+writes a `SETTLED_AT_RESERVED` line to the alerts file naming who did it. An
+agent cannot run it: without a terminal it exits 2 with
+`HUMAN_CONFIRMATION_REQUIRED`, and the guard hook denies it.
 
 The gateway's own 403 and 400 refusals do not depend on Sakk at all.
 
@@ -296,11 +337,16 @@ The Sakk code is in the error body, at
   counts or ends an outage takes that lock and fsyncs the status file on the
   event-loop thread, so a slow disk delays every call in the worker meanwhile.
   A metered call with no outage open writes nothing.
-- **Waiting calls queue.** Calls to Sakk go one at a time, so while Sakk hangs
-  each waiting call adds up to `SAKK_TIMEOUT_S` before it goes through.
+- **Waiting calls queue.** Calls to Sakk go one at a time. The first reserve
+  that hangs waits out `SAKK_TIMEOUT_S`; the breaker then sends the ones
+  queued behind it on at once. Settles queue behind a hung call too.
 - **A reservation that timed out may still land.** If Sakk wrote it after the
-  gateway gave up, it stays reserved and counts against the cap until a person
-  reconciles it. That over-counts; it never under-counts.
+  gateway gave up, it stays reserved and counts against the cap until it
+  expires after `SAKK_RESERVATION_TTL_S` or a person runs `sakk settle`, and
+  is then booked at its worst case. That over-counts; it never under-counts.
+- **Calls let through in an outage are not booked afterwards.** The status
+  file's `allowed_calls` and `est_max_unrecorded_usd` are their only record;
+  writing them to a side file and booking them once Sakk answers is planned.
 - **A direct call bypasses the gateway.** An application holding a real
   provider key can call the provider directly, and Sakk never sees it. Give
   applications only the gateway key.

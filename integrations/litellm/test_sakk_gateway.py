@@ -405,7 +405,9 @@ class OutageAllowTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.s = Stack(cap="1")
-        cls.s.extra_env = {"SAKK_NODE": str(cls.s.flaky_node()), "SAKK_TIMEOUT_S": "1"}
+        # SAKK_BREAKER_S=0: each test here makes its own kind of outage, and an
+        # open breaker would answer for the next one without asking the ledger.
+        cls.s.extra_env = {"SAKK_NODE": str(cls.s.flaky_node()), "SAKK_TIMEOUT_S": "1", "SAKK_BREAKER_S": "0"}
         cls.s.start_mock()
         cls.s.start_gateway()
 
@@ -558,6 +560,10 @@ class OutageDenyTest(unittest.TestCase):
             s.stop()
 
 
+def unit_req() -> dict:
+    return {"model": "mock-ok", "messages": [{"role": "user", "content": "hi"}]}
+
+
 class StatusUnitTest(unittest.TestCase):
     """The gateway module loaded in this process, with a stand-in ledger client."""
 
@@ -574,8 +580,15 @@ class StatusUnitTest(unittest.TestCase):
             "SAKK_GATEWAY_CONFIG": str(cfg),
             **env,
         }
-        saved = {k: os.environ.get(k) for k in [*full, "SAKK_TIMEOUT_S", "SAKK_ON_UNAVAILABLE", "SAKK_GATEWAY_STATUS"]}
-        for k in ("SAKK_TIMEOUT_S", "SAKK_ON_UNAVAILABLE", "SAKK_GATEWAY_STATUS"):
+        cleared = (
+            "SAKK_TIMEOUT_S",
+            "SAKK_ON_UNAVAILABLE",
+            "SAKK_GATEWAY_STATUS",
+            "SAKK_BREAKER_S",
+            "SAKK_RESERVATION_TTL_S",
+        )
+        saved = {k: os.environ.get(k) for k in [*full, *cleared]}
+        for k in cleared:
             os.environ.pop(k, None)
         os.environ.update(full)
 
@@ -592,9 +605,36 @@ class StatusUnitTest(unittest.TestCase):
         spec.loader.exec_module(mod)
         return mod, tmp
 
-    def test_u1_default_ledger_timeout_is_two_seconds(self):
+    def wire(self, mod, reply):
+        """The gateway's real SakkClient with the process and pipe swapped out.
+
+        `reply(params)` answers each tools/call; the returned list collects the
+        tool names that reached the ledger.
+        """
+        c = mod.handler.client
+        sent: list[str] = []
+
+        class Proc:
+            returncode = None
+
+            def kill(self) -> None:
+                self.returncode = -9
+
+        async def start() -> None:
+            c._proc = Proc()
+
+        async def rpc(method, params):
+            sent.append(params["name"])
+            body = await reply(params)
+            return {"content": [{"type": "text", "text": json.dumps(body)}]}
+
+        c._start = start
+        c._rpc = rpc
+        return sent
+
+    def test_u1_default_ledger_timeout_is_five_seconds(self):
         mod, _ = self.load()
-        self.assertEqual(mod.handler.client._timeout, 2.0)
+        self.assertEqual(mod.handler.client._timeout, 5.0)
         for bad in ("0", "-1", "nan", "inf", "soon"):
             os.environ["SAKK_TIMEOUT_S"] = bad
             with self.assertRaises(RuntimeError, msg=bad):
@@ -655,7 +695,7 @@ class StatusUnitTest(unittest.TestCase):
         mod, _ = self.load()
 
         class Answers:
-            async def call(self, tool, args):
+            async def call(self, tool, args, gate=None):
                 return {"ok": True}
 
         mod.handler.client = Answers()
@@ -669,11 +709,11 @@ class StatusUnitTest(unittest.TestCase):
         mod, _ = self.load()
 
         class Refuses:
-            async def call(self, tool, args):
+            async def call(self, tool, args, gate=None):
                 raise mod.SakkRefused("LEDGER_HALTED", "halted")
 
         class Down:
-            async def call(self, tool, args):
+            async def call(self, tool, args, gate=None):
                 raise mod.SakkUnavailable("sakk_reserve: BrokenPipeError: gone")
 
         def req():
@@ -704,7 +744,7 @@ class StatusUnitTest(unittest.TestCase):
         class DownThenOverTheCap:
             calls = 0
 
-            async def call(self, tool, args):
+            async def call(self, tool, args, gate=None):
                 DownThenOverTheCap.calls += 1
                 if DownThenOverTheCap.calls == 1:
                     raise mod.SakkUnavailable("sakk_reserve: BrokenPipeError: gone")
@@ -756,6 +796,267 @@ class StatusUnitTest(unittest.TestCase):
             doc = json.loads(s.sakk("status", "--json", "--ledger", p, check=False).stdout)
             self.assertEqual(doc["gateway"]["path"], canonical, p)
             self.assertEqual(doc["gateway"]["outage"]["allowed_calls"], 1, p)
+
+    def test_u8_breaker_opens_after_a_reserve_outage_and_queued_calls_fail_fast(self):
+        # F-243: calls queued behind a hung ledger each waited out their own
+        # timeout in turn, so one outage stalled the whole gateway.
+        mod, _ = self.load(SAKK_TIMEOUT_S="0.2")
+
+        async def hang(params):
+            await asyncio.sleep(10)
+
+        sent = self.wire(mod, hang)
+        h = mod.handler
+        h._next_sweep = float("inf")
+
+        async def burst():
+            return await asyncio.gather(*(h.async_pre_call_hook(None, None, unit_req(), "acompletion") for _ in range(5)))
+
+        with self.assertLogs("sakk_gateway", level="WARNING") as logs:
+            outs = asyncio.run(burst())
+        # counted, not timed (F-62): a queued call that waited out its own
+        # timeout would have sent its own reserve
+        self.assertEqual(sent, ["sakk_reserve"], "only the first call reached the ledger")
+        self.assertTrue(all(o["metadata"].get("sakk_unmetered") is True for o in outs))
+        self.assertEqual(h.pending, {})
+        o = h.status.outage
+        self.assertEqual(o["allowed_calls"], 5, "every call let through is still counted")
+        self.assertIn("breaker open", o["last_reason"])
+        allowed = [r for r in logs.records if "sakk_unavailable_allowed" in r.getMessage()]
+        self.assertEqual(len(allowed), 5)
+
+        # In deny mode an open breaker answers 503 without asking the ledger.
+        mod, _ = self.load(SAKK_ON_UNAVAILABLE="deny")
+        sent = self.wire(mod, hang)
+
+        async def denied():
+            mod.handler._next_sweep = float("inf")
+            mod.handler._breaker_until = asyncio.get_running_loop().time() + 60
+            await mod.handler.async_pre_call_hook(None, None, unit_req(), "acompletion")
+
+        with self.assertLogs("sakk_gateway", level="ERROR"), self.assertRaises(mod.HTTPException) as cm:
+            asyncio.run(denied())
+        self.assertEqual(cm.exception.status_code, 503)
+        self.assertEqual(sent, [])
+
+    def test_u9_bad_breaker_or_ttl_env_refuses_to_start(self):
+        mod, _ = self.load()
+        self.assertEqual((mod.handler.breaker_s, mod.handler.reservation_ttl_s), (10.0, 3600.0))
+        for name, read in (("SAKK_BREAKER_S", mod._breaker_s), ("SAKK_RESERVATION_TTL_S", mod._reservation_ttl_s)):
+            for bad in ("-1", "nan", "inf", "soon", ""):
+                os.environ[name] = bad
+                with self.assertRaises(RuntimeError, msg=f"{name}={bad}") as cm:
+                    read()
+                self.assertIn(name, str(cm.exception))
+                self.assertIn("refuses to start", str(cm.exception))
+            os.environ[name] = "30"
+            self.assertEqual(read(), 30.0)
+            os.environ.pop(name)
+        # 0 turns the breaker off; a reservation that never expires is not offered.
+        os.environ["SAKK_BREAKER_S"] = "0"
+        self.assertEqual(mod._breaker_s(), 0.0)
+        os.environ["SAKK_RESERVATION_TTL_S"] = "0"
+        with self.assertRaises(RuntimeError):
+            mod._reservation_ttl_s()
+        # The gateway itself will not load with either one wrong.
+        with self.assertRaises(RuntimeError):
+            self.load(SAKK_BREAKER_S="-1")
+        with self.assertRaises(RuntimeError):
+            self.load(SAKK_RESERVATION_TTL_S="0")
+
+    def test_u10_expired_gateway_reservations_settle_at_the_worst_case(self):
+        # F-242: a reservation whose call never came back held its cap for ever.
+        # The real `sakk mcp` and a real ledger: the settle has to land in the books.
+        s = Stack(cap="1")
+        self.addCleanup(s.stop)
+        mod, _ = self.load(
+            SAKK_LEDGER=str(s.ledger),
+            SAKK_RESERVATION_TTL_S="1",
+            HOME=str(s.home),
+            SAKK_HOME=str(s.home / ".sakk"),
+        )
+        mod.SWEEP_EVERY_S = 0
+        h = mod.handler
+
+        async def run():
+            try:
+                first = await h.async_pre_call_hook(None, None, unit_req(), "acompletion")
+                await asyncio.sleep(1.3)
+                second = await h.async_pre_call_hook(None, None, unit_req(), "acompletion")
+                await h._sweep_task
+                return first["metadata"]["sakk_call_id"], second["metadata"]["sakk_call_id"]
+            finally:
+                proc = h.client._proc
+                h.client.close()
+                if proc is not None:
+                    await proc.wait()
+
+        with self.assertLogs("sakk_gateway", level="WARNING") as logs:
+            old, new = asyncio.run(run())
+        entries = {e["callId"]: e for e in json.loads(s.ledger.read_text())["entries"]}
+        self.assertEqual(entries[old]["status"], "SETTLED")
+        self.assertEqual(entries[old]["actualUsd"], entries[old]["estimatedMaxUsd"], "booked at the most it could cost")
+        self.assertEqual(entries[new]["status"], "RESERVED", "a fresh reservation is left alone")
+        self.assertNotIn(old, h.pending, "the call's own settle would only be refused now")
+        self.assertIn(new, h.pending)
+        expired = [json.loads(r.getMessage()) for r in logs.records if "sakk_reservation_expired" in r.getMessage()]
+        self.assertEqual([(e["callId"], e["ttl_s"]) for e in expired], [(old, 1.0)])
+        self.assertEqual(expired[0]["settled_usd"], entries[old]["estimatedMaxUsd"])
+        st = s.status()
+        self.assertAlmostEqual(st["settled_usd"], entries[old]["estimatedMaxUsd"], places=9)
+        self.assertAlmostEqual(st["outstanding_usd"], entries[new]["estimatedMaxUsd"], places=9)
+
+    def test_u11_sweep_skips_other_agents_fresh_and_settling_entries(self):
+        mod, tmp = self.load()
+        h = mod.handler
+        ledger = tmp / "ledger.json"
+        old = "2020-01-01T00:00:00.000Z"
+        fresh = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+
+        def res(cid, **kw):
+            return {"callId": cid, "agentId": mod.AGENT, "estimatedMaxUsd": 0.4, "createdAt": old, "status": "RESERVED", **kw}
+
+        def write(entries):
+            ledger.write_text(json.dumps({"entries": entries}), encoding="utf-8")
+
+        write(
+            [
+                res("gw-old"),
+                res("gw-late"),  # its own settle lands while the sweep is running
+                res("gw-other", agentId="someone-else"),
+                res("gw-fresh", createdAt=fresh),
+                res("gw-settling"),
+                res("gw-done", status="SETTLED", actualUsd=0.1),
+                res("gw-bool", estimatedMaxUsd=True),
+                res("gw-text", estimatedMaxUsd="0.4"),
+                res("gw-neg", estimatedMaxUsd=-1),
+                res("gw-when", createdAt="yesterday"),
+                res("gw-naive", createdAt="2020-01-01T00:00:00"),
+                res(7),
+                res(""),
+                "junk",
+            ]
+        )
+        h._settling.add("gw-settling")
+        h.pending["gw-old"] = {"price": (P_IN, P_OUT), "worst": 0.4, "model": "mock-ok"}
+        h.pending["gw-late"] = {"price": (P_IN, P_OUT), "worst": 0.4, "model": "mock-ok"}
+        calls: list[tuple] = []
+
+        class Records:
+            async def call(self, tool, args, gate=None):
+                calls.append((tool, args, gate))
+                if args["callId"] == "gw-old":
+                    await h._settle("gw-late", 0.1, "provider answered")
+                return {"ok": True}
+
+        h.client = Records()
+        with self.assertLogs("sakk_gateway", level="WARNING") as logs:
+            self.assertEqual(asyncio.run(h._sweep_expired()), 1)
+        self.assertEqual(
+            calls,
+            [
+                ("sakk_settle", {"callId": "gw-old", "actualUsd": 0.4}, None),
+                ("sakk_settle", {"callId": "gw-late", "actualUsd": 0.1}, None),
+            ],
+            "gw-late was settled at its real cost, not booked again at its worst",
+        )
+        self.assertEqual(h.pending, {})
+        self.assertIsNone(h._settled_since_read)
+        expired = [json.loads(r.getMessage()) for r in logs.records if "sakk_reservation_expired" in r.getMessage()]
+        self.assertEqual(
+            expired, [{"event": "sakk_reservation_expired", "callId": "gw-old", "settled_usd": 0.4, "created_at": old, "ttl_s": 3600.0}]
+        )
+
+        # At most SWEEP_MAX settles a run; the rest wait for the next one.
+        mod.SWEEP_MAX = 2
+        write([res(f"gw-{i}") for i in range(3)])
+        calls.clear()
+        with self.assertLogs("sakk_gateway", level="WARNING"):
+            self.assertEqual(asyncio.run(h._sweep_expired()), 2)
+        self.assertEqual([a["callId"] for _, a, _ in calls], ["gw-0", "gw-1"])
+
+        # A ledger that stops answering ends the run at once.
+        class Down:
+            async def call(self, tool, args, gate=None):
+                calls.append((tool, args, gate))
+                raise mod.SakkUnavailable("sakk_settle: TimeoutError: ")
+
+        h.client = Down()
+        calls.clear()
+        with self.assertLogs("sakk_gateway", level="ERROR"):
+            self.assertEqual(asyncio.run(h._sweep_expired()), 1)
+        self.assertEqual(len(calls), 1)
+
+    def test_u12_settles_bypass_the_open_breaker(self):
+        mod, _ = self.load()
+
+        async def answers(params):
+            return {"ok": True}
+
+        sent = self.wire(mod, answers)
+        h = mod.handler
+
+        async def run():
+            h._next_sweep = float("inf")
+            h._breaker_until = asyncio.get_running_loop().time() + 60
+            out = await h.async_pre_call_hook(None, None, unit_req(), "acompletion")
+            h.pending["gw-held"] = {"price": (P_IN, P_OUT), "worst": 0.3, "model": "mock-ok"}
+            await h._settle("gw-held", 0.1, "provider answered")
+            return out
+
+        with self.assertLogs("sakk_gateway", level="WARNING"):
+            out = asyncio.run(run())
+        self.assertTrue(out["metadata"]["sakk_unmetered"])
+        self.assertIn("breaker open", h.status.outage["last_reason"])
+        self.assertEqual(sent, ["sakk_settle"], "the settle went through; the reserve did not")
+        self.assertNotIn("gw-held", h.pending)
+
+    def test_u13_the_breaker_closes_when_the_ledger_answers_again(self):
+        mod, _ = self.load(SAKK_BREAKER_S="0.2")
+        up = False
+
+        async def flaky(params):
+            if not up:
+                raise OSError("gone")
+            return {"ok": True}
+
+        sent = self.wire(mod, flaky)
+        h = mod.handler
+
+        async def run():
+            nonlocal up
+            h._next_sweep = float("inf")
+            a = await h.async_pre_call_hook(None, None, unit_req(), "acompletion")
+            b = await h.async_pre_call_hook(None, None, unit_req(), "acompletion")
+            self.assertEqual(sent, ["sakk_reserve"], "the second call met the open breaker")
+            await asyncio.sleep(0.25)
+            up = True
+            c = await h.async_pre_call_hook(None, None, unit_req(), "acompletion")
+            return a, b, c
+
+        with self.assertLogs("sakk_gateway", level="WARNING") as logs:
+            a, b, c = asyncio.run(run())
+        self.assertTrue(a["metadata"]["sakk_unmetered"] and b["metadata"]["sakk_unmetered"])
+        self.assertEqual(sent, ["sakk_reserve", "sakk_reserve"])
+        self.assertTrue(c["metadata"]["sakk_call_id"].startswith("gw-"))
+        self.assertEqual(h._breaker_until, float("-inf"))
+        self.assertIsNone(h.status.outage)
+        self.assertEqual(h.status.last_outage["allowed_calls"], 2)
+        self.assertEqual(len([r for r in logs.records if "sakk_outage_ended" in r.getMessage()]), 1)
+
+        # SAKK_BREAKER_S=0: no breaker, every call asks the ledger.
+        mod, _ = self.load(SAKK_BREAKER_S="0")
+        up = False
+        sent = self.wire(mod, flaky)
+
+        async def twice():
+            mod.handler._next_sweep = float("inf")
+            for _ in range(2):
+                await mod.handler.async_pre_call_hook(None, None, unit_req(), "acompletion")
+
+        with self.assertLogs("sakk_gateway", level="WARNING"):
+            asyncio.run(twice())
+        self.assertEqual(sent, ["sakk_reserve", "sakk_reserve"])
 
 
 class FakeSakk:

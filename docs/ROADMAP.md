@@ -30,10 +30,14 @@ not only coding agents. Nothing is published or tagged yet.
   prints the one line an app changes (its OpenAI base URL). README and FAQ
   open with two doors: coding agents, or your own app. Both tutorials walk
   through it as step 12. On main.
-- Known gap at release: under a busy ledger the gateway's 2 s timeout can
-  read as an outage, so one call goes through unmetered (P0-2 in the
-  [reliability audit](reliability-audit-2026-11-02.md)). The fix is planned
-  under **Next — gateway reliability**.
+- Gateway reliability, P0-1 and P0-2 of the
+  [reliability audit](reliability-audit-2026-11-02.md) (F-242, F-243): the
+  gateway settles its own reservations nobody settled at their worst case
+  once they are an hour old (configurable), a person can release one with
+  `sakk settle <callId> --by <name>`, the ledger timeout is 5 s (longer than
+  the ledger's own 2 s lock wait), and a short breaker stops queued calls
+  each waiting out a hung ledger. Settings in the
+  [gateway README](../integrations/litellm/README.md). In review.
 
 ## Shipped in 0.3.0
 
@@ -55,15 +59,13 @@ not only coding agents. Nothing is published or tagged yet.
 From the [2026-11-02 reliability audit](reliability-audit-2026-11-02.md).
 None of these needs a paid call.
 
-- P0-1: a reservation the gateway never settles holds its worst-case amount
-  for ever, and 10,000 of them refuse every call (`LEDGER_FULL`). Add an
-  expiry that settles at the worst-case amount, a `sakk settle` command with
-  an audit line (planned, not shipped), and settle the gateway's own open
-  reservations at start.
-- P0-2: make the gateway timeout longer than the ledger's lock wait, open a
-  short breaker after a timeout so queued calls do not each wait it out, and
-  write calls let through to a side file that is booked once the ledger
-  answers. Waits on the maintainer's go.
+- P0-1 rest: settle the gateway's own open reservations when it starts,
+  instead of waiting out the TTL; let `sakk settle` take an amount when the
+  real cost is known. The expiry and the `sakk settle` command are under
+  **Now** (F-242).
+- P0-2 rest: write calls let through in an outage to a side file and book
+  them once the ledger answers. The longer timeout and the breaker are under
+  **Now** (F-243).
 - P1-1: retry `LEDGER_LOCK_UNAVAILABLE` and `LEDGER_WRITE_FAILED` at settle,
   with backoff and jitter.
 - P1-2: refuse to start when the proxy's model retries are not 0.

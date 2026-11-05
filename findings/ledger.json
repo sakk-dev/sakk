@@ -7974,6 +7974,81 @@
       "sweep": "setRawMode appears only in promptHidden; both password prompts in askConsoleLogin go through it, and bin/sakk.mjs reaches it only through askConsoleLogin. The username line is meant to be visible and uses readline. No other code in src/ or bin/ reads a secret from a terminal.",
       "sweep_status": "done",
       "status": "fixed"
+    },
+    {
+      "id": "F-242",
+      "title": "A gateway reservation whose settle never came stayed outstanding for good: the gateway had no expiry and the CLI no command to close one entry",
+      "date": "2026-11-05",
+      "class": "C-09",
+      "introduced_in": "90c02ab",
+      "found_by": "review",
+      "areas": [
+        "integrations/litellm/sakk_gateway.py",
+        "integrations/litellm/test_sakk_gateway.py",
+        "bin/sakk.mjs",
+        "src/classify.mjs",
+        "test/cli.test.mjs",
+        "test/kill-switch.test.mjs",
+        "test/gateway-reliability.test.mjs"
+      ],
+      "symptom": "The 2026-11-02 reliability audit (P0-1) found that a reservation the LiteLLM gateway makes stays RESERVED for good when its settle never arrives: the proxy restarts and loses its in-memory list of pending calls, the ledger refuses the settle, or the settle fails twice. Each such entry holds one of the 10,000 outstanding slots the ledger allows (LEDGER_FULL after that) and keeps the books from sealing; the only way out was a hand edit of the ledger file.",
+      "evidence": "Read in the code: src/ledger.mjs has no expiry, the gateway keeps what a settle needs only in process memory, and bin/sakk.mjs had halt, resume, reconcile and unlock but no settle. The new Node guard runs the real sakk_gateway.py against the real sakk mcp and a real ledger: on main's gateway the first reservation is still RESERVED 1.5 s after a 1 s TTL; after the fix it is SETTLED at its estimatedMaxUsd and the fresh one is still RESERVED. The Python test u10 shows the same through LiteLLM's loader (on main it errors: there is no sweep).",
+      "direct_cause": "The gateway reserved before each call and released the reservation only from LiteLLM's success and failure events, keeping the call's price and worst case in a dict in process memory. Once those events were missed or their settle failed, no code looked at the reservation again, and the CLI had no command that settles one entry.",
+      "why": [
+        "The design assumed every reserved call reaches one of LiteLLM's success or failure hooks, and that the settle sent from there lands.",
+        "That holds inside one healthy process; a restart, a settle the ledger refuses, or two failed settle attempts each leave an entry nothing revisits, and a real proxy reaches all three.",
+        "The ledger counts an outstanding reservation at its worst case against the cap until it is settled, so nothing is under-counted, which made the leftover entries look harmless.",
+        "But each one keeps a slot of the 10,000 the ledger allows outstanding and stops the books from sealing, and neither the gateway nor the CLI could close it.",
+        "No test let a reservation outlive its call: every gateway test settled what it reserved within the same run."
+      ],
+      "root_cause": "The gateway assumed the settle for every reservation would arrive; the state where it never does (restart, refused or failed settle) was never tried, and nothing gave a reservation a lifetime or a person a way to close one.",
+      "dt": ["DT-STATE"],
+      "rc": ["RC-01"],
+      "es": ["ES-01"],
+      "mechanism_gap": "No gateway test let a reservation outlive its call and no CLI test closed one entry by hand: the gateway tests settled every reservation they made, so a reservation nobody settles was a state no test reached.",
+      "mechanism_upgrade": "test/gateway-reliability.test.mjs::a gateway reservation nobody settles is settled at its worst case once it outlives SAKK_RESERVATION_TTL_S (F-242)",
+      "instance_fix": "this commit: the gateway settles its own reservations (agent litellm-gateway) older than SAKK_RESERVATION_TTL_S (default 3600 s) at the worst case they reserved, from a background sweep that pre_call starts at most once a minute, 50 settles per run, each logged as a WARNING sakk_reservation_expired line; those settles bypass the breaker (F-243). sakk settle <callId> --by <name> lets a person at a terminal close one entry at its reserved amount and writes a SETTLED_AT_RESERVED alert; the hook denies it to agents. Not done from the audit: settling all of the gateway's own reservations at start (the sweep reaches a restart's leftovers once they pass the TTL, and stays safe with several gateways on one ledger), and an amount argument to sakk settle (it books the worst case only).",
+      "guard": "test/gateway-reliability.test.mjs::a gateway reservation nobody settles is settled at its worst case once it outlives SAKK_RESERVATION_TTL_S (F-242)",
+      "sweep": "Reservations are made in two places: the gateway, which now sweeps its own, and the MCP sakk_reserve tool (src/mcp.mjs) for agents that call the ledger themselves, whose leftovers a person closes with sakk settle or sakk reconcile. Inside the gateway the late settle, the failure settle and the sweep all go through _settle, so one in-process set keeps a sweep and a late settle from sending the same call twice.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-114": "F-114 collects review nits about the ledger core and the release (open since 2026-10-17); F-242 is a gateway reservation that nothing ever settles, and its bin/sakk.mjs part is the new settle command, not any of those nits.",
+        "F-187": "F-187 is a project-local install whose policy and hook code the agent can change under node_modules; F-242 only adds settle to classify.mjs's list of guard-state writes, so the hook denies the new command, and leaves the install layout alone."
+      }
+    },
+    {
+      "id": "F-243",
+      "title": "The gateway's 2 s ledger timeout matched the ledger's own 2 s lock wait, and every call queued behind a hung ledger waited out its own timeout",
+      "date": "2026-11-05",
+      "class": "C-09",
+      "introduced_in": "68f9b90",
+      "found_by": "review",
+      "areas": [
+        "integrations/litellm/sakk_gateway.py",
+        "integrations/litellm/test_sakk_gateway.py",
+        "test/gateway-reliability.test.mjs"
+      ],
+      "symptom": "The 2026-11-02 reliability audit (P0-2): with SAKK_TIMEOUT_S at 2 s and calls let through when Sakk cannot answer, a ledger that is only busy (another writer holds its lock, which the ledger waits up to about 2 s for) can answer after the gateway gave up, so the call goes to the provider with no reservation and is not counted. Raising the timeout alone was not safe: one gateway process sends its ledger calls one at a time, so with the ledger hung each queued call waited out the full timeout in turn.",
+      "evidence": "The lock wait is read in src/ledger.mjs (400 tries, about 2 s) and the 2 s default in the gateway; no test held the lock past 2 s, so the busy-ledger case stays inferred, as the audit says. The queue is measured: the new Node guard fires five reserves at a ledger that never answers, with a 0.2 s timeout; on main's gateway all five are sent, each after the one before it timed out; after the fix one is sent and the other four take the outage path without being sent. The Python test u8 shows the same through LiteLLM's loader.",
+      "direct_cause": "68f9b90 lowered SAKK_TIMEOUT_S from 10 s to 2 s so that a hung ledger would not hold each queued call for 10 s, which put the timeout at the ledger's own lock wait; nothing let the calls queued behind one that had just timed out skip the wait.",
+      "why": [
+        "The ledger's lock wait (about 2 s) lives in another file and was not counted when the timeout was set; a timeout has to sit above the slowest normal answer.",
+        "The timeout was kept short because SakkClient sends ledger calls one at a time under one asyncio lock, so a long timeout multiplies down the queue.",
+        "Nothing remembered that the ledger had just failed: each queued call found out again by waiting out its own timeout.",
+        "The outage tests sent one call at a time, so the queue behind a hung ledger, which a proxy under load reaches, was never tried."
+      ],
+      "root_cause": "The timeout was set against one cost (queued calls waiting) without counting the ledger's normal slow path, and the queued state behind a failing call was never tried; one remembered failure removes the reason to keep the timeout short.",
+      "dt": ["DT-DEP"],
+      "rc": ["RC-09", "RC-01"],
+      "es": ["ES-01"],
+      "mechanism_gap": "The outage tests sent one call at a time to a dead or hung ledger, so none had calls queued behind a failing one, and none held the ledger's lock to see a busy but healthy ledger.",
+      "mechanism_upgrade": "test/gateway-reliability.test.mjs::once one gateway reserve times out, the reserves queued behind it fail fast instead of each waiting out the timeout (F-243)",
+      "instance_fix": "this commit: SAKK_TIMEOUT_S defaults to 5 s, above the ledger's 2 s lock wait. A reserve that fails opens a breaker for SAKK_BREAKER_S (default 10 s, 0 turns it off): until it closes, reserves take the outage path without being sent, and calls already queued behind the failing one ask again once they hold the lock. Settles bypass the breaker so a recovering ledger still gets them. After SAKK_BREAKER_S the next reserve is sent again, and an answer ends the outage. Not done from the audit: a side file of the calls let through, to back-fill the ledger later; the outage counter in the gateway status file (calls let through and their worst case) stays the record of them.",
+      "guard": "test/gateway-reliability.test.mjs::once one gateway reserve times out, the reserves queued behind it fail fast instead of each waiting out the timeout (F-243)",
+      "sweep": "Every ledger call the gateway makes goes through SakkClient.call: reserves pass the breaker check, and settles (late, failure and expiry) pass none on purpose. The CLI and the MCP server call the ledger in their own process and have no such queue. The macOS first-run delay the audit notes (F-239, 0.3 to 1.0 s) fits inside the new 5 s.",
+      "sweep_status": "done",
+      "status": "fixed"
     }
   ]
 }

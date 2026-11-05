@@ -51,6 +51,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/gateway-package.test.mjs` ties the lock, the package and the CI job
   together.
 
+### Fixed — the gateway releases stuck reservations and stops queueing on a hung ledger (F-242, F-243)
+
+- A reservation the gateway made whose settle never arrived (the proxy
+  restarted, the ledger refused the settle, or the settle failed twice)
+  stayed outstanding for good: it held one of the ledger's outstanding slots
+  (`LEDGER_FULL` at 10,000) and kept the books from sealing (F-242). The
+  gateway now settles its own reservations (agent `litellm-gateway`) older
+  than `SAKK_RESERVATION_TTL_S` (default 3600 s; zero, negative or
+  non-numeric values refuse to start) at the worst case they reserved. A
+  background sweep does this, started by the next call at most once a
+  minute, 50 settles per run, each logged as a WARNING JSON line
+  (`"event": "sakk_reservation_expired"`, with `callId`, `settled_usd`,
+  `created_at` and `ttl_s`). The dollars stay counted: a worst-case settle
+  over-records, never under. With several gateways on one ledger, one may
+  settle another's long call; that call's own settle then gets
+  `SETTLE_MISMATCH` and an alert.
+- New command `sakk settle <callId> --by <name> [--ledger <path>]`: a person
+  at a terminal closes one outstanding reservation at its reserved amount,
+  typing `settle` to confirm, and the alerts file gets a
+  `SETTLED_AT_RESERVED` line naming who did it. Without a terminal it exits
+  2 with `HUMAN_CONFIRMATION_REQUIRED`; an entry that is already settled is
+  a no-op that asks no one; an id the ledger never saw exits 1 with
+  `SETTLE_UNKNOWN_CALL`; an entry that awaits reconciliation exits 1 with
+  `SETTLE_AWAITS_RECONCILIATION` and points at `sakk reconcile`. When the
+  settle lands but the alert cannot be written, it says so and exits 1. The
+  guard hook denies `sakk settle` to agents, through every launcher.
+- `SAKK_TIMEOUT_S` defaults to 5 s (it was 2 s, equal to the ledger's own
+  2 s wait for its lock, so a busy but healthy ledger could count as an
+  outage and the call went through unmetered) (F-243). A reserve that fails
+  now opens a breaker for `SAKK_BREAKER_S` (default 10 s; 0 turns it off;
+  negative or non-numeric values refuse to start): until it closes, reserves
+  take the outage path at once without asking the ledger, including calls
+  already queued behind the failing one, which used to wait out their own
+  timeout each in turn. Each one is still counted in the status file and
+  logged as `sakk_unavailable_allowed` (or refused with 503 in deny mode).
+  Settles are never held by the breaker. The first answer after it closes
+  ends the outage as before.
+- Not done yet: a side file of the calls let through during an outage, to
+  record them in the ledger afterwards; the status file's outage counter
+  (`allowed_calls`, `est_max_unrecorded_usd`) stays the record of them.
+
 ### Changed — the LiteLLM gateway lets calls through when Sakk cannot answer
 
 - When Sakk's process will not start, crashes, hangs past the timeout or
@@ -62,8 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (402 over the cap, halted, reconciliation, any other Sakk code) and the
   gateway's own 403 and 400 refusals stay refusals in both modes. A ledger
   file lock another process holds longer than the timeout is no answer and
-  counts as an outage; Sakk waits about 2 s for the lock itself, so with the
-  default timeout this is usually the case.
+  counts as an outage; Sakk waits about 2 s for the lock itself, inside the
+  5 s default timeout (F-243).
 - Each such call logs one JSON WARNING line (`"event":
 "sakk_unavailable_allowed"`, with the model, `est_max_usd`, the reason,
   `outage_since` and `allowed_calls`) and its response, streamed or not,
@@ -75,8 +116,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only if writing it to the old process failed; a request that was written
   and got no reply is an outage and is not sent again, because the first
   reservation may have landed (it stays reserved until reconciled).
-- `SAKK_TIMEOUT_S` now defaults to 2 seconds (was 10), for reserve and
-  settle alike; zero, negative or non-numeric values refuse to start.
+- `SAKK_TIMEOUT_S` now defaults to 5 seconds (was 10; 2 seconds for a while
+  before release, see F-243 above), for reserve and settle alike; zero,
+  negative or non-numeric values refuse to start.
 - New status file, `SAKK_GATEWAY_STATUS` or `<SAKK_LEDGER>.gateway.json`
   with the ledger's folder resolved to its real path on both the gateway and
   the `sakk` side, so a relative or linked ledger path names the same file;

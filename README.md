@@ -262,8 +262,8 @@ npx sakk reconcile --by alice   # clear a reconciliation halt — takes a name
 npx sakk ledger verify          # check the sealed history's hash chain (exit 1 if broken)
 ```
 
-The ledger commands (`init`, `status`, `reconcile`, `halt`, `resume`,
-`unlock`, `mcp`, `ledger verify|export`) accept `--ledger <path>`. Without
+The ledger commands (`init`, `status`, `reconcile`, `settle`, `halt`,
+`resume`, `unlock`, `mcp`, `ledger verify|export`) accept `--ledger <path>`. Without
 it they use the absolute path `sakk init` recorded in `~/.sakk/config.json`
 (the guard hook reads the same entry), then `SAKK_LEDGER_PATH`
 (set-but-empty refuses), then `~/.sakk/sakk-ledger.json` — out of the
@@ -338,8 +338,11 @@ Practical notes, earned the hard way:
   have been spent. Recover by settling the **same `callId`** from any
   process: `settle({ ledgerPath, callId, actualUsd })` once you know the
   figure, or `failedUnknownCost: true` if it is unknowable (which halts the
-  ledger for a human). A `sakk settle` CLI command is on the roadmap; today
-  late settlement is a three-line Node script.
+  ledger for a human). When the figure is unknown and the worst case is an
+  acceptable answer, a person can run `sakk settle <callId> --by <name>` at a
+  terminal instead: it books the reserved amount and writes a
+  `SETTLED_AT_RESERVED` alert naming them (F-242). The LiteLLM gateway does
+  this itself for its own reservations once they are an hour old.
 - **`markReconciliationRequired`** is for out-of-band discoveries — an
   invoice that disagrees with the books, a provider incident. It halts all
   further reservations until a named human clears the flag.
@@ -497,7 +500,7 @@ does not do: [docs/compare.md](docs/compare.md).
 
 The longer view, with what each next step depends on: [docs/ROADMAP.md](docs/ROADMAP.md).
 
-- [x] CLI (`sakk init / status / reconcile / unlock / halt / resume / scan / mcp`)
+- [x] CLI (`sakk init / status / reconcile / settle / unlock / halt / resume / scan / mcp`)
 - [x] Eval harness: gold cases with mutation-tested scoring (the judge gets judged) — in the repository's [`eval/`](eval/), not in the npm package
 - [x] Policy kernel (`sakk/policy`): declarative `sakk-policy.v1`, pure `decide()`, hash-pinned decision log
 - [x] MCP server enforcer (`sakk mcp`): reserve/settle/status as tools, policy-gated
@@ -509,7 +512,7 @@ The longer view, with what each next step depends on: [docs/ROADMAP.md](docs/ROA
 - [x] Ships as a Claude Code plugin (`.claude-plugin/`) (open-source v1 M5)
 - [x] `sakk cap set/off`, `sakk spend`, `sakk prices` — set the cap, see the day's spend, show the price table (F-161)
 - [ ] Case packs by regulation (CBUAE, DORA, DIFC — thematic, clause numbers unverified) with per-requirement verdicts — enterprise edition (moved out of the open core)
-- [ ] `sakk settle` CLI command (late settlement without writing code)
+- [x] `sakk settle` CLI command (late settlement at the reserved amount without writing code; an amount argument is not there yet)
 - [x] Evidence bundles: one .tgz per run with a manifest and its own zero-dependency verifier — auditors check it without the repository ([docs/AUDITOR_REPLAY.md](docs/AUDITOR_REPLAY.md) §6); built from the repository, not in the npm package
 - [ ] Hash-chained (tamper-evident) ledger mode — enterprise
 - [ ] Named-approver identity, SSO — enterprise
@@ -559,7 +562,7 @@ The guard and the cap:
 
 The ledger and the library:
 
-- **Names are self-declared.** `--by` on halt, resume, reconcile and unlock
+- **Names are self-declared.** `--by` on halt, resume, reconcile, settle and unlock
   records the name the operator typed; nothing authenticates it.
 - **The ledger's summary is trusted.** The guard denies a guarded agent
   `resume`, `reconcile` and `unlock` — each asks a person at a terminal —
