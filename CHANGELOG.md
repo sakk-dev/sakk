@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-05
+
 ### Fixed — the spend cap and the ledger summary can be trusted
 
 - One Claude Code log file that cannot be opened (permissions) no longer
@@ -66,7 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `package.json`, the plugin manifest and the `sakk-litellm` package say
   0.4.0. Both tutorials were re-run on the packed 0.4.0 tarball in a
   throwaway home; their output, dates and timings come from that run.
-  Nothing is published or tagged yet.
+  The maintainer pushes the `v0.4.0` tag; `release.yml` then publishes it
+  to npm with provenance, and refuses if the tag is not `v` plus this
+  version.
 
 ### Added — the LiteLLM gateway runs as a service, in CI and as a Python package
 
@@ -1402,6 +1406,7 @@ against the running code:
   that halts all paid calls, atomic lock + temp-rename writes, alert JSONL.
 - 23-test ledger suite including a real two-process race.
 
-[Unreleased]: https://github.com/sakk-dev/sakk/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/sakk-dev/sakk/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/sakk-dev/sakk/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/sakk-dev/sakk/compare/v0.1.0...v0.3.0
 [0.1.0]: https://github.com/sakk-dev/sakk/releases/tag/v0.1.0

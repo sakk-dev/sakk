@@ -1,0 +1,54 @@
+{
+  "version": 2,
+  "branch": "chore/release-0.4.0",
+  "answers": {
+    "C-01.1": {
+      "answer": "An absent piece refuses, it never reads as a pass: if SECURITY.md has no supported-versions table, or no row marked supported, the new test fails on that absence; if the CHANGELOG has no [0.4.0] heading or no link ref for it, the F-111 test fails because the empty [Unreleased] then requires package.json to equal the latest heading.",
+      "guard": "test/release.test.mjs::F-111 the security policy supports the minor line package.json is on"
+    },
+    "C-01.2": {
+      "answer": "Both checks are required, not optional: delete the 0.4.x row and the new test goes red on the missing supported row; delete the [0.4.0] heading and F-111 goes red because the empty [Unreleased] makes 0.3.0 the latest while package.json says 0.4.0. Both run in npm test, the pre-push gate and both CI test jobs.",
+      "guard": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release"
+    },
+    "C-02.1": {
+      "answer": "No hand list stands in for the versions: the test derives the supported line from package.json's version (major.minor) and reads every row of the SECURITY.md table, so it asserts exactly one supported row and that it names that line, rather than checking for one literal string that would go stale at the next bump.",
+      "guard": "test/release.test.mjs::F-111 the security policy supports the minor line package.json is on"
+    },
+    "C-02.2": {
+      "answer": "The same rule (each file that names the current release names the one package.json carries) already has guards for the CLI and plugin (version one source of truth), the CHANGELOG (F-111) and the tutorials (F-234); SECURITY.md was the one release-naming file without one, and this change adds it, so a later bump that skips it fails.",
+      "guard": "test/release.test.mjs::the version is one source of truth across the binary and the plugin"
+    },
+    "C-04.1": {
+      "answer": "The new test reads two small repository files once each (package.json and SECURITY.md) and walks the table rows with a single regex pass; there is no loop over input someone else controls, no network and no child process, so its work is bounded by the size of one markdown file in the repo.",
+      "guard": "test/claims-are-checked.test.mjs::every node --test script carries --test-timeout"
+    },
+    "C-05.1": {
+      "answer": "Each added sentence is backed by a test: the 0.4.x row is read back by the new security-policy test against package.json, and the [0.4.0] heading, its date and both link refs are read back by the F-111 test; the reworded publish sentence states that the tag is pushed by the maintainer and release.yml publishes it, which release.yml's own refusals already check.",
+      "guard": "test/release.test.mjs::F-111 the security policy supports the minor line package.json is on"
+    },
+    "C-05.2": {
+      "answer": "The figures a reader acts on work: 0.4.x is the version npm will install once v0.4.0 is tagged, the [0.4.0] link points at compare/v0.3.0...v0.4.0 which resolves once both tags are pushed to sakk-dev/sakk, and the [Unreleased] link compares from v0.4.0 as the F-111 regex demands.",
+      "guard": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release"
+    },
+    "C-06.1": {
+      "answer": "The evidence is the repository's own files, which every reader sees: the test reads package.json and SECURITY.md from the checkout, the same files npm pack ships (SECURITY.md is not packed, but it is what GitHub shows on the public repo), and it claims nothing about a published tarball or a tag that does not exist yet.",
+      "guard": "test/release.test.mjs::the published files all exist and exclude tests, specs and findings"
+    },
+    "C-09.1": {
+      "answer": "It assumes only the repository top as ROOT, derived from the test file's own URL, not the process cwd, so it passes from a linked worktree or a subfolder; no git state, PATH tool or network is read, and the pre-push gate runs it from a worktree with GIT_ variables stripped like every other test.",
+      "guard": "test/pre-push.test.mjs::a push from a linked worktree: the suite gets no GIT_ variables, so a fixture cannot write into the repository (F-214)"
+    },
+    "C-09.2": {
+      "answer": "It runs where releases are judged: inside npm test, which the pre-push hook runs before this branch reaches GitHub and which the test (20) and test (22) CI jobs run on the pull request and on main, the required checks that gate the merge; release.yml then refuses a tag whose name is not v plus package.json's version.",
+      "guard": "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails"
+    },
+    "C-10.1": {
+      "answer": "Updating the supported-versions table at a bump was a step only people remembered, and it was missed (0.3.x stayed after the bump to 0.4.0); the new test makes it a gate: npm test, the pre-push hook and CI fail when the table does not name the minor line package.json is on.",
+      "guard": "test/release.test.mjs::F-111 the security policy supports the minor line package.json is on"
+    },
+    "C-10.2": {
+      "answer": "No route skips it: every bump of package.json goes through a pull request into protected main, whose required test jobs run the new test and F-111, and release.yml refuses to publish a tag that does not equal v plus package.json's version, so a release cannot ship with a stale changelog or security table.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    }
+  }
+}
