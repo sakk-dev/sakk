@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the guard judges an act however it is spelled
+
+- A command or protected name in another case (`RM -rf ~`,
+  `.CLAUDE/settings.json`) is judged as the lower-case name. The default
+  macOS volume opens both spellings as the same file; on a case-sensitive
+  volume this only tightens (F-183).
+- Every spelling git accepts for a destructive flag is denied: long-option
+  prefixes (`git push --forc`) and short clusters (`git push -fu`).
+  `git push --prune` is destructive. A git alias defined for one command
+  (`git -c alias.x=…`) is asked (F-184).
+- `sakk` run through any launcher (`npx sakk cap off`, `node …/bin/sakk.mjs`,
+  `unbuffer sakk …`) is judged as `sakk` itself (F-185).
+- A read through a symbolic link to a secret file is denied, and a write or
+  delete through a dangling link is judged by where it points; a link loop
+  is refused (F-186).
+
 ### Changed — the version is 0.4.0
 
 - `package.json`, the plugin manifest and the `sakk-litellm` package say

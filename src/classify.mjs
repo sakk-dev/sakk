@@ -8,7 +8,7 @@
 //
 // No I/O except resolving real paths (symlinks), which callers may replace.
 
-import { realpathSync } from 'node:fs';
+import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 /** Input over this many characters is refused as unclassifiable (C-04). */
@@ -187,14 +187,38 @@ export function shellSegments(cmd) {
 
 // --- scopes -------------------------------------------------------------------
 
-/** The real path of the nearest existing part, plus the rest: symlinks resolved, `..` gone. */
+/** Links followed by hand before a path is refused (Linux MAXSYMLINKS); a loop ends here (F-186). */
+const MAX_LINK_HOPS = 40;
+
+/**
+ * The real path of the nearest existing part, plus the rest: symlinks
+ * resolved, `..` gone. A dangling link is followed to where it points, so a
+ * write through it is judged at its target, not at the link's harmless name
+ * (F-186).
+ */
 export function realOf(p) {
   const tail = [];
   let d = resolve(p);
+  let hops = 0;
   for (;;) {
     try {
       return join(realpathSync.native(d), ...tail);
     } catch {
+      let link = false;
+      try {
+        link = lstatSync(d).isSymbolicLink();
+      } catch {
+        // absent: walk up
+      }
+      if (link) {
+        if (++hops > MAX_LINK_HOPS)
+          throw new ClassifyError(
+            'HOOK_PATH_UNREADABLE',
+            `more than ${MAX_LINK_HOPS} symbolic links: ${p}`,
+          );
+        d = resolve(dirname(d), readlinkSync(d));
+        continue;
+      }
       const up = dirname(d);
       if (up === d) return resolve(p);
       tail.unshift(basename(d));
@@ -333,19 +357,26 @@ const INTERPRETERS = /^(python[\d.]*|node|deno|bun|ruby|perl|php)$/;
 const SHELLS = /^(sh|bash|zsh|dash|ksh|fish)$/;
 const DEFAULT_BRANCHES = /^(main|master|trunk|develop)$/;
 
+/**
+ * The name a word runs, in lower case: the default macOS volume finds `RM`,
+ * `SUDO` and `GIT` as rm, sudo and git, so they are judged as those (F-183).
+ */
+const cmdName = (w) => basename(w).toLowerCase();
+
 /** Strip environment assignments and wrapper commands; the word that remains names the command. */
 function unwrap(seg) {
   let k = 0;
   for (;;) {
     const w = seg[k] ?? '';
+    const n = cmdName(w);
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w)) k++;
-    else if (WRAPPERS.has(basename(w))) {
-      const { values } = WRAPPERS.get(basename(w));
+    else if (WRAPPERS.has(n)) {
+      const { values } = WRAPPERS.get(n);
       k++;
       // the wrapper's own flags, and the value of each flag that takes one
       while ((seg[k] ?? '').startsWith('-')) k += values?.test(seg[k]) ? 2 : 1;
-      if (basename(w) === 'timeout') k++; // the duration
-    } else if (basename(w) === 'env') {
+      if (n === 'timeout') k++; // the duration
+    } else if (n === 'env') {
       k++;
       while ((seg[k] ?? '').startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(seg[k] ?? ''))
         k += /^-[uSC]$|^--(unset|chdir|split-string)$/.test(seg[k]) ? 2 : 1;
@@ -353,7 +384,7 @@ function unwrap(seg) {
     } else break;
   }
   const words = seg.slice(k);
-  return { name: basename(words[0] ?? ''), args: words.slice(1) };
+  return { name: cmdName(words[0] ?? ''), args: words.slice(1) };
 }
 
 const dedupe = (list) => {
@@ -499,7 +530,7 @@ export function shellActions(
       // only a reader is safe to treat as read, anything else is constructed (F-154)
       let k = 0;
       while ((args[k] ?? '').startsWith('-')) k += /^-[IdLnPsE]$/.test(args[k]) ? 2 : 1;
-      const inner = basename(args[k] ?? '');
+      const inner = cmdName(args[k] ?? '');
       add(
         READERS.has(inner) || GREPS.has(inner) || inner === 'echo'
           ? 'shell.run'
@@ -619,34 +650,14 @@ export function shellActions(
     else if (name === 'wget') add('net.download');
     else if (INTERPRETERS.test(name) && has(/^-(c|e)$|^--eval$/)) add('shell.constructed');
     else if (PTY_DRIVERS.has(name)) add('shell.constructed');
-    // Sakk's own commands that change its controls are the writes they make, so
-    // the agent is judged as if it wrote the file: the cap, and the ledger the
-    // hook reads halts from, are guard state (denied); the hook config is agent
-    // config (denied, F-188). A person runs them (F-171, F-181). Every subcommand
-    // is declared by its effect in test/kill-switch.test.mjs (R-24).
-    else if (name === 'sakk' && (verb === 'cap' || verb === 'init') && sakkHome)
-      add('file.write', join(sakkHome, 'config.json'));
-    // resume, reconcile and unlock lift a halt, clear the books or break the
-    // lock — the inverse of the controls that bind the agent, judged as the
-    // guard-state write they make: denied, never asked (F-177, D11). `halt`
-    // tightens and stays allowed.
-    else if (name === 'sakk' && ['resume', 'reconcile', 'unlock'].includes(verb) && sakkHome)
-      add('file.write', join(sakkHome, 'sakk-ledger.json'));
-    // gateway init writes the start script an operator later runs, naming the
-    // ledger the gateway charges and the executable it starts: judged as that
-    // write, in the folder it really writes (--dir, else SAKK_HOME/gateway)
-    else if (name === 'sakk' && verb === 'gateway' && sakkHome) {
-      const d = args.indexOf('--dir');
-      const dir = d >= 0 && args[d + 1] ? abs(args[d + 1]) : join(sakkHome, 'gateway');
-      add('file.write', join(dir, 'start.sh'));
-    } else if (
-      name === 'sakk' &&
-      verb === 'guard' &&
-      ['install', 'uninstall'].includes(plain[1]) &&
-      Object.hasOwn(AGENT_CONFIG, plain[2] ?? '')
-    )
-      add('file.write', join(has(/^--user$/) ? home : (repoRoot ?? here), AGENT_CONFIG[plain[2]]));
     else modeled = false;
+    // a word naming the sakk program, anywhere in the command, starts sakk's
+    // arguments: npx sakk, pnpm dlx, deno npm:sakk, node .../bin/sakk.mjs and
+    // launchers nobody listed all run the same controls (F-185)
+    const words = [name, ...args];
+    const si = name === 'echo' || name === 'printf' ? -1 : words.findIndex(namesSakk);
+    if (si >= 0 && sakkControl(words.slice(si + 1), { abs, home, here, repoRoot, sakkHome }, add))
+      modeled = true;
     // a spelled-out secret operand is a secret read whether or not the command
     // is otherwise modeled — the reader list is not the whole world (F-155, F-203)
     const secrets = plain.filter((a) => isSecretPath(a));
@@ -654,6 +665,54 @@ export function shellActions(
     if (!modeled && secrets.length === 0) add('shell.run');
   }
   return dedupe(out);
+}
+
+/** A word that runs the sakk program: sakk, sakk@0.4.0, npm:sakk, @scope/sakk, .../bin/sakk.mjs (F-185). */
+const namesSakk = (w) =>
+  /^sakk(\.[cm]?js)?$/i.test(basename(w.replace(/^npm:/i, '').replace(/(?<=.)@[^/@]*$/, '')));
+
+/**
+ * Sakk's own commands that change its controls are the writes they make, so
+ * the agent is judged as if it wrote the file: the cap, and the ledger the
+ * hook reads halts from, are guard state (denied); the hook config is agent
+ * config (denied, F-188). A person runs them (F-171, F-181). Every subcommand
+ * is declared by its effect in test/kill-switch.test.mjs (R-24). `sk` is the
+ * words after the one naming sakk, however it was launched (F-185).
+ */
+function sakkControl(sk, { abs, home, here, repoRoot, sakkHome }, add) {
+  const plain = sk.filter((a) => !a.startsWith('-') && !namesSakk(a));
+  const verb = plain[0];
+  if ((verb === 'cap' || verb === 'init') && sakkHome) {
+    add('file.write', join(sakkHome, 'config.json'));
+    return true;
+  }
+  // resume, reconcile and unlock lift a halt, clear the books or break the
+  // lock — the inverse of the controls that bind the agent, judged as the
+  // guard-state write they make: denied, never asked (F-177, D11). `halt`
+  // tightens and stays allowed.
+  if (['resume', 'reconcile', 'unlock'].includes(verb) && sakkHome) {
+    add('file.write', join(sakkHome, 'sakk-ledger.json'));
+    return true;
+  }
+  // gateway init writes the start script an operator later runs, naming the
+  // ledger the gateway charges and the executable it starts: judged as that
+  // write, in the folder it really writes (--dir, else SAKK_HOME/gateway)
+  if (verb === 'gateway' && sakkHome) {
+    const d = sk.indexOf('--dir');
+    const dir = d >= 0 && sk[d + 1] ? abs(sk[d + 1]) : join(sakkHome, 'gateway');
+    add('file.write', join(dir, 'start.sh'));
+    return true;
+  }
+  if (
+    verb === 'guard' &&
+    ['install', 'uninstall'].includes(plain[1]) &&
+    Object.hasOwn(AGENT_CONFIG, plain[2] ?? '')
+  ) {
+    const base = sk.includes('--user') ? home : (repoRoot ?? here);
+    add('file.write', join(base, AGENT_CONFIG[plain[2]]));
+    return true;
+  }
+  return false;
 }
 
 /** The git subcommands gitActions judges; everything else is shell.run. */
@@ -674,41 +733,91 @@ const GIT_JUDGED = new Set([
   'credential-cache',
 ]);
 
+/**
+ * A long option git reads as one of `names`. git takes any unambiguous prefix
+ * (`--forc` is --force) and refuses an ambiguous one itself, so matching every
+ * prefix only tightens (F-184).
+ */
+const longIs = (a, names) => {
+  const m = /^--([a-z][a-z-]*)(=.*)?$/.exec(a);
+  return m !== null && names.some((n) => n.startsWith(m[1]));
+};
+
+/**
+ * The letters of a short-option cluster (`-fu` is -f -u), up to the first
+ * letter in `valued`, which takes the rest of the word as its value (F-184).
+ */
+const shortFlags = (a, valued = '') => {
+  if (!/^-[^-]/.test(a)) return '';
+  let s = '';
+  for (const c of a.slice(1)) {
+    s += c;
+    if (valued.includes(c)) break;
+  }
+  return s;
+};
+
 function gitActions(args, here, abs, add) {
   let j = 0;
   // git's own options, some taking the next word as a value; an unregistered
   // value option must not let its value be read as the subcommand (F-156), so
   // if the word we land on is not a judged subcommand we scan on for one
-  while (j < args.length && args[j].startsWith('-'))
-    j += /^-(C|c)$|^--(git-dir|work-tree|namespace|super-prefix|config-env|exec-path)$/.test(
-      args[j],
-    )
-      ? 2
-      : 1;
-  if (!GIT_JUDGED.has(args[j])) {
-    const k = args.findIndex((a, i) => i > j && GIT_JUDGED.has(a));
+  while (j < args.length && args[j].startsWith('-')) {
+    const a = args[j];
+    const takes =
+      /^-(C|c)$|^--(git-dir|work-tree|namespace|super-prefix|config-env|exec-path)$/.test(a);
+    // an alias set for this one run renames any subcommand, so the word after
+    // it says nothing about what runs (F-184)
+    const set = /^-c$|^--config-env$/.test(a)
+      ? (args[j + 1] ?? '')
+      : a.startsWith('--config-env=')
+        ? a.slice('--config-env='.length)
+        : '';
+    if (/^alias\./i.test(set)) add('shell.constructed');
+    j += takes ? 2 : 1;
+  }
+  // the default macOS volume runs `git PUSH` as git push (F-183)
+  const lc = (w) => (w ?? '').toLowerCase();
+  if (!GIT_JUDGED.has(lc(args[j]))) {
+    const k = args.findIndex((a, i) => i > j && GIT_JUDGED.has(lc(a)));
     if (k >= 0) j = k;
   }
-  const sub = args[j];
+  const sub = lc(args[j]);
   const rest = args.slice(j + 1);
   const plain = rest.filter((a) => !a.startsWith('-'));
-  const has = (re) => rest.some((a) => re.test(a));
+  // option words compared in lower case; paths and refspecs keep theirs
+  const opts = rest.filter((a) => a.startsWith('-')).map(lc);
+  const has = (test) => opts.some(test);
   const dd = rest.indexOf('--');
   const paths = dd >= 0 ? rest.slice(dd + 1) : [];
   switch (sub) {
     case 'push':
       if (
-        has(/^(-f|--force|--force-with-lease(=.*)?|--force-if-includes|--mirror|--delete|-d)$/) ||
+        has(
+          (a) =>
+            /[fd]/.test(shortFlags(a, 'o')) ||
+            longIs(a, [
+              'force',
+              'force-with-lease',
+              'force-if-includes',
+              'mirror',
+              'delete',
+              'prune',
+            ]),
+        ) ||
         plain.slice(1).some((r) => r.startsWith('+') || r.startsWith(':'))
       )
         add('git.destructive');
       else add('shell.run');
       return;
     case 'reset':
-      add(has(/^--(hard|merge|keep)$/) ? 'git.destructive' : 'shell.run');
+      add(has((a) => longIs(a, ['hard', 'merge', 'keep'])) ? 'git.destructive' : 'shell.run');
       return;
     case 'branch':
-      if (has(/^(-D|-d|--delete)$/) && plain.some((b) => DEFAULT_BRANCHES.test(b)))
+      if (
+        has((a) => shortFlags(a, 'u').includes('d') || longIs(a, ['delete'])) &&
+        plain.some((b) => DEFAULT_BRANCHES.test(b))
+      )
         add('git.destructive');
       else add('shell.run');
       return;
@@ -717,7 +826,10 @@ function gitActions(args, here, abs, add) {
       add('git.destructive');
       return;
     case 'clean':
-      add(has(/^-[a-zA-Z]*f|^--force$/) ? 'file.delete' : 'shell.run', here);
+      add(
+        has((a) => /^-[a-z]*f/.test(a) || longIs(a, ['force'])) ? 'file.delete' : 'shell.run',
+        here,
+      );
       return;
     case 'rm':
       if (rest.includes('--cached')) add('shell.run');
@@ -794,7 +906,9 @@ export function toDecisions(actions, ctx) {
       if (what !== null) return { action, scope: `~protected/${what}` };
     }
     const scope = scopeOf(path, ctx);
-    const named = action === 'file.read' && isSecretPath(path) ? 'secret.read' : action;
+    // a link with a harmless name to a secret file reads the secret (F-186)
+    const secret = isSecretPath(path) || isSecretPath((ctx.real ?? realOf)(path));
+    const named = action === 'file.read' && secret ? 'secret.read' : action;
     return scope === null ? { action: named } : { action: named, scope };
   });
 }

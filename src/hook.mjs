@@ -338,6 +338,29 @@ export function haltFor(agent, ledgerPath) {
 
 const RANK = { allow: 0, require_approval: 1, deny: 2 };
 
+/**
+ * The policy with every rule's scopes in lower case. The default macOS volume
+ * opens `.CLAUDE/settings.json` as `.claude/settings.json`, so each scoped
+ * action is also judged with both sides folded and the stricter answer wins
+ * (F-183). On a case-sensitive volume this only tightens.
+ */
+const FOLDED = new WeakMap();
+function folded(policy) {
+  let f = FOLDED.get(policy);
+  if (f === undefined) {
+    f = {
+      ...policy,
+      rules: policy.rules.map((r) =>
+        Array.isArray(r.match?.scope)
+          ? { ...r, match: { ...r.match, scope: r.match.scope.map((x) => x.toLowerCase()) } }
+          : r,
+      ),
+    };
+    FOLDED.set(policy, f);
+  }
+  return f;
+}
+
 /** The hash decisions carry while no policy could be read (it names this mode, not a file). */
 export const RULES_UNKNOWN_HASH = createHash('sha256')
   .update('sakk-rules-unknown.v1')
@@ -561,6 +584,14 @@ export function evaluate(
     else {
       try {
         d = decide({ policy: loaded.policy, policyHash: loaded.policyHash, context });
+        if (typeof context.scope === 'string' && context.scope !== context.scope.toLowerCase()) {
+          const f = decide({
+            policy: folded(loaded.policy),
+            policyHash: loaded.policyHash,
+            context: { ...context, scope: context.scope.toLowerCase() },
+          });
+          if (RANK[f.verdict] > RANK[d.verdict]) d = f;
+        }
       } catch (e) {
         throw new HookError('HOOK_CONTEXT_INVALID', e.message);
       }

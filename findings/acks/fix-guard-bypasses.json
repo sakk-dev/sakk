@@ -1,0 +1,78 @@
+{
+  "version": 2,
+  "branch": "fix/guard-bypasses",
+  "answers": {
+    "C-01.1": {
+      "answer": "Absent inputs keep the old, stricter-or-equal answer: a path with no symlink anywhere resolves as before; a dangling link whose target cannot be read keeps the link's own path; an action with no scope gets no case-folded second decision; a launcher line with no word naming sakk is judged as the command it is. None of these absences reads as an allow that was not one before.",
+      "guard": "test/guard-spellings.test.mjs::F-186 a write or delete through a dangling symlink is judged by where the link points"
+    },
+    "C-01.2": {
+      "answer": "Each new step has an attack test that goes red when the step is deleted: remove the case-folded decision and the upper-case protected names pass; remove the link follow and notes.txt -> .env reads; remove the prefix and cluster parse and --forc and -fu push; remove the sakk-word scan and npx sakk cap off passes. Verified by putting each bug back once.",
+      "guard": "test/guard-spellings.test.mjs::F-183 a protected name spelled in another case is judged as the protected name, by every rule kind"
+    },
+    "C-02.1": {
+      "answer": "No new hand-written list stands in for all: case folding applies to every rule's scope (shipped and user rules alike) and to every command name unwrap returns; flag spellings are derived from git's own rule (any unique-or-ambiguous prefix of a destructive long option, any short cluster holding a destructive letter); the launcher rule is one sentence: a word naming the sakk program anywhere in the command starts sakk's arguments. The shipped-rule test enumerates scopes from the policy file itself.",
+      "guard": "test/guard-spellings.test.mjs::F-183 every shipped deny and ask scope gives the same answer in upper case, enumerated from the policy file"
+    },
+    "C-02.2": {
+      "answer": "Where else the rule applies: case — command names, wrappers, env, the git subcommand and every scope rule (not only the protected folders F-183 names); spellings — push, reset, clean and branch flags plus a git alias defined with -c or --config-env; launchers — every control subcommand R-24 judges (cap, init, resume, reconcile, unlock, gateway, guard), not only cap off; links — reads, writes and deletes all resolve through toDecisions, so Read, Write, Edit and shell routes share the fix.",
+      "guard": "test/kill-switch.test.mjs::F-185 every control-loosening sakk subcommand is judged the same through every launcher"
+    },
+    "C-03.1": {
+      "answer": "Each test drives the exact attack the finding names (RM -rf ~, git push --forc, npx sakk cap off, cat notes.txt where notes.txt links to .env) through runHook and expects the deny or ask; with the fix reverted the same assertion fails with the attack's own verdict (allow), and nothing else in the test can turn it red.",
+      "guard": "test/guard-spellings.test.mjs::F-184 every spelling git accepts for a destructive flag is denied: short clusters and long prefixes"
+    },
+    "C-03.2": {
+      "answer": "The symlink test builds a real link on disk to a real secret file and reads it through the real hook, so the resolution is observed, not assumed; the flag test asks the installed git which spellings it parses (exit code of a dry-run against a local bare remote) so a spelling git rejects is not counted as proof; controls show ordinary neighbours (git push -u, --follow-tags, cat of a plain link, echo of a quoted mention) stay allowed.",
+      "guard": "test/guard-spellings.test.mjs::F-184 control: neighbouring flags that are not destructive keep their old answer"
+    },
+    "C-03.3": {
+      "answer": "The records are tied to runs: the four ledger entries move to fixed only with a guard naming these tests, and the findings-proof run executes each named test; a ledger entry marked fixed while the attack still passes turns those tests red, not just the paperwork check.",
+      "guard": "test/guard-spellings.test.mjs::F-186 a read through a symlink to a secret file is denied, by every tool and route"
+    },
+    "C-04.1": {
+      "answer": "Hostile input stays bounded by counters: following links stops after a fixed hop count (MAX_LINK_HOPS) and a loop is refused by that count, not by a clock; each action gets at most two policy decisions (exact and case-folded); flag and launcher scans are one pass over words already capped by MAX_COMMAND.",
+      "guard": "test/guard-spellings.test.mjs::F-186 a symlink loop stops at the hop bound instead of being followed forever"
+    },
+    "C-05.1": {
+      "answer": "Each sentence added to specs/guard/spec.md and the CHANGELOG (names compared in any case, every flag spelling git accepts, every way of running the sakk program, reads and writes resolved through links) is paired with a test in guard-spellings or kill-switch that fails if the behaviour is removed; the shipped-rule spec test still checks rule order and answers.",
+      "guard": "test/guard.test.mjs::the spec lists the shipped rules in their order, with their answers (F-148)"
+    },
+    "C-05.2": {
+      "answer": "No new exit code or figure is introduced: a folded decision reports the rule it hit and the folded scope it judged, which is what a person needs to see why upper-case .Claude/settings.json was asked; sakk try and the hook give the same answer for every new attack, so what try tells a person is what the hook will do.",
+      "guard": "test/guard.test.mjs::try and the hook agree"
+    },
+    "C-06.1": {
+      "answer": "Evidence comes from the real entry points: runHook (what sakk hook runs) and bin/sakk.mjs try in a throwaway HOME, plus the installed git for which flag spellings exist; the probe script reruns the original audit attacks against this checkout's binary, not the older exported copy the audit used.",
+      "guard": "test/guard-spellings.test.mjs::F-184 every spelling git accepts for a destructive flag is denied: short clusters and long prefixes"
+    },
+    "C-08.1": {
+      "answer": "This branch is the C-08 fix: a case alias is folded before the rules compare (both sides), a symlink is resolved to its target before the secret-name and scope checks (including a dangling link), and a git flag's abbreviations and clusters are mapped to the flag. Hard links are declared out of scope in the spec: git cannot store one, and making one with ln names the secret, which is already denied.",
+      "guard": "test/guard-spellings.test.mjs::F-186 a read through a symlink to a secret file is denied, by every tool and route"
+    },
+    "C-09.1": {
+      "answer": "The fix assumes nothing about the volume: folding is unconditional, so it works on case-sensitive Linux CI (where it only tightens) and on the default case-insensitive macOS volume where the bypass is real; tests never rely on realpath fixing case. The flag test reads the installed git, so an older or newer git that accepts fewer or more spellings is measured, not assumed.",
+      "guard": "test/guard-spellings.test.mjs::F-183 a command, wrapper or git subcommand spelled in another case is judged as the lower-case command"
+    },
+    "C-09.2": {
+      "answer": "It runs in the agent's PreToolUse hook from the project folder (claude-code, cursor and codex all reach the same evaluate path) and in sakk try; the tests call runHook with a real payload and cwd inside a throwaway project, and the audit probe runs bin/sakk.mjs hook as Claude Code would, so the fix is shown firing where it will run.",
+      "guard": "test/guard.test.mjs::try and the hook agree"
+    },
+    "C-10.1": {
+      "answer": "The guard spec already said paths are resolved through symlinks, but only rule text enforced it for secret reads; it is now a test that fails when a link to .env reads. The new spec sentences on case and spellings are likewise each pinned to a failing-when-removed test rather than left as text.",
+      "guard": "test/guard-spellings.test.mjs::F-186 a read through a symlink to a secret file is denied, by every tool and route"
+    },
+    "C-10.2": {
+      "answer": "Other routes meet the same gate: the case fold sits in the hook's decision step, so every tool and every agent pass through it; the link resolution sits in toDecisions, which Read, Write, Edit, MultiEdit, NotebookEdit, apply_patch and shell all feed; the sakk launcher rule is a word scan, so a launcher nobody listed (deno npm:sakk, volta run, a copied bin path) is caught too. Remaining route: a persistent git alias written to config earlier and run later stays shell.run and is recorded as a V2 item.",
+      "guard": "test/kill-switch.test.mjs::F-185 every control-loosening sakk subcommand is judged the same through every launcher"
+    },
+    "C-14.1": {
+      "answer": "The unit here is one tool call. A link that cannot be followed (a loop past MAX_LINK_HOPS, an unreadable link) fails only that call, closed, with a named code HOOK_PATH_UNREADABLE in the deny reason; the next tool call is judged afresh and the hook process never crashes with a raw stack. Failing closed for the one call is the guard's rule: an action it cannot judge is never allowed.",
+      "guard": "test/guard-spellings.test.mjs::F-186 a symlink loop stops at the hop bound instead of being followed forever"
+    },
+    "C-11.1": {
+      "answer": "The writes in question are the agent's own controls (~/.sakk config, ledger, hook config); the agent is the only writer this guard binds, and every route it can take (launcher, case alias, link) is now classified as the control write it is. The logged context carries the folded scope only when that decision was stricter, so a reader of the decision log sees the protected name that was hit, not a harmless-looking alias.",
+      "guard": "test/kill-switch.test.mjs::F-185 every control-loosening sakk subcommand is judged the same through every launcher"
+    }
+  }
+}
