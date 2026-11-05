@@ -6013,17 +6013,25 @@
       "dt": ["DT-FN"],
       "rc": ["RC-01"],
       "es": ["ES-02"],
-      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: fold case (or ask on a case variant) for program names and every scope rule when the volume is case-insensitive; drive each protected-name rule with a case variant.",
-      "sweep_status": "not_done",
-      "status": "open",
-      "areas": ["src/classify.mjs", "src/match.mjs", "src/policy.mjs"],
+      "sweep": "Swept by rule, not by list: the fold sits in the hook's decision step, so every scope rule (shipped and a user's own) and every tool and agent pass through it; command names are folded where unwrap returns them, so wrappers, env, timeout, xargs and git subcommands share it. The shipped-rule test enumerates every deny and ask scope from policies/default.json and drives it in upper case. Remaining: none in the guard; Linux false positives (a real file named .CLAUDE) are asked, the fail-closed side, and the spec says so.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "src/classify.mjs",
+        "src/match.mjs",
+        "src/policy.mjs",
+        "src/hook.mjs",
+        "test/guard-spellings.test.mjs"
+      ],
       "mechanism_gap": "The two-names detectors (ledger.test F-85 symlinked ledger file, stranger-regressions relative --out, guard.test 'a delete that takes the repository, the home folder or Sakk state…') cover links and relative forms; none spells a protected program or folder in another case, so a case variant was outside their inputs.",
-      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "mechanism_upgrade": "test/guard-spellings.test.mjs::F-183 every shipped deny and ask scope gives the same answer in upper case, enumerated from the policy file",
       "distinct_from": {
         "F-176": "F-176 is a target substituted from a shell variable, judged by the bare $name; F-183 is a target written out in full whose letters differ only in case — no variable is involved and the fix (case folding on a case-insensitive volume) is different.",
         "F-184": "F-184 is git option parsing (clustered, abbreviated, aliased flags); F-183 is case folding of names on a case-insensitive volume.",
         "F-186": "F-186 is a symlink with an unrelated name pointing at a secret file; F-183 is the same name in another case."
-      }
+      },
+      "instance_fix": "this commit: unwrap lowercases every command name it returns (the program, each wrapper, xargs' inner command) and the git subcommand is compared in lower case; the hook judges every scoped action a second time with the scope and every rule's scopes folded to lower case, and keeps the stricter answer. Folding is unconditional, so on a case-sensitive Linux volume it only tightens.",
+      "guard": "test/guard-spellings.test.mjs::F-183 a protected name spelled in another case is judged as the protected name, by every rule kind"
     },
     {
       "id": "F-184",
@@ -6044,17 +6052,19 @@
       "dt": ["DT-FN"],
       "rc": ["RC-01"],
       "es": ["ES-04"],
-      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: parse git options as git does (clusters, unique long prefixes) and ask on any inline alias definition; check every flag-keyed git and shell rule for the same forms.",
-      "sweep_status": "not_done",
-      "status": "open",
-      "areas": ["src/classify.mjs"],
+      "sweep": "Swept across every git subcommand the classifier judges (push, reset, clean, branch): each flag list is now a list of long names matched by prefix plus the short letters matched inside a cluster; the test asks the installed git which spellings it parses, so a spelling git rejects is never counted. Not covered and recorded in docs/V2-BACKLOG.md with no follow-up needed: a persistent alias written to git config earlier and run later, GIT_CONFIG_* environment aliases, and git checkout -f / -- . (not in the destructive list before this change either).",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": ["src/classify.mjs", "test/guard-spellings.test.mjs"],
       "mechanism_gap": "The destructive-command detectors (guard.test 'every wrapper, with a flag that takes a value, still names the command', the delete-that-takes cases) feed each flag in its listed spellings; none generates the other forms git's parser accepts.",
-      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "mechanism_upgrade": "test/guard-spellings.test.mjs::F-184 every spelling git accepts for a destructive flag is denied: short clusters and long prefixes",
       "distinct_from": {
         "F-176": "F-176 is a destructive target or flag held in a variable; F-184 is the force flag written directly in a form git's option parser accepts but the rule's list omits (clusters, prefixes, an inline alias).",
         "F-183": "F-183 is case folding of program and folder names; F-184 is git option parsing — the flag's spelling, not its case.",
         "F-186": "F-186 is a read through a symlink to a secret file; F-184 is a git force flag spelled in an unlisted form."
-      }
+      },
+      "instance_fix": "this commit: the git classifier reads flags the way git's parser does — any prefix of a destructive long option (push --force/--force-with-lease/--force-if-includes/--mirror/--delete/--prune, reset --hard/--merge/--keep, branch --delete, clean --force) and any short cluster holding a destructive letter, stopping at a letter that takes a value; a git alias defined for one command with -c alias.* or --config-env alias.* is judged as a constructed command (asked).",
+      "guard": "test/guard-spellings.test.mjs::F-184 every spelling git accepts for a destructive flag is denied: short clusters and long prefixes"
     },
     {
       "id": "F-185",
@@ -6075,13 +6085,15 @@
       "dt": ["DT-FN"],
       "rc": ["RC-04"],
       "es": ["ES-04"],
-      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: resolve launchers (npx, npm exec, node with a script path, a direct path to bin/sakk.mjs) to the Sakk entry point before the subcommand gate; drive each R-24 subcommand through each launcher.",
-      "sweep_status": "not_done",
-      "status": "open",
+      "sweep": "Swept across every control subcommand R-24 judges (cap, init, resume, reconcile, unlock, gateway, guard install/uninstall) times 19 launchers in the test; the rule is a word scan, so a launcher nobody listed is caught too. A pty driver that runs sakk as a plain word (script, unbuffer) is now denied rather than asked; one that hides sakk inside a script string it types (expect -c) is still asked, never allowed. Controls (echo of the words, cat or grep of the file, prettier on sakk.mjs) stay allowed.",
+      "sweep_status": "done",
+      "status": "fixed",
       "areas": ["src/classify.mjs", "test/kill-switch.test.mjs"],
       "mechanism_gap": "The partial-list detectors (guard.test 'every wrapper, with a flag that takes a value, still names the command', bundle-absence) unwrap a known list of wrappers before classifying; package launchers and node-with-a-script are not on that list, so the gate saw another program name.",
-      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
-      "distinct_from": {}
+      "mechanism_upgrade": "test/kill-switch.test.mjs::F-185 every control-loosening sakk subcommand is judged the same through every launcher",
+      "distinct_from": {},
+      "instance_fix": "this commit: the control-subcommand gate (R-24) no longer compares the program name with 'sakk'. One rule replaces it: a word naming the sakk program (sakk, sakk.mjs, a path to it, npm:sakk, sakk@version) anywhere in the command starts sakk's arguments, so npx, npm exec, pnpm/yarn dlx, bunx, deno, node with the script path, volta, script and unbuffer all reach the same judgement; echo and printf only print the word and are excluded.",
+      "guard": "test/kill-switch.test.mjs::F-185 every control-loosening sakk subcommand is judged the same through every launcher"
     },
     {
       "id": "F-186",
@@ -6102,17 +6114,24 @@
       "dt": ["DT-FN"],
       "rc": ["RC-01"],
       "es": ["ES-04"],
-      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: resolve the final path component before every secret and scope rule (read, write, delete); drive each rule with a link to a protected target.",
-      "sweep_status": "not_done",
-      "status": "open",
-      "areas": ["src/classify.mjs", "src/hook.mjs", "specs/guard/spec.md"],
+      "sweep": "Swept across reads, writes and deletes: all three resolve through toDecisions, which Read, Write, Edit, MultiEdit, NotebookEdit, apply_patch and the shell classifier feed; the tests drive cat, head, grep, Read and Grep through a link, writes and deletes through dangling links, and a loop. Hard links are out of scope and the spec says so: git cannot store one, and making one with ln names the secret, which is already denied.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "src/classify.mjs",
+        "src/hook.mjs",
+        "specs/guard/spec.md",
+        "test/guard-spellings.test.mjs"
+      ],
       "mechanism_gap": "The two-names detector for links (ledger.test F-85 symlinked ledger file) covers the ledger's own write path; no guard detector reads through a link to a secret file.",
-      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "mechanism_upgrade": "test/guard-spellings.test.mjs::F-186 a write or delete through a dangling symlink is judged by where the link points",
       "distinct_from": {
         "F-176": "F-176 is a variable that hides the target until the shell expands it; F-186 is a symlink on disk whose own name hides the target until the read opens it.",
         "F-183": "F-183 is two spellings of one name (case); F-186 is two different names for one file (a symlink and its target).",
         "F-184": "F-184 is git option parsing; F-186 is a file read through a symlink — different tool, different input, different fix."
-      }
+      },
+      "instance_fix": "this commit: realOf follows a symbolic link by hand when the full path cannot be resolved (a dangling link), up to MAX_LINK_HOPS (40, the Linux limit), and refuses a loop with HOOK_PATH_UNREADABLE; toDecisions judges a read as a secret read when either the written path or the resolved path is secret-shaped, so a link with an ordinary name to .env or a key file is denied by every tool and the shell.",
+      "guard": "test/guard-spellings.test.mjs::F-186 a read through a symlink to a secret file is denied, by every tool and route"
     },
     {
       "id": "F-187",

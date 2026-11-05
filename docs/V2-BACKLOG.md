@@ -90,6 +90,17 @@ Class detector (C-08): a spelling-variant table test that feeds each rule
 its name in every form the OS or the program accepts, and a type-fuzz of
 the hook's fields.
 
+F-183, F-184, F-185 and F-186 are fixed (branch `fix/guard-bypasses`,
+2026-11-05; the owner moved them ahead of the open-source release). The
+spelling-variant table is `test/guard-spellings.test.mjs`. Left for V2 from
+that sweep, each a route the fix does not reach:
+
+| Route                                                                                        | Why it stays open                                                                                   | Fix when taken up                                                             |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| A git alias written to config earlier (`git config alias.p 'push -f'`), run later as `git p` | The alias is not in the command that runs it; the write and the run are two calls                   | Protect `alias.*` writes to git config, or ask on an unknown git subcommand   |
+| A git alias set through the environment (`GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0=alias.p`)      | The environment of a shell is not parsed into git options                                           | Treat a `GIT_CONFIG_*` assignment before git as `shell.constructed`           |
+| `git checkout -f`, `git checkout -- .`, `git restore .` over uncommitted work                | Not in the destructive git list before this change either; they discard work but rewrite no history | Add to `git.destructive` or ask, after the owner's answer on uncommitted work |
+
 ### Guard — install and reach
 
 | Finding | Cases                | Fix                                                                                                                       | Sweep                                                      |
