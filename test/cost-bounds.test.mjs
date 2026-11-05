@@ -576,6 +576,12 @@ const BOUNDS = {
       guard:
         'test/ledger-archive.test.mjs::a corrupt archive summary refuses; a lost segment fails verify, never freeing cap',
     },
+    checkHead: {
+      bounded:
+        'reads the head segment (at most SEAL_AT entries) and probes two segment numbers past it for existence; a 0.4.0 head without a running total walks the trail once, until the next seal writes one',
+      guard:
+        'test/ledger-archive.test.mjs::per-call work stays flat as history grows (operation count, not a clock)',
+    },
     readSegment: {
       bounded: 'reads one segment file of at most SEAL_AT entries and checks its hash',
       guard:
@@ -601,11 +607,27 @@ const BOUNDS = {
     sealSegment: {
       bounded: 'writes one segment of SEAL_AT entries and the shards of their call-ids',
       guard:
-        'test/ledger-archive.test.mjs::a seal interrupted before the hot commit is a redoable prefix, no entry lost',
+        'test/ledger-archive.test.mjs::a seal interrupted before the hot commit is adopted as written, no entry lost',
+    },
+    leftoverSegment: {
+      bounded:
+        'probes one segment number past the summary; only when a crash left it does it read that one segment (at most SEAL_AT entries) and look each entry up in the hot file',
+      guard:
+        'test/ledger-archive.test.mjs::a leftover segment is adopted only when it matches hot; an overrun in it still trips the gate (F-193 review)',
+    },
+    indexSegment: {
+      bounded: 'writes the shards of one segment of at most SEAL_AT call-ids',
+      guard:
+        'test/ledger-archive.test.mjs::a seal interrupted before the hot commit is adopted as written, no entry lost',
+    },
+    checkSegmentFiles: {
+      bounded:
+        'lists the segment files, which grow with history; used only by sakk ledger verify, off the gate path',
+      guard:
+        'test/ledger-archive.test.mjs::verify reports a stray segment file past the summary; the files are exactly 1..segments',
     },
     segmentsOnDisk: {
-      bounded:
-        'counts segment files, which grow with history; used only by verify and export, off the gate path',
+      bounded: 'counts segment files, which grow with history; a test helper, off the gate path',
       guard:
         "test/ledger-archive.test.mjs::export rebuilds one valid ledger with the same totals; verify's exit code is acted on",
     },

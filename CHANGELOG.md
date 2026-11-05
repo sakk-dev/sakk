@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the spend cap and the ledger summary can be trusted
+
+- One Claude Code log file that cannot be opened (permissions) no longer
+  crashes the spend walk. `sakk spend` names the file and its error,
+  `SPEND_LOGS_UNLISTABLE`, and exits 1; the other files are still indexed
+  and the cap stays closed until a person fixes the file. When any step of
+  the guard fails, the deny names that step (spend cap, kill switch, secret
+  scan or rules) instead of always blaming the rules (F-192).
+- Reserve no longer trusts the ledger's summary alone. Each sealed segment's
+  hash now covers its running total (`total: {settledCount, settledUsd}`,
+  a new field in `<ledger>.cold/<seq>.json`), and reserve and the seal check
+  the summary against the newest segment. An edited settled total, or a
+  lost or rolled-back newest segment, now refuses `LEDGER_ARCHIVE_BROKEN`
+  where it used to give cap room back (F-193). A reserve call reads the hot
+  file plus that one segment, so its cost still does not grow with history.
+  Ledgers sealed by 0.4.0 keep working: their newest segment has no total,
+  so reserve walks the chain on each call until the next seal writes one.
+  Limit: the hash is unkeyed, so a writer who rewrites the newest segment
+  and the summary together passes reserve; `sakk ledger verify` catches it.
+- A seal that crashed before its hot commit no longer locks reserve: the
+  segment it left is adopted as written by the next reserve or settle (a
+  segment number on disk is never sealed again, and a leftover whose entries
+  differ from the hot file is refused); `sakk ledger verify` says so and
+  exits 0.
+  A summary rolled back over real segments, a stray or out-of-place
+  segment file, or a 0.4.0 segment holding an entry with no amount is
+  refused (`LEDGER_ARCHIVE_BROKEN`), and verify exits 1 where it used to
+  report sound. A seal never rewrites a segment that already exists.
+  `sakk init` refuses `LEDGER_ALREADY_EXISTS` beside a leftover
+  `<ledger>.cold` or `<ledger>.idx` (F-193).
+- Downgrading is unsupported: segments sealed by this version carry a
+  running total that 0.4.0 does not hash, so 0.4.0 cannot verify or
+  export them.
+- The test that holds "a call costs the same whatever the history" now sees
+  the reads it counts: it patched `fs` without syncing the named imports
+  the code uses, so it passed on zero reads whatever the code did. A new
+  check refuses that shape in any test or script (F-241).
+
 ### Fixed — the guard judges an act however it is spelled
 
 - A command or protected name in another case (`RM -rf ~`,

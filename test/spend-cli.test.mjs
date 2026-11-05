@@ -291,6 +291,30 @@ describe('F-204 / F-205 — sakk spend tells the truth about what it could not c
     },
   );
 
+  test(
+    'sakk spend names an unreadable log file and exits 1 without a stack (F-192)',
+    { skip: asRoot && 'root ignores file modes' },
+    () => {
+      const w = world();
+      sakk(w, ['cap', 'set', '5', '--zone', 'UTC']);
+      seed(w, [callLine({ ts: '2026-10-22T10:00:00Z' })]);
+      chmodSync(w.sessionFile, 0o000);
+      try {
+        const r = sakk(w, ['spend', '--day', '2026-10-22']);
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /SPEND_LOGS_UNLISTABLE/);
+        assert.match(r.stderr, /session\.jsonl \(EACCES\)/, 'names the file and its error');
+        assert.doesNotMatch(r.stderr, /\n\s+at /, 'no stack trace');
+        assert.doesNotMatch(r.stdout, /\$0/, 'no figure is reported');
+      } finally {
+        chmodSync(w.sessionFile, 0o600);
+      }
+      const ok = sakk(w, ['spend', '--day', '2026-10-22', '--json']);
+      assert.equal(ok.status, 0, ok.stderr);
+      assert.ok(JSON.parse(ok.stdout).spend_usd > 0, 'counted once the file is readable');
+    },
+  );
+
   test('F-205: a future-dated line is counted on the day observed and said so (UAT S-REL-005)', () => {
     const w = world();
     sakk(w, ['cap', 'set', '5', '--zone', 'UTC']);

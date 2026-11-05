@@ -370,16 +370,17 @@ describe('P0 UAT backfill — install & accuracy (P-INS / P-ACC)', () => {
     assert.match(words('Older Claude Code fails open.'), /2\.1\.295/, 'REQ-P04 5');
     // F-171: the terminal check is not proof of a person; F-177: the halt
     // family is denied to the agent and the default ledger lives under
-    // ~/.sakk, so the remaining limit is the trusted summary itself
+    // ~/.sakk; F-193: reserve binds the summary to the newest segment, so the
+    // remaining limit is a writer who rewrites both (verify catches it)
     assert.match(
       words('The confirmation checks for a terminal, not a person.'),
       /pseudo-terminal[\s\S]*`npx sakk cap off`/,
       'F-171 limit',
     );
     assert.match(
-      words("The ledger's summary is trusted."),
-      /denies[\s\S]*`resume`, `reconcile` and `unlock`[\s\S]*~\/\.sakk\/sakk-ledger\.json[\s\S]*ledger verify/,
-      'F-177 limit',
+      words('The ledger is a local file its owner can rewrite.'),
+      /denies[\s\S]*`resume`, `reconcile` and `unlock`[\s\S]*~\/\.sakk\/sakk-ledger\.json[\s\S]*`LEDGER_ARCHIVE_BROKEN`[\s\S]*unkeyed[\s\S]*ledger verify/,
+      'F-177 / F-193 limit',
     );
     assert.equal(
       limits.length,

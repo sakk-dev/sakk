@@ -275,8 +275,11 @@ current directory refuses with `LEDGER_PATH_LEGACY` until you pass
 Settled entries are sealed into an append-only, hash-chained cold trail
 (`<ledger>.cold/`) so the live file stays small and a call costs the same
 whatever the history; nothing is capped and no entry is dropped.
-`sakk ledger verify` walks the chain, `sakk ledger export` rebuilds one flat
-ledger. At most 10,000 reservations may be outstanding at once.
+Each call checks the summary against the newest segment, so an edited total,
+or a lost or rolled-back newest segment, refuses `LEDGER_ARCHIVE_BROKEN`;
+`sakk ledger verify` walks the whole chain (an older segment's loss shows
+there), `sakk ledger export` rebuilds one flat ledger. At most
+10,000 reservations may be outstanding at once.
 
 `sakk status` exits 3 while a person must act before spending resumes —
 reconciliation required (flag or entry), or a stale ledger — and 4 while
@@ -564,13 +567,16 @@ The ledger and the library:
 
 - **Names are self-declared.** `--by` on halt, resume, reconcile, settle and unlock
   records the name the operator typed; nothing authenticates it.
-- **The ledger's summary is trusted.** The guard denies a guarded agent
-  `resume`, `reconcile` and `unlock` — each asks a person at a terminal —
-  and the default ledger (`~/.sakk/sakk-ledger.json`) sits outside the
-  project tree, but a process that is not the guarded agent can still edit
-  the file directly. The reservation cap trusts the ledger's summary:
-  lowering the settled total there gives cap room back, and only
-  `sakk ledger verify` reports the change.
+- **The ledger is a local file its owner can rewrite.** The guard denies a
+  guarded agent `resume`, `reconcile` and `unlock` — each asks a person at a
+  terminal — and the default ledger (`~/.sakk/sakk-ledger.json`) sits outside
+  the project tree, but a process that is not the guarded agent can still
+  edit the file directly. Reserve checks the summary against the newest
+  sealed segment, whose hash covers the running total, so lowering the
+  settled total alone, or losing or rolling back that segment, refuses
+  `LEDGER_ARCHIVE_BROKEN`. The hash is unkeyed: a writer who rewrites that
+  segment and the summary together passes reserve, and
+  `sakk ledger verify` reports it.
 - **Costs are what the caller reports.** `reserve()` and `settle()` book the
   amounts they are given; nothing reads the provider's usage yet.
 - **Approval-required means refused.** A policy that asks for approval

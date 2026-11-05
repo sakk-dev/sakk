@@ -78,6 +78,10 @@
       "answer": "A worst-case settle means the money is counted as spent although the true cost is unknown; two writers can cause it: the gateway sweep, only for its own litellm-gateway entries past the TTL, logged as sakk_reservation_expired; and a named person through sakk settle, logged as a SETTLED_AT_RESERVED alert with --by. Both over-record on the safe side, and a late real settle at another amount gets SETTLE_MISMATCH plus an alert.",
       "guard": "integrations/litellm/test_sakk_gateway.py::test_u11_sweep_skips_other_agents_fresh_and_settling_entries"
     },
+    "C-14.1": {
+      "answer": "One bad unit never takes the run down: in the gateway sweep each expired entry is settled in its own try, so a refused settle logs that call id and the loop moves on, a malformed or foreign entry is skipped before any call, an unreadable ledger logs and ends that run with 0 sent, and an outage stops only the current run. The spend and hook files arrive here unchanged from the merged PR #57, whose F-192 fix isolates one unreadable agent log with a named code.",
+      "guard": "test/spend.test.mjs::one unreadable log file is a named, isolated failure, not a crash (F-192)"
+    },
     "C-15.1": {
       "answer": "The expiry runs the real path: u10 starts the real sakk MCP server from SAKK_BIN, reserves through it, ages the entry past a tiny TTL, lets the gateway's own sweep run, and reads the real ledger file to see SETTLED at the reserved amount; the CLI settle test runs the real bin against a ledger written by the real reserve, and the default-timeout test reads the value the module actually built.",
       "guard": "integrations/litellm/test_sakk_gateway.py::test_u10_expired_gateway_reservations_settle_at_the_worst_case"

@@ -6307,12 +6307,20 @@
       "dt": ["DT-LOGIC"],
       "rc": ["RC-09"],
       "es": ["ES-04"],
-      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: isolate each log read (skip and report the unreadable file with a code; the cap fails closed under that code); give the hook a distinct code for each step that can fail.",
-      "sweep_status": "not_done",
-      "status": "open",
-      "areas": ["src/spend.mjs", "src/hook.mjs"],
+      "sweep": "Every open/read on the spend path: updateIndex now wraps headOf, openSync and readSync per file in one try (the only per-file reads; listing errors were already isolated by F-204/F-208), and readSpendIndex and the CLI only read the index it built. In the hook, each step after the policy load (kill switch, spend cap, secret scan) sets its own UNKNOWN_STEP cause before it runs, so a throw names that step; the rules load keeps its own message.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "src/spend.mjs",
+        "src/hook.mjs",
+        "test/spend.test.mjs",
+        "test/spend-cli.test.mjs",
+        "docs/SPEND.md"
+      ],
       "mechanism_gap": "The isolation detectors (mcp F-82, scorer-rules SCORER_ERROR, self-evolution-cli) isolate a bad frame, a scorer error and a broken CLI; none makes one agent log unreadable, so its failure spread to the whole command.",
-      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "mechanism_upgrade": "test/spend.test.mjs::one unreadable log file is a named, isolated failure, not a crash (F-192)",
+      "instance_fix": "this commit: updateIndex wraps headOf/openSync/readSync per file; an unreadable log is SPEND_LOGS_UNLISTABLE naming the file and its error, the other files are still indexed, sakk spend exits 1 without a stack, and the cap fails closed; the hook's deny names the failing step (rules, kill switch, spend cap or secret scan) through UNKNOWN_STEP.",
+      "guard": "test/spend.test.mjs::one unreadable log file is a named, isolated failure, not a crash (F-192)",
       "distinct_from": {}
     },
     {
@@ -6334,12 +6342,19 @@
       "dt": ["DT-LOGIC"],
       "rc": ["RC-05"],
       "es": ["ES-04"],
-      "sweep": "Not swept — deferred to V2 by the owner (D10, 2026-10-28). docs/V2-BACKLOG.md lists the fix and the sweep: bind the summary to the chain head and refuse reserve on a mismatch; check every cached total the cap reads.",
-      "sweep_status": "not_done",
-      "status": "open",
-      "areas": ["src/archive.mjs", "src/ledger.mjs"],
+      "sweep": "Every cached total the cap reads: reserve is the one gate that spends against doc.archive, and it now checks the summary against the head segment first; the seal (maybeSeal) checks the head before it extends the trail, so an edit is never sealed into a new self-consistent head. sakk ledger status and the MCP totals only report the summary; they do not admit a call. verify walks the whole chain and checks each segment's running total.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "areas": [
+        "src/archive.mjs",
+        "src/ledger.mjs",
+        "test/ledger-archive.test.mjs",
+        "specs/ledger/spec.md"
+      ],
       "mechanism_gap": "The untrusted-input detectors (hostile-names, mcp F-82 hostile frames) and the archive detector (ledger-archive 'verify catches a lost index, and reserve refuses rather than re-admit') cover names, frames and a lost index; none edits the summary and then calls reserve.",
-      "mechanism_upgrade": "none: deferred to V2 by the owner (D10, 2026-10-28); docs/V2-BACKLOG.md names the detector to add",
+      "mechanism_upgrade": "test/ledger-archive.test.mjs::an edited summary is refused by reserve: the head segment binds the totals (F-193)",
+      "instance_fix": "this commit: each sealed segment carries its running total inside its hash; reserve checks the summary against the head segment (checkHead: one segment read plus one probe for an unrecorded next segment) and refuses LEDGER_ARCHIVE_BROKEN on a mismatch, a lost or rolled-back head, or a removed summary; a seal never runs over a failing summary; a 0.4.0 head without a total is walked once, until the next seal writes one. Limit: a writer who rewrites both the head segment (with a new hash) and the summary passes reserve; sakk ledger verify catches it through the running-total walk. Review fixes (adversarial review of PR #57): a seal that crashed before its hot commit is a redoable prefix that reserve and verify accept and the next settle redoes at any amount; that prefix must match hot entry for entry, so a summary rolled back over a copied segment is refused; a seal refuses when a later segment exists; verify requires the segment files to be exactly 1..segments; init refuses beside a leftover cold trail or index; every comparison is NaN-safe.",
+      "guard": "test/ledger-archive.test.mjs::an edited summary is refused by reserve: the head segment binds the totals (F-193)",
       "distinct_from": {
         "F-125": "F-125 is the caller stating its own cost when it books; F-193 is an edit of the stored hot summary after booking, which reserve then trusts."
       }
@@ -7974,6 +7989,37 @@
       "sweep": "setRawMode appears only in promptHidden; both password prompts in askConsoleLogin go through it, and bin/sakk.mjs reaches it only through askConsoleLogin. The username line is meant to be visible and uses readline. No other code in src/ or bin/ reads a secret from a terminal.",
       "sweep_status": "done",
       "status": "fixed"
+    },
+    {
+      "id": "F-241",
+      "title": "The flat-cost archive test counted cold reads through a builtin patch that never reached the code, so it passed on zero reads",
+      "date": "2026-11-05",
+      "class": "C-03",
+      "introduced_in": "b4df6c8",
+      "found_by": "review",
+      "areas": ["test/ledger-archive.test.mjs", "test/builtin-patch-detector.test.mjs"],
+      "symptom": "The F-193 head check makes reserve read one cold segment, yet main's test 'per-call work stays flat as history grows', which asserts that a reserve and settle read no cold segment, still passed. Its counter saw no read of any file, so the assertion held whatever the code read.",
+      "evidence": "The old helper (unsynced patch, prefix match), run in a scratch script against this branch over 6 sealed segments, counted 0 cold reads for verifyChain and 0 reads of any file across verifyChain plus a reserve. The new detector, run on main's test/ledger-archive.test.mjs, flags its two patch lines (99 and 107). With the patch synced and the match on the .cold/ segment, the new self-check counts 6 cold reads for verifyChain over 6 segments.",
+      "direct_cause": "The test replaced fs.readFileSync on the default node:fs import, but src/ calls the named readFileSync import, which only follows such a patch after syncBuiltinESMExports(). The path filter also matched the tmp prefix as written (/var/...), while macOS hands the code /private/var/..., so even a reached read would not have counted.",
+      "why": [
+        "The test measured cost by counting operations, which is the right shape, but nothing checked that the counter could see an operation at all.",
+        "Patching a builtin in ESM looks the same as in CommonJS; the named-import binding that needs a sync is invisible in the test file.",
+        "Zero reads is the passing outcome, so a counter that never fires reads green."
+      ],
+      "root_cause": "An operation-count test had no positive control showing its counter observes the code under test, so a counter that never fired made the test vacuous.",
+      "dt": ["DT-TOOL"],
+      "rc": ["RC-12"],
+      "es": ["ES-05"],
+      "mechanism_gap": "The C-03 detectors check that a test reaches its gate (fixtures, killProbes, mutation anchors); none checks that a test's instrument, here a patched builtin, reaches the code it measures.",
+      "mechanism_upgrade": "test/builtin-patch-detector.test.mjs::a test that patches a builtin also syncs it to named imports (F-241)",
+      "instance_fix": "this commit: coldReads syncs after it patches and after it restores, matches reads on the .cold/ path segment rather than the tmp prefix, and the flat test first checks that verifyChain over 6 segments counts 6 reads before it compares the two history sizes.",
+      "guard": "test/builtin-patch-detector.test.mjs::a test that patches a builtin also syncs it to named imports (F-241)",
+      "sweep": "The detector scans every .mjs under test/ and scripts/ for an assignment to a member of a default or namespace node: import in a file that never calls syncBuiltinESMExports(). The only other builtin patch, test/bounded-spawn.mjs, already syncs; no file is flagged at HEAD.",
+      "sweep_status": "done",
+      "status": "fixed",
+      "distinct_from": {
+        "F-24": "F-24's test never reached the gate it named (an earlier refusal fired first); F-241's test reached the code, but its measuring instrument did not, so the count it asserted was always 0."
+      }
     },
     {
       "id": "F-242",

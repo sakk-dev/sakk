@@ -463,6 +463,14 @@ export function choosePolicy({ repoRoot, home, keep }) {
   }
 }
 
+// the deny sentence per failing step (rules-unknown keeps one ruleId and code)
+const UNKNOWN_STEP = {
+  rules: 'the guard cannot read its rules',
+  halt: 'the guard cannot read the kill switch',
+  cap: 'the guard cannot check the spend cap',
+  secret: 'the guard cannot scan this call for secrets',
+};
+
 /**
  * Decide one Event. Returns { verdict, reason, decisions, policyPath, policyHash }.
  * `log` false is `sakk try`: the same path, nothing written.
@@ -481,6 +489,9 @@ export function evaluate(
   // the rules: config (the ledger it names), then the policy; what cannot be
   // read is isolated to "rules unknown" instead of refusing every call
   let unknown = null;
+  // which step could not be read: the deny names it, so a person fixes the
+  // right file instead of the rules (F-192: a spend-log error read "rules")
+  let unknownStep = 'rules';
   let config = {};
   try {
     config = readConfig(home);
@@ -511,6 +522,7 @@ export function evaluate(
       ({ known, halt } = haltFor(ev.agent, resolveLedgerPath({ config, env }).path));
     } catch (e) {
       unknown = e;
+      unknownStep = 'halt';
     }
   const readsProject = (a) => a.action === 'file.read' && a.scope && !a.scope.startsWith('~');
   // 2. the spend cap (M2) applies to every call once reached. A cap that
@@ -524,6 +536,7 @@ export function evaluate(
         cap = spendCap({ home, config, table: loadPrices({ home }).table, env, now: now() });
     } catch (e) {
       unknown = e; // a cap that cannot be read refuses every call but the project read
+      unknownStep = 'cap';
     }
   // 3. the secret guard (specs/secret-guard): a write whose content, or a
   // command/patch whose text, contains a literal secret is denied — scanned
@@ -534,6 +547,7 @@ export function evaluate(
       secret = secretHit(ev);
     } catch (e) {
       unknown = e;
+      unknownStep = 'secret';
     }
   const secretWhy =
     secret &&
@@ -555,7 +569,7 @@ export function evaluate(
             ruleId: 'rules-unknown',
             policyHash: loaded.policyHash,
             context,
-            why: `the guard cannot read its rules (${unknown.code ?? 'HOOK_FAILED'}: ${String(unknown.message ?? unknown).replace(/^[A-Z_]+: /, '')}). Reading the project still works; a person fixes the file named above and the next call is judged normally`,
+            why: `${UNKNOWN_STEP[unknownStep]} (${unknown.code ?? 'HOOK_FAILED'}: ${String(unknown.message ?? unknown).replace(/^[A-Z_]+: /, '')}). Reading the project still works; a person fixes the file named above and the next call is judged normally`,
           };
     else if (halt && !readsProject(a))
       d = {
