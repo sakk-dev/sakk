@@ -19,7 +19,7 @@ so nothing else picks the LiteLLM version:
 curl -fsSLO https://raw.githubusercontent.com/sakk-dev/sakk/main/integrations/litellm/requirements.lock
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python --require-hashes -r requirements.lock
-uv pip install --python .venv/bin/python --no-deps sakk-litellm==0.4.0
+uv pip install --python .venv/bin/python --no-deps sakk-litellm==0.4.1
 ```
 
 The package's own requirement, `litellm[proxy]>=1.106.2,!=1.107.0`, keeps the

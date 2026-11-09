@@ -1104,7 +1104,7 @@ if (cmd === 'init') {
     // credible low figure must not be reported (F-204, UAT S-REL-002)
     if (idx.unlistable.length) {
       console.error(
-        `SPEND_LOGS_UNLISTABLE: ${idx.unlistable.length} path(s) under ${logDir} could not be read, so spend cannot be counted — fix the permissions and run sakk spend again:`,
+        `SPEND_LOGS_UNLISTABLE: ${idx.unlistable.length} path(s) under ${logDir} could not be read, so spend cannot be counted — make each path below readable (EACCES or EPERM: fix its permissions) and run sakk spend again:`,
       );
       for (const u of idx.unlistable) console.error(`  ${display(u.path)} (${u.code})`);
       process.exit(1);

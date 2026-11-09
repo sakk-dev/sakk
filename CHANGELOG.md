@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a large Claude Code log no longer closes the spend cap
+
+- A transcript larger than the longest string Node can hold (about 512 MiB)
+  used to fail the whole read with `ERR_STRING_TOO_LONG`, which the cap
+  reported as `SPEND_LOGS_UNLISTABLE` and "fix the permissions", so a set cap
+  denied every call. The unread tail is now read in 8 MiB pieces and split on
+  newlines as bytes; the stored offset still moves only after the whole read
+  of a file succeeds (F-244).
+- The `SPEND_LOGS_UNLISTABLE` deny and `sakk spend` now name the error code
+  and tell you to fix permissions only for `EACCES` or `EPERM`. The code is
+  unchanged; the wording is not.
+- Stricter: a log line over 3 MiB of bytes is counted as one unreadable line
+  without being decoded, even if it holds only spaces (such a line used to be
+  skipped). With a cap set, that denies as `SPEND_UNREADABLE`, as any other
+  unreadable line does.
+
+### Fixed — the install docs install a `sakk` you can run
+
+- The README's Install section said `npm install @sakk-dev/sakk`, which puts
+  `sakk` in one folder's `node_modules` and not on your PATH. Both READMEs
+  now install with `-g`, show `sakk guard install claude-code --user` for
+  every Claude Code session on the machine, say Claude Code 2.1.295 or later
+  is needed for a fail-closed guard (`claude update`, then install again),
+  and give a no-risk check in a real session. The tutorials point to that
+  route; a test reads every install line in those four files (F-245).
+
 ## [0.4.0] - 2026-11-05
 
 ### Changed — the npm package is `@sakk-dev/sakk`

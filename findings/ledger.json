@@ -8095,6 +8095,84 @@
       "sweep": "Every ledger call the gateway makes goes through SakkClient.call: reserves pass the breaker check, and settles (late, failure and expiry) pass none on purpose. The CLI and the MCP server call the ledger in their own process and have no such queue. The macOS first-run delay the audit notes (F-239, 0.3 to 1.0 s) fits inside the new 5 s.",
       "sweep_status": "done",
       "status": "fixed"
+    },
+    {
+      "id": "F-244",
+      "title": "A Claude Code transcript past Node's longest string closed the spend cap as SPEND_LOGS_UNLISTABLE and told the person to fix permissions that were fine",
+      "date": "2026-11-09",
+      "class": "C-09",
+      "introduced_in": "0dd328d",
+      "found_by": "human",
+      "areas": [
+        "src/spend.mjs",
+        "bin/sakk.mjs",
+        "docs/SPEND.md",
+        "test/spend.test.mjs",
+        "test/spend-cli.test.mjs",
+        "test/cost-bounds.test.mjs"
+      ],
+      "distinct_from": {
+        "F-114": "F-114 lists ledger and release nits (reservation limits, temp files, lock errors, CI runs); none is about reading Claude Code transcripts. This one is the spend reader failing on a transcript too large to decode as one string."
+      },
+      "symptom": "On the owner's machine, during the first real global install, sakk spend and the cap reported SPEND_LOGS_UNLISTABLE with \"fix the permissions\" for a Claude Code transcript that was readable: one session's log had grown to about 800 MB. With a cap set, every tool call of every session would have been denied.",
+      "evidence": "updateIndex read the whole unread tail of a file into one Buffer and called toString on it; past buffer.constants.MAX_STRING_LENGTH (536870888 on this Node) that throws ERR_STRING_TOO_LONG, and the catch filed every error under unlistable with the permissions advice. The new test writes a file past the running Node's limit and was red on the old read with exactly ERR_STRING_TOO_LONG in the deny; it is green on the new read.",
+      "direct_cause": "0dd328d decoded a log's unread tail as one string, and the error handler assumed any read failure was a permissions problem.",
+      "why": [
+        "The spend reader was written and tested against small logs; nothing measured how large a real transcript gets in one long session.",
+        "The size of the transcript is set by the agent and the session length, so it is hostile input, but only line length was bounded, not the tail as a whole.",
+        "The catch around the read mapped every error to one message, so an error that was not about permissions still told the person to fix permissions."
+      ],
+      "root_cause": "A read of agent-controlled input was bounded per line but not per read, and its error path named a cause it had not checked; bytes were decoded before they were split.",
+      "dt": ["DT-STATE", "DT-SHAPE"],
+      "rc": ["RC-01"],
+      "es": ["ES-07"],
+      "mechanism_gap": "No test fed the spend reader a log near the platform's string limit, and no test asserted that the deny text matched the error code it reported.",
+      "mechanism_upgrade": "test/spend.test.mjs::a log larger than the longest string Node can hold is counted, and the cap still decides (F-244)",
+      "instance_fix": "this commit: the unread tail is read in 8 MiB pieces and split on the newline byte; a carried line is held as bytes and a line over three times MAX_LINE bytes is counted as one unreadable line without being decoded. Parsed lines are booked only after the whole read of the file succeeds, so a failed read leaves the stored offset where it was. The deny and sakk spend name the error code and say to fix permissions only for EACCES or EPERM. Stricter than before: a whitespace-only line over 3 MiB is now unreadable rather than skipped (CHANGELOG).",
+      "guard": "test/spend.test.mjs::a log larger than the longest string Node can hold is counted, and the cap still decides (F-244)",
+      "sweep": "Every other whole-file toString in src was checked: the console, login and gateway reads have their own byte caps, and policy, ledger, prices and archive read files Sakk writes or bounds. Only the transcript tail was unbounded. The piece-size test runs the real updateIndex at piece sizes 1, 7, 64 and the default and compares offsets and spend; the oversized-line and error-code tests cover the other two paths.",
+      "sweep_status": "done",
+      "status": "fixed"
+    },
+    {
+      "id": "F-245",
+      "title": "The README installed sakk without -g and never named --user or the Claude Code version the guard needs, so a real user got no sakk on PATH or a guard in one folder only",
+      "date": "2026-11-09",
+      "class": "C-05",
+      "introduced_in": "da1c0fb",
+      "found_by": "human",
+      "areas": [
+        "README.md",
+        "README.zh-CN.md",
+        "docs/tutorial/en.md",
+        "docs/tutorial/zh-CN.md",
+        "test/release.test.mjs"
+      ],
+      "distinct_from": {
+        "F-104": "F-104 is about the README promising away the lock's crash windows, cross-host sharing and macOS fsync; this one is the README's install steps leaving sakk off PATH and the guard scoped to one folder. Different promise, different fix.",
+        "F-196": "F-196 is sakk init saying the hook is wired when no guard was installed, a CLI message that overstates what it did; this one is the README install steps themselves, which leave sakk off PATH and do not name --user or the Claude Code version. Different text, different fix.",
+        "F-197": "F-197 is the README's Claude Code plugin install line, which Claude Code does not accept; this one is the npm install line and the guard install scope. The plugin route is still open and untouched by this fix.",
+        "F-198": "F-198 is counts of secret rules and shipped features that disagree across README, spec and code; this one is install steps that give the wrong outcome. No count is involved."
+      },
+      "symptom": "Walking the owner through a real install from the docs, the README's Install section said npm install @sakk-dev/sakk, which puts sakk in one folder's node_modules and not on PATH. The guard steps showed only the per-project install, which Claude Code loads only for sessions started in that folder, and did not say that Claude Code below 2.1.295 writes the guard fail-open. The tutorials still said a future npm release could replace their checkout install.",
+      "evidence": "README.md line 115 and README.zh-CN.md line 110 had no -g; neither README named guard install --user or claude update; both tutorials said \"Once Sakk is on npm\". The new test was red on the current READMEs with exactly those two install lines, before the docs changed.",
+      "direct_cause": "da1c0fb renamed the package in the install line but kept the library-style install from before; the guard steps were written for a project install and the version note sat only in the limits list.",
+      "why": [
+        "The existing docs test checked that install lines name the published package, not that they install a command a person can run.",
+        "The tutorials were written as a throwaway-home walkthrough before the npm release, and no step routed a real install to the README.",
+        "The fail-open version and the --user scope were printed by install and doctor, so the docs relied on the CLI to say them instead of saying them before the install."
+      ],
+      "root_cause": "The install docs were checked for the package name but not for the outcome a reader needs (sakk on PATH, a guard that covers their sessions, a fail-closed guard), so a wrong route passed.",
+      "dt": ["DT-SPEC"],
+      "rc": ["RC-01", "RC-10"],
+      "es": ["ES-01"],
+      "mechanism_gap": "No test read the install lines of the READMEs and tutorials for -g, and none required them to name --user and the minimum Claude Code version the code enforces.",
+      "mechanism_upgrade": "test/release.test.mjs::F-245 every npm install of the package in the READMEs and tutorials is global, and both name --user and the Claude Code version that blocks",
+      "instance_fix": "this commit: both READMEs install with npm install -g, show sakk guard install claude-code --user and its uninstall, say Claude Code 2.1.295 or later is needed for a fail-closed guard (claude update, then install again), and give a no-risk check in a real session (a new folder with no remote). The tutorials replace the stale note with the npm route and point a real install to the README.",
+      "guard": "test/release.test.mjs::F-245 every npm install of the package in the READMEs and tutorials is global, and both name --user and the Claude Code version that blocks",
+      "sweep": "Every fenced block of both READMEs and both tutorials is scanned for an npm install of the package (including a packed .tgz) and for guard install lines; the only non-global install left is the README's --save-dev copy that the secret-scan git hook runs, allowed by name. The minimum version is read from src/guard-install.mjs, so a change in code fails the docs. FAQ and llms.txt name no bare install.",
+      "sweep_status": "done",
+      "status": "fixed"
     }
   ]
 }

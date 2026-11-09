@@ -4,14 +4,17 @@
 
 This walks through Sakk from a local checkout to a clean uninstall, in about
 15 minutes, then puts the spend cap in front of your own app through the
-gateway (step 12). Every command below was run on macOS with Sakk 0.4.0 in a
+gateway (step 12). Every command below was run on macOS with Sakk 0.4.1 in a
 throwaway home folder, and the output is copied from that run. Paths are
 shortened to `~`, the console token is replaced by `<tok>`, and your dates,
 time zone and figures will differ.
 
 > This run installs from a checkout of the repository (step 2), so the output
-> matches the exact code you are reading. Once Sakk is on npm,
-> `npm install -g @sakk-dev/sakk` can replace step 2.
+> matches the exact code you are reading. To install the published package
+> instead, `npm install -g @sakk-dev/sakk` replaces step 2. For a real install
+> on your own machine, skip step 1 and follow the README's
+> [Install](../../README.md#install) section: it covers `--user` (every Claude
+> Code session, not one project) and the Claude Code version the guard needs.
 
 ## 0. What you need
 
@@ -48,10 +51,10 @@ sakk --version
 ```
 
 ```text
-sakk-dev-sakk-0.4.0.tgz
+sakk-dev-sakk-0.4.1.tgz
 
 added 1 package in 159ms
-0.4.0
+0.4.1
 ```
 
 - `mkdir -p ~/pack` comes first because npm 11 does not create the
@@ -107,7 +110,7 @@ sakk try 'git push --force origin main'
 ```text
 deny             git.destructive  (rule shell-destructive)
 → deny
-Sakk: git.destructive is denied by rule shell-destructive (~/.npm-global/lib/node_modules/@sakk-dev/sakk/policies/guard-default.json). A person changes the policy; If this is wrong, tell the person you work for and stop; do not route around it.
+Sakk: git.destructive is denied by rule shell-destructive (~/.npm-global/lib/node_modules/@sakk-dev/sakk/policies/guard-default.json). A person changes the policy. If this is wrong, tell the person you work for and stop; do not route around it.
 policy ~/.npm-global/lib/node_modules/@sakk-dev/sakk/policies/guard-default.json (sha256 77d0fc7022df…)
 ```
 

@@ -30,6 +30,14 @@ import { costOf, priceOf } from './prices.mjs';
 export const MAX_LINE = 1024 * 1024;
 export const MAX_FILES = 50_000;
 const HEAD = 4096;
+// A log's unread tail is read in pieces of this size and never decoded as one
+// string: a long session's transcript passes the longest string Node can hold
+// (~512 MiB), and that one decode failed as an unreadable path (F-244).
+const READ_CHUNK = 8 * 1024 * 1024;
+// A UTF-16 unit takes at most 3 UTF-8 bytes, so a line past this many bytes is
+// past MAX_LINE units: it is counted unreadable without being held or decoded.
+const MAX_LINE_BYTES = 3 * MAX_LINE;
+const TOO_LONG = Object.freeze({ unreadable: 'line over 1 MiB' });
 
 export class SpendError extends Error {
   constructor(code, message) {
@@ -207,6 +215,49 @@ const headOf = (file) => {
     closeSync(fd);
   }
 };
+// each(line) for every complete line of fd in [from, to), each(null) for a line
+// too long to decode. Holds one piece plus at most MAX_LINE_BYTES of a carried
+// line; a newline byte never falls inside a UTF-8 sequence, so splitting bytes
+// at it never splits a character. Returns the offset just past the last
+// newline: a partial last line waits for its end.
+const readLines = (fd, from, to, each, chunk) => {
+  const b = Buffer.alloc(Math.max(1, Math.min(chunk, to - from)));
+  let pos = from;
+  let end = from;
+  let carry = [];
+  let carried = 0;
+  let over = false;
+  while (pos < to) {
+    const n = readSync(fd, b, 0, Math.min(b.length, to - pos), pos);
+    if (n === 0) break;
+    let i = 0;
+    for (;;) {
+      let j = b.indexOf(10, i);
+      if (j >= n) j = -1;
+      if (j < 0) {
+        if (!over && carried + (n - i) > MAX_LINE_BYTES) over = true;
+        if (over) {
+          carry = [];
+          carried = 0;
+        } else if (n > i) {
+          carry.push(Buffer.from(b.subarray(i, n)));
+          carried += n - i;
+        }
+        break;
+      }
+      if (over || carried + (j - i) > MAX_LINE_BYTES) each(null);
+      else if (carried === 0) each(b.toString('utf8', i, j));
+      else each(Buffer.concat([...carry, b.subarray(i, j)]).toString('utf8'));
+      carry = [];
+      carried = 0;
+      over = false;
+      end = pos + j + 1;
+      i = j + 1;
+    }
+    pos += n;
+  }
+  return end;
+};
 
 /**
  * Bring the index up to date. `since` (ms) skips files not modified since —
@@ -221,7 +272,14 @@ const headOf = (file) => {
  * unless the claimed day's bucket already covers it (a pure re-read) (F-210).
  * Returns { rewritten: [paths], unreadable: n, unlistable: [{ path, code }] }.
  */
-export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() }) {
+export function updateIndex({
+  home,
+  logDir,
+  zone,
+  since = 0,
+  now = Date.now(),
+  readChunk = READ_CHUNK,
+}) {
   const dir = join(home, 'spend');
   mkdirSync(join(dir, 'days'), { recursive: true });
   const filesPath = join(dir, 'files.json');
@@ -277,8 +335,11 @@ export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() })
     if (prev && prev.size === st.size && prev.mtimeMs === st.mtimeMs) continue;
     let offset = prev?.offset ?? 0;
     let head;
-    let text;
+    let end;
     let wasRewritten = false;
+    // parsed, then booked only once the whole read succeeded: a read that
+    // fails halfway books nothing, so the retry cannot count a line twice
+    const parsed = [];
     // one try covers every read of this file: a file that lists and stats but
     // cannot be opened (mode 000, a lock, a vanished link) is a named, absent
     // reading like an unstatable one, never a crash of the whole walk (F-192)
@@ -290,10 +351,19 @@ export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() })
       }
       const fd = openSync(file, 'r');
       try {
-        const len = st.size - offset;
-        const b = Buffer.alloc(Math.max(0, len));
-        readSync(fd, b, 0, len, offset);
-        text = b.toString('utf8');
+        end = readLines(
+          fd,
+          offset,
+          st.size,
+          (line) => {
+            if (line === null) parsed.push(TOO_LONG);
+            else if (line.trim() !== '') {
+              const r = parseLine(line);
+              if (r !== null) parsed.push(r);
+            }
+          },
+          readChunk,
+        );
       } finally {
         closeSync(fd);
       }
@@ -303,12 +373,7 @@ export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() })
     }
     // counted spend stays; the file is read again from the start
     if (wasRewritten) rewritten.push(file);
-    const lastNl = text.lastIndexOf('\n');
-    const complete = lastNl < 0 ? '' : text.slice(0, lastNl); // a partial last line waits for its end
-    for (const line of complete.split('\n')) {
-      if (line.trim() === '') continue;
-      const r = parseLine(line);
-      if (r === null) continue;
+    for (const r of parsed) {
       if (r.unreadable) {
         unreadable += 1;
         const d = day(dayOf(st.mtimeMs, zone));
@@ -334,7 +399,7 @@ export function updateIndex({ home, logDir, zone, since = 0, now = Date.now() })
       d[r.call.key] = mergeCall(d[r.call.key], r.call);
     }
     files[file] = {
-      offset: offset + Buffer.byteLength(complete) + (lastNl < 0 ? 0 : 1),
+      offset: end,
       size: st.size,
       mtimeMs: st.mtimeMs,
       head,
@@ -413,9 +478,11 @@ export function capCheck({ home, config, table, now = Date.now(), env = process.
   const idx = updateIndex({ home, logDir, zone, since: startOfToday, now });
   if (idx.unlistable.length) {
     const first = idx.unlistable[0];
+    // name the fix for the code seen: permissions only when they are the cause
+    const fix = ['EACCES', 'EPERM'].includes(first.code) ? ' (fix its permissions)' : '';
     return {
       deny: true,
-      reason: `SPEND_LOGS_UNLISTABLE: ${idx.unlistable.length} path(s) under ${logDir} could not be read (${first.path}: ${first.code}), so today's spend cannot be counted — the cap fails closed until a person fixes the permissions`,
+      reason: `SPEND_LOGS_UNLISTABLE: ${idx.unlistable.length} path(s) under ${logDir} could not be read (${first.path}: ${first.code}), so today's spend cannot be counted — the cap fails closed until that path can be read${fix}`,
     };
   }
   const s = daySpend({ home, day: today, table });

@@ -1,11 +1,14 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { constants as bufferConstants } from 'node:buffer';
 import {
   appendFileSync,
   chmodSync,
+  closeSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -14,6 +17,7 @@ import {
   truncateSync,
   utimesSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -26,7 +30,7 @@ import {
   MAX_PRICES_BYTES,
   SHIPPED_PRICES,
 } from '../src/prices.mjs';
-import { capCheck, dayOf, daySpend, parseLine, updateIndex } from '../src/spend.mjs';
+import { capCheck, dayOf, daySpend, MAX_LINE, parseLine, updateIndex } from '../src/spend.mjs';
 
 /**
  * Spend from local logs (specs/spend/spec.md). Money area: every adversary row
@@ -1076,4 +1080,162 @@ describe('F-210 — a line first seen after the baseline claiming an old day is 
       );
     },
   );
+});
+
+describe('F-244 — a log tail is read in pieces, never decoded as one string', () => {
+  const asRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+  const stamp = (f) => utimesSync(f, NOW / 1000, NOW / 1000);
+  const filesOf = (w) => JSON.parse(readFileSync(join(w.home, 'spend', 'files.json'), 'utf8'));
+
+  test('a log larger than the longest string Node can hold is counted, and the cap still decides (F-244)', () => {
+    // the owner's real transcript was 808 MB: decoding its tail as one string threw
+    // ERR_STRING_TOO_LONG, which was filed as an unlistable path and denied every call
+    const w = world();
+    const limit = bufferConstants.MAX_STRING_LENGTH;
+    // whitespace lines within MAX_LINE are skipped, so only the two calls carry spend
+    const block = Buffer.from(`${' '.repeat(MAX_LINE - 1)}\n`.repeat(8));
+    const fd = openSync(w.file, 'w');
+    try {
+      writeSync(fd, line());
+      for (let k = Math.ceil(limit / block.length) + 1; k > 0; k -= 1) writeSync(fd, block);
+      writeSync(fd, line({ id: 'msg_2', req: 'req_2' }));
+    } finally {
+      closeSync(fd);
+    }
+    try {
+      const size = statSync(w.file).size;
+      assert.ok(size > limit, `the log (${size} B) is past MAX_STRING_LENGTH (${limit})`);
+      stamp(w.file);
+      assert.equal(
+        capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW }),
+        null,
+        'read, counted and under the cap — not SPEND_LOGS_UNLISTABLE',
+      );
+      const s = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+      assert.equal(s.calls, 2, 'the call after half a gigabyte of padding is counted');
+      assert.equal(s.unreadable, 0);
+      close(s.usd, 0.009);
+      assert.equal(filesOf(w)[w.file].offset, size, 'every byte of the log is booked');
+      const r = capCheck({
+        home: w.home,
+        config: { ...w.config, capUsd: 0.005 },
+        table: TABLE,
+        now: NOW,
+      });
+      assert.equal(r?.deny, true, 'the cap still decides on the big log');
+      assert.match(r.reason, /SPEND_CAP_REACHED/);
+    } finally {
+      rmSync(w.base, { recursive: true, force: true });
+    }
+  });
+
+  test('lines are the same whatever the piece size: boundaries, multi-byte text and a partial last line (F-244)', () => {
+    const body = [
+      line({ id: 'msg_日本語', req: 'req_🙂' }),
+      '   \n',
+      line({ id: 'msg_é', req: 'req_中', usage: { input_tokens: 2000, output_tokens: 300 } }),
+      '\n',
+      line({ id: 'msg_🙂🙂', req: 'req_3' }),
+    ].join('');
+    const tail = Buffer.from(line({ id: 'msg_尾', req: 'req_4' }));
+    const cut = tail.length - 10; // the last 10 bytes are ASCII: the cut is between characters
+    const runs = [];
+    for (const readChunk of [1, 7, 64, undefined]) {
+      const w = world();
+      writeFileSync(w.file, Buffer.concat([Buffer.from(body), tail.subarray(0, cut)]));
+      stamp(w.file);
+      updateIndex({
+        home: w.home,
+        logDir: w.config.claudeLogDir,
+        zone: 'UTC',
+        now: NOW,
+        readChunk,
+      });
+      const days = readFileSync(join(w.home, 'spend', 'days', '2026-10-22.json'), 'utf8');
+      const s = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+      runs.push({ readChunk, days, offset: filesOf(w)[w.file].offset, usd: s.usd, calls: s.calls });
+      // the partial line is not booked until its newline arrives
+      appendFileSync(w.file, tail.subarray(cut));
+      stamp(w.file);
+      updateIndex({
+        home: w.home,
+        logDir: w.config.claudeLogDir,
+        zone: 'UTC',
+        now: NOW,
+        readChunk,
+      });
+      const after = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+      assert.equal(after.calls, 4, `piece ${readChunk}: the completed line is counted`);
+      close(after.usd, 0.024);
+      assert.equal(filesOf(w)[w.file].offset, Buffer.byteLength(body) + tail.length);
+      rmSync(w.base, { recursive: true, force: true });
+    }
+    // 1000 in + 100 out = $0.0045; 2000 in + 300 out = $0.0105; 1000 in + 100 out = $0.0045
+    close(runs[0].usd, 0.0195);
+    assert.equal(runs[0].calls, 3);
+    assert.equal(runs[0].offset, Buffer.byteLength(body), 'offset stops at the last newline');
+    for (const r of runs.slice(1)) {
+      assert.equal(r.days, runs[0].days, `piece ${r.readChunk} books the same calls as piece 1`);
+      assert.equal(r.offset, runs[0].offset, `piece ${r.readChunk} stops at the same offset`);
+      close(r.usd, runs[0].usd);
+    }
+    const keys = Object.keys(JSON.parse(runs[0].days));
+    assert.ok(
+      keys.some((k) => k.includes('日本語')) && keys.some((k) => k.includes('🙂🙂')),
+      'multi-byte ids intact',
+    );
+  });
+
+  test('a line too long to decode is one unreadable line, never held whole (F-244)', () => {
+    const w = world();
+    const huge = `{"type":"assistant","pad":"${'x'.repeat(3 * MAX_LINE)}"}\n`; // over the byte cut
+    const long = `${'y'.repeat(1.5 * MAX_LINE)}\n`; // over MAX_LINE characters, under the byte cut
+    const blank = `${' '.repeat(3 * MAX_LINE + 1)}\n`; // whitespace, but too long to look at
+    writeFileSync(w.file, huge + long + blank + line());
+    stamp(w.file);
+    updateIndex({
+      home: w.home,
+      logDir: w.config.claudeLogDir,
+      zone: 'UTC',
+      now: NOW,
+      readChunk: 64 * 1024,
+    });
+    const s = daySpend({ home: w.home, day: '2026-10-22', table: TABLE });
+    assert.equal(s.unreadable, 3, 'each over-long line is one unreadable line');
+    assert.equal(s.calls, 1, 'the line after them is still read');
+    close(s.usd, 0.0045);
+    assert.equal(filesOf(w)[w.file].offset, statSync(w.file).size);
+    const r = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+    assert.equal(r?.deny, true, 'unreadable spend fails the cap closed');
+    assert.match(r.reason, /SPEND_UNREADABLE: 3 log line/);
+    rmSync(w.base, { recursive: true, force: true });
+  });
+
+  test('an unreadable-path deny says what to fix for its own code, not always permissions (F-244)', () => {
+    if (!asRoot) {
+      const w = world();
+      writeFileSync(w.file, line());
+      stamp(w.file);
+      chmodSync(w.file, 0o000);
+      try {
+        const r = capCheck({ home: w.home, config: w.config, table: TABLE, now: NOW });
+        assert.match(r?.reason ?? '', /SPEND_LOGS_UNLISTABLE: .*EACCES/);
+        assert.match(r.reason, /fix its permissions/, 'EACCES: permissions are the fix');
+      } finally {
+        chmodSync(w.file, 0o600);
+        rmSync(w.base, { recursive: true, force: true });
+      }
+    }
+    const v = world();
+    rmSync(v.config.claudeLogDir, { recursive: true, force: true });
+    symlinkSync(join(v.base, 'nowhere'), v.config.claudeLogDir);
+    const r = capCheck({ home: v.home, config: v.config, table: TABLE, now: NOW });
+    assert.match(
+      r?.reason ?? '',
+      /SPEND_LOGS_UNLISTABLE: .*ENOENT/,
+      'a dangling root is named with its code',
+    );
+    assert.doesNotMatch(r.reason, /permission/i, 'ENOENT is not a permissions problem');
+    rmSync(v.base, { recursive: true, force: true });
+  });
 });

@@ -3,11 +3,13 @@
 [English](en.md) | **简体中文**
 
 本教程从本地仓库副本装上 Sakk，一路走到干净卸载，大约 15 分钟；最后（第 12 步）通过网关把花费上限放到你自己的应用前面。下面每条命令都在
-macOS 上用 Sakk 0.4.0、在一个一次性的主目录里真跑过，输出照抄那次运行。路径缩写成
+macOS 上用 Sakk 0.4.1、在一个一次性的主目录里真跑过，输出照抄那次运行。路径缩写成
 `~`，控制台令牌换成 `<tok>`；你看到的日期、时区和金额会不一样。
 
-> 这次运行是从仓库副本安装的（第 2 步），所以输出和你正在读的代码完全对应。Sakk 上了 npm 之后，
-> 可以用 `npm install -g @sakk-dev/sakk` 代替第 2 步。
+> 这次运行是从仓库副本安装的（第 2 步），所以输出和你正在读的代码完全对应。想装已发布的包，
+> 用 `npm install -g @sakk-dev/sakk` 代替第 2 步。要在自己电脑上真装，跳过第 1 步，照 README 的
+> [安装](../../README.zh-CN.md#安装)一节做：那里讲了 `--user`（所有 Claude Code 会话，而不只一个项目）
+> 和守卫需要的 Claude Code 版本。
 
 ## 0. 准备
 
@@ -42,10 +44,10 @@ sakk --version
 ```
 
 ```text
-sakk-dev-sakk-0.4.0.tgz
+sakk-dev-sakk-0.4.1.tgz
 
 added 1 package in 159ms
-0.4.0
+0.4.1
 ```
 
 - 先 `mkdir -p ~/pack`，因为 npm 11 不会自己建 `--pack-destination` 指定的文件夹，没有它
@@ -96,7 +98,7 @@ sakk try 'git push --force origin main'
 ```text
 deny             git.destructive  (rule shell-destructive)
 → deny
-Sakk: git.destructive is denied by rule shell-destructive (~/.npm-global/lib/node_modules/@sakk-dev/sakk/policies/guard-default.json). A person changes the policy; If this is wrong, tell the person you work for and stop; do not route around it.
+Sakk: git.destructive is denied by rule shell-destructive (~/.npm-global/lib/node_modules/@sakk-dev/sakk/policies/guard-default.json). A person changes the policy. If this is wrong, tell the person you work for and stop; do not route around it.
 policy ~/.npm-global/lib/node_modules/@sakk-dev/sakk/policies/guard-default.json (sha256 77d0fc7022df…)
 ```
 
