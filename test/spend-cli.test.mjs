@@ -304,6 +304,11 @@ describe('F-204 / F-205 — sakk spend tells the truth about what it could not c
         assert.equal(r.status, 1, r.stdout + r.stderr);
         assert.match(r.stderr, /SPEND_LOGS_UNLISTABLE/);
         assert.match(r.stderr, /session\.jsonl \(EACCES\)/, 'names the file and its error');
+        assert.match(
+          r.stderr,
+          /EACCES or EPERM: fix its permissions/,
+          'names the fix for that error',
+        );
         assert.doesNotMatch(r.stderr, /\n\s+at /, 'no stack trace');
         assert.doesNotMatch(r.stdout, /\$0/, 'no figure is reported');
       } finally {

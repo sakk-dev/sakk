@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "branch": "fix/install-docs-big-logs",
+  "answers": {
+    "C-01.1": {
+      "answer": "A log path that cannot be read still lands in unlistable and denies the cap; what changes is that a big file is no longer one of them, because the tail is read in pieces. A line too long to decode is not skipped as if absent: it is counted unreadable on its file's day, so the cap still fails closed.",
+      "guard": "test/spend.test.mjs::a line too long to decode is one unreadable line, never held whole (F-244)"
+    },
+    "C-01.2": {
+      "answer": "Deleting the piece-wise read and putting back the single toString makes the big-log test red with SPEND_LOGS_UNLISTABLE (watched before committing); the docs test asserts it found install lines in every file it reads, so removing them fails rather than passes on nothing.",
+      "guard": "test/spend.test.mjs::a log larger than the longest string Node can hold is counted, and the cap still decides (F-244)"
+    },
+    "C-02.1": {
+      "answer": "The docs test does not trust a hand list of commands: it scans every fenced block of both READMEs and both tutorials for any npm install of the package and any guard install line, so a new block added later is held to the same rule without editing the test.",
+      "guard": "test/release.test.mjs::F-245 every npm install of the package in the READMEs and tutorials is global, and both name --user and the Claude Code version that blocks"
+    },
+    "C-02.2": {
+      "answer": "Every other whole-file toString in src was checked: the console, login and gateway reads are bounded by their own byte caps, and policy, ledger, prices and archive read files Sakk writes or bounds; only the agent transcript tail is unbounded, and the same rule (bytes before strings) now covers both its normal lines and an oversized one.",
+      "guard": "test/spend.test.mjs::lines are the same whatever the piece size: boundaries, multi-byte text and a partial last line (F-244)"
+    },
+    "C-03.1": {
+      "answer": "The big-log test was run against the old read first and went red for exactly ERR_STRING_TOO_LONG filed as SPEND_LOGS_UNLISTABLE; the docs test was run against the current README and went red on the install line without -g, its own reason, before the docs changed.",
+      "guard": "test/spend.test.mjs::a log larger than the longest string Node can hold is counted, and the cap still decides (F-244)"
+    },
+    "C-03.2": {
+      "answer": "The big-log test sizes its file from buffer.constants.MAX_STRING_LENGTH of the running Node, and asserts the file really is past it before reading, so the test cannot pass by writing a file too small to reach the limit it names on another Node build.",
+      "guard": "test/spend.test.mjs::a log larger than the longest string Node can hold is counted, and the cap still decides (F-244)"
+    },
+    "C-03.3": {
+      "answer": "The piece-size test runs the real updateIndex at piece sizes 1, 7, 64 and the default and compares the stored offsets and the day's spend with each other, so a carry bug across a boundary changes a number the cap uses, not just a log line.",
+      "guard": "test/spend.test.mjs::lines are the same whatever the piece size: boundaries, multi-byte text and a partial last line (F-244)"
+    },
+    "C-05.1": {
+      "answer": "Each install sentence added to the READMEs and tutorials names a command the docs test reads back: npm install -g, guard install --user, the 2.1.295 minimum that bin/sakk.mjs and doctor warn about; the minimum is read from the source, not typed into the test, so a changed version in code fails the docs.",
+      "guard": "test/release.test.mjs::F-245 every npm install of the package in the READMEs and tutorials is global, and both name --user and the Claude Code version that blocks"
+    },
+    "C-05.2": {
+      "answer": "The unreadable-path deny now says what to do for the code it saw: permissions only for EACCES or EPERM, otherwise the error code is named as the cause, so a person acting on the message is not sent to fix permissions that were never wrong (the F-244 case was ERR_STRING_TOO_LONG).",
+      "guard": "test/spend.test.mjs::an unreadable-path deny says what to fix for its own code, not always permissions (F-244)"
+    },
+    "C-06.1": {
+      "answer": "The spend figure still comes only from the local log lines, labelled as before; reading in pieces changes how bytes become lines, not where the numbers come from, and the docs claim nothing stronger than the local-log source they already name.",
+      "guard": "test/spend.test.mjs::spend is labelled by its source"
+    },
+    "C-07.1": {
+      "answer": "The transcript is agent-writable, so its size and line lengths are hostile input: the read holds at most one piece plus one line capped at three times MAX_LINE bytes, whatever the agent writes, and a longer line is counted unreadable instead of being buffered.",
+      "guard": "test/spend.test.mjs::a line too long to decode is one unreadable line, never held whole (F-244)"
+    },
+    "C-07.2": {
+      "answer": "The agent can grow its own log, but growth no longer clears or confuses the cap: a big log is counted and an oversized line denies as unreadable, which only a person clears with sakk cap off or by waiting for the day to turn; the agent gains no route around the cap.",
+      "guard": "test/spend.test.mjs::a line too long to decode is one unreadable line, never held whole (F-244)"
+    },
+    "C-08.1": {
+      "answer": "No new path names are introduced: the read opens the same file descriptor the walk already resolved, and the docs name one install location per mode (project or --user) with the same settings files guard install already writes.",
+      "guard": "test/spend.test.mjs::one unreadable log file is a named, isolated failure, not a crash (F-192)"
+    },
+    "C-09.1": {
+      "answer": "The old code assumed a log tail fits in one string; the real case was a 764 MB transcript on the owner's machine. The new test builds a file past the running Node's string limit instead of assuming small logs, and the docs stop assuming a session starts inside the project by naming --user.",
+      "guard": "test/spend.test.mjs::a log larger than the longest string Node can hold is counted, and the cap still decides (F-244)"
+    },
+    "C-09.2": {
+      "answer": "The fix is exercised where it runs: capCheck on a home whose log is past the limit, the same call the hook makes. The install steps are walked with the owner as a real global install after the public sync, and anything that differs there goes back into the ledger.",
+      "guard": "test/spend.test.mjs::a log larger than the longest string Node can hold is counted, and the cap still decides (F-244)"
+    },
+    "C-10.1": {
+      "answer": "The install rule is not left as prose: the docs test runs in npm test and the gate, so a README that drops -g or the --user line fails the commit, and the big-log test runs in the same suite on every push.",
+      "guard": "test/release.test.mjs::F-245 every npm install of the package in the READMEs and tutorials is global, and both name --user and the Claude Code version that blocks"
+    },
+    "C-10.2": {
+      "answer": "Both the Chinese and English pages are read by the same test, so editing one language only still fails; the hook path and sakk spend both reach updateIndex, so neither route keeps the old single-string read.",
+      "guard": "test/release.test.mjs::F-245 every npm install of the package in the READMEs and tutorials is global, and both name --user and the Claude Code version that blocks"
+    },
+    "C-04.1": {
+      "answer": "The agent controls the size of its own transcript, so the read is bounded by what it holds, not by the file: one 8 MiB piece plus at most three times MAX_LINE bytes of a carried line. The oversized-line test proves the cut by its outcome (one unreadable count, the next line still booked), not by a clock.",
+      "guard": "test/spend.test.mjs::a line too long to decode is one unreadable line, never held whole (F-244)"
+    },
+    "C-11.1": {
+      "answer": "The stored offset means every byte before it was booked; only updateIndex writes it, and only after the whole read of that file succeeded, so a read that failed halfway leaves the old offset. The deny text is advice to a person; it names permissions only for EACCES or EPERM and keeps the public code SPEND_LOGS_UNLISTABLE unchanged.",
+      "guard": "test/spend.test.mjs::an unreadable-path deny says what to fix for its own code, not always permissions (F-244)"
+    },
+    "C-15.1": {
+      "answer": "No stand-in: the big-log test writes a real file past the real string limit and calls the real capCheck, the same function the PreToolUse hook calls; the CLI wording is asserted by running the real sakk binary on a mode-000 log in the spend CLI suite.",
+      "guard": "test/spend-cli.test.mjs::sakk spend names an unreadable log file and exits 1 without a stack (F-192)"
+    },
+    "C-14.1": {
+      "answer": "One oversized line is one unreadable line on its day, the rest of the file is still counted, and a read error mid-file books nothing from that file this pass (parsed results are applied only after the whole read succeeds), so a retry cannot double the unreadable count.",
+      "guard": "test/spend.test.mjs::a line too long to decode is one unreadable line, never held whole (F-244)"
+    }
+  }
+}

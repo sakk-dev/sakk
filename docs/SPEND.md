@@ -65,18 +65,24 @@ still read (F-211).
 
 - `PRICE_UNKNOWN`: a call today used a model the table does not list. Add
   the model to your own table, as above.
-- `SPEND_UNREADABLE`: a log line today could not be read.
-- `SPEND_LOGS_UNLISTABLE`: a log directory could not be listed (permissions),
-  so today's spend cannot be counted. The cap fails closed, and `sakk spend`
-  names the directory, until a person fixes the permissions (F-204). The log
+- `SPEND_UNREADABLE`: a log line today could not be read. A line longer than
+  1 MiB is one such line; one longer than 3 MiB of bytes is counted the same
+  way without being decoded, even if it is only spaces (F-244).
+- `SPEND_LOGS_UNLISTABLE`: a log directory could not be listed, so today's
+  spend cannot be counted. The deny and `sakk spend` name the directory and
+  its error code; they tell you to fix permissions only when the code is
+  `EACCES` or `EPERM`. The cap fails closed until that path can be read
+  (F-204, F-244). The log
   ROOT itself is held to the same rule: an unreadable parent, a dangling
   symlink or a symlink loop at the root is this deny, never an
   honest-looking $0 — only a root that truly does not exist is $0 (F-208).
 
-A single log FILE that cannot be opened (permissions) is the same
-`SPEND_LOGS_UNLISTABLE`: `sakk spend` names the file and its error and
+A single log FILE that cannot be opened or read is the same
+`SPEND_LOGS_UNLISTABLE`: `sakk spend` names the file and its error code and
 exits 1, the other files are still indexed, and the cap stays closed until
-a person fixes the file's permissions (F-192). When any other step of the
+that file can be read (F-192). Size alone is never such an error: a log is
+read in 8 MiB pieces, so a transcript larger than the longest string Node can
+hold (about 512 MiB) is counted like any other (F-244). When any other step of the
 guard fails, the deny names that step (the spend cap, the kill switch, the
 secret scan or the rules) instead of always blaming the rules.
 

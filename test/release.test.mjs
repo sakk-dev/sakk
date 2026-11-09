@@ -935,4 +935,72 @@ describe('release honesty (V2 line D)', () => {
     assert.ok(seen > 0, 'the docs name the package at least once');
     assert.deepEqual(wrong, [], `these lines name a package npm does not publish (${name})`);
   });
+
+  test('F-245 every npm install of the package in the READMEs and tutorials is global, and both name --user and the Claude Code version that blocks', () => {
+    // The lowest Claude Code that honours onFailure: block, read from the code
+    // that decides it, so a changed minimum in code fails the docs.
+    const src = read('src/guard-install.mjs');
+    const v = /a === (\d+) && \(b > (\d+) \|\| \(b === \2 && c >= (\d+)\)\)/.exec(src);
+    assert.ok(v, 'src/guard-install.mjs still spells the Claude Code minimum this test reads');
+    const minimum = `${v[1]}.${v[2]}.${v[3]}`;
+    assert.match(src, new RegExp(`from ${minimum.replaceAll('.', '\\.')}`));
+
+    const fenced = (text) => {
+      const out = [];
+      let open = false;
+      text.split('\n').forEach((line, i) => {
+        if (/^\s*```/.test(line)) open = !open;
+        else if (open) out.push([i + 1, line]);
+      });
+      return out;
+    };
+    const PKG = /^(?:@sakk-dev\/sakk(?:@[\w.^~-]+)?|\S*sakk-\S*\.tgz)$/;
+    const wrong = [];
+    const missing = [];
+    for (const f of [
+      'README.md',
+      'README.zh-CN.md',
+      'docs/tutorial/en.md',
+      'docs/tutorial/zh-CN.md',
+    ]) {
+      const text = read(f);
+      let installs = 0;
+      let userGuard = 0;
+      for (const [n, line] of fenced(text)) {
+        const cmds = line.replace(/\s#.*$/, '').split(/&&|\|\||;|\|/);
+        for (const cmd of cmds) {
+          const t = cmd.trim().split(/\s+/);
+          if (t[0] === 'sakk' && t[1] === 'guard' && t[2] === 'install' && t.includes('--user')) {
+            userGuard++;
+          }
+          if (t[0] !== 'npm' || !/^(install|i|add)$/.test(t[1] ?? '')) continue;
+          const words = t.slice(2);
+          if (!words.some((w) => PKG.test(w))) continue;
+          installs++;
+          // Global, or the project's own copy that a git hook runs (`npx sakk scan`).
+          const ok = words.some((w) => /^(-g|--global|--location=global|--save-dev|-D)$/.test(w));
+          if (!ok) wrong.push(`${f}:${n}: ${cmd.trim()}`);
+        }
+      }
+      const need = (ok, what) => ok || missing.push(`${f}: ${what}`);
+      need(installs > 0, 'an npm install of the package is among the lines checked');
+      if (f.startsWith('README')) {
+        need(userGuard > 0, 'a command block installs the guard with --user');
+        need(
+          text.includes(minimum),
+          `names Claude Code ${minimum}, below which the guard fails open`,
+        );
+        need(/claude update/.test(text), 'says how to upgrade Claude Code');
+      } else {
+        need(/npm install -g @sakk-dev\/sakk/.test(text), 'names the npm install route');
+        need(/--user/.test(text), 'names the --user install');
+      }
+    }
+    assert.deepEqual(
+      wrong,
+      [],
+      'these install the package into one folder only, so `sakk` is not on PATH',
+    );
+    assert.deepEqual(missing, [], 'the install docs leave these out');
+  });
 });

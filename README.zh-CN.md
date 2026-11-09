@@ -107,16 +107,44 @@ curl -s http://127.0.0.1:4000/v1/chat/completions \
 ## 安装
 
 ```bash
-npm install @sakk-dev/sakk   # 或者不安装，直接调用 CLI：npx @sakk-dev/sakk …
+npm install -g @sakk-dev/sakk   # 把 `sakk` 放进 PATH（需要 Node 20 或更高）
+sakk --version
 ```
+
+请全局安装：守卫和花费上限写进智能体的设置后，运行的是装好的 `sakk`。
+只想不安装、临时调用一次 CLI：`npx -y @sakk-dev/sakk …`。
 
 ## 如何阻止 AI 编程智能体执行 force-push 这类危险命令？
 
 ```bash
-sakk guard install claude-code   # 或：cursor、codex
+claude --version                 # 需要 2.1.295 或更高；更旧就先 claude update
+sakk guard install claude-code   # 只管这个项目；或：cursor、codex
 sakk doctor                      # 检查钩子是否真的会触发
 sakk try 'git push --force origin main'   # 看守卫会怎么回答
 ```
+
+`sakk guard install` 写的是项目里的 `.claude/settings.json`，Claude Code
+只在从这个项目启动的会话里加载它。要让这台电脑上所有 Claude Code 会话都受保护
+（不管从哪个文件夹启动），改成按用户安装：它写 `~/.claude/settings.json`，
+并把原来的文件留作 `settings.json.sakk-backup`：
+
+```bash
+sakk guard install claude-code --user     # 这台电脑上的所有会话
+sakk guard uninstall claude-code --user   # 再拿掉
+```
+
+2.1.295 之前的 Claude Code 不认识 `onFailure: block`，钩子启动失败时调用会照常执行
+（失败即放行）；`sakk guard install` 和 `sakk doctor` 都会提示。先 `claude update`，
+再跑一次 `sakk guard install`，守卫就是失败即拦截。
+
+想在真实会话里无风险地看它拦一次，用一个没有远端的新文件夹，这样即使推送被放行也推不到任何地方：
+
+```bash
+mkdir -p ~/sakk-check && cd ~/sakk-check && git init -q .
+claude   # 然后让它执行：git push --force origin main
+```
+
+守卫会在推送执行前拒绝它，`sakk ui` 里能看到这条拒绝记录。
 
 智能体的每一次 Edit、Write 和 shell 调用都会在执行前被判定：
 force push、项目外的删除、读取密钥和部署，会按一份你能阅读和修改的策略被拒绝或先询问你。
@@ -492,7 +520,7 @@ Agent Governance Toolkit 面向基于它所适配框架构建的智能体，覆�
   一个把其中任一项指向空文件夹运行的智能体会读到 $0 花费。
 - **旧版 Claude Code 失败即放行。** 在 2.1.295 之前，超时或
   被杀掉的钩子会让调用继续执行。`sakk guard install` 会说明这一点，`sakk doctor`
-  会警告。
+  会警告；`claude update` 后再跑一次 `sakk guard install` 即可修好。
 - **确认检查的是终端，不是人。** 一个 shell 运行在伪终端里的智能体，
   或者它写的、会打开伪终端的脚本，可以输入那个词。守卫在 `script`、`expect` 和 `unbuffer` 之前会询问，
   并且只认得名为 `sakk` 的 Sakk：`npx sakk cap off` 会遇到

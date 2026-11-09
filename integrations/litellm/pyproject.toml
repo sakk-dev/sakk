@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sakk-litellm"
-version = "0.4.0"
+version = "0.4.1"
 description = "Sakk spend gate for the LiteLLM proxy: reserve each call's worst-case cost before the provider is called, settle the real cost after."
 readme = "README.pypi.md"
 license = "Apache-2.0"

@@ -112,16 +112,48 @@ Two concurrent agents cannot jointly overspend: read-modify-write runs under an 
 ## Install
 
 ```bash
-npm install @sakk-dev/sakk   # or call the CLI without installing: npx @sakk-dev/sakk …
+npm install -g @sakk-dev/sakk   # puts `sakk` on your PATH (Node 20 or later)
+sakk --version
 ```
+
+Install it globally: the guard and the cap are wired into your agent's
+settings and run the installed `sakk`. To call the CLI once without
+installing: `npx -y @sakk-dev/sakk …`.
 
 ## How do I block dangerous commands like force-push from an AI coding agent?
 
 ```bash
-sakk guard install claude-code   # or: cursor, codex
+claude --version                 # 2.1.295 or later; if older: claude update
+sakk guard install claude-code   # this project only; or: cursor, codex
 sakk doctor                      # checks the hook really fires
 sakk try 'git push --force origin main'   # what the guard would answer
 ```
+
+`sakk guard install` writes the project's `.claude/settings.json`, which
+Claude Code loads only for sessions started in that project. To guard every
+Claude Code session on this machine, wherever it starts, install it for your
+user instead; it writes `~/.claude/settings.json` and keeps the previous file
+as `settings.json.sakk-backup`:
+
+```bash
+sakk guard install claude-code --user     # every session on this machine
+sakk guard uninstall claude-code --user   # take it out again
+```
+
+Claude Code before 2.1.295 does not know `onFailure: block`, so a hook that
+fails to start lets the call run (fail-open); `sakk guard install` and
+`sakk doctor` both say so. Run `claude update`, then `sakk guard install`
+again, for a fail-closed guard.
+
+To see it in a real session without risk, use a new folder with no remote, so
+even an allowed push could not reach anything:
+
+```bash
+mkdir -p ~/sakk-check && cd ~/sakk-check && git init -q .
+claude   # then ask: run git push --force origin main
+```
+
+The guard denies the push before it runs, and `sakk ui` lists the denial.
 
 Every Edit, Write and shell call of the agent is judged before it runs:
 force pushes, deletes outside the project, reading secrets and deploys are
@@ -556,7 +588,7 @@ The guard and the cap:
   an agent run with either pointed at an empty folder reads $0 spend.
 - **Older Claude Code fails open.** Before 2.1.295 a hook that times out or is
   killed lets the call run. `sakk guard install` says so and `sakk doctor`
-  warns.
+  warns; `claude update` and a second `sakk guard install` fix it.
 - **The confirmation checks for a terminal, not a person.** An agent whose
   shell runs in a pseudo-terminal, or a script it writes that opens one, can
   type the word. The guard asks before `script`, `expect` and `unbuffer`, and
