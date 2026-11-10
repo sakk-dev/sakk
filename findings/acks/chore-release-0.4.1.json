@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "branch": "chore/release-0.4.1",
+  "answers": {
+    "C-01.1": {
+      "answer": "A missing piece refuses: with [Unreleased] emptied, F-111 requires package.json (0.4.1) to equal the newest dated heading, so a missing [0.4.1] heading, a missing [0.4.1] link ref, or an [Unreleased] ref still comparing from v0.4.0 turns the test red instead of reading as a finished release.",
+      "guard": "test/release.test.mjs::F-111 the changelog, the package version and the tag format describe one release"
+    },
+    "C-01.2": {
+      "answer": "Deleting either release marker is caught: remove the [0.4.1] heading and F-111 sees 0.4.0 as newest against package.json 0.4.1; remove the tutorial's 0.4.1 line and the F-234 test fails. Both run in npm test, the pre-push hook, the CI test jobs and release.yml before npm publish.",
+      "guard": "test/release.test.mjs::F-234 each tutorial names the release it was run with, and the package is that release"
+    },
+    "C-05.1": {
+      "answer": "No new prose is added: the entries moved under [0.4.1] were written and tested in PR #61 (the F-244 spend tests and the F-245 install-line test), and this change adds only a heading, a date and two link refs, which the F-111 test reads back against package.json and the tag format.",
+      "guard": "test/release.test.mjs::F-245 every npm install of the package in the READMEs and tutorials is global, and both name --user and the Claude Code version that blocks"
+    },
+    "C-05.2": {
+      "answer": "What a reader acts on works after the tag: npm install -g @sakk-dev/sakk installs 0.4.1 once v0.4.1 is pushed to sakk-dev/sakk, release.yml refuses any tag that is not v plus package.json's version, and the compare link v0.4.0...v0.4.1 resolves because both tags exist on the public repository.",
+      "guard": "test/release.test.mjs::the version is one source of truth across the binary and the plugin"
+    },
+    "C-09.1": {
+      "answer": "The test assumes only the repository top, found from the test file's URL and not from cwd, and reads the date as text without comparing it to today's clock, so it passes from a linked worktree, from the de-identified public copy, and on CI runners in any time zone.",
+      "guard": "test/pre-push.test.mjs::a push from a linked worktree: the suite gets no GIT_ variables, so a fixture cannot write into the repository (F-214)"
+    },
+    "C-09.2": {
+      "answer": "It runs at every place the release is judged: the pre-push hook and the required CI jobs here, then final-040.sh runs the full suite and prettier on the de-identified copy, the public pull request runs its required checks again, and release.yml runs npm test on the tag before it publishes.",
+      "guard": "test/pre-push.test.mjs::a push runs the range check and the full suite, and refuses when either fails"
+    },
+    "C-10.1": {
+      "answer": "Dating the changelog at a release is a gate, not a habit: the F-111 test fails while package.json is ahead of the newest heading with an empty [Unreleased], or when a link ref breaks the v-prefixed tag format, and release.yml stops before npm publish when that test fails.",
+      "guard": "test/release.test.mjs::F-111 the security policy supports the minor line package.json is on"
+    },
+    "C-10.2": {
+      "answer": "No other route publishes an undated release: main only moves through pull requests whose required checks run the test, the public repository's main moves by fast-forward of a tested bundle under a ruleset without bypass, and a tag pushed on any other commit still meets npm test inside release.yml.",
+      "guard": "test/merge-rule.test.mjs::main's ruleset requires every check a pull request runs, except the declared review (F-116)"
+    }
+  }
+}
