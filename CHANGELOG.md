@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-10
+
 ### Fixed — a large Claude Code log no longer closes the spend cap
 
 - A transcript larger than the longest string Node can hold (about 512 MiB)
@@ -1441,7 +1443,8 @@ against the running code:
   that halts all paid calls, atomic lock + temp-rename writes, alert JSONL.
 - 23-test ledger suite including a real two-process race.
 
-[Unreleased]: https://github.com/sakk-dev/sakk/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/sakk-dev/sakk/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/sakk-dev/sakk/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/sakk-dev/sakk/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/sakk-dev/sakk/compare/v0.1.0...v0.3.0
 [0.1.0]: https://github.com/sakk-dev/sakk/releases/tag/v0.1.0
